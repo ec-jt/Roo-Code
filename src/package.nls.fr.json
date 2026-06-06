@@ -20,6 +20,7 @@
 	"views.terminalMenu.label": "Roo Code",
 	"views.sidebar.name": "Roo Code",
 	"command.history.title": "Historique des Tâches",
+	"command.marketplace.title": "Marché",
 	"command.openInEditor.title": "Ouvrir dans l'Éditeur",
 	"command.settings.title": "Paramètres",
 	"command.documentation.title": "Documentation",

@@ -508,7 +508,7 @@ export class CustomModesManager {
 		await this.onUpdate()
 	}
 
-	public async deleteCustomMode(slug: string): Promise<void> {
+	public async deleteCustomMode(slug: string, fromMarketplace = false): Promise<void> {
 		try {
 			const settingsPath = await this.getCustomModesFilePath()
 			const roomodesPath = await this.getWorkspaceRoomodes()
@@ -540,7 +540,7 @@ export class CustomModesManager {
 
 				// Delete associated rules folder
 				if (modeToDelete) {
-					await this.deleteRulesFolder(slug, modeToDelete)
+					await this.deleteRulesFolder(slug, modeToDelete, fromMarketplace)
 				}
 
 				// Clear cache when modes are deleted
@@ -558,7 +558,7 @@ export class CustomModesManager {
 	 * @param slug - The mode slug
 	 * @param mode - The mode configuration to determine the scope
 	 */
-	private async deleteRulesFolder(slug: string, mode: ModeConfig): Promise<void> {
+	private async deleteRulesFolder(slug: string, mode: ModeConfig, fromMarketplace = false): Promise<void> {
 		try {
 			// Determine the scope based on source (project or global)
 			const scope = mode.source || "global"
@@ -587,9 +587,10 @@ export class CustomModesManager {
 				} catch (error) {
 					logger.error(`Failed to delete rules folder for mode ${slug}: ${error}`)
 					// Notify the user about the failure
-					vscode.window.showWarningMessage(
-						t("common:customModes.errors.rulesCleanupFailed", { rulesFolderPath }),
-					)
+					const messageKey = fromMarketplace
+						? "common:marketplace.mode.rulesCleanupFailed"
+						: "common:customModes.errors.rulesCleanupFailed"
+					vscode.window.showWarningMessage(t(messageKey, { rulesFolderPath }))
 					// Continue even if folder deletion fails
 				}
 			}

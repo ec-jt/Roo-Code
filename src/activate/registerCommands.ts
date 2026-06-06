@@ -108,6 +108,11 @@ const getCommandsMap = ({ context, outputChannel, provider }: RegisterCommandOpt
 
 		visibleProvider.postMessageToWebview({ type: "action", action: "historyButtonClicked" })
 	},
+	marketplaceButtonClicked: () => {
+		const visibleProvider = getVisibleProviderOrLog(outputChannel)
+		if (!visibleProvider) return
+		visibleProvider.postMessageToWebview({ type: "action", action: "marketplaceButtonClicked" })
+	},
 	newTask: handleNewTask,
 	setCustomStoragePath: async () => {
 		const { promptForCustomStoragePath } = await import("../utils/storage")

@@ -212,6 +212,11 @@
 			"global": "küresel"
 		}
 	},
+	"marketplace": {
+		"mode": {
+			"rulesCleanupFailed": "Mod başarıyla kaldırıldı, ancak {{rulesFolderPath}} konumundaki kurallar klasörü silinemedi. Manuel olarak silmeniz gerekebilir."
+		}
+	},
 	"prompts": {
 		"deleteMode": {
 			"title": "Özel Modu Sil",

@@ -7,6 +7,7 @@
 	"views.sidebar.name": "Roo Code",
 	"command.newTask.title": "Tugas Baru",
 	"command.history.title": "Riwayat Tugas",
+	"command.marketplace.title": "Marketplace",
 	"command.openInEditor.title": "Buka di Editor",
 	"command.settings.title": "Pengaturan",
 	"command.documentation.title": "Dokumentasi",
