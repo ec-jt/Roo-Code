@@ -9,8 +9,23 @@ import { ZaiApiLine } from "../provider-settings.js"
 // https://bigmodel.cn/pricing
 
 export type InternationalZAiModelId = keyof typeof internationalZAiModels
-export const internationalZAiDefaultModelId: InternationalZAiModelId = "glm-4.6"
+export const internationalZAiDefaultModelId: InternationalZAiModelId = "glm-5.1"
 export const internationalZAiModels = {
+	"glm-5.1": {
+		maxTokens: 128_000,
+		contextWindow: 200_000,
+		supportsImages: false,
+		supportsPromptCache: true,
+		supportsReasoningEffort: ["disable", "medium"],
+		reasoningEffort: "medium",
+		preserveReasoning: true,
+		inputPrice: 1.4,
+		outputPrice: 4.4,
+		cacheWritesPrice: 0,
+		cacheReadsPrice: 0.26,
+		description:
+			"GLM-5.1 is Zhipu's most advanced model with 200K context, built-in thinking, and state-of-the-art reasoning, coding, and agentic performance.",
+	},
 	"glm-4.5": {
 		maxTokens: 16_384,
 		contextWindow: 131_072,
@@ -197,8 +212,23 @@ export const internationalZAiModels = {
 } as const satisfies Record<string, ModelInfo>
 
 export type MainlandZAiModelId = keyof typeof mainlandZAiModels
-export const mainlandZAiDefaultModelId: MainlandZAiModelId = "glm-4.6"
+export const mainlandZAiDefaultModelId: MainlandZAiModelId = "glm-5.1"
 export const mainlandZAiModels = {
+	"glm-5.1": {
+		maxTokens: 128_000,
+		contextWindow: 200_000,
+		supportsImages: false,
+		supportsPromptCache: true,
+		supportsReasoningEffort: ["disable", "medium"],
+		reasoningEffort: "medium",
+		preserveReasoning: true,
+		inputPrice: 1.4,
+		outputPrice: 4.4,
+		cacheWritesPrice: 0,
+		cacheReadsPrice: 0.26,
+		description:
+			"GLM-5.1 is Zhipu's most advanced model with 200K context, built-in thinking, and state-of-the-art reasoning, coding, and agentic performance.",
+	},
 	"glm-4.5": {
 		maxTokens: 16_384,
 		contextWindow: 131_072,

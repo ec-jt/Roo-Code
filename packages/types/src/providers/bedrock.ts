@@ -167,6 +167,29 @@ export const bedrockModels = {
 			},
 		],
 	},
+	"anthropic.claude-opus-4-8": {
+		maxTokens: 8192,
+		contextWindow: 200_000,
+		supportsImages: true,
+		supportsPromptCache: true,
+		supportsReasoningBudget: true,
+		inputPrice: 5.0,
+		outputPrice: 25.0,
+		cacheWritesPrice: 6.25,
+		cacheReadsPrice: 0.5,
+		minTokensPerCachePoint: 1024,
+		maxCachePoints: 4,
+		cachableFields: ["system", "messages", "tools"],
+		tiers: [
+			{
+				contextWindow: 1_000_000,
+				inputPrice: 10.0,
+				outputPrice: 37.5,
+				cacheWritesPrice: 12.5,
+				cacheReadsPrice: 1.0,
+			},
+		],
+	},
 	"anthropic.claude-opus-4-5-20251101-v1:0": {
 		maxTokens: 8192,
 		contextWindow: 200_000,
@@ -460,6 +483,16 @@ export const bedrockModels = {
 		outputPrice: 1.8,
 		description: "Qwen3 Coder 480B (MoE model with 35B active parameters)",
 	},
+	"qwen.qwen3-coder-30b-a3b-v1:0": {
+		maxTokens: 8192,
+		contextWindow: 262_144,
+		supportsImages: false,
+		supportsPromptCache: false,
+		inputPrice: 0.15,
+		outputPrice: 0.6,
+		description:
+			"Qwen3 Coder 30B MoE model with 3.3B activated parameters, optimized for code generation and analysis with 256K context window.",
+	},
 } as const satisfies Record<string, ModelInfo>
 
 export const BEDROCK_DEFAULT_TEMPERATURE = 0.3
@@ -525,6 +558,7 @@ export const BEDROCK_1M_CONTEXT_MODEL_IDS = [
 	"anthropic.claude-sonnet-4-5-20250929-v1:0",
 	"anthropic.claude-sonnet-4-6",
 	"anthropic.claude-opus-4-6-v1",
+	"anthropic.claude-opus-4-8",
 ] as const
 
 // Amazon Bedrock models that support Global Inference profiles
@@ -535,6 +569,7 @@ export const BEDROCK_1M_CONTEXT_MODEL_IDS = [
 // - Claude Haiku 4.5
 // - Claude Opus 4.5
 // - Claude Opus 4.6
+// - Claude Opus 4.8
 export const BEDROCK_GLOBAL_INFERENCE_MODEL_IDS = [
 	"anthropic.claude-sonnet-4-20250514-v1:0",
 	"anthropic.claude-sonnet-4-5-20250929-v1:0",
@@ -542,6 +577,7 @@ export const BEDROCK_GLOBAL_INFERENCE_MODEL_IDS = [
 	"anthropic.claude-haiku-4-5-20251001-v1:0",
 	"anthropic.claude-opus-4-5-20251101-v1:0",
 	"anthropic.claude-opus-4-6-v1",
+	"anthropic.claude-opus-4-8",
 ] as const
 
 // Amazon Bedrock Service Tier types

@@ -6,6 +6,21 @@ export type VertexModelId = keyof typeof vertexModels
 export const vertexDefaultModelId: VertexModelId = "claude-sonnet-4-5@20250929"
 
 export const vertexModels = {
+	"gemini-3.5-flash": {
+		maxTokens: 65_536,
+		contextWindow: 1_048_576,
+		supportsImages: true,
+		supportsPromptCache: true,
+		supportsReasoningEffort: ["low", "medium", "high"],
+		reasoningEffort: "low",
+
+		supportsTemperature: true,
+		defaultTemperature: 1,
+		inputPrice: 1.5,
+		outputPrice: 9.0,
+		cacheReadsPrice: 0.15,
+		description: "Gemini 3.5 Flash: Fast, cost-efficient model with strong reasoning and thinking capabilities.",
+	},
 	"gemini-3.1-pro-preview": {
 		maxTokens: 65_536,
 		contextWindow: 1_048_576,
@@ -395,6 +410,26 @@ export const vertexModels = {
 			},
 		],
 	},
+	"claude-opus-4-8": {
+		maxTokens: 8192,
+		contextWindow: 200_000, // Default 200K, extendable to 1M with beta flag
+		supportsImages: true,
+		supportsPromptCache: true,
+		inputPrice: 5.0,
+		outputPrice: 25.0,
+		cacheWritesPrice: 6.25,
+		cacheReadsPrice: 0.5,
+		supportsReasoningBudget: true,
+		tiers: [
+			{
+				contextWindow: 1_000_000,
+				inputPrice: 10.0,
+				outputPrice: 37.5,
+				cacheWritesPrice: 12.5,
+				cacheReadsPrice: 1.0,
+			},
+		],
+	},
 	"claude-opus-4-5@20251101": {
 		maxTokens: 8192,
 		contextWindow: 200_000,
@@ -594,6 +629,7 @@ export const VERTEX_1M_CONTEXT_MODEL_IDS = [
 	"claude-sonnet-4-6",
 	"claude-opus-4-6",
 	"claude-opus-4-7",
+	"claude-opus-4-8",
 ] as const
 
 export const VERTEX_REGIONS = [

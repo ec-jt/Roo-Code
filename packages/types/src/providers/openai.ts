@@ -6,6 +6,26 @@ export type OpenAiNativeModelId = keyof typeof openAiNativeModels
 export const openAiNativeDefaultModelId: OpenAiNativeModelId = "gpt-5.1-codex-max"
 
 export const openAiNativeModels = {
+	"gpt-5.5": {
+		maxTokens: 128000,
+		contextWindow: 1_050_000,
+		includedTools: ["apply_patch"],
+		excludedTools: ["apply_diff", "write_to_file"],
+		supportsImages: true,
+		supportsPromptCache: true,
+		supportsReasoningEffort: ["none", "low", "medium", "high", "xhigh"],
+		reasoningEffort: "none",
+		inputPrice: 5.0,
+		outputPrice: 30.0,
+		cacheReadsPrice: 0.5,
+		supportsVerbosity: true,
+		supportsTemperature: false,
+		tiers: [
+			{ name: "flex", contextWindow: 1_050_000, inputPrice: 2.5, outputPrice: 15.0, cacheReadsPrice: 0.25 },
+			{ name: "priority", contextWindow: 1_050_000, inputPrice: 10.0, outputPrice: 60.0, cacheReadsPrice: 1.0 },
+		],
+		description: "GPT-5.5: OpenAI's most capable model for professional and enterprise work",
+	},
 	"gpt-5.1-codex-max": {
 		maxTokens: 128000,
 		contextWindow: 400000,
@@ -517,6 +537,15 @@ export const openAiNativeModels = {
 		tiers: [
 			{ name: "priority", contextWindow: 128_000, inputPrice: 0.25, outputPrice: 1.0, cacheReadsPrice: 0.125 },
 		],
+	},
+	"chatgpt-4o-latest": {
+		maxTokens: 16_384,
+		contextWindow: 128_000,
+		supportsImages: true,
+		supportsPromptCache: false,
+		inputPrice: 5,
+		outputPrice: 15,
+		supportsTemperature: true,
 	},
 	"codex-mini-latest": {
 		maxTokens: 16_384,
