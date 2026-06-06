@@ -15,6 +15,7 @@ import HistoryView from "./components/history/HistoryView"
 import SettingsView, { SettingsViewRef } from "./components/settings/SettingsView"
 import WelcomeView from "./components/welcome/WelcomeViewProvider"
 import { MarketplaceView } from "./components/marketplace/MarketplaceView"
+import { CloudView } from "./components/cloud/CloudView"
 import { CheckpointRestoreDialog } from "./components/chat/CheckpointRestoreDialog"
 import { DeleteMessageDialog, EditMessageDialog } from "./components/chat/MessageModificationConfirmationDialog"
 import ErrorBoundary from "./components/ErrorBoundary"
@@ -22,7 +23,6 @@ import { useAddNonInteractiveClickListener } from "./components/ui/hooks/useNonI
 import { TooltipProvider } from "./components/ui/tooltip"
 import { STANDARD_TOOLTIP_DELAY } from "./components/ui/standard-tooltip"
 
-type Tab = "settings" | "history" | "chat"
 type Tab = "settings" | "history" | "chat" | "marketplace" | "cloud"
 interface DeleteMessageDialogState {
 	isOpen: boolean
@@ -46,11 +46,12 @@ const tabsByMessageAction: Partial<Record<NonNullable<ExtensionMessage["action"]
 	chatButtonClicked: "chat",
 	settingsButtonClicked: "settings",
 	historyButtonClicked: "history",
-marketplaceButtonClicked: "marketplace",
-	cloudButtonClicked: "cloud",}
+	marketplaceButtonClicked: "marketplace",
+	cloudButtonClicked: "cloud",
+}
 
 const App = () => {
-	const { didHydrateState, showWelcome, shouldShowAnnouncement, renderContext } = useExtensionState()
+	const { didHydrateState, showWelcome, shouldShowAnnouncement, renderContext, cloudUserInfo, cloudIsAuthenticated, cloudApiUrl, cloudOrganizations } = useExtensionState()
 
 	// Create a persistent state manager
 	const marketplaceStateManager = useMemo(() => new MarketplaceViewStateManager(), [])
@@ -190,7 +191,7 @@ const App = () => {
 			{tab === "settings" && (
 				<SettingsView ref={settingsRef} onDone={() => setTab("chat")} targetSection={currentSection} />
 			)}
-{tab === "marketplace" && (
+			{tab === "marketplace" && (
 				<MarketplaceView
 					stateManager={marketplaceStateManager}
 					onDone={() => switchTab("chat")}
@@ -204,7 +205,8 @@ const App = () => {
 					cloudApiUrl={cloudApiUrl}
 					organizations={cloudOrganizations}
 				/>
-			)}			<ChatView
+			)}
+			<ChatView
 				ref={chatViewRef}
 				isHidden={tab !== "chat"}
 				showAnnouncement={showAnnouncement}

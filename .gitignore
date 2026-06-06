@@ -13,8 +13,8 @@ mock/
 .idea
 
 # Builds
-bin/
-*.vsix
+# bin/ - keeping bin/ tracked for VSIX distribution
+!bin/*.vsix
 
 # Local prompts and rules
 /local-prompts

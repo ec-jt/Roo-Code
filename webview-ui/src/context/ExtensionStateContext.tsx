@@ -49,6 +49,10 @@ export interface ExtensionStateContextType extends ExtensionState {
 	setFollowupAutoApproveTimeoutMs: (value: number) => void // Setter for the timeout
 	marketplaceItems?: any[]
 	marketplaceInstalledMetadata?: MarketplaceInstalledMetadata
+	cloudIsAuthenticated: boolean
+	cloudOrganizations: Array<{ id: string; name: string }>
+	cloudUserInfo?: { organizationName?: string; email?: string }
+	organizationSettingsVersion: number
 	profileThresholds: Record<string, number>
 	setProfileThresholds: (value: Record<string, number>) => void
 	setApiConfiguration: (config: ProviderSettings) => void
@@ -468,11 +472,13 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 		ttsSpeed: state.ttsSpeed,
 		writeDelayMs: state.writeDelayMs,
 		routerModels: extensionRouterModels,
-cloudIsAuthenticated: state.cloudIsAuthenticated ?? false,
+		cloudIsAuthenticated: state.cloudIsAuthenticated ?? false,
 		cloudOrganizations: state.cloudOrganizations ?? [],
+		cloudUserInfo: state.cloudUserInfo,
 		organizationSettingsVersion: state.organizationSettingsVersion ?? -1,
 		marketplaceItems,
-		marketplaceInstalledMetadata,		profileThresholds: state.profileThresholds ?? {},
+		marketplaceInstalledMetadata,
+		profileThresholds: state.profileThresholds ?? {},
 		alwaysAllowFollowupQuestions,
 		followupAutoApproveTimeoutMs,
 		setExperimentEnabled: (id, enabled) =>

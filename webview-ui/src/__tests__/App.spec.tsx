@@ -68,7 +68,8 @@ vi.mock("@src/components/cloud/CloudView", () => ({
 	CloudView: function CloudView() {
 		return <div data-testid="cloud-view">Cloud View</div>
 	},
-}))const mockUseExtensionState = vi.fn()
+}))
+const mockUseExtensionState = vi.fn()
 
 // Mock i18next and react-i18next
 vi.mock("i18next", () => {

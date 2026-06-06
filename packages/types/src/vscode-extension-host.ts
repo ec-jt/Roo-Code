@@ -363,6 +363,13 @@ export type ExtensionState = Pick<
 	 * (captured during async getStateToPostToWebview) from overwriting newer messages.
 	 */
 	clineMessagesSeq?: number
+
+	// Cloud features
+	cloudIsAuthenticated?: boolean
+	cloudOrganizations?: Array<{ id: string; name: string }>
+	cloudUserInfo?: { organizationName?: string; email?: string }
+	cloudApiUrl?: string
+	organizationSettingsVersion?: number
 }
 
 export interface Command {

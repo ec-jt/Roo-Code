@@ -1,3 +1,53 @@
+# Agent Instructions
+
+## Building the Extension
+
+### Prerequisites
+- **Node.js** 20.x (project specifies 20.19.2 in `.nvmrc`)
+- **pnpm** 10.8.1 (specified as `packageManager` in root `package.json`)
+
+### Build Steps
+
+```bash
+# 1. Install pnpm if not available
+npm install -g pnpm@10.8.1
+
+# 2. Install all dependencies (monorepo-wide)
+cd /home/ubuntu/Roo-Code
+pnpm install --frozen-lockfile
+
+# 3. Clean previous build artifacts
+pnpm clean
+
+# 4. Build and package the VSIX
+pnpm vsix
+```
+
+The VSIX file will be output to `bin/roo-cline-<version>.vsix`.
+
+### What `pnpm vsix` does (via Turbo)
+1. Builds `@roo-code/types` (tsup → `packages/types/dist/`)
+2. Builds `@roo-code/build` (tsc)
+3. Builds `@roo-code/vscode-webview` (tsc + vite → `src/webview-ui/`)
+4. Bundles the extension (`src/esbuild.mjs` → `src/dist/`)
+5. Packages with `vsce package --no-dependencies --out ../bin`
+
+### Installing the VSIX
+```bash
+# Install in VS Code
+code --install-extension bin/roo-cline-*.vsix
+
+# Or use the built-in script
+pnpm install:vsix
+```
+
+### Troubleshooting
+- If esbuild build scripts are blocked, run `pnpm approve-builds` and select `esbuild`
+- The `webview-ui/` build requires `@roo-code/types` to be built first (Turbo handles ordering)
+- Node engine mismatch warnings (e.g., 20.20.x vs 20.19.2) are safe to ignore
+
+---
+
 # Agent Instructions for Model/Provider Updates
 
 ## Overview
