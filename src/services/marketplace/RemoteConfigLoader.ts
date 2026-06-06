@@ -1,4 +1,5 @@
-import axios from "axios"
+import * as fs from "fs"
+import * as path from "path"
 import * as yaml from "yaml"
 import { z } from "zod"
 
@@ -8,11 +9,13 @@ import {
 	modeMarketplaceItemSchema,
 	mcpMarketplaceItemSchema,
 } from "@roo-code/types"
+
 /**
- * Marketplace API base URL - points to Cline's public marketplace API.
- * Production endpoint: https://api.cline.bot
+ * Bundled marketplace data file path.
+ * Since the upstream Roo Code Cloud and Cline marketplace APIs are no longer available,
+ * we bundle marketplace data locally from a YAML file extracted from Cline's catalog.
  */
-const MARKETPLACE_API_BASE_URL = "https://api.cline.bot"
+const BUNDLED_MCPS_FILENAME = "bundled-mcps.yaml"
 
 const modeMarketplaceResponse = z.object({
 	items: z.array(modeMarketplaceItemSchema),
@@ -23,13 +26,10 @@ const mcpMarketplaceResponse = z.object({
 })
 
 export class RemoteConfigLoader {
-	private apiBaseUrl: string
 	private cache: Map<string, { data: MarketplaceItem[]; timestamp: number }> = new Map()
 	private cacheDuration = 5 * 60 * 1000 // 5 minutes
 
-	constructor() {
-		this.apiBaseUrl = MARKETPLACE_API_BASE_URL
-	}
+	constructor() {}
 
 	async loadAllItems(hideMarketplaceMcps = false): Promise<MarketplaceItem[]> {
 		const items: MarketplaceItem[] = []
@@ -51,16 +51,9 @@ export class RemoteConfigLoader {
 			return cached
 		}
 
-		const data = await this.fetchWithRetry<string>(`${this.apiBaseUrl}/api/marketplace/modes`)
-
-		const yamlData = yaml.parse(data)
-		const validated = modeMarketplaceResponse.parse(yamlData)
-
-		const items: MarketplaceItem[] = validated.items.map((item) => ({
-			type: "mode" as const,
-			...item,
-		}))
-
+		// No bundled modes file yet - return empty
+		// Custom modes are managed via .roomodes files
+		const items: MarketplaceItem[] = []
 		this.setCache(cacheKey, items)
 		return items
 	}
@@ -73,44 +66,71 @@ export class RemoteConfigLoader {
 			return cached
 		}
 
-		const data = await this.fetchWithRetry<string>(`${this.apiBaseUrl}/api/marketplace/mcps`)
-
-		const yamlData = yaml.parse(data)
-		const validated = mcpMarketplaceResponse.parse(yamlData)
-
-		const items: MarketplaceItem[] = validated.items.map((item) => ({
-			type: "mcp" as const,
-			...item,
-		}))
-
-		this.setCache(cacheKey, items)
-		return items
+		try {
+			const items = await this.loadBundledMcps()
+			this.setCache(cacheKey, items)
+			return items
+		} catch (error) {
+			console.error("Failed to load bundled MCPs:", error)
+			return []
+		}
 	}
 
-	private async fetchWithRetry<T>(url: string, maxRetries = 3): Promise<T> {
-		let lastError: Error
+	/**
+	 * Load MCP marketplace items from the bundled YAML file.
+	 * This file was extracted from Cline's marketplace catalog.
+	 */
+	private async loadBundledMcps(): Promise<MarketplaceItem[]> {
+		// Try multiple possible locations for the bundled file
+		const possiblePaths = [
+			// When running as extension (dist directory)
+			path.join(__dirname, BUNDLED_MCPS_FILENAME),
+			// When running from source
+			path.join(__dirname, "..", "..", "services", "marketplace", BUNDLED_MCPS_FILENAME),
+			// Relative to this file's source location
+			path.resolve(__dirname, BUNDLED_MCPS_FILENAME),
+		]
 
-		for (let i = 0; i < maxRetries; i++) {
+		let yamlContent: string | null = null
+
+		for (const filePath of possiblePaths) {
 			try {
-				const response = await axios.get(url, {
-					timeout: 10000, // 10 second timeout
-					headers: {
-						Accept: "application/json",
-						"Content-Type": "application/json",
-					},
-				})
-				return response.data as T
-			} catch (error) {
-				lastError = error as Error
-				if (i < maxRetries - 1) {
-					// Exponential backoff: 1s, 2s, 4s
-					const delay = Math.pow(2, i) * 1000
-					await new Promise((resolve) => setTimeout(resolve, delay))
-				}
+				yamlContent = fs.readFileSync(filePath, "utf-8")
+				break
+			} catch {
+				continue
 			}
 		}
 
-		throw lastError!
+		if (!yamlContent) {
+			console.warn(`Bundled MCPs file not found in any of: ${possiblePaths.join(", ")}`)
+			return []
+		}
+
+		const yamlData = yaml.parse(yamlContent)
+
+		if (!yamlData?.items || !Array.isArray(yamlData.items)) {
+			console.warn("Bundled MCPs file has invalid format")
+			return []
+		}
+
+		const items: MarketplaceItem[] = []
+
+		for (const rawItem of yamlData.items) {
+			try {
+				// Validate against the MCP marketplace item schema
+				const validated = mcpMarketplaceItemSchema.parse(rawItem)
+				items.push({
+					type: "mcp" as const,
+					...validated,
+				})
+			} catch (error) {
+				// Skip invalid items silently
+				continue
+			}
+		}
+
+		return items
 	}
 
 	async getItem(id: string, type: MarketplaceItemType): Promise<MarketplaceItem | null> {
