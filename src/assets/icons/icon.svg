@@ -1,12 +1,70 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg id="Layer_1" data-name="Layer 1" xmlns="http://www.w3.org/2000/svg" xmlns:i="http://ns.adobe.com/AdobeIllustrator/10.0/" version="1.1" viewBox="0 0 96 96">
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Cute white bunny face icon">
   <defs>
-    <style>
-      .cls-1 {
-        fill: #000;
-        stroke-width: 0px;
-      }
-    </style>
+    <radialGradient id="furSoft" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(512 575) rotate(90) scale(290 335)">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="0.72" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#F6F3EE"/>
+    </radialGradient>
+
+    <linearGradient id="earLeftFur" x1="361" y1="253" x2="431" y2="514" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#F4F0EA"/>
+    </linearGradient>
+
+    <linearGradient id="earRightFur" x1="663" y1="253" x2="593" y2="514" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#F4F0EA"/>
+    </linearGradient>
+
+    <linearGradient id="innerEar" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFCDD2"/>
+      <stop offset="1" stop-color="#FF9FAA"/>
+    </linearGradient>
+
+    <radialGradient id="blush" cx="0" cy="0" r="1">
+      <stop offset="0" stop-color="#FFB9BF" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#FF9CA7" stop-opacity="0.82"/>
+    </radialGradient>
+
+    <filter id="softShadow" x="-15%" y="-15%" width="130%" height="130%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="7" stdDeviation="10" flood-color="#000000" flood-opacity="0.14"/>
+    </filter>
   </defs>
-  <path class="cls-1" d="M78.99,21.9l-1.73,6.24c-.09.33-.44.52-.77.42l-28.11-8.71c-.19-.06-.41-.02-.56.11l-28.95,23.22c-.08.07-.18.11-.29.13l-17.25,2.66c-.31.05-.53.32-.52.63l.11,2.47c.01.31.26.56.57.58l20.08,1.23c.11,0,.22-.02.31-.06l14.64-7.4c.21-.11.46-.08.64.06l9.37,7.03c.16.12.25.3.24.49l-.09,11.65c0,.13.04.25.11.35l14.74,21.15c.11.16.3.26.5.26h5.03c.46,0,.76-.5.54-.9l-10.87-19.92c-.1-.18-.1-.4,0-.58l5.51-10.48c.06-.11.15-.2.26-.26l19.56-9.92c.2-.1.43-.09.62.04l5.6,3.73c.1.07.22.1.34.1h5.15c.48,0,.77-.52.52-.93l-14.2-23.52c-.28-.46-.97-.36-1.11.15Z"/>
+
+  <!-- Transparent background: intentionally no background rectangle -->
+
+  <g filter="url(#softShadow)">
+    <!-- Ears -->
+    <path d="M379.26 278.51C414.06 268.15 452.94 292.4 477.15 349.11C502.6 408.73 492.61 470.53 463.44 495.07C455.24 501.97 445.46 506.93 434.83 509.23C395.67 517.72 355.58 486.44 333.9 420.69C312.56 355.99 329.45 293.33 379.26 278.51Z" fill="url(#earLeftFur)"/>
+    <path d="M644.74 278.51C609.94 268.15 571.06 292.4 546.85 349.11C521.4 408.73 531.39 470.53 560.56 495.07C568.76 501.97 578.54 506.93 589.17 509.23C628.33 517.72 668.42 486.44 690.1 420.69C711.44 355.99 694.55 293.33 644.74 278.51Z" fill="url(#earRightFur)"/>
+
+    <!-- Inner ears -->
+    <path d="M389.02 326.16C412.4 319.18 440.48 342.14 455.6 387.28C471.56 434.92 461.66 468.52 441.15 488.5C424.92 481.52 408.24 468.56 397.3 446.1C375.78 401.94 371.37 331.43 389.02 326.16Z" fill="url(#innerEar)" opacity="0.86"/>
+    <path d="M634.98 326.16C611.6 319.18 583.52 342.14 568.4 387.28C552.44 434.92 562.34 468.52 582.85 488.5C599.08 481.52 615.76 468.56 626.7 446.1C648.22 401.94 652.63 331.43 634.98 326.16Z" fill="url(#innerEar)" opacity="0.86"/>
+
+    <!-- Head -->
+    <path d="M512 444C392.26 444 303 531.08 303 640.32C303 763.33 402.93 823 512 823C621.07 823 721 763.33 721 640.32C721 531.08 631.74 444 512 444Z" fill="url(#furSoft)"/>
+
+    <!-- Eyes -->
+    <circle cx="424" cy="615" r="41" fill="#050505"/>
+    <circle cx="600" cy="615" r="41" fill="#050505"/>
+
+    <!-- Eye highlights -->
+    <circle cx="408" cy="600" r="17" fill="#FFFFFF"/>
+    <circle cx="439" cy="628" r="8" fill="#FFFFFF"/>
+    <circle cx="584" cy="600" r="17" fill="#FFFFFF"/>
+    <circle cx="615" cy="628" r="8" fill="#FFFFFF"/>
+
+    <!-- Cheeks -->
+    <ellipse cx="371" cy="664" rx="29" ry="19" fill="url(#blush)" opacity="0.86"/>
+    <ellipse cx="653" cy="664" rx="29" ry="19" fill="url(#blush)" opacity="0.86"/>
+
+    <!-- Nose -->
+    <path d="M496.77 627.47C504.27 626.46 519.73 626.46 527.23 627.47C532.86 628.23 535.09 635.01 531.18 639.13L516.75 654.36C514.15 657.1 509.85 657.1 507.25 654.36L492.82 639.13C488.91 635.01 491.14 628.23 496.77 627.47Z" fill="#FF9FAA"/>
+
+    <!-- Mouth -->
+    <path d="M480.5 656C480.5 677 495.23 686 512 671.5C528.77 686 543.5 677 543.5 656" stroke="#050505" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M512 651V671.5" stroke="#050505" stroke-width="11" stroke-linecap="round"/>
+  </g>
 </svg>
