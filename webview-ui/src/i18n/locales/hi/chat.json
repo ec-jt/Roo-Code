@@ -331,13 +331,6 @@
 	"announcement": {
 		"title": "Roo Code {{version}} रिलीज़ हुआ",
 		"support": "कृपया <githubLink>GitHub</githubLink> पर हमें स्टार देकर Roo Code का समर्थन करें।",
-		"finalRelease": {
-			"title": "Roo Code की आखिरी रिलीज़",
-			"intro": "यह Roo Code की आखिरी रिलीज़ है। <announcementLink>जैसा कि हमने कुछ हफ्ते पहले घोषणा की थी</announcementLink>, हमने अपना ध्यान <roomoteLink>Roomote</roomoteLink> पर केंद्रित करने का निर्णय लिया है, जो हमारा क्लाउड एजेंट प्लेटफ़ॉर्म है और जिसे हम सॉफ़्टवेयर डेवलपमेंट का भविष्य मानते हैं। पिछले लगभग एक साल में आपके समर्थन के लिए बहुत धन्यवाद।",
-			"continuity": "यह एक्सटेंशन अनिश्चित समय तक काम करता रहना चाहिए, लेकिन इसे बग फ़िक्स, नई सुविधाएँ या मॉडल अपडेट नहीं मिलेंगे।",
-			"alternatives": "यदि आप कोई एक्सटेंशन उपयोग करना चाहते हैं, तो हम <zooCodeLink>ZooCode</zooCodeLink> (समुदाय द्वारा बनाया गया Roo Code fork) और <clineLink>Cline</clineLink> (जहाँ से Roo Code मूल रूप से शुरू हुआ था) देखने की सलाह देते हैं।",
-			"signoff": "हैप्पी कोडिंग!"
-		},
 		"release": {
 			"heading": "नया क्या है:",
 			"gpt55": "OpenAI Codex के माध्यम से GPT-5.5: OpenAI Codex provider में GPT-5.5 सपोर्ट जोड़ा गया, ताकि आप नवीनतम मॉडल का उपयोग सीधे Roo Code से कर सकें।",
@@ -349,6 +342,12 @@
 			"specialized": "<bold>Explainer</bold>, <bold>Planner</bold>, और <bold>Coder</bold> की शुरुआत - तीन विशेष क्लाउड एजेंट आपके वर्कफ़्लो को बेहतर बनाने के लिए।",
 			"description": "एजेंट क्लाउड में एक साथ काम करते हैं और web या Slack के माध्यम से ट्रिगर किए जा सकते हैं।",
 			"tryButton": "क्लाउड एजेंट आज़माएं"
+		},
+		"communityFork": {
+			"title": "Roo Code Community Fork {{version}}",
+			"intro": "Welcome to the community-maintained fork of Roo Code! This fork is maintained by <forkLink>ec-jt</forkLink> and the community to keep the project alive and actively developed.",
+			"continuity": "This extension will continue to receive bug fixes, new features, and model updates from the community.",
+			"signoff": "Happy coding!"
 		}
 	},
 	"costs": {
@@ -486,6 +485,6 @@
 		"title": "प्रदाता अब समर्थित नहीं है",
 		"message": "This provider is no longer supported. Please select a different provider in your API profile settings.",
 		"openSettings": "सेटिंग्स खोलें",
-		"rooMessage": "As part of our decision to sunset the Roo Code extension, we also ended the Roo Code Router, which only existed to support the extension. Sorry about the hassle."
+		"rooMessage": "The Roo Code Router is no longer available. It was a hosted service that has been discontinued."
 	}
 }

@@ -332,13 +332,6 @@
 	"announcement": {
 		"title": "Roo Code {{version}} Đã phát hành",
 		"support": "Hãy ủng hộ Roo Code bằng cách gắn sao cho chúng tôi trên <githubLink>GitHub</githubLink>.",
-		"finalRelease": {
-			"title": "Bản phát hành Roo Code cuối cùng",
-			"intro": "Đây là bản phát hành Roo Code cuối cùng. <announcementLink>Như chúng tôi đã thông báo vài tuần trước</announcementLink>, chúng tôi đã quyết định chuyển trọng tâm sang <roomoteLink>Roomote</roomoteLink>, nền tảng tác nhân đám mây của chúng tôi, thứ mà chúng tôi tin là tương lai của phát triển phần mềm. Cảm ơn bạn rất nhiều vì đã ủng hộ trong khoảng một năm vừa qua.",
-			"continuity": "Tiện ích mở rộng này sẽ tiếp tục hoạt động vô thời hạn, nhưng sẽ không nhận bản sửa lỗi, tính năng mới hoặc cập nhật mô hình.",
-			"alternatives": "Nếu bạn muốn sử dụng một tiện ích mở rộng, chúng tôi khuyên bạn nên xem <zooCodeLink>ZooCode</zooCodeLink> (một fork Roo Code do cộng đồng phát triển) và <clineLink>Cline</clineLink> (nơi Roo Code ban đầu bắt đầu).",
-			"signoff": "Chúc lập trình vui vẻ!"
-		},
 		"release": {
 			"heading": "Tính năng mới:",
 			"gpt55": "GPT-5.5 qua OpenAI Codex: Đã thêm hỗ trợ GPT-5.5 trong nhà cung cấp OpenAI Codex để bạn có thể sử dụng model mới nhất trực tiếp từ Roo Code.",
@@ -350,6 +343,12 @@
 			"specialized": "Giới thiệu <bold>Explainer</bold>, <bold>Planner</bold> và <bold>Coder</bold> - ba agent đám mây chuyên biệt để nâng cao quy trình làm việc của bạn.",
 			"description": "Các agent làm việc cùng nhau trên đám mây và có thể được kích hoạt từ web hoặc qua Slack.",
 			"tryButton": "Dùng thử Agents trên Cloud"
+		},
+		"communityFork": {
+			"title": "Roo Code Community Fork {{version}}",
+			"intro": "Welcome to the community-maintained fork of Roo Code! This fork is maintained by <forkLink>ec-jt</forkLink> and the community to keep the project alive and actively developed.",
+			"continuity": "This extension will continue to receive bug fixes, new features, and model updates from the community.",
+			"signoff": "Happy coding!"
 		}
 	},
 	"costs": {
@@ -487,6 +486,6 @@
 		"title": "Nhà cung cấp không còn được hỗ trợ",
 		"message": "This provider is no longer supported. Please select a different provider in your API profile settings.",
 		"openSettings": "Mở cài đặt",
-		"rooMessage": "As part of our decision to sunset the Roo Code extension, we also ended the Roo Code Router, which only existed to support the extension. Sorry about the hassle."
+		"rooMessage": "The Roo Code Router is no longer available. It was a hosted service that has been discontinued."
 	}
 }

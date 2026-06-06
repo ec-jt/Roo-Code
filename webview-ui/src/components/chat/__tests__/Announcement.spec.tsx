@@ -12,7 +12,7 @@ vi.mock("@src/utils/vscode", () => ({
 
 vi.mock("@roo/package", () => ({
 	Package: {
-		version: "3.53.0",
+		version: "3.54.0",
 	},
 }))
 
@@ -26,27 +26,12 @@ vi.mock("@vscode/webview-ui-toolkit/react", () => ({
 
 vi.mock("react-i18next", () => ({
 	Trans: ({ i18nKey, components }: { i18nKey: string; components?: Record<string, React.ReactElement> }) => {
-		if (i18nKey === "chat:announcement.finalRelease.intro") {
+		if (i18nKey === "chat:announcement.communityFork.intro") {
 			return (
 				<span>
-					This is the last Roo Code release.{" "}
-					{components?.announcementLink &&
-						React.cloneElement(components.announcementLink, {}, "As we announced a few weeks ago")}
-					, we{"'"}ve decided to shift our focus to{" "}
-					{components?.roomoteLink && React.cloneElement(components.roomoteLink, {}, "Roomote")}, our cloud
-					agent platform, which we believe to be the future of software development. Thank you so much for
-					your support throughout the past year or so.
-				</span>
-			)
-		}
-
-		if (i18nKey === "chat:announcement.finalRelease.alternatives") {
-			return (
-				<span>
-					If you want to use an extension, we recommend checking out{" "}
-					{components?.zooCodeLink && React.cloneElement(components.zooCodeLink, {}, "ZooCode")} and{" "}
-					{components?.clineLink && React.cloneElement(components.clineLink, {}, "Cline")} (where Roo Code
-					originally started).
+					Welcome to the community-maintained fork of Roo Code! This fork is maintained by{" "}
+					{components?.forkLink && React.cloneElement(components.forkLink, {}, "ec-jt")} and the community to
+					keep the project alive and actively developed.
 				</span>
 			)
 		}
@@ -59,13 +44,13 @@ vi.mock("@src/i18n/TranslationContext", () => ({
 	useAppTranslation: () => ({
 		t: (key: string, options?: { version?: string }) => {
 			const translations: Record<string, string> = {
-				"chat:announcement.finalRelease.title": "The last Roo Code release",
-				"chat:announcement.finalRelease.continuity":
-					"This extension should continue to work indefinitely, but it won't receive bug fixes, new features, or model updates.",
-				"chat:announcement.finalRelease.signoff": "Happy coding!",
+				"chat:announcement.communityFork.title": "Roo Code Community Fork 3.54.0",
+				"chat:announcement.communityFork.continuity":
+					"This extension will continue to receive bug fixes, new features, and model updates from the community.",
+				"chat:announcement.communityFork.signoff": "Happy coding!",
 			}
 
-			if (key === "chat:announcement.finalRelease.title") {
+			if (key === "chat:announcement.communityFork.title") {
 				return `${translations[key]}${options?.version ? "" : ""}`
 			}
 
@@ -75,38 +60,25 @@ vi.mock("@src/i18n/TranslationContext", () => ({
 }))
 
 describe("Announcement", () => {
-	it("renders the final release announcement", () => {
+	it("renders the community fork announcement", () => {
 		render(<Announcement hideAnnouncement={vi.fn()} />)
 
-		expect(screen.getByText("The last Roo Code release")).toBeInTheDocument()
-		expect(screen.getByText(/This is the last Roo Code release/)).toBeInTheDocument()
+		expect(screen.getByText("Roo Code Community Fork 3.54.0")).toBeInTheDocument()
+		expect(screen.getByText(/Welcome to the community-maintained fork/)).toBeInTheDocument()
 		expect(
 			screen.getByText(
-				"This extension should continue to work indefinitely, but it won't receive bug fixes, new features, or model updates.",
+				"This extension will continue to receive bug fixes, new features, and model updates from the community.",
 			),
 		).toBeInTheDocument()
 		expect(screen.getByText("Happy coding!")).toBeInTheDocument()
 	})
 
-	it("renders the external links", () => {
+	it("renders the fork link", () => {
 		render(<Announcement hideAnnouncement={vi.fn()} />)
 
-		expect(screen.getByRole("link", { name: "As we announced a few weeks ago" })).toHaveAttribute(
+		expect(screen.getByRole("link", { name: "ec-jt" })).toHaveAttribute(
 			"href",
-			"https://x.com/mattrubens/status/2046636598859559114",
+			"https://github.com/ec-jt/Roo-Code",
 		)
-		expect(screen.getByRole("link", { name: "ZooCode" })).toHaveAttribute(
-			"href",
-			"https://github.com/Zoo-Code-Org/Zoo-Code/",
-		)
-		expect(screen.getByRole("link", { name: "Cline" })).toHaveAttribute("href", "https://cline.bot/")
-	})
-
-	it("does not render corporate handoff links", () => {
-		render(<Announcement hideAnnouncement={vi.fn()} />)
-
-		expect(screen.queryByRole("listitem")).not.toBeInTheDocument()
-		expect(screen.queryByText("chat:announcement.handoff.description")).not.toBeInTheDocument()
-		expect(screen.queryByRole("link", { name: "X" })).not.toBeInTheDocument()
 	})
 })

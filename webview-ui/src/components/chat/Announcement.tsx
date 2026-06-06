@@ -36,31 +36,21 @@ const Announcement = ({ hideAnnouncement }: AnnouncementProps) => {
 			}}>
 			<DialogContent>
 				<DialogHeader>
-					<DialogTitle>{t("chat:announcement.finalRelease.title", { version: Package.version })}</DialogTitle>
+					<DialogTitle>{t("chat:announcement.communityFork.title", { version: Package.version })}</DialogTitle>
 				</DialogHeader>
 				<div className="text-sm leading-relaxed text-vscode-descriptionForeground">
 					<p className="mt-0">
 						<Trans
-							i18nKey="chat:announcement.finalRelease.intro"
+							i18nKey="chat:announcement.communityFork.intro"
 							components={{
-								announcementLink: (
-									<ExternalLink href="https://x.com/mattrubens/status/2046636598859559114" />
+								forkLink: (
+									<ExternalLink href="https://github.com/ec-jt/Roo-Code" />
 								),
-								roomoteLink: <ExternalLink href="https://roomote.dev/" />,
 							}}
 						/>
 					</p>
-					<p>{t("chat:announcement.finalRelease.continuity")}</p>
-					<p>
-						<Trans
-							i18nKey="chat:announcement.finalRelease.alternatives"
-							components={{
-								zooCodeLink: <ExternalLink href="https://github.com/Zoo-Code-Org/Zoo-Code/" />,
-								clineLink: <ExternalLink href="https://cline.bot/" />,
-							}}
-						/>
-					</p>
-					<p className="mb-0">{t("chat:announcement.finalRelease.signoff")}</p>
+					<p>{t("chat:announcement.communityFork.continuity")}</p>
+					<p className="mb-0">{t("chat:announcement.communityFork.signoff")}</p>
 				</div>
 			</DialogContent>
 		</Dialog>

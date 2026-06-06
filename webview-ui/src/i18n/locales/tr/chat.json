@@ -332,13 +332,6 @@
 	"announcement": {
 		"title": "Roo Code {{version}} Yayınlandı",
 		"support": "<githubLink>GitHub</githubLink>'da yıldız vererek Roo Code'u destekle.",
-		"finalRelease": {
-			"title": "Son Roo Code sürümü",
-			"intro": "Bu, Roo Code'un son sürümüdür. <announcementLink>Birkaç hafta önce duyurduğumuz gibi</announcementLink>, odağımızı yazılım geliştirmenin geleceği olduğuna inandığımız bulut ajan platformumuz <roomoteLink>Roomote</roomoteLink>'a kaydırmaya karar verdik. Geçtiğimiz yaklaşık bir yıl boyunca verdiğiniz destek için çok teşekkür ederiz.",
-			"continuity": "Bu eklenti süresiz olarak çalışmaya devam etmelidir, ancak hata düzeltmeleri, yeni özellikler veya model güncellemeleri almayacaktır.",
-			"alternatives": "Bir eklenti kullanmak istiyorsanız, topluluk tarafından geliştirilen bir Roo Code fork'u olan <zooCodeLink>ZooCode</zooCodeLink>'a ve Roo Code'un başlangıç noktası olan <clineLink>Cline</clineLink>'a göz atmanızı öneririz.",
-			"signoff": "Mutlu kodlamalar!"
-		},
 		"release": {
 			"heading": "Yenilikler:",
 			"gpt55": "OpenAI Codex üzerinden GPT-5.5: En son modeli doğrudan Roo Code'dan kullanabilmen için OpenAI Codex sağlayıcısına GPT-5.5 desteği eklendi.",
@@ -350,6 +343,12 @@
 			"specialized": "<bold>Explainer</bold>, <bold>Planner</bold> ve <bold>Coder</bold> tanıtımı - iş akışlarını geliştirmek için üç özel bulut ajanı.",
 			"description": "Ajanlar bulutta birlikte çalışır ve web'den veya Slack üzerinden tetiklenebilir.",
 			"tryButton": "Bulut Ajanlarını Dene"
+		},
+		"communityFork": {
+			"title": "Roo Code Community Fork {{version}}",
+			"intro": "Welcome to the community-maintained fork of Roo Code! This fork is maintained by <forkLink>ec-jt</forkLink> and the community to keep the project alive and actively developed.",
+			"continuity": "This extension will continue to receive bug fixes, new features, and model updates from the community.",
+			"signoff": "Happy coding!"
 		}
 	},
 	"costs": {
@@ -487,6 +486,6 @@
 		"title": "Sağlayıcı artık desteklenmiyor",
 		"message": "This provider is no longer supported. Please select a different provider in your API profile settings.",
 		"openSettings": "Ayarları aç",
-		"rooMessage": "As part of our decision to sunset the Roo Code extension, we also ended the Roo Code Router, which only existed to support the extension. Sorry about the hassle."
+		"rooMessage": "The Roo Code Router is no longer available. It was a hosted service that has been discontinued."
 	}
 }

@@ -546,7 +546,7 @@
 			"maxTokensLabel": "Max Output Tokens",
 			"maxTokensDescription": "Maximaal aantal output-tokens voor Claude Code-reacties. Standaard is 8000."
 		},
-		"retiredRooProviderMessage": "As part of our decision to sunset the Roo Code extension, we also ended the Roo Code Router, which only existed to support the extension. Sorry about the hassle."
+		"retiredRooProviderMessage": "The Roo Code Router is no longer available. It was a hosted service that has been discontinued."
 	},
 	"checkpoints": {
 		"timeout": {

@@ -360,13 +360,6 @@
 	"announcement": {
 		"title": "Roo Code {{version}} Dirilis",
 		"support": "Dukung Roo Code dengan memberi kami bintang di <githubLink>GitHub</githubLink>.",
-		"finalRelease": {
-			"title": "Rilis Roo Code terakhir",
-			"intro": "Ini adalah rilis Roo Code terakhir. <announcementLink>Seperti yang kami umumkan beberapa minggu lalu</announcementLink>, kami memutuskan untuk mengalihkan fokus ke <roomoteLink>Roomote</roomoteLink>, platform agen cloud kami, yang kami yakini sebagai masa depan pengembangan perangkat lunak. Terima kasih banyak atas dukunganmu selama kira-kira setahun terakhir.",
-			"continuity": "Ekstensi ini seharusnya tetap berfungsi tanpa batas waktu, tetapi tidak akan menerima perbaikan bug, fitur baru, atau pembaruan model.",
-			"alternatives": "Jika kamu ingin menggunakan ekstensi, kami merekomendasikan <zooCodeLink>ZooCode</zooCodeLink> (fork Roo Code oleh komunitas) dan <clineLink>Cline</clineLink> (tempat Roo Code awalnya bermula).",
-			"signoff": "Selamat coding!"
-		},
 		"release": {
 			"heading": "Yang Baru:",
 			"gpt55": "GPT-5.5 via OpenAI Codex: Dukungan GPT-5.5 ditambahkan di provider OpenAI Codex agar kamu bisa menggunakan model terbaru langsung dari Roo Code.",
@@ -378,6 +371,12 @@
 			"specialized": "Memperkenalkan <bold>Explainer</bold>, <bold>Planner</bold>, dan <bold>Coder</bold> - tiga agen cloud khusus untuk meningkatkan alur kerja Anda.",
 			"description": "Agen bekerja bersama di cloud dan dapat dipicu dari web atau melalui Slack.",
 			"tryButton": "Coba Agen Cloud"
+		},
+		"communityFork": {
+			"title": "Roo Code Community Fork {{version}}",
+			"intro": "Welcome to the community-maintained fork of Roo Code! This fork is maintained by <forkLink>ec-jt</forkLink> and the community to keep the project alive and actively developed.",
+			"continuity": "This extension will continue to receive bug fixes, new features, and model updates from the community.",
+			"signoff": "Happy coding!"
 		}
 	},
 	"reasoning": {
@@ -492,6 +491,6 @@
 		"title": "Penyedia tidak lagi didukung",
 		"message": "This provider is no longer supported. Please select a different provider in your API profile settings.",
 		"openSettings": "Buka Pengaturan",
-		"rooMessage": "As part of our decision to sunset the Roo Code extension, we also ended the Roo Code Router, which only existed to support the extension. Sorry about the hassle."
+		"rooMessage": "The Roo Code Router is no longer available. It was a hosted service that has been discontinued."
 	}
 }

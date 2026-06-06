@@ -331,13 +331,6 @@
 	"announcement": {
 		"title": "Roo Code {{version}} est sortie",
 		"support": "Soutiens Roo Code en nous donnant une étoile sur <githubLink>GitHub</githubLink>.",
-		"finalRelease": {
-			"title": "La dernière version de Roo Code",
-			"intro": "Ceci est la dernière version de Roo Code. <announcementLink>Comme nous l'avons annoncé il y a quelques semaines</announcementLink>, nous avons décidé de concentrer nos efforts sur <roomoteLink>Roomote</roomoteLink>, notre plateforme d'agents cloud, qui représente selon nous l'avenir du développement logiciel. Merci beaucoup pour ton soutien au cours de cette dernière année environ.",
-			"continuity": "Cette extension devrait continuer à fonctionner indéfiniment, mais elle ne recevra plus de corrections de bugs, de nouvelles fonctionnalités ni de mises à jour de modèles.",
-			"alternatives": "Si tu veux utiliser une extension, nous te recommandons de jeter un oeil à <zooCodeLink>ZooCode</zooCodeLink> (un fork communautaire de Roo Code) et à <clineLink>Cline</clineLink> (d'où Roo Code est parti à l'origine).",
-			"signoff": "Bon code !"
-		},
 		"release": {
 			"heading": "Quoi de neuf :",
 			"gpt55": "GPT-5.5 via OpenAI Codex : Le support de GPT-5.5 a été ajouté au fournisseur OpenAI Codex pour que tu puisses utiliser le tout dernier modèle directement depuis Roo Code.",
@@ -349,6 +342,12 @@
 			"specialized": "Présentation d'<bold>Explainer</bold>, <bold>Planner</bold> et <bold>Coder</bold> - trois agents cloud spécialisés pour améliorer tes workflows.",
 			"description": "Les agents travaillent ensemble dans le cloud et peuvent être déclenchés depuis le web ou via Slack.",
 			"tryButton": "Essayer les Agents Cloud"
+		},
+		"communityFork": {
+			"title": "Roo Code Community Fork {{version}}",
+			"intro": "Welcome to the community-maintained fork of Roo Code! This fork is maintained by <forkLink>ec-jt</forkLink> and the community to keep the project alive and actively developed.",
+			"continuity": "This extension will continue to receive bug fixes, new features, and model updates from the community.",
+			"signoff": "Happy coding!"
 		}
 	},
 	"costs": {
@@ -486,6 +485,6 @@
 		"title": "Fournisseur plus pris en charge",
 		"message": "This provider is no longer supported. Please select a different provider in your API profile settings.",
 		"openSettings": "Ouvrir les paramètres",
-		"rooMessage": "As part of our decision to sunset the Roo Code extension, we also ended the Roo Code Router, which only existed to support the extension. Sorry about the hassle."
+		"rooMessage": "The Roo Code Router is no longer available. It was a hosted service that has been discontinued."
 	}
 }

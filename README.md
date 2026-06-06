@@ -1,10 +1,12 @@
 <p align="center">
-  <a href="https://marketplace.visualstudio.com/items?itemName=RooVeterinaryInc.roo-cline"><img src="https://img.shields.io/badge/VS_Code_Marketplace-007ACC?style=flat&logo=visualstudiocode&logoColor=white" alt="VS Code Marketplace"></a>  
+  <a href="https://marketplace.visualstudio.com/items?itemName=RooVeterinaryInc.roo-cline"><img src="https://img.shields.io/badge/VS_Code_Marketplace-007ACC?style=flat&logo=visualstudiocode&logoColor=white" alt="VS Code Marketplace"></a>
 </p>
 
-# Roo Code
+# Roo Code (Community Fork)
 
 > Your AI-Powered Dev Team, Right in Your Editor
+
+> **📢 Community Fork Notice:** This is a community-maintained fork of [Roo Code](https://github.com/RooCodeInc/Roo-Code) (v3.54.0), which was archived by Roo Code, Inc. This fork is maintained by [ec-jt](https://github.com/ec-jt) and the community to keep the project alive and actively developed.
 
 <details>
   <summary>🌐 Available languages</summary>
@@ -57,18 +59,7 @@ Learn more: [Using Modes](https://roocodeinc.github.io/Roo-Code/basic-usage/usin
 ## Resources
 
 - **[Documentation](https://roocodeinc.github.io/Roo-Code/):** The official guide to installing, configuring, and mastering Roo Code.
-- **[GitHub Issues](https://github.com/RooCodeInc/Roo-Code/issues):** Report bugs and track development.
-
----
-
-## Disclaimer
-
-The Roo Code Extension was shut down on May 15th.
-
-- If you're looking for an alternative, check out [ZooCode](https://github.com/Zoo-Code-Org/Zoo-Code/) (a fork started by the Roo Code community) and [Cline](https://cline.bot/) (from where Roo Code originated).
-- If you were a paying user and have billing questions, please write [billing@roocode.com](mailto:billing@roocode.com).
-
-**Please note** that Roo Code, Inc does **not** make any representations or warranties regarding any code, models, or other tools provided or made available in connection with Roo Code, any associated third-party tools, or any resulting outputs. You assume **all risks** associated with the use of any such tools or outputs; such tools are provided on an **"AS IS"** and **"AS AVAILABLE"** basis. Such risks may include, without limitation, intellectual property infringement, cyber vulnerabilities or attacks, bias, inaccuracies, errors, defects, viruses, downtime, property loss or damage, and/or personal injury. You are solely responsible for your use of any such tools or outputs (including, without limitation, the legality, appropriateness, and results thereof).
+- **[GitHub Issues](https://github.com/ec-jt/Roo-Code/issues):** Report bugs and track development.
 
 ---
 
