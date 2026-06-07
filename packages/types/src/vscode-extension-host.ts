@@ -847,6 +847,7 @@ export const browserActions = [
 	"resize",
 	"close",
 	"screenshot",
+	"capture_full_page",
 ] as const
 
 export type BrowserAction = (typeof browserActions)[number]
@@ -861,11 +862,20 @@ export interface ClineSayBrowserAction {
 
 export type BrowserActionResult = {
 	screenshot?: string
+	screenshots?: Array<{
+		screenshot: string
+		sectionIndex: number
+		totalSections: number
+		yOffset: number
+		description: string
+	}>
 	logs?: string
 	currentUrl?: string
 	currentMousePosition?: string
 	viewportWidth?: number
 	viewportHeight?: number
+	totalPageHeight?: number
+	pageTitle?: string
 }
 
 export interface ClineAskUseMcpServer {

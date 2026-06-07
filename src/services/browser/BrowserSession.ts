@@ -757,6 +757,140 @@ export class BrowserSession {
 	}
 
 	/**
+	 * Captures the full page by scrolling through it in viewport-sized sections.
+	 * Uses a 200px overlap between sections to handle sticky headers.
+	 * Returns individual viewport-sized screenshots for LLM analysis.
+	 * @param maxSections - Maximum number of sections to capture (default: 10)
+	 */
+	async captureFullPage(maxSections: number = 10): Promise<BrowserActionResult> {
+		if (!this.page) {
+			throw new Error("Browser is not launched")
+		}
+
+		const page = this.page
+		const viewport = page.viewport()
+		const viewportWidth = viewport?.width || 900
+		const viewportHeight = viewport?.height || 600
+
+		// Measure total page height
+		const totalPageHeight = await page.evaluate(() => {
+			return Math.max(
+				document.documentElement.clientHeight,
+				document.body?.scrollHeight || 0,
+				document.documentElement.scrollHeight,
+				document.body?.offsetHeight || 0,
+				document.documentElement.offsetHeight,
+			)
+		})
+
+		// Get page title
+		const pageTitle = await page.title()
+		const currentUrl = page.url()
+
+		// Calculate scroll positions with 200px overlap for sticky headers
+		const scrollPad = 200
+		const yDelta = viewportHeight > scrollPad ? viewportHeight - scrollPad : viewportHeight
+		const positions: number[] = []
+
+		let yPos = 0
+		while (yPos < totalPageHeight) {
+			positions.push(yPos)
+			yPos += yDelta
+		}
+
+		// Limit sections to prevent excessive token usage
+		if (positions.length > maxSections) {
+			positions.length = maxSections
+		}
+
+		const totalSections = positions.length
+		const quality = ((await this.context.globalState.get("screenshotQuality")) as number | undefined) ?? 75
+
+		// Save original scroll position
+		const originalScrollY = await page.evaluate(() => window.scrollY)
+
+		// Disable scrollbars during capture
+		await page.evaluate(() => {
+			document.documentElement.style.overflow = "hidden"
+		})
+
+		const screenshots: Array<{
+			screenshot: string
+			sectionIndex: number
+			totalSections: number
+			yOffset: number
+			description: string
+		}> = []
+
+		// Capture each section
+		for (let i = 0; i < positions.length; i++) {
+			const scrollY = positions[i]
+
+			// Scroll to position
+			await page.evaluate((y: number) => window.scrollTo(0, y), scrollY)
+
+			// Wait for content to settle (lazy loading, animations)
+			await new Promise((resolve) => setTimeout(resolve, 150))
+
+			// Take screenshot
+			let screenshotBase64 = await page.screenshot({
+				encoding: "base64",
+				type: "webp",
+				quality,
+				captureBeyondViewport: false,
+			})
+
+			let screenshotDataUri = `data:image/webp;base64,${screenshotBase64}`
+
+			if (!screenshotBase64) {
+				screenshotBase64 = await page.screenshot({
+					encoding: "base64",
+					type: "png",
+					captureBeyondViewport: false,
+				})
+				screenshotDataUri = `data:image/png;base64,${screenshotBase64}`
+			}
+
+			if (screenshotBase64) {
+				const endY = Math.min(scrollY + viewportHeight, totalPageHeight)
+				const description =
+					i === 0
+						? `Section ${i + 1}/${totalSections} (top of page, ${scrollY}-${endY}px)`
+						: i === positions.length - 1
+							? `Section ${i + 1}/${totalSections} (bottom area, ${scrollY}-${endY}px)`
+							: `Section ${i + 1}/${totalSections} (${scrollY}-${endY}px)`
+
+				screenshots.push({
+					screenshot: screenshotDataUri,
+					sectionIndex: i + 1,
+					totalSections,
+					yOffset: scrollY,
+					description,
+				})
+			}
+		}
+
+		// Restore original scroll position and overflow
+		await page.evaluate((y: number) => {
+			document.documentElement.style.overflow = ""
+			window.scrollTo(0, y)
+		}, originalScrollY)
+
+		// Collect console logs
+		const logs = [`Full page capture: ${totalSections} sections, ${totalPageHeight}px total height`]
+
+		return {
+			screenshots,
+			logs: logs.join("\n"),
+			currentUrl,
+			viewportWidth,
+			viewportHeight,
+			totalPageHeight,
+			pageTitle,
+		}
+	}
+
+	/**
 	 * Determines image type from file extension
 	 */
 	private getImageTypeFromPath(filePath: string): "png" | "jpeg" | "webp" {

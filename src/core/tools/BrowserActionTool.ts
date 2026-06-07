@@ -203,6 +203,9 @@ export async function browserActionTool(
 					case "screenshot":
 						browserActionResult = await cline.browserSession.saveScreenshot(filePath!, cline.cwd)
 						break
+					case "capture_full_page":
+						browserActionResult = await cline.browserSession.captureFullPage()
+						break
 					case "close":
 						browserActionResult = await cline.browserSession.closeBrowser()
 						break
@@ -253,6 +256,45 @@ export async function browserActionTool(
 							...formatResponse.imageBlocks(images),
 							{ type: "text", text: messageText } as Anthropic.TextBlockParam,
 						]
+						pushToolResult(blocks)
+					} else {
+						pushToolResult(messageText)
+					}
+
+					break
+				}
+				case "capture_full_page": {
+					await cline.say("browser_action_result", JSON.stringify(browserActionResult))
+
+					const sections = browserActionResult?.screenshots || []
+					const sectionImages = sections.map((s) => s.screenshot)
+
+					let messageText = `Full page capture complete.\n`
+					messageText += `Page: "${browserActionResult?.pageTitle || "Unknown"}"\n`
+					messageText += `URL: ${browserActionResult?.currentUrl || "Unknown"}\n`
+					messageText += `Total height: ${browserActionResult?.totalPageHeight || 0}px\n`
+					messageText += `Viewport: ${browserActionResult?.viewportWidth}x${browserActionResult?.viewportHeight}\n`
+					messageText += `Sections: ${sections.length}\n`
+					messageText += `\nEach section below shows a viewport-sized portion of the page (200px overlap between sections for sticky header coverage).\n`
+
+					// Add section descriptions
+					for (const section of sections) {
+						messageText += `\n--- ${section.description} ---\n`
+					}
+
+					messageText += `\n${browserActionResult?.logs || ""}\n`
+
+					if (sectionImages.length > 0) {
+						// Interleave section labels with images for better LLM understanding
+						const blocks: (Anthropic.ImageBlockParam | Anthropic.TextBlockParam)[] = []
+						for (let i = 0; i < sections.length; i++) {
+							blocks.push({
+								type: "text",
+								text: `\n${sections[i].description}`,
+							} as Anthropic.TextBlockParam)
+							blocks.push(...formatResponse.imageBlocks([sectionImages[i]]))
+						}
+						blocks.push({ type: "text", text: messageText } as Anthropic.TextBlockParam)
 						pushToolResult(blocks)
 					} else {
 						pushToolResult(messageText)

@@ -46,6 +46,7 @@ export default {
 						"resize",
 						"close",
 						"screenshot",
+						"capture_full_page",
 					],
 				},
 				url: {
