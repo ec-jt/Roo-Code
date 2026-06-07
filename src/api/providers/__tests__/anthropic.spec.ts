@@ -307,7 +307,7 @@ describe("AnthropicHandler", () => {
 			const model = handler.getModel()
 			expect(model.id).toBe("claude-sonnet-4-6")
 			expect(model.info.maxTokens).toBe(64000)
-			expect(model.info.contextWindow).toBe(200000)
+			expect(model.info.contextWindow).toBe(1000000) // Native 1M context per official Anthropic docs
 			expect(model.info.supportsReasoningBudget).toBe(true)
 		})
 

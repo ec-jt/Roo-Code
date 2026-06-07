@@ -62,12 +62,15 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 		// Filter out non-Anthropic blocks (reasoning, thoughtSignature, etc.) before sending to the API
 		const sanitizedMessages = filterNonAnthropicBlocks(messages)
 
-		// Add 1M context beta flag if enabled for supported models (Claude Sonnet 4/4.5/4.6, Opus 4.6)
+		// Add 1M context beta flag if enabled for supported models with 1M context tiers
 		if (
 			(modelId === "claude-sonnet-4-20250514" ||
 				modelId === "claude-sonnet-4-5" ||
+				modelId === "claude-sonnet-4-5-20250929" ||
 				modelId === "claude-sonnet-4-6" ||
-				modelId === "claude-opus-4-6") &&
+				modelId === "claude-opus-4-6" ||
+				modelId === "claude-opus-4-7" ||
+				modelId === "claude-opus-4-8") &&
 			this.options.anthropicBeta1MContext
 		) {
 			betas.push("context-1m-2025-08-07")
@@ -315,8 +318,11 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 		if (
 			(id === "claude-sonnet-4-20250514" ||
 				id === "claude-sonnet-4-5" ||
+				id === "claude-sonnet-4-5-20250929" ||
 				id === "claude-sonnet-4-6" ||
-				id === "claude-opus-4-6") &&
+				id === "claude-opus-4-6" ||
+				id === "claude-opus-4-7" ||
+				id === "claude-opus-4-8") &&
 			this.options.anthropicBeta1MContext
 		) {
 			// Use the tier pricing for 1M context
