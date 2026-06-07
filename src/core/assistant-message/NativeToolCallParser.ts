@@ -454,6 +454,19 @@ export class NativeToolCallParser {
 				}
 				break
 
+			case "browser_action":
+				if (partialArgs.action !== undefined) {
+					nativeArgs = {
+						action: partialArgs.action,
+						url: partialArgs.url,
+						coordinate: partialArgs.coordinate,
+						size: partialArgs.size,
+						text: partialArgs.text,
+						path: partialArgs.path,
+					}
+				}
+				break
+
 			case "execute_command":
 				if (partialArgs.command) {
 					nativeArgs = {
@@ -780,6 +793,19 @@ export class NativeToolCallParser {
 				case "attempt_completion":
 					if (args.result) {
 						nativeArgs = { result: args.result } as NativeArgsFor<TName>
+					}
+					break
+
+				case "browser_action":
+					if (args.action !== undefined) {
+						nativeArgs = {
+							action: args.action,
+							url: args.url,
+							coordinate: args.coordinate,
+							size: args.size,
+							text: args.text,
+							path: args.path,
+						} as NativeArgsFor<TName>
 					}
 					break
 

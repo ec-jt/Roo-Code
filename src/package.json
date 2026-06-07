@@ -3,7 +3,7 @@
 	"displayName": "%extension.displayName%",
 	"description": "%extension.description%",
 	"publisher": "RooVeterinaryInc",
-	"version": "4.2.0",
+	"version": "4.2.2",
 	"icon": "assets/icons/icon.png",
 	"galleryBanner": {
 		"color": "#617A91",
@@ -219,7 +219,7 @@
 					"when": "view == roo-cline.SidebarProvider"
 				},
 				{
-"command": "roo-cline.cloudButtonClicked",
+					"command": "roo-cline.cloudButtonClicked",
 					"group": "navigation@3",
 					"when": "view == roo-cline.SidebarProvider"
 				},
@@ -228,7 +228,8 @@
 					"group": "navigation@4",
 					"when": "view == roo-cline.SidebarProvider"
 				},
-				{					"command": "roo-cline.historyButtonClicked",
+				{
+					"command": "roo-cline.historyButtonClicked",
 					"group": "overflow@1",
 					"when": "view == roo-cline.SidebarProvider"
 				},
@@ -250,7 +251,7 @@
 					"when": "activeWebviewPanelId == roo-cline.TabPanelProvider"
 				},
 				{
-"command": "roo-cline.cloudButtonClicked",
+					"command": "roo-cline.cloudButtonClicked",
 					"group": "navigation@3",
 					"when": "activeWebviewPanelId == roo-cline.TabPanelProvider"
 				},
@@ -259,7 +260,8 @@
 					"group": "navigation@4",
 					"when": "activeWebviewPanelId == roo-cline.TabPanelProvider"
 				},
-				{					"command": "roo-cline.historyButtonClicked",
+				{
+					"command": "roo-cline.historyButtonClicked",
 					"group": "overflow@1",
 					"when": "activeWebviewPanelId == roo-cline.TabPanelProvider"
 				},

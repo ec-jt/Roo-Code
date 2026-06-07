@@ -34,6 +34,7 @@ export const clineAsks = [
 	"resume_task",
 	"resume_completed_task",
 	"mistake_limit_reached",
+	"browser_action_launch",
 	"use_mcp_server",
 	"auto_approval_max_req_reached",
 ] as const
@@ -81,7 +82,13 @@ export function isResumableAsk(ask: ClineAsk): ask is ResumableAsk {
  * Asks that put the task into an "user interaction required" state.
  */
 
-export const interactiveAsks = ["followup", "command", "tool", "use_mcp_server"] as const satisfies readonly ClineAsk[]
+export const interactiveAsks = [
+	"followup",
+	"command",
+	"tool",
+	"browser_action_launch",
+	"use_mcp_server",
+] as const satisfies readonly ClineAsk[]
 
 export type InteractiveAsk = (typeof interactiveAsks)[number]
 
@@ -169,6 +176,9 @@ export const clineSays = [
 	"codebase_search_result",
 	"user_edit_todos",
 	"too_many_tools_warning",
+	"browser_action",
+	"browser_action_result",
+	"browser_session_status",
 	"tool",
 ] as const
 

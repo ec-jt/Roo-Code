@@ -276,6 +276,11 @@ export function filterNativeToolsForMode(
 		allowedToolNames.delete("codebase_search")
 	}
 
+	// Conditionally exclude browser_action if disabled in settings
+	if (settings?.browserToolEnabled === false) {
+		allowedToolNames.delete("browser_action")
+	}
+
 	// Conditionally exclude update_todo_list if disabled in settings
 	if (settings?.todoListEnabled === false) {
 		allowedToolNames.delete("update_todo_list")

@@ -21,6 +21,7 @@ import { searchReplaceTool } from "../tools/SearchReplaceTool"
 import { editFileTool } from "../tools/EditFileTool"
 import { applyPatchTool } from "../tools/ApplyPatchTool"
 import { searchFilesTool } from "../tools/SearchFilesTool"
+import { browserActionTool } from "../tools/BrowserActionTool"
 import { executeCommandTool } from "../tools/ExecuteCommandTool"
 import { useMcpToolTool } from "../tools/UseMcpToolTool"
 import { accessMcpResourceTool } from "../tools/accessMcpResourceTool"
@@ -323,6 +324,8 @@ export async function presentAssistantMessage(cline: Task) {
 
 			const toolDescription = (): string => {
 				switch (block.name) {
+					case "browser_action":
+						return `[${block.name} for '${block.params.action}']`
 					case "execute_command":
 						return `[${block.name} for '${block.params.command}']`
 					case "read_file":
@@ -733,6 +736,15 @@ export async function presentAssistantMessage(cline: Task) {
 						handleError,
 						pushToolResult,
 					})
+					break
+				case "browser_action":
+					await browserActionTool(
+						cline,
+						block as ToolUse<"browser_action">,
+						askApproval,
+						handleError,
+						pushToolResult,
+					)
 					break
 				case "execute_command":
 					await executeCommandTool.handle(cline, block as ToolUse<"execute_command">, {

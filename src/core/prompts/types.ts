@@ -2,6 +2,7 @@
  * Settings passed to system prompt generation functions
  */
 export interface SystemPromptSettings {
+	browserToolEnabled?: boolean
 	todoListEnabled: boolean
 	useAgentRules: boolean
 	/** When true, recursively discover and load .roo/rules from subdirectories */

@@ -65,11 +65,13 @@ import { combineCommandSequences } from "../../shared/combineCommandSequences"
 import { t } from "../../i18n"
 import { getApiMetrics, hasTokenUsageChanged, hasToolUsageChanged } from "../../shared/getApiMetrics"
 import { ClineAskResponse } from "../../shared/WebviewMessage"
-import { defaultModeSlug, getModeBySlug } from "../../shared/modes"
+import { defaultModeSlug, getModeBySlug, getGroupName } from "../../shared/modes"
 import { DiffStrategy, type ToolUse, type ToolParamName, toolParamNames } from "../../shared/tools"
 import { getModelMaxOutputTokens } from "../../shared/api"
 
 // services
+import { UrlContentFetcher } from "../../services/browser/UrlContentFetcher"
+import { BrowserSession } from "../../services/browser/BrowserSession"
 import { McpHub } from "../../services/mcp/McpHub"
 import { McpServerManager } from "../../services/mcp/McpServerManager"
 import { RepoPerTaskCheckpointService } from "../../services/checkpoints"
@@ -258,6 +260,9 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	 * @private
 	 */
 	private taskApiConfigReady: Promise<void>
+
+	urlContentFetcher: UrlContentFetcher
+	browserSession: BrowserSession
 
 	providerRef: WeakRef<ClineProvider>
 	private readonly globalStoragePath: string
@@ -484,6 +489,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		this.consecutiveMistakeLimit = consecutiveMistakeLimit ?? DEFAULT_CONSECUTIVE_MISTAKE_LIMIT
 		this.providerRef = new WeakRef(provider)
 		this.globalStoragePath = provider.context.globalStorageUri.fsPath
+		this.urlContentFetcher = new UrlContentFetcher(provider.context)
+		this.browserSession = new BrowserSession(provider.context)
 		this.diffViewProvider = new DiffViewProvider(this.cwd, this)
 		this.enableCheckpoints = enableCheckpoints
 		this.checkpointTimeout = checkpointTimeout

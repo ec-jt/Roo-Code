@@ -101,6 +101,7 @@ export const globalSettingsSchema = z.object({
 	alwaysAllowWriteOutsideWorkspace: z.boolean().optional(),
 	alwaysAllowWriteProtected: z.boolean().optional(),
 	writeDelayMs: z.number().min(0).optional(),
+	alwaysAllowBrowser: z.boolean().optional(),
 	requestDelaySeconds: z.number().optional(),
 	alwaysAllowMcp: z.boolean().optional(),
 	alwaysAllowModeSwitch: z.boolean().optional(),
@@ -145,6 +146,13 @@ export const globalSettingsSchema = z.object({
 	 * @default 50
 	 */
 	maxDiagnosticMessages: z.number().optional(),
+
+	browserToolEnabled: z.boolean().optional(),
+	browserViewportSize: z.string().optional(),
+	screenshotQuality: z.number().optional(),
+	remoteBrowserEnabled: z.boolean().optional(),
+	remoteBrowserHost: z.string().optional(),
+	cachedChromeHostUrl: z.string().optional(),
 
 	enableCheckpoints: z.boolean().optional(),
 	checkpointTimeout: z

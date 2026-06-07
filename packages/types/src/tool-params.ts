@@ -102,6 +102,15 @@ export interface Size {
 	height: number
 }
 
+export interface BrowserActionParams {
+	action: "launch" | "click" | "hover" | "type" | "scroll_down" | "scroll_up" | "resize" | "close" | "screenshot"
+	url?: string
+	coordinate?: Coordinate
+	size?: Size
+	text?: string
+	path?: string
+}
+
 export interface GenerateImageParams {
 	prompt: string
 	path: string

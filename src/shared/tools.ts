@@ -1,6 +1,13 @@
 import { Anthropic } from "@anthropic-ai/sdk"
 
-import type { ClineAsk, ToolProgressStatus, ToolGroup, ToolName, GenerateImageParams } from "@roo-code/types"
+import type {
+	ClineAsk,
+	ToolProgressStatus,
+	ToolGroup,
+	ToolName,
+	BrowserActionParams,
+	GenerateImageParams,
+} from "@roo-code/types"
 
 export type ToolResponse = string | Array<Anthropic.TextBlockParam | Anthropic.ImageBlockParam>
 
@@ -108,6 +115,7 @@ export type NativeToolArgs = {
 		follow_up: Array<{ text: string; mode?: string }>
 	}
 	codebase_search: { query: string; path?: string }
+	browser_action: BrowserActionParams
 	generate_image: GenerateImageParams
 	run_slash_command: { command: string; args?: string }
 	skill: { skill: string; args?: string }
@@ -267,6 +275,7 @@ export type ToolGroupConfig = {
 
 export const TOOL_DISPLAY_NAMES: Record<ToolName, string> = {
 	execute_command: "run commands",
+	browser_action: "use a browser",
 	read_file: "read files",
 	read_command_output: "read command output",
 	write_to_file: "write files",
@@ -300,6 +309,9 @@ export const TOOL_GROUPS: Record<ToolGroup, ToolGroupConfig> = {
 	edit: {
 		tools: ["apply_diff", "write_to_file", "generate_image"],
 		customTools: ["edit", "search_replace", "edit_file", "apply_patch"],
+	},
+	browser: {
+		tools: ["browser_action"],
 	},
 	command: {
 		tools: ["execute_command", "read_command_output"],
