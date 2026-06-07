@@ -814,6 +814,38 @@ export interface ClineSayTool {
 	skill?: string
 }
 
+export const browserActions = [
+	"launch",
+	"click",
+	"hover",
+	"type",
+	"press",
+	"scroll_down",
+	"scroll_up",
+	"resize",
+	"close",
+	"screenshot",
+] as const
+
+export type BrowserAction = (typeof browserActions)[number]
+
+export interface ClineSayBrowserAction {
+	action: BrowserAction
+	coordinate?: string
+	size?: string
+	text?: string
+	executedCoordinate?: string
+}
+
+export type BrowserActionResult = {
+	screenshot?: string
+	logs?: string
+	currentUrl?: string
+	currentMousePosition?: string
+	viewportWidth?: number
+	viewportHeight?: number
+}
+
 export interface ClineAskUseMcpServer {
 	serverName: string
 	type: "use_mcp_tool" | "access_mcp_resource"
