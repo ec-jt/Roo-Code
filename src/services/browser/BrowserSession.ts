@@ -778,22 +778,38 @@ export class BrowserSession {
 	}> {
 		const page = this.page!
 
-		// Set viewport
+		// Set viewport with deviceScaleFactor: 1 to prevent HiDPI scaling
 		await page.setViewport({ width, height, deviceScaleFactor: 1 })
 		await new Promise((resolve) => setTimeout(resolve, 200))
 
-		// Measure total page height at this viewport
+		// Save original styles and fix scrolling issues (from Chrome extension technique)
+		const originalStyles = await page.evaluate(() => {
+			const body = document.body
+			const origBodyOverflow = body ? body.style.overflowY : ""
+			const origDocOverflow = document.documentElement.style.overflow
+
+			// Fix pages with `body { overflow-y: scroll; }` that break window.scrollTo
+			if (body) {
+				body.style.overflowY = "visible"
+			}
+
+			return { origBodyOverflow, origDocOverflow }
+		})
+
+		// Measure total page dimensions (using all possible sources like the Chrome extension)
 		const totalPageHeight = await page.evaluate(() => {
+			const body = document.body
 			return Math.max(
 				document.documentElement.clientHeight,
-				document.body?.scrollHeight || 0,
+				body?.scrollHeight || 0,
 				document.documentElement.scrollHeight,
-				document.body?.offsetHeight || 0,
+				body?.offsetHeight || 0,
 				document.documentElement.offsetHeight,
 			)
 		})
 
 		// Calculate scroll positions with 200px overlap for sticky headers
+		// (Chrome extension uses scrollPad = 200, yDelta = windowHeight - scrollPad)
 		const scrollPad = 200
 		const yDelta = height > scrollPad ? height - scrollPad : height
 		const positions: number[] = []
@@ -806,7 +822,7 @@ export class BrowserSession {
 
 		const totalSections = positions.length
 
-		// Disable scrollbars during capture
+		// Disable scrollbars during capture (Chrome extension technique)
 		await page.evaluate(() => {
 			document.documentElement.style.overflow = "hidden"
 		})
@@ -866,11 +882,14 @@ export class BrowserSession {
 			})
 		}
 
-		// Restore overflow
-		await page.evaluate(() => {
-			document.documentElement.style.overflow = ""
+		// Restore original styles (Chrome extension cleanup technique)
+		await page.evaluate((styles: { origBodyOverflow: string; origDocOverflow: string }) => {
+			document.documentElement.style.overflow = styles.origDocOverflow
+			if (document.body) {
+				document.body.style.overflowY = styles.origBodyOverflow
+			}
 			window.scrollTo(0, 0)
-		})
+		}, originalStyles)
 
 		return { screenshots, totalPageHeight }
 	}

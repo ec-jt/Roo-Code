@@ -17,6 +17,7 @@ import { getCommandDecision } from "./commands"
 export type AutoApprovalState =
 	| "alwaysAllowReadOnly"
 	| "alwaysAllowWrite"
+	| "alwaysAllowBrowser"
 	| "alwaysAllowMcp"
 	| "alwaysAllowModeSwitch"
 	| "alwaysAllowSubtasks"
@@ -108,6 +109,13 @@ export async function checkAutoApproval({
 			return { decision: "ask" }
 		}
 
+		return { decision: "ask" }
+	}
+
+	if (ask === "browser_action_launch") {
+		if (state.alwaysAllowBrowser === true) {
+			return { decision: "approve" }
+		}
 		return { decision: "ask" }
 	}
 
