@@ -1,6 +1,7 @@
 import * as vscode from "vscode"
 import * as fs from "fs/promises"
 import * as path from "path"
+import sharp from "sharp"
 import { Browser, Page, ScreenshotOptions, TimeoutError, launch, connect, KeyInput } from "puppeteer-core"
 // @ts-ignore
 import PCR from "puppeteer-chromium-resolver"
@@ -758,6 +759,7 @@ export class BrowserSession {
 
 	/**
 	 * Captures the full page at a specific viewport size by scrolling through it in sections.
+	 * Uses scroll-based capture to properly trigger lazy loading and CSS animations.
 	 * Uses a 200px overlap between sections to handle sticky headers.
 	 */
 	private async captureAtViewport(
@@ -820,44 +822,39 @@ export class BrowserSession {
 
 		for (let i = 0; i < positions.length; i++) {
 			const scrollY = positions[i]
+
+			// Scroll to position - triggers lazy loading and IntersectionObserver
 			await page.evaluate((y: number) => window.scrollTo(0, y), scrollY)
+
+			// Wait for content to settle (lazy loading, CSS animations)
 			await new Promise((resolve) => setTimeout(resolve, 150))
 
-			let screenshotBase64 = await page.screenshot({
-				encoding: "base64",
-				type: "webp",
-				quality,
+			// Take viewport screenshot
+			const screenshotBuffer = await page.screenshot({
+				type: "png",
 				captureBeyondViewport: false,
 			})
 
-			let screenshotDataUri = `data:image/webp;base64,${screenshotBase64}`
+			// Use Sharp to convert to optimized WebP
+			const buffer = Buffer.isBuffer(screenshotBuffer) ? screenshotBuffer : Buffer.from(screenshotBuffer)
+			const webpBuffer = await sharp(buffer).webp({ quality }).toBuffer()
+			const screenshotDataUri = `data:image/webp;base64,${webpBuffer.toString("base64")}`
 
-			if (!screenshotBase64) {
-				screenshotBase64 = await page.screenshot({
-					encoding: "base64",
-					type: "png",
-					captureBeyondViewport: false,
-				})
-				screenshotDataUri = `data:image/png;base64,${screenshotBase64}`
-			}
+			const endY = Math.min(scrollY + height, totalPageHeight)
+			const description =
+				i === 0
+					? `[${viewportLabel}] Section ${i + 1}/${totalSections} (top, ${scrollY}-${endY}px)`
+					: i === positions.length - 1
+						? `[${viewportLabel}] Section ${i + 1}/${totalSections} (bottom, ${scrollY}-${endY}px)`
+						: `[${viewportLabel}] Section ${i + 1}/${totalSections} (${scrollY}-${endY}px)`
 
-			if (screenshotBase64) {
-				const endY = Math.min(scrollY + height, totalPageHeight)
-				const description =
-					i === 0
-						? `[${viewportLabel}] Section ${i + 1}/${totalSections} (top, ${scrollY}-${endY}px)`
-						: i === positions.length - 1
-							? `[${viewportLabel}] Section ${i + 1}/${totalSections} (bottom, ${scrollY}-${endY}px)`
-							: `[${viewportLabel}] Section ${i + 1}/${totalSections} (${scrollY}-${endY}px)`
-
-				screenshots.push({
-					screenshot: screenshotDataUri,
-					sectionIndex: i + 1,
-					totalSections,
-					yOffset: scrollY,
-					description,
-				})
-			}
+			screenshots.push({
+				screenshot: screenshotDataUri,
+				sectionIndex: i + 1,
+				totalSections,
+				yOffset: scrollY,
+				description,
+			})
 		}
 
 		// Restore overflow
