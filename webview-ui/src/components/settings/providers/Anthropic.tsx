@@ -22,12 +22,10 @@ export const Anthropic = ({ apiConfiguration, setApiConfigurationField }: Anthro
 
 	const [anthropicBaseUrlSelected, setAnthropicBaseUrlSelected] = useState(!!apiConfiguration?.anthropicBaseUrl)
 
-	// Check if the current model supports 1M context beta
-	const supports1MContextBeta =
-		selectedModel?.id === "claude-sonnet-4-20250514" ||
-		selectedModel?.id === "claude-sonnet-4-5" ||
-		selectedModel?.id === "claude-sonnet-4-6" ||
-		selectedModel?.id === "claude-opus-4-6"
+	// Check if the current model supports 1M context beta (dynamically from tiers)
+	const supports1MContextBeta = !!selectedModel?.info?.tiers?.some(
+		(tier) => tier.contextWindow && tier.contextWindow >= 1_000_000,
+	)
 
 	const handleInputChange = useCallback(
 		<K extends keyof ProviderSettings, E>(
