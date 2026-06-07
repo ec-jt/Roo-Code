@@ -2775,9 +2775,13 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 								if (signal.aborted) {
 									reject(new Error("Request cancelled by user"))
 								} else {
-									signal.addEventListener("abort", () => {
-										reject(new Error("Request cancelled by user"))
-									})
+									signal.addEventListener(
+										"abort",
+										() => {
+											reject(new Error("Request cancelled by user"))
+										},
+										{ once: true },
+									)
 								}
 							})
 							return await Promise.race([nextPromise, abortPromise])
@@ -4194,6 +4198,13 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		// Create an AbortController to allow cancelling the request mid-stream
 		this.currentRequestAbortController = new AbortController()
 		const abortSignal = this.currentRequestAbortController.signal
+		// Increase max listeners to prevent warning during streaming (one listener per chunk)
+		try {
+			const { setMaxListeners } = require("events")
+			setMaxListeners(100, abortSignal)
+		} catch {
+			// setMaxListeners may not be available in all environments
+		}
 		// Reset the flag after using it
 		this.skipPrevResponseIdOnce = false
 
