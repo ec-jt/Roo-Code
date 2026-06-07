@@ -7,7 +7,12 @@ interface CloudViewProps {
 	organizations?: Array<{ id: string; name: string }>
 }
 
-export const CloudView: React.FC<CloudViewProps> = ({ userInfo, isAuthenticated, cloudApiUrl, organizations }) => {
+export const CloudView: React.FC<CloudViewProps> = ({
+	userInfo,
+	isAuthenticated,
+	cloudApiUrl: _cloudApiUrl,
+	organizations,
+}) => {
 	return (
 		<div style={{ padding: "20px" }}>
 			<h2>Cloud</h2>

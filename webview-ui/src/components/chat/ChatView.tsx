@@ -32,6 +32,8 @@ import { StandardTooltip, Button } from "@src/components/ui"
 import VersionIndicator from "../common/VersionIndicator"
 import HistoryPreview from "../history/HistoryPreview"
 import Announcement from "./Announcement"
+import BrowserActionRow from "./BrowserActionRow"
+import BrowserSessionStatusRow from "./BrowserSessionStatusRow"
 import ChatRow from "./ChatRow"
 import WarningRow from "./WarningRow"
 import { ChatTextArea } from "./ChatTextArea"
@@ -337,6 +339,13 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 									break
 							}
 							break
+						case "browser_action_launch":
+							setSendingDisabled(isPartial)
+							setClineAsk("browser_action_launch")
+							setEnableButtons(!isPartial)
+							setPrimaryButtonText(t("chat:approve.title"))
+							setSecondaryButtonText(t("chat:reject.title"))
+							break
 						case "command":
 							setSendingDisabled(isPartial)
 							setClineAsk("command")
@@ -427,6 +436,8 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 						case "api_req_finished":
 						case "error":
 						case "text":
+						case "browser_action":
+						case "browser_action_result":
 						case "command_output":
 						case "mcp_server_request_started":
 						case "mcp_server_response":
@@ -630,6 +641,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 					) {
 						case "followup":
 						case "tool":
+						case "browser_action_launch":
 						case "command": // User can provide feedback to a tool or command use.
 						case "use_mcp_server":
 						case "completion_result": // If this happens then the user has feedback for the completion result.
@@ -717,6 +729,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 				case "api_req_failed":
 				case "command":
 				case "tool":
+				case "browser_action_launch":
 				case "use_mcp_server":
 				case "mistake_limit_reached":
 					// Only send text/images if they exist
@@ -801,6 +814,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 					break
 				case "command":
 				case "tool":
+				case "browser_action_launch":
 				case "use_mcp_server":
 					// Only send text/images if they exist
 					if (trimmedInput || (images && images.length > 0)) {
@@ -1418,6 +1432,31 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 	const itemContent = useCallback(
 		(index: number, messageOrGroup: ClineMessage) => {
 			const hasCheckpoint = modifiedMessages.some((message) => message.say === "checkpoint_saved")
+
+			// Check if this is a browser action message
+			if (messageOrGroup.type === "say" && messageOrGroup.say === "browser_action") {
+				const nextMessage = modifiedMessages.find(
+					(m) => m.ts > messageOrGroup.ts && m.say === "browser_action_result",
+				)
+				const browserActions = modifiedMessages.filter((m) => m.say === "browser_action")
+				const actionIndex = browserActions.findIndex((m) => m.ts === messageOrGroup.ts) + 1
+				const totalActions = browserActions.length
+
+				return (
+					<BrowserActionRow
+						key={messageOrGroup.ts}
+						message={messageOrGroup}
+						nextMessage={nextMessage}
+						actionIndex={actionIndex}
+						totalActions={totalActions}
+					/>
+				)
+			}
+
+			// Check if this is a browser session status message
+			if (messageOrGroup.type === "say" && messageOrGroup.say === "browser_session_status") {
+				return <BrowserSessionStatusRow key={messageOrGroup.ts} message={messageOrGroup} />
+			}
 
 			// regular message
 			return (

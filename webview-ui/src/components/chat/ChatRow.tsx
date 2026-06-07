@@ -1534,6 +1534,10 @@ export const ChatRowContent = ({
 							<ImageBlock imageUri={imageInfo.imageUri} imagePath={imageInfo.imagePath} />
 						</div>
 					)
+				case "browser_action":
+				case "browser_action_result":
+					// Handled by BrowserActionRow in ChatView; prevent raw JSON from rendering here
+					return null
 				case "too_many_tools_warning": {
 					const warningData = safeJsonParse<{
 						toolCount: number

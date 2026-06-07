@@ -58,6 +58,11 @@ export interface ExtensionMessage {
 		| "deleteCustomModeCheck"
 		| "currentCheckpointUpdated"
 		| "checkpointInitWarning"
+		| "browserToolEnabled"
+		| "browserConnectionResult"
+		| "remoteBrowserEnabled"
+		| "browserSessionUpdate"
+		| "browserSessionNavigate"
 		| "ttsStart"
 		| "ttsStop"
 		| "fileSearchResults"
@@ -172,6 +177,9 @@ export interface ExtensionMessage {
 	context?: string
 	commands?: Command[]
 	queuedMessages?: QueuedMessage[]
+	isBrowserSessionActive?: boolean
+	browserSessionMessages?: ClineMessage[]
+	stepIndex?: number
 	list?: string[] // For dismissedUpsells
 	tools?: SerializedCustomToolDefinition[] // For customToolsResult
 	skills?: SkillMetadata[] // For skills response
@@ -254,6 +262,7 @@ export type ExtensionState = Pick<
 	| "alwaysAllowWrite"
 	| "alwaysAllowWriteOutsideWorkspace"
 	| "alwaysAllowWriteProtected"
+	| "alwaysAllowBrowser"
 	| "alwaysAllowMcp"
 	| "alwaysAllowModeSwitch"
 	| "alwaysAllowSubtasks"
@@ -264,6 +273,11 @@ export type ExtensionState = Pick<
 	| "deniedCommands"
 	| "allowedMaxRequests"
 	| "allowedMaxCost"
+	| "browserToolEnabled"
+	| "browserViewportSize"
+	| "screenshotQuality"
+	| "remoteBrowserEnabled"
+	| "remoteBrowserHost"
 	| "ttsEnabled"
 	| "ttsSpeed"
 	| "soundEnabled"
@@ -340,6 +354,8 @@ export type ExtensionState = Pick<
 	historyPreviewCollapsed?: boolean
 
 	organizationAllowList: OrganizationAllowList
+
+	isBrowserSessionActive: boolean
 
 	autoCondenseContext: boolean
 	autoCondenseContextPercent: number
@@ -478,6 +494,12 @@ export interface WebviewMessage {
 		| "checkpointRestore"
 		| "deleteMcpServer"
 		| "codebaseIndexEnabled"
+		| "testBrowserConnection"
+		| "browserConnectionResult"
+		| "showBrowserSessionPanelAtStep"
+		| "killBrowserSession"
+		| "openBrowserSessionPanel"
+		| "refreshBrowserSessionPanel"
 		| "searchFiles"
 		| "toggleApiConfigPin"
 		| "hasOpenedModeSelector"

@@ -75,12 +75,15 @@ export class BrowserSession {
 	private async launchLocalBrowser(): Promise<void> {
 		console.log("Launching local browser")
 		const stats = await this.ensureChromiumExists()
+		const viewport = this.getViewport()
 		this.browser = await stats.puppeteer.launch({
 			args: [
 				"--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+				"--no-sandbox",
+				"--disable-setuid-sandbox",
 			],
 			executablePath: stats.executablePath,
-			defaultViewport: this.getViewport(),
+			defaultViewport: { ...viewport, deviceScaleFactor: 1 },
 			// headless: false,
 		})
 		this.isUsingRemoteBrowser = false
@@ -288,13 +291,7 @@ export class BrowserSession {
 
 		let options: ScreenshotOptions = {
 			encoding: "base64",
-
-			// clip: {
-			// 	x: 0,
-			// 	y: 0,
-			// 	width: 900,
-			// 	height: 600,
-			// },
+			captureBeyondViewport: false,
 		}
 
 		let screenshotBase64 = await this.page.screenshot({

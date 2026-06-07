@@ -529,6 +529,7 @@ describe("ClineProvider", () => {
 			openRouterImageApiKey: undefined,
 			openRouterImageGenerationSelectedModel: undefined,
 			checkpointTimeout: DEFAULT_CHECKPOINT_TIMEOUT_SECONDS,
+			isBrowserSessionActive: false,
 		}
 
 		const message: ExtensionMessage = {

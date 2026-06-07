@@ -119,6 +119,7 @@ export default defineConfig(({ mode }) => {
 				external: ["vscode"],
 				input: {
 					index: resolve(__dirname, "index.html"),
+					"browser-panel": resolve(__dirname, "browser-panel.html"),
 				},
 				output: {
 					entryFileNames: `assets/[name].js`,

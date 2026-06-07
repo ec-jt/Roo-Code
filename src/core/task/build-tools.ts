@@ -22,6 +22,7 @@ interface BuildToolsOptions {
 	customModes: ModeConfig[] | undefined
 	experiments: Record<string, boolean> | undefined
 	apiConfiguration: ProviderSettings | undefined
+	browserToolEnabled?: boolean
 	disabledTools?: string[]
 	modelInfo?: ModelInfo
 	/**
@@ -87,6 +88,7 @@ export async function buildNativeToolsArrayWithRestrictions(options: BuildToolsO
 		customModes,
 		experiments,
 		apiConfiguration,
+		browserToolEnabled,
 		disabledTools,
 		modelInfo,
 		includeAllToolsWithRestrictions,
@@ -100,7 +102,7 @@ export async function buildNativeToolsArrayWithRestrictions(options: BuildToolsO
 
 	// Build settings object for tool filtering.
 	const filterSettings = {
-		browserToolEnabled: apiConfiguration?.browserToolEnabled ?? true,
+		browserToolEnabled: browserToolEnabled ?? true,
 		todoListEnabled: apiConfiguration?.todoListEnabled ?? true,
 		disabledTools,
 		modelInfo,

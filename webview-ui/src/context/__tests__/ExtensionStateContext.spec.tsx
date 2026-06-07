@@ -211,6 +211,7 @@ describe("mergeExtensionState", () => {
 			maxTotalImageSize: 20,
 			checkpointTimeout: DEFAULT_CHECKPOINT_TIMEOUT_SECONDS, // Add the checkpoint timeout property
 			maxReadFileLine: -1,
+			isBrowserSessionActive: false,
 		}
 
 		const prevState: ExtensionState = {
@@ -274,6 +275,7 @@ describe("mergeExtensionState", () => {
 			maxTotalImageSize: 20,
 			checkpointTimeout: DEFAULT_CHECKPOINT_TIMEOUT_SECONDS,
 			maxReadFileLine: -1,
+			isBrowserSessionActive: false,
 		}
 
 		const makeMessage = (ts: number, text: string): ClineMessage =>
