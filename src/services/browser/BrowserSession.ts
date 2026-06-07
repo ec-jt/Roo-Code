@@ -1,7 +1,6 @@
 import * as vscode from "vscode"
 import * as fs from "fs/promises"
 import * as path from "path"
-import sharp from "sharp"
 import { Browser, Page, ScreenshotOptions, TimeoutError, launch, connect, KeyInput } from "puppeteer-core"
 // @ts-ignore
 import PCR from "puppeteer-chromium-resolver"
@@ -829,16 +828,26 @@ export class BrowserSession {
 			// Wait for content to settle (lazy loading, CSS animations)
 			await new Promise((resolve) => setTimeout(resolve, 150))
 
-			// Take viewport screenshot
-			const screenshotBuffer = await page.screenshot({
-				type: "png",
+			// Take viewport screenshot directly as WebP
+			let screenshotBase64 = await page.screenshot({
+				encoding: "base64",
+				type: "webp",
+				quality,
 				captureBeyondViewport: false,
 			})
 
-			// Use Sharp to convert to optimized WebP
-			const buffer = Buffer.isBuffer(screenshotBuffer) ? screenshotBuffer : Buffer.from(screenshotBuffer)
-			const webpBuffer = await sharp(buffer).webp({ quality }).toBuffer()
-			const screenshotDataUri = `data:image/webp;base64,${webpBuffer.toString("base64")}`
+			let screenshotDataUri = `data:image/webp;base64,${screenshotBase64}`
+
+			if (!screenshotBase64) {
+				screenshotBase64 = await page.screenshot({
+					encoding: "base64",
+					type: "png",
+					captureBeyondViewport: false,
+				})
+				screenshotDataUri = `data:image/png;base64,${screenshotBase64}`
+			}
+
+			if (!screenshotBase64) continue
 
 			const endY = Math.min(scrollY + height, totalPageHeight)
 			const description =
