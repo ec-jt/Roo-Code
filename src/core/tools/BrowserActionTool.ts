@@ -204,7 +204,9 @@ export async function browserActionTool(
 						browserActionResult = await cline.browserSession.saveScreenshot(filePath!, cline.cwd)
 						break
 					case "capture_full_page":
-						browserActionResult = await cline.browserSession.captureFullPage()
+						browserActionResult = await cline.browserSession.captureFullPage(
+							text?.toLowerCase() === "responsive",
+						)
 						break
 					case "close":
 						browserActionResult = await cline.browserSession.closeBrowser()
@@ -264,35 +266,45 @@ export async function browserActionTool(
 					break
 				}
 				case "capture_full_page": {
-					await cline.say("browser_action_result", JSON.stringify(browserActionResult))
-
 					const sections = browserActionResult?.screenshots || []
-					const sectionImages = sections.map((s) => s.screenshot)
+
+					// Determine max sections to send based on a reasonable limit
+					// Each image is ~1500 tokens, so 20 sections = ~30K tokens
+					const MAX_SECTIONS_PER_RESULT = 20
+					const sectionsToSend = sections.slice(0, MAX_SECTIONS_PER_RESULT)
+					const hasMore = sections.length > MAX_SECTIONS_PER_RESULT
+
+					// Store remaining sections for potential follow-up
+					await cline.say(
+						"browser_action_result",
+						JSON.stringify({
+							...browserActionResult,
+							screenshots: sectionsToSend, // Only include sections being sent
+						}),
+					)
 
 					let messageText = `Full page capture complete.\n`
 					messageText += `Page: "${browserActionResult?.pageTitle || "Unknown"}"\n`
 					messageText += `URL: ${browserActionResult?.currentUrl || "Unknown"}\n`
 					messageText += `Total height: ${browserActionResult?.totalPageHeight || 0}px\n`
 					messageText += `Viewport: ${browserActionResult?.viewportWidth}x${browserActionResult?.viewportHeight}\n`
-					messageText += `Sections: ${sections.length}\n`
-					messageText += `\nEach section below shows a viewport-sized portion of the page (200px overlap between sections for sticky header coverage).\n`
-
-					// Add section descriptions
-					for (const section of sections) {
-						messageText += `\n--- ${section.description} ---\n`
+					messageText += `Sections captured: ${sections.length}\n`
+					messageText += `Sections shown below: ${sectionsToSend.length}\n`
+					if (hasMore) {
+						messageText += `\n⚠️ Page has ${sections.length} sections total but only showing first ${MAX_SECTIONS_PER_RESULT} to stay within context limits. Use scroll_down + screenshot to see remaining content.\n`
 					}
-
+					messageText += `\nEach section below shows a viewport-sized portion of the page (200px overlap between sections for sticky header coverage).\n`
 					messageText += `\n${browserActionResult?.logs || ""}\n`
 
-					if (sectionImages.length > 0) {
+					if (sectionsToSend.length > 0) {
 						// Interleave section labels with images for better LLM understanding
 						const blocks: (Anthropic.ImageBlockParam | Anthropic.TextBlockParam)[] = []
-						for (let i = 0; i < sections.length; i++) {
+						for (let i = 0; i < sectionsToSend.length; i++) {
 							blocks.push({
 								type: "text",
-								text: `\n${sections[i].description}`,
+								text: `\n${sectionsToSend[i].description}`,
 							} as Anthropic.TextBlockParam)
-							blocks.push(...formatResponse.imageBlocks([sectionImages[i]]))
+							blocks.push(...formatResponse.imageBlocks([sectionsToSend[i].screenshot]))
 						}
 						blocks.push({ type: "text", text: messageText } as Anthropic.TextBlockParam)
 						pushToolResult(blocks)

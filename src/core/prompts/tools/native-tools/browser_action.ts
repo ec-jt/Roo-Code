@@ -6,6 +6,13 @@ This tool is particularly useful for web development tasks as it allows you to l
 
 The user may ask generic non-development tasks (such as "what's the latest news" or "look up the weather"), in which case you might use this tool to complete the task if it makes sense to do so, rather than trying to create a website or using curl to answer the question. However, if an available MCP server tool or resource can be used instead, you should prefer to use it over browser_action.
 
+Full Page Capture:
+- Use capture_full_page to automatically scroll through and capture the entire page in viewport-sized sections
+- Each section is returned as a separate screenshot with position metadata
+- Handles sticky headers with 200px overlap between sections
+- Pass text="responsive" to also capture at tablet (768x1024) and mobile (360x640) viewports
+- Ideal for visual QA testing of rendered web pages
+
 Browser Session Lifecycle:
 - Browser sessions start with launch and end with close
 - The session remains active across multiple messages and tool uses
@@ -19,7 +26,7 @@ const COORDINATE_PARAMETER_DESCRIPTION = `Screen coordinate for hover or click a
 
 const SIZE_PARAMETER_DESCRIPTION = `Viewport dimensions for the resize action in format 'WIDTHxHEIGHT' or 'WIDTH,HEIGHT'. Example: '1280x800' or '1280,800'`
 
-const TEXT_PARAMETER_DESCRIPTION = `Text to type when performing the type action, or key name to press when performing the press action (e.g., 'Enter', 'Tab', 'Escape')`
+const TEXT_PARAMETER_DESCRIPTION = `Text to type when performing the type action, key name to press when performing the press action (e.g., 'Enter', 'Tab', 'Escape'), or "responsive" for capture_full_page to also capture tablet and mobile viewports`
 
 const PATH_PARAMETER_DESCRIPTION = `File path where the screenshot should be saved (relative to workspace). Required for screenshot action. Supports .png, .jpeg, and .webp extensions. Example: 'screenshots/result.png'`
 

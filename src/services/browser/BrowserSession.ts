@@ -757,22 +757,31 @@ export class BrowserSession {
 	}
 
 	/**
-	 * Captures the full page by scrolling through it in viewport-sized sections.
+	 * Captures the full page at a specific viewport size by scrolling through it in sections.
 	 * Uses a 200px overlap between sections to handle sticky headers.
-	 * Returns individual viewport-sized screenshots for LLM analysis.
-	 * @param maxSections - Maximum number of sections to capture (default: 10)
 	 */
-	async captureFullPage(maxSections: number = 10): Promise<BrowserActionResult> {
-		if (!this.page) {
-			throw new Error("Browser is not launched")
-		}
+	private async captureAtViewport(
+		width: number,
+		height: number,
+		quality: number,
+		viewportLabel: string,
+	): Promise<{
+		screenshots: Array<{
+			screenshot: string
+			sectionIndex: number
+			totalSections: number
+			yOffset: number
+			description: string
+		}>
+		totalPageHeight: number
+	}> {
+		const page = this.page!
 
-		const page = this.page
-		const viewport = page.viewport()
-		const viewportWidth = viewport?.width || 900
-		const viewportHeight = viewport?.height || 600
+		// Set viewport
+		await page.setViewport({ width, height, deviceScaleFactor: 1 })
+		await new Promise((resolve) => setTimeout(resolve, 200))
 
-		// Measure total page height
+		// Measure total page height at this viewport
 		const totalPageHeight = await page.evaluate(() => {
 			return Math.max(
 				document.documentElement.clientHeight,
@@ -783,13 +792,9 @@ export class BrowserSession {
 			)
 		})
 
-		// Get page title
-		const pageTitle = await page.title()
-		const currentUrl = page.url()
-
 		// Calculate scroll positions with 200px overlap for sticky headers
 		const scrollPad = 200
-		const yDelta = viewportHeight > scrollPad ? viewportHeight - scrollPad : viewportHeight
+		const yDelta = height > scrollPad ? height - scrollPad : height
 		const positions: number[] = []
 
 		let yPos = 0
@@ -798,16 +803,7 @@ export class BrowserSession {
 			yPos += yDelta
 		}
 
-		// Limit sections to prevent excessive token usage
-		if (positions.length > maxSections) {
-			positions.length = maxSections
-		}
-
 		const totalSections = positions.length
-		const quality = ((await this.context.globalState.get("screenshotQuality")) as number | undefined) ?? 75
-
-		// Save original scroll position
-		const originalScrollY = await page.evaluate(() => window.scrollY)
 
 		// Disable scrollbars during capture
 		await page.evaluate(() => {
@@ -822,17 +818,11 @@ export class BrowserSession {
 			description: string
 		}> = []
 
-		// Capture each section
 		for (let i = 0; i < positions.length; i++) {
 			const scrollY = positions[i]
-
-			// Scroll to position
 			await page.evaluate((y: number) => window.scrollTo(0, y), scrollY)
-
-			// Wait for content to settle (lazy loading, animations)
 			await new Promise((resolve) => setTimeout(resolve, 150))
 
-			// Take screenshot
 			let screenshotBase64 = await page.screenshot({
 				encoding: "base64",
 				type: "webp",
@@ -852,13 +842,13 @@ export class BrowserSession {
 			}
 
 			if (screenshotBase64) {
-				const endY = Math.min(scrollY + viewportHeight, totalPageHeight)
+				const endY = Math.min(scrollY + height, totalPageHeight)
 				const description =
 					i === 0
-						? `Section ${i + 1}/${totalSections} (top of page, ${scrollY}-${endY}px)`
+						? `[${viewportLabel}] Section ${i + 1}/${totalSections} (top, ${scrollY}-${endY}px)`
 						: i === positions.length - 1
-							? `Section ${i + 1}/${totalSections} (bottom area, ${scrollY}-${endY}px)`
-							: `Section ${i + 1}/${totalSections} (${scrollY}-${endY}px)`
+							? `[${viewportLabel}] Section ${i + 1}/${totalSections} (bottom, ${scrollY}-${endY}px)`
+							: `[${viewportLabel}] Section ${i + 1}/${totalSections} (${scrollY}-${endY}px)`
 
 				screenshots.push({
 					screenshot: screenshotDataUri,
@@ -870,21 +860,77 @@ export class BrowserSession {
 			}
 		}
 
-		// Restore original scroll position and overflow
-		await page.evaluate((y: number) => {
+		// Restore overflow
+		await page.evaluate(() => {
 			document.documentElement.style.overflow = ""
-			window.scrollTo(0, y)
-		}, originalScrollY)
+			window.scrollTo(0, 0)
+		})
 
-		// Collect console logs
-		const logs = [`Full page capture: ${totalSections} sections, ${totalPageHeight}px total height`]
+		return { screenshots, totalPageHeight }
+	}
+
+	/**
+	 * Captures the full page by scrolling through it in viewport-sized sections.
+	 * Captures at desktop (1280x1024) viewport by default.
+	 * Uses a 200px overlap between sections to handle sticky headers.
+	 * Returns individual viewport-sized screenshots for LLM analysis.
+	 * @param responsive - If true, also captures at tablet (768x1024) and mobile (360x640) viewports
+	 */
+	async captureFullPage(responsive: boolean = false): Promise<BrowserActionResult> {
+		if (!this.page) {
+			throw new Error("Browser is not launched")
+		}
+
+		const page = this.page
+		const originalViewport = page.viewport()
+		const quality = ((await this.context.globalState.get("screenshotQuality")) as number | undefined) ?? 75
+		const pageTitle = await page.title()
+		const currentUrl = page.url()
+
+		// Define viewports to capture
+		const viewports = [{ width: 1280, height: 1024, label: "Desktop 1280x1024" }]
+
+		if (responsive) {
+			viewports.push(
+				{ width: 768, height: 1024, label: "Tablet 768x1024" },
+				{ width: 360, height: 640, label: "Mobile 360x640" },
+			)
+		}
+
+		const allScreenshots: Array<{
+			screenshot: string
+			sectionIndex: number
+			totalSections: number
+			yOffset: number
+			description: string
+		}> = []
+
+		let totalPageHeight = 0
+
+		for (const vp of viewports) {
+			const result = await this.captureAtViewport(vp.width, vp.height, quality, vp.label)
+			allScreenshots.push(...result.screenshots)
+			totalPageHeight = Math.max(totalPageHeight, result.totalPageHeight)
+		}
+
+		// Restore original viewport
+		if (originalViewport) {
+			await page.setViewport(originalViewport)
+		}
+
+		const viewportSummary = viewports.map((v) => v.label).join(", ")
+		const logs = [
+			`Full page capture: ${allScreenshots.length} total sections across ${viewports.length} viewport(s)`,
+			`Viewports: ${viewportSummary}`,
+			`Total page height: ${totalPageHeight}px`,
+		]
 
 		return {
-			screenshots,
+			screenshots: allScreenshots,
 			logs: logs.join("\n"),
 			currentUrl,
-			viewportWidth,
-			viewportHeight,
+			viewportWidth: viewports[0].width,
+			viewportHeight: viewports[0].height,
 			totalPageHeight,
 			pageTitle,
 		}
