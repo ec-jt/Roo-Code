@@ -14,7 +14,7 @@ import { fileExistsAtPath } from "../../utils/fs"
 import { discoverChromeHostUrl, tryChromeHostUrl } from "./browserDiscovery"
 
 // Timeout constants
-const BROWSER_NAVIGATION_TIMEOUT = 15_000 // 15 seconds
+const BROWSER_NAVIGATION_TIMEOUT = 10_000 // 10 seconds
 
 interface PCRStats {
 	puppeteer: { launch: typeof launch }
@@ -360,8 +360,11 @@ export class BrowserSession {
 	 * Navigate to a URL with standard loading options
 	 */
 	private async navigatePageToUrl(page: Page, url: string): Promise<void> {
-		await page.goto(url, { timeout: BROWSER_NAVIGATION_TIMEOUT, waitUntil: ["domcontentloaded", "networkidle2"] })
-		await this.waitTillHTMLStable(page)
+		// Use domcontentloaded instead of networkidle2 for faster navigation
+		// networkidle2 can hang on sites with persistent connections (analytics, websockets, ads)
+		await page.goto(url, { timeout: BROWSER_NAVIGATION_TIMEOUT, waitUntil: "domcontentloaded" })
+		// Brief wait for initial JS rendering instead of full HTML stability check
+		await new Promise((resolve) => setTimeout(resolve, 1000))
 	}
 
 	/**
@@ -445,9 +448,9 @@ export class BrowserSession {
 				return this.doAction(async (page) => {
 					await page.reload({
 						timeout: BROWSER_NAVIGATION_TIMEOUT,
-						waitUntil: ["domcontentloaded", "networkidle2"],
+						waitUntil: "domcontentloaded",
 					})
-					await this.waitTillHTMLStable(page)
+					await new Promise((resolve) => setTimeout(resolve, 1000))
 				})
 			}
 		} else {
@@ -459,8 +462,8 @@ export class BrowserSession {
 
 	// page.goto { waitUntil: "networkidle0" } may not ever resolve, and not waiting could return page content too early before js has loaded
 	// https://stackoverflow.com/questions/52497252/puppeteer-wait-until-page-is-completely-loaded/61304202#61304202
-	private async waitTillHTMLStable(page: Page, timeout = 5_000) {
-		const checkDurationMsecs = 500 // 1000
+	private async waitTillHTMLStable(page: Page, timeout = 3_000) {
+		const checkDurationMsecs = 300
 		const maxChecks = timeout / checkDurationMsecs
 		let lastHTMLSize = 0
 		let checkCounts = 1
@@ -579,11 +582,11 @@ export class BrowserSession {
 			// If we detected network activity, wait for navigation/loading
 			await page
 				.waitForNavigation({
-					waitUntil: ["domcontentloaded", "networkidle2"],
+					waitUntil: "domcontentloaded",
 					timeout: BROWSER_NAVIGATION_TIMEOUT,
 				})
 				.catch(() => {})
-			await this.waitTillHTMLStable(page)
+			await new Promise((resolve) => setTimeout(resolve, 1000))
 		}
 
 		// Clean up listener

@@ -177,6 +177,7 @@ export async function browserActionTool(
 					sayPayload.executedCoordinate = processedCoordinate
 				}
 				await cline.say("browser_action", JSON.stringify(sayPayload), undefined, false)
+				cline.broadcastBrowserSessionUpdate()
 
 				switch (action) {
 					case "click":
@@ -225,6 +226,7 @@ export async function browserActionTool(
 				case "resize":
 				case "screenshot": {
 					await cline.say("browser_action_result", JSON.stringify(browserActionResult))
+					cline.broadcastBrowserSessionUpdate()
 
 					const images = browserActionResult?.screenshot ? [browserActionResult.screenshot] : []
 
@@ -282,6 +284,7 @@ export async function browserActionTool(
 							screenshots: sectionsToSend, // Only include sections being sent
 						}),
 					)
+					cline.broadcastBrowserSessionUpdate()
 
 					let messageText = `Full page capture complete.\n`
 					messageText += `Page: "${browserActionResult?.pageTitle || "Unknown"}"\n`

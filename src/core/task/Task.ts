@@ -4651,7 +4651,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		}
 	}
 
-	private broadcastBrowserSessionUpdate(): void {
+	broadcastBrowserSessionUpdate(): void {
 		const provider = this.providerRef.deref()
 		if (!provider) {
 			return
