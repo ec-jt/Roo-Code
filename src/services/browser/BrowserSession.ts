@@ -289,21 +289,9 @@ export class BrowserSession {
 			await this.drawCursorIndicator(this.page, this.currentMousePosition)
 		}
 
-		// Ensure screenshot dimensions stay within API limits (max 8000px per dimension)
-		const currentViewport = this.page.viewport()
-		const maxDim = 7999
-		const clipWidth = Math.min(currentViewport?.width || 900, maxDim)
-		const clipHeight = Math.min(currentViewport?.height || 600, maxDim)
-
 		let options: ScreenshotOptions = {
 			encoding: "base64",
 			captureBeyondViewport: false,
-			clip: {
-				x: 0,
-				y: 0,
-				width: clipWidth,
-				height: clipHeight,
-			},
 		}
 
 		let screenshotBase64 = await this.page.screenshot({
