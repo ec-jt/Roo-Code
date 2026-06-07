@@ -173,7 +173,7 @@ export async function getEnvironmentDetails(cline: Task, includeFileDetails: boo
 	}
 
 	// Get settings for time and cost display
-	const { includeCurrentTime = true, includeCurrentCost = true, maxGitStatusFiles = 0 } = state ?? {}
+	const { includeCurrentTime = true, includeCurrentCost = false, maxGitStatusFiles = 0 } = state ?? {}
 
 	// Add current time information with timezone (if enabled).
 	if (includeCurrentTime) {
