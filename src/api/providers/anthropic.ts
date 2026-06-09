@@ -70,7 +70,8 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 				modelId === "claude-sonnet-4-6" ||
 				modelId === "claude-opus-4-6" ||
 				modelId === "claude-opus-4-7" ||
-				modelId === "claude-opus-4-8") &&
+				modelId === "claude-opus-4-8" ||
+				modelId === "claude-fable-5") &&
 			this.options.anthropicBeta1MContext
 		) {
 			betas.push("context-1m-2025-08-07")
@@ -82,6 +83,7 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 		}
 
 		switch (modelId) {
+			case "claude-fable-5":
 			case "claude-sonnet-4-6":
 			case "claude-sonnet-4-5":
 			case "claude-sonnet-4-20250514":
@@ -147,6 +149,7 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 
 						// Then check for models that support prompt caching
 						switch (modelId) {
+							case "claude-fable-5":
 							case "claude-sonnet-4-6":
 							case "claude-sonnet-4-5":
 							case "claude-sonnet-4-20250514":
@@ -322,7 +325,8 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 				id === "claude-sonnet-4-6" ||
 				id === "claude-opus-4-6" ||
 				id === "claude-opus-4-7" ||
-				id === "claude-opus-4-8") &&
+				id === "claude-opus-4-8" ||
+				id === "claude-fable-5") &&
 			this.options.anthropicBeta1MContext
 		) {
 			// Use the tier pricing for 1M context

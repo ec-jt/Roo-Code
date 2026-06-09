@@ -294,6 +294,34 @@ export const vertexModels = {
 		inputPrice: 1.25,
 		outputPrice: 5,
 	},
+	"claude-fable-5": {
+		maxTokens: 128_000,
+		contextWindow: 1_000_000, // Native 1M context window
+		supportsImages: true,
+		supportsPromptCache: true,
+		inputPrice: 10.0, // $10 per million input tokens
+		outputPrice: 50.0, // $50 per million output tokens
+		cacheWritesPrice: 12.5, // $12.50 per million tokens
+		cacheReadsPrice: 1.0, // $1.00 per million tokens
+		supportsReasoningBudget: true,
+		// Flat pricing across all context tiers
+		tiers: [
+			{
+				contextWindow: 200_000,
+				inputPrice: 10.0,
+				outputPrice: 50.0,
+				cacheWritesPrice: 12.5,
+				cacheReadsPrice: 1.0,
+			},
+			{
+				contextWindow: 1_000_000,
+				inputPrice: 10.0,
+				outputPrice: 50.0,
+				cacheWritesPrice: 12.5,
+				cacheReadsPrice: 1.0,
+			},
+		],
+	},
 	"claude-sonnet-4@20250514": {
 		maxTokens: 8192,
 		contextWindow: 200_000, // Default 200K, extendable to 1M with beta flag 'context-1m-2025-08-07'
@@ -624,6 +652,7 @@ export const vertexModels = {
 // Vertex AI models that support 1M context window beta
 // Uses the same beta header 'context-1m-2025-08-07' as Anthropic and Bedrock
 export const VERTEX_1M_CONTEXT_MODEL_IDS = [
+	"claude-fable-5",
 	"claude-sonnet-4@20250514",
 	"claude-sonnet-4-5@20250929",
 	"claude-sonnet-4-6",

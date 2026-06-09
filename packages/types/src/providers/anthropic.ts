@@ -7,6 +7,34 @@ export type AnthropicModelId = keyof typeof anthropicModels
 export const anthropicDefaultModelId: AnthropicModelId = "claude-sonnet-4-5"
 
 export const anthropicModels = {
+	"claude-fable-5": {
+		maxTokens: 128_000,
+		contextWindow: 1_000_000, // Native 1M context window
+		supportsImages: true,
+		supportsPromptCache: true,
+		inputPrice: 10.0, // $10 per million input tokens
+		outputPrice: 50.0, // $50 per million output tokens
+		cacheWritesPrice: 12.5, // $12.50 per million tokens
+		cacheReadsPrice: 1.0, // $1.00 per million tokens
+		supportsReasoningBudget: true,
+		// Flat pricing across all context tiers
+		tiers: [
+			{
+				contextWindow: 200_000, // ≤200K context tier
+				inputPrice: 10.0,
+				outputPrice: 50.0,
+				cacheWritesPrice: 12.5,
+				cacheReadsPrice: 1.0,
+			},
+			{
+				contextWindow: 1_000_000, // >200K context tier
+				inputPrice: 10.0,
+				outputPrice: 50.0,
+				cacheWritesPrice: 12.5,
+				cacheReadsPrice: 1.0,
+			},
+		],
+	},
 	"claude-sonnet-4-6": {
 		maxTokens: 64_000, // Overridden to 8k if `enableReasoningEffort` is false.
 		contextWindow: 1_000_000, // Native 1M context window per official Anthropic docs

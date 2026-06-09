@@ -13,6 +13,37 @@ export const bedrockDefaultPromptRouterModelId: BedrockModelId = "anthropic.clau
 // of the default prompt routers AWS enabled for GA of the promot router
 // feature.
 export const bedrockModels = {
+	"anthropic.claude-fable-5": {
+		maxTokens: 128_000,
+		contextWindow: 1_000_000, // Native 1M context window
+		supportsImages: true,
+		supportsPromptCache: true,
+		supportsReasoningBudget: true,
+		inputPrice: 10.0, // $10 per million input tokens
+		outputPrice: 50.0, // $50 per million output tokens
+		cacheWritesPrice: 12.5, // $12.50 per million tokens
+		cacheReadsPrice: 1.0, // $1.00 per million tokens
+		minTokensPerCachePoint: 1024,
+		maxCachePoints: 4,
+		cachableFields: ["system", "messages", "tools"],
+		// Flat pricing across all context tiers
+		tiers: [
+			{
+				contextWindow: 200_000,
+				inputPrice: 10.0,
+				outputPrice: 50.0,
+				cacheWritesPrice: 12.5,
+				cacheReadsPrice: 1.0,
+			},
+			{
+				contextWindow: 1_000_000,
+				inputPrice: 10.0,
+				outputPrice: 50.0,
+				cacheWritesPrice: 12.5,
+				cacheReadsPrice: 1.0,
+			},
+		],
+	},
 	"anthropic.claude-sonnet-4-5-20250929-v1:0": {
 		maxTokens: 8192,
 		contextWindow: 200_000,
@@ -577,6 +608,7 @@ export const BEDROCK_REGIONS = [
 ].sort((a, b) => a.value.localeCompare(b.value))
 
 export const BEDROCK_1M_CONTEXT_MODEL_IDS = [
+	"anthropic.claude-fable-5",
 	"anthropic.claude-sonnet-4-20250514-v1:0",
 	"anthropic.claude-sonnet-4-5-20250929-v1:0",
 	"anthropic.claude-sonnet-4-6",
@@ -596,6 +628,7 @@ export const BEDROCK_1M_CONTEXT_MODEL_IDS = [
 // - Claude Opus 4.7
 // - Claude Opus 4.8
 export const BEDROCK_GLOBAL_INFERENCE_MODEL_IDS = [
+	"anthropic.claude-fable-5",
 	"anthropic.claude-sonnet-4-20250514-v1:0",
 	"anthropic.claude-sonnet-4-5-20250929-v1:0",
 	"anthropic.claude-sonnet-4-6",
