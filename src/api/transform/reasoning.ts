@@ -105,12 +105,23 @@ export const getRooReasoning = ({
 }
 
 /**
- * Models that use adaptive thinking (e.g. claude-fable-5) require
- * `{ type: "adaptive" }` instead of `{ type: "enabled", budget_tokens: N }`.
- * Effort is controlled via `output_config.effort` at the request level,
- * not within the thinking config.
+ * Models that use adaptive thinking require `{ type: "adaptive" }` instead
+ * of `{ type: "enabled", budget_tokens: N }`. Effort is controlled via
+ * `output_config.effort` at the request level, not within the thinking config.
+ *
+ * This includes Claude Opus 4.6+, Opus 4.7+, Opus 4.8+, and Fable 5.
+ * Matches Cline's `isClaudeOpusAdaptiveThinkingModel()` logic.
  */
-export const isAdaptiveThinkingModel = (modelId: string): boolean => modelId === "claude-fable-5"
+export const isAdaptiveThinkingModel = (modelId: string): boolean => {
+	const id = modelId.toLowerCase()
+	const adaptiveVersions = ["4-6", "4.6", "4-7", "4.7", "4-8", "4.8"]
+	return (
+		id.includes("claude-fable-5") ||
+		adaptiveVersions.some(
+			(version) => id.includes(`claude-opus-${version}`) || id.includes(`claude-${version}-opus`),
+		)
+	)
+}
 
 export const getAnthropicReasoning = ({
 	model,

@@ -109,6 +109,7 @@ export const anthropicModels = {
 		contextWindow: 1_000_000, // Native 1M context window per official Anthropic docs
 		supportsImages: true,
 		supportsPromptCache: true,
+		supportsTemperature: false, // Adaptive thinking model — temperature not supported
 		inputPrice: 5.0, // $5 per million input tokens (≤200K context)
 		outputPrice: 25.0, // $25 per million output tokens (≤200K context)
 		cacheWritesPrice: 6.25, // $6.25 per million tokens
@@ -130,6 +131,7 @@ export const anthropicModels = {
 		contextWindow: 1_000_000, // Native 1M context window per official Anthropic docs
 		supportsImages: true,
 		supportsPromptCache: true,
+		supportsTemperature: false, // Adaptive thinking model — temperature not supported
 		inputPrice: 5.0, // $5 per million input tokens (≤200K context)
 		outputPrice: 25.0, // $25 per million output tokens (≤200K context)
 		cacheWritesPrice: 6.25, // $6.25 per million tokens
@@ -151,6 +153,7 @@ export const anthropicModels = {
 		contextWindow: 1_000_000, // Native 1M context window per official Anthropic docs
 		supportsImages: true,
 		supportsPromptCache: true,
+		supportsTemperature: false, // Adaptive thinking model — temperature not supported
 		inputPrice: 5.0, // $5 per million input tokens (≤200K context)
 		outputPrice: 25.0, // $25 per million output tokens (≤200K context)
 		cacheWritesPrice: 6.25, // $6.25 per million tokens
