@@ -73,6 +73,7 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 		const sanitizedMessages = filterNonAnthropicBlocks(messages)
 
 		// Add 1M context beta flag if enabled for supported models with 1M context tiers
+		// Note: claude-fable-5 has native 1M context and does NOT need this beta flag
 		if (
 			(modelId === "claude-sonnet-4-20250514" ||
 				modelId === "claude-sonnet-4-5" ||
@@ -80,8 +81,7 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 				modelId === "claude-sonnet-4-6" ||
 				modelId === "claude-opus-4-6" ||
 				modelId === "claude-opus-4-7" ||
-				modelId === "claude-opus-4-8" ||
-				modelId === "claude-fable-5") &&
+				modelId === "claude-opus-4-8") &&
 			this.options.anthropicBeta1MContext
 		) {
 			betas.push("context-1m-2025-08-07")
@@ -335,6 +335,7 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 		let info: ModelInfo = anthropicModels[id]
 
 		// If 1M context beta is enabled for supported models, update the model info
+		// Note: claude-fable-5 has native 1M context and does NOT need tier overrides
 		if (
 			(id === "claude-sonnet-4-20250514" ||
 				id === "claude-sonnet-4-5" ||
@@ -342,8 +343,7 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 				id === "claude-sonnet-4-6" ||
 				id === "claude-opus-4-6" ||
 				id === "claude-opus-4-7" ||
-				id === "claude-opus-4-8" ||
-				id === "claude-fable-5") &&
+				id === "claude-opus-4-8") &&
 			this.options.anthropicBeta1MContext
 		) {
 			// Use the tier pricing for 1M context

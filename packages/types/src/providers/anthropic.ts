@@ -9,7 +9,7 @@ export const anthropicDefaultModelId: AnthropicModelId = "claude-sonnet-4-5"
 export const anthropicModels = {
 	"claude-fable-5": {
 		maxTokens: 128_000,
-		contextWindow: 1_000_000, // Native 1M context window
+		contextWindow: 1_000_000, // Native 1M context window (no beta flag needed)
 		supportsImages: true,
 		supportsPromptCache: true,
 		supportsTemperature: false, // Temperature is deprecated for this model
@@ -18,23 +18,7 @@ export const anthropicModels = {
 		cacheWritesPrice: 12.5, // $12.50 per million tokens
 		cacheReadsPrice: 1.0, // $1.00 per million tokens
 		supportsReasoningBudget: true,
-		// Flat pricing across all context tiers
-		tiers: [
-			{
-				contextWindow: 200_000, // ≤200K context tier
-				inputPrice: 10.0,
-				outputPrice: 50.0,
-				cacheWritesPrice: 12.5,
-				cacheReadsPrice: 1.0,
-			},
-			{
-				contextWindow: 1_000_000, // >200K context tier
-				inputPrice: 10.0,
-				outputPrice: 50.0,
-				cacheWritesPrice: 12.5,
-				cacheReadsPrice: 1.0,
-			},
-		],
+		// No tiers needed — pricing is flat across all context sizes and 1M is native
 	},
 	"claude-sonnet-4-6": {
 		maxTokens: 64_000, // Overridden to 8k if `enableReasoningEffort` is false.

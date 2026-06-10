@@ -394,7 +394,7 @@ describe("AnthropicHandler", () => {
 			expect(requestBody.temperature).toBeUndefined()
 		})
 
-		it("should include 1M context beta header for claude-fable-5 when enabled", async () => {
+		it("should NOT include 1M context beta header for claude-fable-5 (native 1M)", async () => {
 			const fableHandler = new AnthropicHandler({
 				apiKey: "test-api-key",
 				apiModelId: "claude-fable-5",
@@ -413,7 +413,18 @@ describe("AnthropicHandler", () => {
 			}
 
 			const requestOptions = mockCreate.mock.calls[mockCreate.mock.calls.length - 1]?.[1]
-			expect(requestOptions?.headers?.["anthropic-beta"]).toContain("context-1m-2025-08-07")
+			// claude-fable-5 has native 1M context, so the beta flag should NOT be included
+			expect(requestOptions?.headers?.["anthropic-beta"]).not.toContain("context-1m-2025-08-07")
+		})
+
+		it("should have native 1M context window for claude-fable-5 without beta flag", () => {
+			const fableHandler = new AnthropicHandler({
+				apiKey: "test-api-key",
+				apiModelId: "claude-fable-5",
+				// Note: anthropicBeta1MContext is NOT set
+			})
+			const model = fableHandler.getModel()
+			expect(model.info.contextWindow).toBe(1_000_000)
 		})
 	})
 
