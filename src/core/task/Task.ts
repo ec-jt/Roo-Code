@@ -3350,14 +3350,21 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				// the assistant message is already in history. Otherwise, tool_result blocks would appear
 				// BEFORE their corresponding tool_use blocks, causing API errors.
 
-				// Check if we have any content to process (text or tool uses)
+				// Check if we have any content to process (text or tool uses).
+				// We also treat a non-empty reasoning/thinking block as a valid
+				// assistant response: adaptive-thinking models (Fable 5, Opus 4.7+)
+				// can produce a summarized thinking block plus tool calls whose
+				// JSON inputs were truncated, leaving zero text and tool_use blocks
+				// without parsed params. Falsely classifying that as "no assistant
+				// messages" produced a misleading error after a single bad parse.
 				const hasTextContent = assistantMessage.length > 0
+				const hasReasoningContent = reasoningMessage.trim().length > 0
 
 				const hasToolUses = this.assistantMessageContent.some(
 					(block) => block.type === "tool_use" || block.type === "mcp_tool_use",
 				)
 
-				if (hasTextContent || hasToolUses) {
+				if (hasTextContent || hasToolUses || hasReasoningContent) {
 					// Reset counter when we get a successful response with content
 					this.consecutiveNoAssistantMessagesCount = 0
 					// Display grounding sources to the user if they exist
