@@ -32,9 +32,50 @@ The following models use the new adaptive thinking API:
 | **Max Output Tokens** | Varies (8K-128K) | 128,000 |
 | **Disable Reasoning** | `{ type: "disabled" }` or omit | Just omit `thinking` (do NOT send `{ type: "disabled" }`) |
 
+### Thinking Visibility: the `display` Parameter (Critical!)
+
+On newer adaptive models (Fable 5, Opus 4.7/4.8), **thinking text is hidden by default**. The `thinking.display` field controls visibility:
+
+```json
+{ "thinking": { "type": "adaptive", "display": "summarized" } }
+```
+
+Live-API verified (June 2026):
+
+| `display` value | Result |
+|----------------|--------|
+| *(omitted / default on Fable 5, Opus 4.7+)* | `"omitted"` — thinking block is **empty** (`thinking: ""` + `signature_delta` only). The model still thinks (`usage.output_tokens_details.thinking_tokens` is populated) but you see nothing. |
+| `"summarized"` | A **summarized** version of the thinking streams via `thinking_delta` events. This is the most transparent mode these models allow. |
+| `"full"` | ❌ Rejected: `Input should be 'summarized', 'omitted'` — raw faithful reasoning is not exposed at all. |
+
+**Always send `display: "summarized"` if you want to show thinking.** Results per model with `display: "summarized"` on the same prompt:
+
+| Model | thinking_deltas | chars | Notes |
+|-------|--:|--:|----|
+| `claude-opus-4-6` | 25 | 1738 | Near-raw thinking (transitional model; also streams visible thinking without `display`) |
+| `claude-opus-4-8` | 10 | 629 | Compressed summary, first-person narration |
+| `claude-fable-5` | 6 | 463 | Compressed summary, first-person narration |
+
+The summaries are noticeably shorter than the actual internal reasoning (e.g. Fable's `thinking_tokens` can be 1400+ while the summary is ~100 tokens).
+
+**Key facts from the official Anthropic docs** ([Adaptive thinking — controlling thinking display](https://platform.claude.com/docs/en/build-with-claude/adaptive-thinking#working-with-thinking-blocks), [Extended thinking with tool use](https://platform.claude.com/docs/en/build-with-claude/extended-thinking#extended-thinking-with-tool-use)):
+
+- `display` defaults to `"omitted"` on **Claude Fable 5, Claude Mythos 5, Claude Opus 4.8, Claude Opus 4.7, and Claude Mythos Preview** — "a silent change from Claude Opus 4.6, where the default was `summarized`". On Opus 4.6, Sonnet 4.6, and earlier Claude 4 models the default is `"summarized"`.
+- **Raw/full thinking is not available via the API at all.** Summarization is the maximum transparency: "In rare cases where you need access to full thinking output for Claude 4 models, contact Anthropic sales."
+- Summarization is performed by a **different model**; the thinking model never sees the summary. You're billed for the **full** thinking tokens, not the summary tokens (billed output count won't match what you see).
+- `display` controls *visibility only* — thinking happens and is billed identically under every setting. The benefit of `"omitted"` is faster time-to-first-text-token.
+- The `signature` field is identical whether `display` is `"summarized"` or `"omitted"`, and carries the **encrypted full thinking** for multi-turn continuity. When passing thinking blocks back, pass them unchanged — the server decrypts the signature to reconstruct the original reasoning. Any text you put in the `thinking` field of a round-tripped omitted block is ignored.
+- `display` is invalid with `thinking.type: "disabled"`. With `type: "adaptive"`, if the model skips thinking for a simple request, no thinking block is produced regardless of `display`.
+- Switching `display` values between turns of a conversation is supported.
+
+**Consequences for UI work:**
+- Request `display: "summarized"` on every adaptive-model call, otherwise the thinking block arrives empty and the UI has nothing to render.
+- Even with summaries, expect far less text than budget-thinking models produce.
+- The encrypted signature should be round-tripped in multi-turn history if you want the model to retain access to its prior reasoning (esp. with tool use).
+
 ### Streaming Behavior (Live-API Verified)
 
-Adaptive thinking **does stream incrementally** — there is no buffering of the thinking block on the API side:
+Thinking (when visible) streams incrementally — no API-side buffering:
 
 - A hard reasoning prompt against `claude-opus-4-6` produced **87 separate `thinking_delta` events over ~79 seconds** before the first `text_delta` arrived.
 - A trivial prompt finishes thinking in under a second, often in a **single `thinking_delta`** — this can look like "thinking isn't streaming" when it's simply done instantly.
@@ -76,7 +117,8 @@ message = client.messages.create(
     max_tokens=128_000,
     # DO NOT send temperature — it's deprecated for this model
     thinking={
-        "type": "adaptive"
+        "type": "adaptive",
+        "display": "summarized"  # REQUIRED to see thinking text on Fable 5 / Opus 4.7+ (default is "omitted")
     },
     output_config={
         "effort": "high"  # "low" | "medium" | "high" | "xhigh" | "max"

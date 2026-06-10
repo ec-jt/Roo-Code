@@ -67,12 +67,17 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 		// instead of `budget_tokens`. These models reason by default, so thinking
 		// is ON unless the user explicitly disabled it (enableReasoningEffort === false).
 		// They also reject `{ type: "disabled" }` — just omit thinking entirely when off.
+		//
+		// `display: "summarized"` requests the most transparent thinking output the
+		// API allows (allowed values: "summarized" | "omitted"). On newer adaptive
+		// models the default is "omitted", which yields an EMPTY thinking block
+		// (signature only) — without this the UI would never show any reasoning.
 		const useAdaptiveThinking = isAdaptiveThinkingModel(modelId)
 		if (useAdaptiveThinking) {
 			if (this.options.enableReasoningEffort === false) {
 				thinking = undefined
 			} else {
-				thinking = { type: "adaptive" } as any
+				thinking = { type: "adaptive", display: "summarized" } as any
 				// When reasoning wasn't explicitly enabled in settings, maxTokens was
 				// clamped to ANTHROPIC_DEFAULT_MAX_TOKENS by getModelMaxOutputTokens.
 				// Adaptive thinking output (thinking + answer) needs the model's full

@@ -374,7 +374,7 @@ describe("AnthropicHandler", () => {
 
 			const requestBody = mockCreate.mock.calls[mockCreate.mock.calls.length - 1]?.[0]
 			// Should use adaptive thinking type
-			expect(requestBody.thinking).toEqual({ type: "adaptive" })
+			expect(requestBody.thinking).toEqual({ type: "adaptive", display: "summarized" })
 			// Should not send temperature
 			expect(requestBody.temperature).toBeUndefined()
 			// Should include output_config with effort
@@ -443,7 +443,7 @@ describe("AnthropicHandler", () => {
 			}
 
 			const requestBody = mockCreate.mock.calls[mockCreate.mock.calls.length - 1]?.[0]
-			expect(requestBody.thinking).toEqual({ type: "adaptive" })
+			expect(requestBody.thinking).toEqual({ type: "adaptive", display: "summarized" })
 			expect(requestBody.output_config).toEqual({ effort: "high" })
 			// Full output budget should be restored (not clamped to 8192)
 			expect(requestBody.max_tokens).toBe(128_000)
@@ -488,7 +488,7 @@ describe("AnthropicHandler", () => {
 				const requestBody = mockCreate.mock.calls[mockCreate.mock.calls.length - 1]?.[0]
 				const requestOptions = mockCreate.mock.calls[mockCreate.mock.calls.length - 1]?.[1]
 				expect(requestBody.model).toBe(modelId)
-				expect(requestBody.thinking).toEqual({ type: "adaptive" })
+				expect(requestBody.thinking).toEqual({ type: "adaptive", display: "summarized" })
 				expect(requestBody.output_config).toEqual({ effort: "high" })
 				expect(requestBody.temperature).toBeUndefined()
 				// These models are now handled by the prompt-caching switch branch
