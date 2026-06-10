@@ -104,12 +104,22 @@ export const getRooReasoning = ({
 	return { enabled: true, effort: reasoningEffort as ReasoningEffortExtended }
 }
 
+/**
+ * Models that use adaptive thinking (e.g. claude-fable-5) require
+ * `{ type: "adaptive" }` instead of `{ type: "enabled", budget_tokens: N }`.
+ * Effort is controlled via `output_config.effort` at the request level,
+ * not within the thinking config.
+ */
+export const isAdaptiveThinkingModel = (modelId: string): boolean => modelId === "claude-fable-5"
+
 export const getAnthropicReasoning = ({
 	model,
 	reasoningBudget,
 	settings,
 }: GetModelReasoningOptions): AnthropicReasoningParams | undefined =>
-	shouldUseReasoningBudget({ model, settings }) ? { type: "enabled", budget_tokens: reasoningBudget! } : undefined
+	shouldUseReasoningBudget({ model, settings })
+		? ({ type: "enabled", budget_tokens: reasoningBudget! } as AnthropicReasoningParams)
+		: undefined
 
 export const getOpenAiReasoning = ({
 	model,

@@ -95,7 +95,10 @@ export function getModelParams({
 		format,
 	})
 
-	let temperature = customTemperature ?? model.defaultTemperature ?? defaultTemperature
+	let temperature: number | undefined =
+		model.supportsTemperature === false
+			? undefined
+			: (customTemperature ?? model.defaultTemperature ?? defaultTemperature)
 	let reasoningBudget: ModelParams["reasoningBudget"] = undefined
 	let reasoningEffort: ModelParams["reasoningEffort"] = undefined
 	let verbosity: VerbosityLevel | undefined = customVerbosity
@@ -126,8 +129,10 @@ export function getModelParams({
 		}
 
 		// Let's assume that "Hybrid" reasoning models require a temperature of
-		// 1.0 since Anthropic does.
-		temperature = 1.0
+		// 1.0 since Anthropic does — unless the model doesn't support temperature at all.
+		if (model.supportsTemperature !== false) {
+			temperature = 1.0
+		}
 	} else if (shouldUseReasoningEffort({ model, settings })) {
 		// "Traditional" reasoning models use the `reasoningEffort` parameter.
 		// Only fallback to model default if user hasn't explicitly set a value.

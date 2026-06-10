@@ -16,6 +16,7 @@ import type { ApiHandlerOptions } from "../../shared/api"
 import { ApiStream } from "../transform/stream"
 import { getModelParams } from "../transform/model-params"
 import { filterNonAnthropicBlocks } from "../transform/anthropic-filter"
+import { isAdaptiveThinkingModel } from "../transform/reasoning"
 import { handleProviderError } from "./utils/error-handler"
 
 import { BaseProvider } from "./base-provider"
@@ -56,8 +57,17 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 			betas = ["fine-grained-tool-streaming-2025-05-14"],
 			maxTokens,
 			temperature,
+			reasoningEffort,
 			reasoning: thinking,
 		} = this.getModel()
+
+		// For adaptive thinking models (e.g. claude-fable-5), override the
+		// thinking config to use `{ type: "adaptive" }` and control effort
+		// via `output_config.effort` instead of `budget_tokens`.
+		const useAdaptiveThinking = isAdaptiveThinkingModel(modelId)
+		if (useAdaptiveThinking) {
+			thinking = { type: "adaptive" } as any
+		}
 
 		// Filter out non-Anthropic blocks (reasoning, thoughtSignature, etc.) before sending to the API
 		const sanitizedMessages = filterNonAnthropicBlocks(messages)
@@ -115,12 +125,19 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 				const lastUserMsgIndex = userMsgIndices[userMsgIndices.length - 1] ?? -1
 				const secondLastMsgUserIndex = userMsgIndices[userMsgIndices.length - 2] ?? -1
 
+				// Build output_config for adaptive thinking models (e.g. claude-fable-5)
+				// that use output_config.effort instead of thinking.budget_tokens.
+				const outputConfig = useAdaptiveThinking ? { effort: reasoningEffort ?? "high" } : undefined
+
 				stream = await this.client.messages.create(
 					{
 						model: modelId,
 						max_tokens: maxTokens ?? ANTHROPIC_DEFAULT_MAX_TOKENS,
 						temperature,
 						thinking,
+						// output_config is not in the SDK types yet (requires SDK >= 0.50+),
+						// so we cast to bypass type checking.
+						...(outputConfig && { output_config: outputConfig }),
 						// Setting cache breakpoint for system prompt so new tasks can reuse it.
 						system: [{ text: systemPrompt, type: "text", cache_control: cacheControl }],
 						messages: sanitizedMessages.map((message, index) => {

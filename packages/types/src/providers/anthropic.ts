@@ -12,6 +12,7 @@ export const anthropicModels = {
 		contextWindow: 1_000_000, // Native 1M context window
 		supportsImages: true,
 		supportsPromptCache: true,
+		supportsTemperature: false, // Temperature is deprecated for this model
 		inputPrice: 10.0, // $10 per million input tokens
 		outputPrice: 50.0, // $50 per million output tokens
 		cacheWritesPrice: 12.5, // $12.50 per million tokens

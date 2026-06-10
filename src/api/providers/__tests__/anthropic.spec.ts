@@ -334,6 +334,87 @@ describe("AnthropicHandler", () => {
 			expect(model.info.inputPrice).toBe(6.0)
 			expect(model.info.outputPrice).toBe(22.5)
 		})
+		it("should handle claude-fable-5 model with adaptive thinking and no temperature", () => {
+			const handler = new AnthropicHandler({
+				apiKey: "test-api-key",
+				apiModelId: "claude-fable-5",
+				enableReasoningEffort: true,
+			})
+			const model = handler.getModel()
+			expect(model.id).toBe("claude-fable-5")
+			expect(model.info.maxTokens).toBe(128_000)
+			expect(model.info.contextWindow).toBe(1_000_000)
+			expect(model.info.supportsTemperature).toBe(false)
+			expect(model.info.supportsReasoningBudget).toBe(true)
+			// Temperature should be undefined for claude-fable-5
+			expect(model.temperature).toBeUndefined()
+		})
+	})
+
+	describe("claude-fable-5 adaptive thinking", () => {
+		const systemPrompt = "You are a helpful assistant."
+
+		it("should use adaptive thinking type instead of enabled for claude-fable-5", async () => {
+			const fableHandler = new AnthropicHandler({
+				apiKey: "test-api-key",
+				apiModelId: "claude-fable-5",
+				enableReasoningEffort: true,
+			})
+
+			const stream = fableHandler.createMessage(systemPrompt, [
+				{
+					role: "user",
+					content: [{ type: "text" as const, text: "Hello" }],
+				},
+			])
+
+			for await (const _chunk of stream) {
+				// Consume stream
+			}
+
+			const requestBody = mockCreate.mock.calls[mockCreate.mock.calls.length - 1]?.[0]
+			// Should use adaptive thinking type
+			expect(requestBody.thinking).toEqual({ type: "adaptive" })
+			// Should not send temperature
+			expect(requestBody.temperature).toBeUndefined()
+			// Should include output_config with effort
+			expect(requestBody.output_config).toBeDefined()
+			expect(requestBody.output_config.effort).toBeDefined()
+		})
+
+		it("should not send temperature for claude-fable-5", async () => {
+			const fableHandler = new AnthropicHandler({
+				apiKey: "test-api-key",
+				apiModelId: "claude-fable-5",
+			})
+
+			await fableHandler.completePrompt("Test prompt")
+
+			const requestBody = mockCreate.mock.calls[mockCreate.mock.calls.length - 1]?.[0]
+			expect(requestBody.temperature).toBeUndefined()
+		})
+
+		it("should include 1M context beta header for claude-fable-5 when enabled", async () => {
+			const fableHandler = new AnthropicHandler({
+				apiKey: "test-api-key",
+				apiModelId: "claude-fable-5",
+				anthropicBeta1MContext: true,
+			})
+
+			const stream = fableHandler.createMessage(systemPrompt, [
+				{
+					role: "user",
+					content: [{ type: "text" as const, text: "Hello" }],
+				},
+			])
+
+			for await (const _chunk of stream) {
+				// Consume stream
+			}
+
+			const requestOptions = mockCreate.mock.calls[mockCreate.mock.calls.length - 1]?.[1]
+			expect(requestOptions?.headers?.["anthropic-beta"]).toContain("context-1m-2025-08-07")
+		})
 	})
 
 	describe("reasoning block filtering", () => {
