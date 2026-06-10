@@ -61,11 +61,13 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 			reasoning: thinking,
 		} = this.getModel()
 
-		// For adaptive thinking models (e.g. claude-fable-5), override the
+		// For adaptive thinking models (e.g. claude-fable-5, opus 4.6+), override the
 		// thinking config to use `{ type: "adaptive" }` and control effort
 		// via `output_config.effort` instead of `budget_tokens`.
+		// Only apply when reasoning is actually enabled (thinking !== undefined).
+		// These models reject `{ type: "disabled" }` — just omit thinking entirely.
 		const useAdaptiveThinking = isAdaptiveThinkingModel(modelId)
-		if (useAdaptiveThinking) {
+		if (useAdaptiveThinking && thinking) {
 			thinking = { type: "adaptive" } as any
 		}
 
@@ -125,9 +127,10 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 				const lastUserMsgIndex = userMsgIndices[userMsgIndices.length - 1] ?? -1
 				const secondLastMsgUserIndex = userMsgIndices[userMsgIndices.length - 2] ?? -1
 
-				// Build output_config for adaptive thinking models (e.g. claude-fable-5)
+				// Build output_config for adaptive thinking models (e.g. claude-fable-5, opus 4.6+)
 				// that use output_config.effort instead of thinking.budget_tokens.
-				const outputConfig = useAdaptiveThinking ? { effort: reasoningEffort ?? "high" } : undefined
+				// Only include when adaptive thinking is actually active (thinking is set).
+				const outputConfig = useAdaptiveThinking && thinking ? { effort: reasoningEffort ?? "high" } : undefined
 
 				stream = await this.client.messages.create(
 					{
