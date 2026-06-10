@@ -14,13 +14,15 @@ interface ReasoningBlockProps {
 	metadata?: any
 }
 
-export const ReasoningBlock = ({ content, isStreaming, isLast }: ReasoningBlockProps) => {
+export const ReasoningBlock = ({ content, ts, isStreaming, isLast }: ReasoningBlockProps) => {
 	const { t } = useTranslation()
 	const { reasoningBlockCollapsed } = useExtensionState()
 
 	const [isCollapsed, setIsCollapsed] = useState(reasoningBlockCollapsed)
 
-	const startTimeRef = useRef<number>(Date.now())
+	// Anchor the timer to the message timestamp rather than component mount so
+	// the duration survives re-mounts (e.g. scrolling with virtualized lists).
+	const startTimeRef = useRef<number>(ts || Date.now())
 	const [elapsed, setElapsed] = useState<number>(0)
 	const contentRef = useRef<HTMLDivElement>(null)
 
@@ -44,6 +46,15 @@ export const ReasoningBlock = ({ content, isStreaming, isLast }: ReasoningBlockP
 		setIsCollapsed(!isCollapsed)
 	}
 
+	const hasContent = (content?.trim()?.length ?? 0) > 0
+	const isActive = isLast && isStreaming
+
+	// Once streaming is over, an empty reasoning block carries no information —
+	// don't render a perpetual "Thinking" header with nothing in it.
+	if (!hasContent && !isActive) {
+		return null
+	}
+
 	return (
 		<div className="group">
 			<div
@@ -65,7 +76,7 @@ export const ReasoningBlock = ({ content, isStreaming, isLast }: ReasoningBlockP
 					/>
 				</div>
 			</div>
-			{(content?.trim()?.length ?? 0) > 0 && !isCollapsed && (
+			{hasContent && !isCollapsed && (
 				<div
 					ref={contentRef}
 					className="border-l border-vscode-descriptionForeground/20 ml-2 pl-4 pb-1 text-vscode-descriptionForeground break-words">

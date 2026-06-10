@@ -426,6 +426,138 @@ describe("AnthropicHandler", () => {
 			const model = fableHandler.getModel()
 			expect(model.info.contextWindow).toBe(1_000_000)
 		})
+
+		it("should enable adaptive thinking by default (no reasoning settings) for claude-fable-5", async () => {
+			const fableHandler = new AnthropicHandler({
+				apiKey: "test-api-key",
+				apiModelId: "claude-fable-5",
+				// Note: enableReasoningEffort is NOT set
+			})
+
+			const stream = fableHandler.createMessage(systemPrompt, [
+				{ role: "user", content: [{ type: "text" as const, text: "Hello" }] },
+			])
+
+			for await (const _chunk of stream) {
+				// Consume stream
+			}
+
+			const requestBody = mockCreate.mock.calls[mockCreate.mock.calls.length - 1]?.[0]
+			expect(requestBody.thinking).toEqual({ type: "adaptive" })
+			expect(requestBody.output_config).toEqual({ effort: "high" })
+			// Full output budget should be restored (not clamped to 8192)
+			expect(requestBody.max_tokens).toBe(128_000)
+		})
+
+		it("should omit thinking when reasoning is explicitly disabled for claude-fable-5", async () => {
+			const fableHandler = new AnthropicHandler({
+				apiKey: "test-api-key",
+				apiModelId: "claude-fable-5",
+				enableReasoningEffort: false,
+			})
+
+			const stream = fableHandler.createMessage(systemPrompt, [
+				{ role: "user", content: [{ type: "text" as const, text: "Hello" }] },
+			])
+
+			for await (const _chunk of stream) {
+				// Consume stream
+			}
+
+			const requestBody = mockCreate.mock.calls[mockCreate.mock.calls.length - 1]?.[0]
+			expect(requestBody.thinking).toBeUndefined()
+			expect(requestBody.output_config).toBeUndefined()
+		})
+
+		it.each(["claude-opus-4-7", "claude-opus-4-8"])(
+			"should enable adaptive thinking and prompt caching for %s",
+			async (modelId) => {
+				const opusHandler = new AnthropicHandler({
+					apiKey: "test-api-key",
+					apiModelId: modelId,
+				})
+
+				const stream = opusHandler.createMessage(systemPrompt, [
+					{ role: "user", content: [{ type: "text" as const, text: "Hello" }] },
+				])
+
+				for await (const _chunk of stream) {
+					// Consume stream
+				}
+
+				const requestBody = mockCreate.mock.calls[mockCreate.mock.calls.length - 1]?.[0]
+				const requestOptions = mockCreate.mock.calls[mockCreate.mock.calls.length - 1]?.[1]
+				expect(requestBody.model).toBe(modelId)
+				expect(requestBody.thinking).toEqual({ type: "adaptive" })
+				expect(requestBody.output_config).toEqual({ effort: "high" })
+				expect(requestBody.temperature).toBeUndefined()
+				// These models are now handled by the prompt-caching switch branch
+				expect(requestOptions?.headers?.["anthropic-beta"]).toContain("prompt-caching-2024-07-31")
+				// Cache breakpoints should be applied to the system prompt
+				expect(requestBody.system[0].cache_control).toEqual({ type: "ephemeral" })
+			},
+		)
+
+		it("should not force tool_choice when thinking is enabled", async () => {
+			const fableHandler = new AnthropicHandler({
+				apiKey: "test-api-key",
+				apiModelId: "claude-fable-5",
+			})
+
+			const stream = fableHandler.createMessage(
+				systemPrompt,
+				[{ role: "user", content: [{ type: "text" as const, text: "Hello" }] }],
+				{
+					taskId: "test-task",
+					tools: [
+						{
+							type: "function" as const,
+							function: { name: "get_weather", description: "", parameters: {} },
+						},
+					],
+					tool_choice: "required",
+				},
+			)
+
+			for await (const _chunk of stream) {
+				// Consume stream
+			}
+
+			const requestBody = mockCreate.mock.calls[mockCreate.mock.calls.length - 1]?.[0]
+			// Forced tool use ("any") is incompatible with thinking — must be omitted
+			expect(requestBody.tool_choice).toBeUndefined()
+			expect(requestBody.tools).toEqual(expect.any(Array))
+		})
+
+		it("should still force tool_choice when thinking is disabled", async () => {
+			const fableHandler = new AnthropicHandler({
+				apiKey: "test-api-key",
+				apiModelId: "claude-fable-5",
+				enableReasoningEffort: false,
+			})
+
+			const stream = fableHandler.createMessage(
+				systemPrompt,
+				[{ role: "user", content: [{ type: "text" as const, text: "Hello" }] }],
+				{
+					taskId: "test-task",
+					tools: [
+						{
+							type: "function" as const,
+							function: { name: "get_weather", description: "", parameters: {} },
+						},
+					],
+					tool_choice: "required",
+				},
+			)
+
+			for await (const _chunk of stream) {
+				// Consume stream
+			}
+
+			const requestBody = mockCreate.mock.calls[mockCreate.mock.calls.length - 1]?.[0]
+			expect(requestBody.tool_choice).toEqual({ type: "any", disable_parallel_tool_use: false })
+		})
 	})
 
 	describe("reasoning block filtering", () => {

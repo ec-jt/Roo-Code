@@ -52,6 +52,7 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 	): ApiStream {
 		let stream: AnthropicStream<Anthropic.Messages.RawMessageStreamEvent>
 		const cacheControl: CacheControlEphemeral = { type: "ephemeral" }
+		const model = this.getModel()
 		let {
 			id: modelId,
 			betas = ["fine-grained-tool-streaming-2025-05-14"],
@@ -59,16 +60,25 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 			temperature,
 			reasoningEffort,
 			reasoning: thinking,
-		} = this.getModel()
+		} = model
 
-		// For adaptive thinking models (e.g. claude-fable-5, opus 4.6+), override the
-		// thinking config to use `{ type: "adaptive" }` and control effort
-		// via `output_config.effort` instead of `budget_tokens`.
-		// Only apply when reasoning is actually enabled (thinking !== undefined).
-		// These models reject `{ type: "disabled" }` — just omit thinking entirely.
+		// For adaptive thinking models (e.g. claude-fable-5, opus 4.6+), use
+		// `{ type: "adaptive" }` and control effort via `output_config.effort`
+		// instead of `budget_tokens`. These models reason by default, so thinking
+		// is ON unless the user explicitly disabled it (enableReasoningEffort === false).
+		// They also reject `{ type: "disabled" }` — just omit thinking entirely when off.
 		const useAdaptiveThinking = isAdaptiveThinkingModel(modelId)
-		if (useAdaptiveThinking && thinking) {
-			thinking = { type: "adaptive" } as any
+		if (useAdaptiveThinking) {
+			if (this.options.enableReasoningEffort === false) {
+				thinking = undefined
+			} else {
+				thinking = { type: "adaptive" } as any
+				// When reasoning wasn't explicitly enabled in settings, maxTokens was
+				// clamped to ANTHROPIC_DEFAULT_MAX_TOKENS by getModelMaxOutputTokens.
+				// Adaptive thinking output (thinking + answer) needs the model's full
+				// output budget, so restore it.
+				maxTokens = this.options.modelMaxTokens || model.info.maxTokens || maxTokens
+			}
 		}
 
 		// Filter out non-Anthropic blocks (reasoning, thoughtSignature, etc.) before sending to the API
@@ -89,16 +99,27 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 			betas.push("context-1m-2025-08-07")
 		}
 
+		const toolChoice = convertOpenAIToolChoiceToAnthropic(metadata?.tool_choice, metadata?.parallelToolCalls)
+
 		const nativeToolParams = {
 			tools: convertOpenAIToolsToAnthropic(metadata?.tools ?? []),
-			tool_choice: convertOpenAIToolChoiceToAnthropic(metadata?.tool_choice, metadata?.parallelToolCalls),
+			// Anthropic rejects forced tool use (tool_choice type "any" or "tool")
+			// when extended/adaptive thinking is enabled, so fall back to letting
+			// the model decide in that case.
+			tool_choice:
+				thinking && toolChoice && (toolChoice.type === "any" || toolChoice.type === "tool")
+					? undefined
+					: toolChoice,
 		}
 
 		switch (modelId) {
 			case "claude-fable-5":
 			case "claude-sonnet-4-6":
+			case "claude-sonnet-4-5-20250929":
 			case "claude-sonnet-4-5":
 			case "claude-sonnet-4-20250514":
+			case "claude-opus-4-8":
+			case "claude-opus-4-7":
 			case "claude-opus-4-6":
 			case "claude-opus-4-5-20251101":
 			case "claude-opus-4-1-20250805":
@@ -171,8 +192,11 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 						switch (modelId) {
 							case "claude-fable-5":
 							case "claude-sonnet-4-6":
+							case "claude-sonnet-4-5-20250929":
 							case "claude-sonnet-4-5":
 							case "claude-sonnet-4-20250514":
+							case "claude-opus-4-8":
+							case "claude-opus-4-7":
 							case "claude-opus-4-6":
 							case "claude-opus-4-5-20251101":
 							case "claude-opus-4-1-20250805":
@@ -252,6 +276,11 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 					break
 				case "content_block_start":
 					switch (chunk.content_block.type) {
+						case "redacted_thinking":
+							// The model's thinking was redacted/encrypted by the API for
+							// safety reasons. Nothing displayable; we don't currently
+							// round-trip encrypted thinking payloads.
+							break
 						case "thinking":
 							// We may receive multiple text blocks, in which
 							// case just insert a line break between them.

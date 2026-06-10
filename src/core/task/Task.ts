@@ -2804,6 +2804,12 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 						switch (chunk.type) {
 							case "reasoning": {
 								reasoningMessage += chunk.text
+								// Skip empty reasoning updates (e.g. the empty string emitted
+								// by Anthropic's content_block_start for a thinking block).
+								// Saying "" would create an empty reasoning row in the UI.
+								if (!reasoningMessage) {
+									break
+								}
 								// Only apply formatting if the message contains sentence-ending punctuation followed by **
 								let formattedReasoning = reasoningMessage
 								if (reasoningMessage.includes("**")) {
