@@ -106,7 +106,7 @@ export const anthropicModels = {
 	},
 	"claude-opus-4-8": {
 		maxTokens: 128_000, // Overridden to 8k if `enableReasoningEffort` is false.
-		contextWindow: 1_000_000, // Native 1M context window per official Anthropic docs
+		contextWindow: 200_000, // 200K default, extendable to 1M with beta flag
 		supportsImages: true,
 		supportsPromptCache: true,
 		supportsTemperature: false, // Adaptive thinking model — temperature not supported
@@ -128,7 +128,7 @@ export const anthropicModels = {
 	},
 	"claude-opus-4-7": {
 		maxTokens: 128_000, // Overridden to 8k if `enableReasoningEffort` is false.
-		contextWindow: 1_000_000, // Native 1M context window per official Anthropic docs
+		contextWindow: 200_000, // 200K default, extendable to 1M with beta flag
 		supportsImages: true,
 		supportsPromptCache: true,
 		supportsTemperature: false, // Adaptive thinking model — temperature not supported
@@ -150,7 +150,7 @@ export const anthropicModels = {
 	},
 	"claude-opus-4-6": {
 		maxTokens: 128_000, // Overridden to 8k if `enableReasoningEffort` is false.
-		contextWindow: 1_000_000, // Native 1M context window per official Anthropic docs
+		contextWindow: 200_000, // 200K default, extendable to 1M with beta flag
 		supportsImages: true,
 		supportsPromptCache: true,
 		supportsTemperature: false, // Adaptive thinking model — temperature not supported
