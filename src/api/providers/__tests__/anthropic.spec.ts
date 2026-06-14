@@ -179,7 +179,7 @@ describe("AnthropicHandler", () => {
 			expect(mockCreate).toHaveBeenCalled()
 		})
 
-		it("should include 1M context beta header for Claude Sonnet 4.6 when enabled", async () => {
+		it("should NOT include retired 1M context beta header (1M is now default)", async () => {
 			const sonnet46Handler = new AnthropicHandler({
 				apiKey: "test-api-key",
 				apiModelId: "claude-sonnet-4-6",
@@ -198,7 +198,8 @@ describe("AnthropicHandler", () => {
 			}
 
 			const requestOptions = mockCreate.mock.calls[mockCreate.mock.calls.length - 1]?.[1]
-			expect(requestOptions?.headers?.["anthropic-beta"]).toContain("context-1m-2025-08-07")
+			// The 1M context beta has been retired — should NOT be in the header
+			expect(requestOptions?.headers?.["anthropic-beta"]).not.toContain("context-1m-2025-08-07")
 		})
 	})
 
@@ -295,7 +296,7 @@ describe("AnthropicHandler", () => {
 			const model = handler.getModel()
 			expect(model.id).toBe("claude-sonnet-4-5")
 			expect(model.info.maxTokens).toBe(64000)
-			expect(model.info.contextWindow).toBe(200000)
+			expect(model.info.contextWindow).toBe(1_000_000)
 			expect(model.info.supportsReasoningBudget).toBe(true)
 		})
 
@@ -311,28 +312,24 @@ describe("AnthropicHandler", () => {
 			expect(model.info.supportsReasoningBudget).toBe(true)
 		})
 
-		it("should enable 1M context for Claude 4.5 Sonnet when beta flag is set", () => {
+		it("should have native 1M context for Claude 4.5 Sonnet (beta retired)", () => {
 			const handler = new AnthropicHandler({
 				apiKey: "test-api-key",
 				apiModelId: "claude-sonnet-4-5",
-				anthropicBeta1MContext: true,
+				// No beta flag needed — 1M is now the default
 			})
 			const model = handler.getModel()
-			expect(model.info.contextWindow).toBe(1000000)
-			expect(model.info.inputPrice).toBe(6.0)
-			expect(model.info.outputPrice).toBe(22.5)
+			expect(model.info.contextWindow).toBe(1_000_000)
 		})
 
-		it("should enable 1M context for Claude 4.6 Sonnet when beta flag is set", () => {
+		it("should have native 1M context for Claude 4.6 Sonnet (beta retired)", () => {
 			const handler = new AnthropicHandler({
 				apiKey: "test-api-key",
 				apiModelId: "claude-sonnet-4-6",
-				anthropicBeta1MContext: true,
+				// No beta flag needed — 1M is now the default
 			})
 			const model = handler.getModel()
-			expect(model.info.contextWindow).toBe(1000000)
-			expect(model.info.inputPrice).toBe(6.0)
-			expect(model.info.outputPrice).toBe(22.5)
+			expect(model.info.contextWindow).toBe(1_000_000)
 		})
 		it("should handle claude-fable-5 model with adaptive thinking and no temperature", () => {
 			const handler = new AnthropicHandler({

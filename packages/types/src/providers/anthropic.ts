@@ -43,7 +43,7 @@ export const anthropicModels = {
 	},
 	"claude-sonnet-4-5-20250929": {
 		maxTokens: 64_000, // Overridden to 8k if `enableReasoningEffort` is false.
-		contextWindow: 200_000, // 200K default, extendable to 1M with beta flag
+		contextWindow: 1_000_000, // 1M context is now default (beta retired per Anthropic docs)
 		supportsImages: true,
 		supportsPromptCache: true,
 		inputPrice: 3.0, // $3 per million input tokens (≤200K context)
@@ -64,7 +64,7 @@ export const anthropicModels = {
 	},
 	"claude-sonnet-4-5": {
 		maxTokens: 64_000, // Overridden to 8k if `enableReasoningEffort` is false.
-		contextWindow: 200_000, // 200K default, extendable to 1M with beta flag
+		contextWindow: 1_000_000, // 1M context is now default (beta retired per Anthropic docs)
 		supportsImages: true,
 		supportsPromptCache: true,
 		inputPrice: 3.0, // $3 per million input tokens (≤200K context)
@@ -85,7 +85,7 @@ export const anthropicModels = {
 	},
 	"claude-sonnet-4-20250514": {
 		maxTokens: 64_000, // Overridden to 8k if `enableReasoningEffort` is false.
-		contextWindow: 200_000, // 200K default, extendable to 1M with beta flag
+		contextWindow: 1_000_000, // 1M context is now default (beta retired per Anthropic docs)
 		supportsImages: true,
 		supportsPromptCache: true,
 		inputPrice: 3.0, // $3 per million input tokens (≤200K context)
@@ -106,7 +106,7 @@ export const anthropicModels = {
 	},
 	"claude-opus-4-8": {
 		maxTokens: 128_000, // Overridden to 8k if `enableReasoningEffort` is false.
-		contextWindow: 200_000, // 200K default, extendable to 1M with beta flag
+		contextWindow: 1_000_000, // 1M context is now default (beta retired per Anthropic docs)
 		supportsImages: true,
 		supportsPromptCache: true,
 		supportsTemperature: false, // Adaptive thinking model — temperature not supported
@@ -128,7 +128,7 @@ export const anthropicModels = {
 	},
 	"claude-opus-4-7": {
 		maxTokens: 128_000, // Overridden to 8k if `enableReasoningEffort` is false.
-		contextWindow: 200_000, // 200K default, extendable to 1M with beta flag
+		contextWindow: 1_000_000, // 1M context is now default (beta retired per Anthropic docs)
 		supportsImages: true,
 		supportsPromptCache: true,
 		supportsTemperature: false, // Adaptive thinking model — temperature not supported
@@ -150,7 +150,7 @@ export const anthropicModels = {
 	},
 	"claude-opus-4-6": {
 		maxTokens: 128_000, // Overridden to 8k if `enableReasoningEffort` is false.
-		contextWindow: 200_000, // 200K default, extendable to 1M with beta flag
+		contextWindow: 1_000_000, // 1M context is now default (beta retired per Anthropic docs)
 		supportsImages: true,
 		supportsPromptCache: true,
 		supportsTemperature: false, // Adaptive thinking model — temperature not supported

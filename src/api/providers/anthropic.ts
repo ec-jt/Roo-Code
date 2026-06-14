@@ -89,20 +89,9 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 		// Filter out non-Anthropic blocks (reasoning, thoughtSignature, etc.) before sending to the API
 		const sanitizedMessages = filterNonAnthropicBlocks(messages)
 
-		// Add 1M context beta flag if enabled for supported models with 1M context tiers
-		// Note: claude-fable-5 has native 1M context and does NOT need this beta flag
-		if (
-			(modelId === "claude-sonnet-4-20250514" ||
-				modelId === "claude-sonnet-4-5" ||
-				modelId === "claude-sonnet-4-5-20250929" ||
-				modelId === "claude-sonnet-4-6" ||
-				modelId === "claude-opus-4-6" ||
-				modelId === "claude-opus-4-7" ||
-				modelId === "claude-opus-4-8") &&
-			this.options.anthropicBeta1MContext
-		) {
-			betas.push("context-1m-2025-08-07")
-		}
+		// NOTE: The 1M context window beta (context-1m-2025-08-07) has been retired by Anthropic.
+		// 1M context is now the default for Claude Sonnet 4.6+, Opus 4.6+, and Fable 5.
+		// No beta header is needed. See: https://platform.claude.com/docs/en/about-claude/models/migration-guide
 
 		const toolChoice = convertOpenAIToolChoiceToAnthropic(metadata?.tool_choice, metadata?.parallelToolCalls)
 
@@ -370,32 +359,9 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 		const modelId = this.options.apiModelId
 		let id = modelId && modelId in anthropicModels ? (modelId as AnthropicModelId) : anthropicDefaultModelId
 		let info: ModelInfo = anthropicModels[id]
-
-		// If 1M context beta is enabled for supported models, update the model info
-		// Note: claude-fable-5 has native 1M context and does NOT need tier overrides
-		if (
-			(id === "claude-sonnet-4-20250514" ||
-				id === "claude-sonnet-4-5" ||
-				id === "claude-sonnet-4-5-20250929" ||
-				id === "claude-sonnet-4-6" ||
-				id === "claude-opus-4-6" ||
-				id === "claude-opus-4-7" ||
-				id === "claude-opus-4-8") &&
-			this.options.anthropicBeta1MContext
-		) {
-			// Use the tier pricing for 1M context
-			const tier = info.tiers?.[0]
-			if (tier) {
-				info = {
-					...info,
-					contextWindow: tier.contextWindow,
-					inputPrice: tier.inputPrice,
-					outputPrice: tier.outputPrice,
-					cacheWritesPrice: tier.cacheWritesPrice,
-					cacheReadsPrice: tier.cacheReadsPrice,
-				}
-			}
-		}
+		// NOTE: The 1M context window beta has been retired by Anthropic.
+		// 1M context is now the default — no tier overrides needed for context window.
+		// Tiers in model definitions are retained for pricing differentiation only.
 
 		const params = getModelParams({
 			format: "anthropic",
