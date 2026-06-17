@@ -150,10 +150,9 @@ export const anthropicModels = {
 	},
 	"claude-opus-4-6": {
 		maxTokens: 128_000, // Overridden to 8k if `enableReasoningEffort` is false.
-		contextWindow: 1_000_000, // 1M context is now default (beta retired per Anthropic docs)
+		contextWindow: 200_000, // Default 200K, extendable to 1M with beta flag
 		supportsImages: true,
 		supportsPromptCache: true,
-		supportsTemperature: false, // Adaptive thinking model — temperature not supported
 		inputPrice: 5.0, // $5 per million input tokens (≤200K context)
 		outputPrice: 25.0, // $25 per million output tokens (≤200K context)
 		cacheWritesPrice: 6.25, // $6.25 per million tokens

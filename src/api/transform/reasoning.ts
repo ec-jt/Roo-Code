@@ -105,16 +105,18 @@ export const getRooReasoning = ({
 }
 
 /**
- * Models that use adaptive thinking require `{ type: "adaptive" }` instead
- * of `{ type: "enabled", budget_tokens: N }`. Effort is controlled via
- * `output_config.effort` at the request level, not within the thinking config.
+ * Models that require adaptive thinking (`{ type: "adaptive" }`) instead of
+ * budget-based thinking (`{ type: "enabled", budget_tokens: N }`).
  *
- * This includes Claude Opus 4.6+, Opus 4.7+, Opus 4.8+, and Fable 5.
- * Matches Cline's `isClaudeOpusAdaptiveThinkingModel()` logic.
+ * Important compatibility note:
+ * - `claude-opus-4-6` worked in the old Roo version with the standard
+ *   budget-based Anthropic thinking contract plus the optional 1M beta flag.
+ * - `claude-opus-4-7` and `claude-opus-4-8` use the newer adaptive contract.
+ * - `claude-fable-5` also uses adaptive thinking.
  */
 export const isAdaptiveThinkingModel = (modelId: string): boolean => {
 	const id = modelId.toLowerCase()
-	const adaptiveVersions = ["4-6", "4.6", "4-7", "4.7", "4-8", "4.8"]
+	const adaptiveVersions = ["4-7", "4.7", "4-8", "4.8"]
 	return (
 		id.includes("claude-fable-5") ||
 		adaptiveVersions.some(
