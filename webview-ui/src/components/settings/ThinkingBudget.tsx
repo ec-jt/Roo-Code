@@ -78,6 +78,7 @@ export const ThinkingBudget = ({ apiConfiguration, setApiConfigurationField, mod
 
 	// Build available reasoning efforts list from capability
 	const supports = modelInfo?.supportsReasoningEffort
+	const supportsExplicitDisable = Array.isArray(supports) && supports.includes("disable" as any)
 	const baseAvailableOptions: ReadonlyArray<ReasoningEffortWithMinimal> =
 		supports === true
 			? (reasoningEfforts as readonly ReasoningEffortWithMinimal[])
@@ -98,11 +99,14 @@ export const ThinkingBudget = ({ apiConfiguration, setApiConfigurationField, mod
 		? (["disable", ...baseAvailableOptions] as ReasoningEffortOption[])
 		: (baseAvailableOptions as ReadonlyArray<ReasoningEffortOption>)
 
-	// Default reasoning effort - use model's default if available
-	// GPT-5 models have "medium" as their default in the model configuration
+	// Default reasoning effort - use the model default when reasoning is required,
+	// or when the model explicitly supports an on/off "disable" option and ships
+	// a default effort (e.g. adaptive Anthropic / ZAI models that reason by default).
 	const modelDefaultReasoningEffort = modelInfo?.reasoningEffort as ReasoningEffortWithMinimal | undefined
-	const defaultReasoningEffort: ReasoningEffortOption = modelInfo?.requiredReasoningEffort
-		? modelDefaultReasoningEffort || "medium"
+	const shouldUseModelDefaultReasoningEffort =
+		!!modelDefaultReasoningEffort && (modelInfo?.requiredReasoningEffort || supportsExplicitDisable)
+	const defaultReasoningEffort: ReasoningEffortOption = shouldUseModelDefaultReasoningEffort
+		? modelDefaultReasoningEffort!
 		: "disable"
 	// Current reasoning effort from settings, or fall back to default
 	const storedReasoningEffort = apiConfiguration.reasoningEffort as ReasoningEffortOption | undefined
@@ -111,8 +115,7 @@ export const ThinkingBudget = ({ apiConfiguration, setApiConfigurationField, mod
 	// Set default reasoning effort when model supports it and no value is set
 	useEffect(() => {
 		if (isReasoningEffortSupported && !apiConfiguration.reasoningEffort) {
-			// Only set a default if reasoning is required, otherwise leave as undefined (which maps to "disable")
-			if (modelInfo?.requiredReasoningEffort && defaultReasoningEffort !== "disable") {
+			if (defaultReasoningEffort !== "disable") {
 				setApiConfigurationField("reasoningEffort", defaultReasoningEffort as ReasoningEffortWithMinimal, false)
 			}
 		}
@@ -128,13 +131,15 @@ export const ThinkingBudget = ({ apiConfiguration, setApiConfigurationField, mod
 	// "disable" turns off reasoning; "none" is a valid level (reasoning enabled)
 	useEffect(() => {
 		if (!isReasoningEffortSupported) return
-		const shouldEnable = modelInfo?.requiredReasoningEffort || currentReasoningEffort !== "disable"
+		const shouldEnable =
+			(modelInfo?.requiredReasoningEffort && !supportsExplicitDisable) || currentReasoningEffort !== "disable"
 		if (shouldEnable && apiConfiguration.enableReasoningEffort !== true) {
 			setApiConfigurationField("enableReasoningEffort", true, false)
 		}
 	}, [
 		isReasoningEffortSupported,
 		modelInfo?.requiredReasoningEffort,
+		supportsExplicitDisable,
 		currentReasoningEffort,
 		apiConfiguration.enableReasoningEffort,
 		setApiConfigurationField,

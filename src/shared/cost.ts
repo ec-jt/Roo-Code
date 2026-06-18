@@ -76,9 +76,10 @@ export function calculateApiCostAnthropic(
 	// For Anthropic: inputTokens does NOT include cached tokens
 	// Total input = base input + cache creation + cache reads
 	const totalInputTokens = inputTokens + cacheCreation + cacheRead
+	const effectiveModelInfo = applyLongContextPricing(modelInfo, totalInputTokens)
 
 	return calculateApiCostInternal(
-		modelInfo,
+		effectiveModelInfo,
 		inputTokens,
 		outputTokens,
 		cacheCreation,

@@ -2260,5 +2260,49 @@ describe("importExport", () => {
 				expect("modelMaxThinkingTokens" in provider).toBe(false) // Should be excluded
 			},
 		)
+
+		it("should retain modelMaxTokens but remove modelMaxThinkingTokens for adaptive effort-based Anthropic models", async () => {
+			;(vscode.window.showSaveDialog as Mock).mockResolvedValue({
+				fsPath: "/mock/path/roo-code-settings.json",
+			})
+
+			const realProviderSettingsManager = new ProviderSettingsManager(mockExtensionContext)
+			await realProviderSettingsManager.initialize()
+
+			await realProviderSettingsManager.saveConfig("anthropic-adaptive", {
+				apiProvider: "anthropic" as ProviderName,
+				apiModelId: "claude-opus-4-6",
+				id: "anthropic-adaptive-id",
+				apiKey: "test-key",
+				modelMaxTokens: 65536,
+				modelMaxThinkingTokens: 4096,
+				reasoningEffort: "high",
+			})
+
+			await realProviderSettingsManager.activateProfile({ name: "anthropic-adaptive" })
+
+			const mockGlobalSettings = {
+				mode: "code",
+				autoApprovalEnabled: true,
+			}
+
+			mockContextProxy.export.mockResolvedValue(mockGlobalSettings)
+			;(fs.mkdir as Mock).mockResolvedValue(undefined)
+
+			await exportSettings({
+				providerSettingsManager: realProviderSettingsManager,
+				contextProxy: mockContextProxy,
+			})
+
+			const exportedData = (safeWriteJson as Mock).mock.calls[0][1]
+			const providerProfiles = exportedData.providerProfiles.apiConfigs
+			const provider =
+				providerProfiles["anthropic-adaptive"] ??
+				providerProfiles["claude-opus-4-6"] ??
+				Object.values(providerProfiles).find((p: any) => p.apiModelId === "claude-opus-4-6")
+			expect(provider).toBeDefined()
+			expect(provider.apiModelId).toBe("claude-opus-4-6")
+			expect("modelMaxThinkingTokens" in provider).toBe(false)
+		})
 	})
 })

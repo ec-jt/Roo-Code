@@ -107,19 +107,15 @@ export const getRooReasoning = ({
 /**
  * Models that require adaptive thinking (`{ type: "adaptive" }`) instead of
  * budget-based thinking (`{ type: "enabled", budget_tokens: N }`).
- *
- * Important compatibility note:
- * - `claude-opus-4-6` worked in the old Roo version with the standard
- *   budget-based Anthropic thinking contract plus the optional 1M beta flag.
- * - `claude-opus-4-7` and `claude-opus-4-8` use the newer adaptive contract.
- * - `claude-fable-5` also uses adaptive thinking.
  */
 export const isAdaptiveThinkingModel = (modelId: string): boolean => {
 	const id = modelId.toLowerCase()
-	const adaptiveVersions = ["4-7", "4.7", "4-8", "4.8"]
+	const adaptiveOpusVersions = ["4-6", "4.6", "4-7", "4.7", "4-8", "4.8"]
 	return (
 		id.includes("claude-fable-5") ||
-		adaptiveVersions.some(
+		id.includes("claude-sonnet-4-6") ||
+		id.includes("claude-sonnet-4.6") ||
+		adaptiveOpusVersions.some(
 			(version) => id.includes(`claude-opus-${version}`) || id.includes(`claude-${version}-opus`),
 		)
 	)

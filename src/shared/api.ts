@@ -122,8 +122,11 @@ export const getModelMaxOutputTokens = ({
 		format === "anthropic" ||
 		(format === "openrouter" && modelId.startsWith("anthropic/"))
 
-	// For "Hybrid" reasoning models, discard the model's actual maxTokens for Anthropic contexts
-	if (model.supportsReasoningBudget && isAnthropicContext) {
+	// For legacy Anthropic reasoning-budget models, discard the model's actual
+	// maxTokens when reasoning is not enabled and reserve the standard 8192
+	// output buffer. Adaptive Anthropic models expose reasoning effort instead
+	// and should keep their model-native output budgets.
+	if (model.supportsReasoningBudget && isAnthropicContext && !model.supportsReasoningEffort) {
 		return ANTHROPIC_DEFAULT_MAX_TOKENS
 	}
 

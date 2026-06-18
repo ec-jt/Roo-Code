@@ -527,14 +527,18 @@ export class ProviderSettingsManager {
 						const apiHandler = buildApiHandler(configs[name])
 						const modelInfo = apiHandler.getModel().info
 
-						// Check if the model supports reasoning budgets
+						// Check if the model supports reasoning budgets.
+						// For adaptive effort-based Anthropic models, keep modelMaxTokens because it
+						// still acts as the request output cap even though modelMaxThinkingTokens is unused.
 						const supportsReasoningBudget =
 							modelInfo.supportsReasoningBudget || modelInfo.requiredReasoningBudget
+						const supportsReasoningEffort = !!modelInfo.supportsReasoningEffort
 
-						// If the model doesn't support reasoning budgets, remove the token fields
 						if (!supportsReasoningBudget) {
-							delete configs[name].modelMaxTokens
 							delete configs[name].modelMaxThinkingTokens
+							if (!supportsReasoningEffort) {
+								delete configs[name].modelMaxTokens
+							}
 						}
 					} catch (error) {
 						// If we can't build the API handler or get model info, skip filtering

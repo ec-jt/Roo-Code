@@ -112,6 +112,32 @@ describe("Cost Utility", () => {
 			expect(result.totalInputTokens).toBe(6000) // 1000 + 2000 + 3000
 			expect(result.totalOutputTokens).toBe(500)
 		})
+
+		it("should apply long-context pricing above the threshold for Anthropic models", () => {
+			const modelWithLongContextPricing: ModelInfo = {
+				...mockModelInfo,
+				contextWindow: 1_000_000,
+				longContextPricing: {
+					thresholdTokens: 200_000,
+					inputPriceMultiplier: 2,
+					outputPriceMultiplier: 1.5,
+					cacheWritesPriceMultiplier: 2,
+					cacheReadsPriceMultiplier: 2,
+				},
+			}
+
+			const result = calculateApiCostAnthropic(modelWithLongContextPricing, 210_000, 1_000, 10_000, 5_000)
+
+			// Total input = 225000, which triggers long-context pricing.
+			// Input cost: (6.0 / 1_000_000) * 210000 = 1.26
+			// Output cost: (22.5 / 1_000_000) * 1000 = 0.0225
+			// Cache writes: (7.5 / 1_000_000) * 10000 = 0.075
+			// Cache reads: (0.6 / 1_000_000) * 5000 = 0.003
+			// Total: 1.3605
+			expect(result.totalCost).toBeCloseTo(1.3605, 6)
+			expect(result.totalInputTokens).toBe(225_000)
+			expect(result.totalOutputTokens).toBe(1_000)
+		})
 	})
 
 	describe("calculateApiCostOpenAI", () => {

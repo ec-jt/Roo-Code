@@ -17,19 +17,31 @@ export const anthropicModels = {
 		outputPrice: 50.0, // $50 per million output tokens
 		cacheWritesPrice: 12.5, // $12.50 per million tokens
 		cacheReadsPrice: 1.0, // $1.00 per million tokens
-		supportsReasoningBudget: true,
+		supportsReasoningEffort: ["disable", "low", "medium", "high"],
+		requiredReasoningEffort: true,
+		reasoningEffort: "high",
 		// No tiers needed — pricing is flat across all context sizes and 1M is native
 	},
 	"claude-sonnet-4-6": {
-		maxTokens: 64_000, // Overridden to 8k if `enableReasoningEffort` is false.
+		maxTokens: 64_000,
 		contextWindow: 1_000_000, // Native 1M context window per official Anthropic docs
 		supportsImages: true,
 		supportsPromptCache: true,
+		supportsTemperature: false,
 		inputPrice: 3.0, // $3 per million input tokens (≤200K context)
 		outputPrice: 15.0, // $15 per million output tokens (≤200K context)
 		cacheWritesPrice: 3.75, // $3.75 per million tokens
 		cacheReadsPrice: 0.3, // $0.30 per million tokens
-		supportsReasoningBudget: true,
+		longContextPricing: {
+			thresholdTokens: 200_000,
+			inputPriceMultiplier: 2,
+			outputPriceMultiplier: 1.5,
+			cacheWritesPriceMultiplier: 2,
+			cacheReadsPriceMultiplier: 2,
+		},
+		supportsReasoningEffort: ["disable", "low", "medium", "high"],
+		requiredReasoningEffort: true,
+		reasoningEffort: "high",
 		// Tiered pricing: higher rates apply when using >200K context
 		tiers: [
 			{
@@ -43,7 +55,7 @@ export const anthropicModels = {
 	},
 	"claude-sonnet-4-5-20250929": {
 		maxTokens: 64_000, // Overridden to 8k if `enableReasoningEffort` is false.
-		contextWindow: 1_000_000, // 1M context is now default (beta retired per Anthropic docs)
+		contextWindow: 200_000,
 		supportsImages: true,
 		supportsPromptCache: true,
 		inputPrice: 3.0, // $3 per million input tokens (≤200K context)
@@ -51,20 +63,10 @@ export const anthropicModels = {
 		cacheWritesPrice: 3.75, // $3.75 per million tokens
 		cacheReadsPrice: 0.3, // $0.30 per million tokens
 		supportsReasoningBudget: true,
-		// Tiered pricing: higher rates apply when using >200K context via beta flag
-		tiers: [
-			{
-				contextWindow: 1_000_000, // 1M tokens with beta flag
-				inputPrice: 6.0, // $6 per million input tokens (>200K context)
-				outputPrice: 22.5, // $22.50 per million output tokens (>200K context)
-				cacheWritesPrice: 7.5, // $7.50 per million tokens (>200K context)
-				cacheReadsPrice: 0.6, // $0.60 per million tokens (>200K context)
-			},
-		],
 	},
 	"claude-sonnet-4-5": {
 		maxTokens: 64_000, // Overridden to 8k if `enableReasoningEffort` is false.
-		contextWindow: 1_000_000, // 1M context is now default (beta retired per Anthropic docs)
+		contextWindow: 200_000,
 		supportsImages: true,
 		supportsPromptCache: true,
 		inputPrice: 3.0, // $3 per million input tokens (≤200K context)
@@ -72,20 +74,10 @@ export const anthropicModels = {
 		cacheWritesPrice: 3.75, // $3.75 per million tokens
 		cacheReadsPrice: 0.3, // $0.30 per million tokens
 		supportsReasoningBudget: true,
-		// Tiered pricing: higher rates apply when using >200K context via beta flag
-		tiers: [
-			{
-				contextWindow: 1_000_000, // 1M tokens with beta flag
-				inputPrice: 6.0, // $6 per million input tokens (>200K context)
-				outputPrice: 22.5, // $22.50 per million output tokens (>200K context)
-				cacheWritesPrice: 7.5, // $7.50 per million tokens (>200K context)
-				cacheReadsPrice: 0.6, // $0.60 per million tokens (>200K context)
-			},
-		],
 	},
 	"claude-sonnet-4-20250514": {
 		maxTokens: 64_000, // Overridden to 8k if `enableReasoningEffort` is false.
-		contextWindow: 1_000_000, // 1M context is now default (beta retired per Anthropic docs)
+		contextWindow: 200_000,
 		supportsImages: true,
 		supportsPromptCache: true,
 		inputPrice: 3.0, // $3 per million input tokens (≤200K context)
@@ -93,19 +85,9 @@ export const anthropicModels = {
 		cacheWritesPrice: 3.75, // $3.75 per million tokens
 		cacheReadsPrice: 0.3, // $0.30 per million tokens
 		supportsReasoningBudget: true,
-		// Tiered pricing: higher rates apply when using >200K context via beta flag
-		tiers: [
-			{
-				contextWindow: 1_000_000, // 1M tokens with beta flag
-				inputPrice: 6.0, // $6 per million input tokens (>200K context)
-				outputPrice: 22.5, // $22.50 per million output tokens (>200K context)
-				cacheWritesPrice: 7.5, // $7.50 per million tokens (>200K context)
-				cacheReadsPrice: 0.6, // $0.60 per million tokens (>200K context)
-			},
-		],
 	},
 	"claude-opus-4-8": {
-		maxTokens: 128_000, // Overridden to 8k if `enableReasoningEffort` is false.
+		maxTokens: 128_000,
 		contextWindow: 1_000_000, // 1M context is now default (beta retired per Anthropic docs)
 		supportsImages: true,
 		supportsPromptCache: true,
@@ -114,7 +96,16 @@ export const anthropicModels = {
 		outputPrice: 25.0, // $25 per million output tokens (≤200K context)
 		cacheWritesPrice: 6.25, // $6.25 per million tokens
 		cacheReadsPrice: 0.5, // $0.50 per million tokens
-		supportsReasoningBudget: true,
+		longContextPricing: {
+			thresholdTokens: 200_000,
+			inputPriceMultiplier: 2,
+			outputPriceMultiplier: 1.5,
+			cacheWritesPriceMultiplier: 2,
+			cacheReadsPriceMultiplier: 2,
+		},
+		supportsReasoningEffort: ["disable", "low", "medium", "high"],
+		requiredReasoningEffort: true,
+		reasoningEffort: "high",
 		// Tiered pricing: higher rates apply when using >200K context
 		tiers: [
 			{
@@ -127,7 +118,7 @@ export const anthropicModels = {
 		],
 	},
 	"claude-opus-4-7": {
-		maxTokens: 128_000, // Overridden to 8k if `enableReasoningEffort` is false.
+		maxTokens: 128_000,
 		contextWindow: 1_000_000, // 1M context is now default (beta retired per Anthropic docs)
 		supportsImages: true,
 		supportsPromptCache: true,
@@ -136,7 +127,16 @@ export const anthropicModels = {
 		outputPrice: 25.0, // $25 per million output tokens (≤200K context)
 		cacheWritesPrice: 6.25, // $6.25 per million tokens
 		cacheReadsPrice: 0.5, // $0.50 per million tokens
-		supportsReasoningBudget: true,
+		longContextPricing: {
+			thresholdTokens: 200_000,
+			inputPriceMultiplier: 2,
+			outputPriceMultiplier: 1.5,
+			cacheWritesPriceMultiplier: 2,
+			cacheReadsPriceMultiplier: 2,
+		},
+		supportsReasoningEffort: ["disable", "low", "medium", "high"],
+		requiredReasoningEffort: true,
+		reasoningEffort: "high",
 		// Tiered pricing: higher rates apply when using >200K context
 		tiers: [
 			{
@@ -149,15 +149,25 @@ export const anthropicModels = {
 		],
 	},
 	"claude-opus-4-6": {
-		maxTokens: 128_000, // Overridden to 8k if `enableReasoningEffort` is false.
-		contextWindow: 200_000, // Default 200K, extendable to 1M with beta flag
+		maxTokens: 128_000,
+		contextWindow: 1_000_000, // Native 1M context window per official Anthropic docs
 		supportsImages: true,
 		supportsPromptCache: true,
+		supportsTemperature: false,
 		inputPrice: 5.0, // $5 per million input tokens (≤200K context)
 		outputPrice: 25.0, // $25 per million output tokens (≤200K context)
 		cacheWritesPrice: 6.25, // $6.25 per million tokens
 		cacheReadsPrice: 0.5, // $0.50 per million tokens
-		supportsReasoningBudget: true,
+		longContextPricing: {
+			thresholdTokens: 200_000,
+			inputPriceMultiplier: 2,
+			outputPriceMultiplier: 1.5,
+			cacheWritesPriceMultiplier: 2,
+			cacheReadsPriceMultiplier: 2,
+		},
+		supportsReasoningEffort: ["disable", "low", "medium", "high"],
+		requiredReasoningEffort: true,
+		reasoningEffort: "high",
 		// Tiered pricing: higher rates apply when using >200K context
 		tiers: [
 			{

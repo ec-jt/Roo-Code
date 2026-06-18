@@ -417,11 +417,10 @@ describe("useSelectedModel", () => {
 			} as any)
 		})
 
-		it("should apply 1M pricing tier for Claude Sonnet 4.6 when enabled", () => {
+		it("should use native 1M context metadata for Claude Sonnet 4.6 without a legacy beta toggle", () => {
 			const apiConfiguration: ProviderSettings = {
 				apiProvider: "anthropic",
 				apiModelId: "claude-sonnet-4-6",
-				anthropicBeta1MContext: true,
 			}
 
 			const wrapper = createWrapper()
@@ -429,8 +428,8 @@ describe("useSelectedModel", () => {
 
 			expect(result.current.id).toBe("claude-sonnet-4-6")
 			expect(result.current.info?.contextWindow).toBe(1_000_000)
-			expect(result.current.info?.inputPrice).toBe(6.0)
-			expect(result.current.info?.outputPrice).toBe(22.5)
+			expect(result.current.info?.inputPrice).toBe(3.0)
+			expect(result.current.info?.outputPrice).toBe(15.0)
 		})
 	})
 

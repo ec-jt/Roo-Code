@@ -692,7 +692,7 @@ describe("getModelParams", () => {
 		})
 	})
 
-	describe("Hybrid reasoning models (supportsReasoningEffort)", () => {
+	describe("Hybrid reasoning models (supportsReasoningBudget)", () => {
 		const model: ModelInfo = {
 			...baseModel,
 			maxTokens: 8000,
@@ -706,8 +706,8 @@ describe("getModelParams", () => {
 				model,
 			})
 
-			// For hybrid models (supportsReasoningBudget) in Anthropic contexts,
-			// should discard model's maxTokens and use ANTHROPIC_DEFAULT_MAX_TOKENS
+			// For budget-based Anthropic reasoning models without adaptive effort support,
+			// keep the legacy 8192 output reserve when reasoning is not enabled.
 			expect(result.maxTokens).toBe(ANTHROPIC_DEFAULT_MAX_TOKENS)
 			expect(result.reasoningBudget).toBeUndefined()
 		})
@@ -721,6 +721,44 @@ describe("getModelParams", () => {
 
 			expect(result.maxTokens).toBe(16384) // Default value.
 			expect(result.reasoningBudget).toBe(8192) // Default value.
+		})
+	})
+
+	describe("Adaptive Anthropic models", () => {
+		const model: ModelInfo = {
+			...baseModel,
+			contextWindow: 1_000_000,
+			maxTokens: 128_000,
+			supportsTemperature: false,
+			supportsReasoningEffort: ["disable", "low", "medium", "high"],
+			requiredReasoningEffort: true,
+			reasoningEffort: "high",
+		}
+
+		it("should use model-native maxTokens and default reasoning effort for adaptive Anthropic models", () => {
+			const result = getModelParams({
+				...anthropicParams,
+				settings: {},
+				model,
+			})
+
+			expect(result.maxTokens).toBe(128_000)
+			expect(result.temperature).toBeUndefined()
+			expect(result.reasoningBudget).toBeUndefined()
+			expect(result.reasoningEffort).toBe("high")
+			expect(result.reasoning).toBeUndefined()
+		})
+
+		it("should honor explicit reasoning effort selections for adaptive Anthropic models", () => {
+			const result = getModelParams({
+				...anthropicParams,
+				settings: { reasoningEffort: "low" },
+				model,
+			})
+
+			expect(result.maxTokens).toBe(128_000)
+			expect(result.reasoningBudget).toBeUndefined()
+			expect(result.reasoningEffort).toBe("low")
 		})
 	})
 

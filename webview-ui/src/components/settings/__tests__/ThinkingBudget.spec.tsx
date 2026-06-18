@@ -304,5 +304,21 @@ describe("ThinkingBudget", () => {
 			expect(screen.getByTestId("select-item-medium")).toBeInTheDocument()
 			expect(screen.getByTestId("select-item-high")).toBeInTheDocument()
 		})
+
+		it("should default to the model reasoning effort when explicit disable is supported", () => {
+			render(
+				<ThinkingBudget
+					{...defaultProps}
+					apiConfiguration={{}}
+					modelInfo={{
+						...reasoningEffortModelInfo,
+						supportsReasoningEffort: ["disable", "low", "medium", "high"],
+						reasoningEffort: "high",
+					}}
+				/>,
+			)
+
+			expect(defaultProps.setApiConfigurationField).toHaveBeenCalledWith("reasoningEffort", "high", false)
+		})
 	})
 })

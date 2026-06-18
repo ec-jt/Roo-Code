@@ -8,6 +8,7 @@ import {
 	getOpenAiReasoning,
 	getRooReasoning,
 	getGeminiReasoning,
+	isAdaptiveThinkingModel,
 	GetModelReasoningOptions,
 	OpenRouterReasoningParams,
 	AnthropicReasoningParams,
@@ -289,6 +290,22 @@ describe("reasoning.ts", () => {
 
 			expect(result).toBeUndefined()
 		})
+	})
+
+	describe("isAdaptiveThinkingModel", () => {
+		it.each(["claude-fable-5", "claude-sonnet-4-6", "claude-opus-4-6", "claude-opus-4-7", "claude-opus-4-8"])(
+			"should return true for adaptive Anthropic model %s",
+			(modelId) => {
+				expect(isAdaptiveThinkingModel(modelId)).toBe(true)
+			},
+		)
+
+		it.each(["claude-sonnet-4-5", "claude-opus-4-5-20251101", "claude-3-7-sonnet-20250219:thinking"])(
+			"should return false for non-adaptive Anthropic model %s",
+			(modelId) => {
+				expect(isAdaptiveThinkingModel(modelId)).toBe(false)
+			},
+		)
 	})
 
 	describe("getAnthropicReasoning", () => {

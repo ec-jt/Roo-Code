@@ -237,6 +237,24 @@ describe("AnthropicHandler", () => {
 			const result = await handler.completePrompt("Test prompt")
 			expect(result).toBe("")
 		})
+
+		it("should use model-native max_tokens and omit temperature for adaptive Anthropic models in completePrompt", async () => {
+			const handler = new AnthropicHandler({
+				apiKey: "test-api-key",
+				apiModelId: "claude-opus-4-6",
+			})
+
+			await handler.completePrompt("Test prompt")
+
+			expect(mockCreate).toHaveBeenCalledWith({
+				model: "claude-opus-4-6",
+				messages: [{ role: "user", content: "Test prompt" }],
+				max_tokens: 128_000,
+				temperature: undefined,
+				thinking: undefined,
+				stream: false,
+			})
+		})
 	})
 
 	describe("getModel", () => {
@@ -296,7 +314,7 @@ describe("AnthropicHandler", () => {
 			const model = handler.getModel()
 			expect(model.id).toBe("claude-sonnet-4-5")
 			expect(model.info.maxTokens).toBe(64000)
-			expect(model.info.contextWindow).toBe(1_000_000)
+			expect(model.info.contextWindow).toBe(200_000)
 			expect(model.info.supportsReasoningBudget).toBe(true)
 		})
 
@@ -309,17 +327,18 @@ describe("AnthropicHandler", () => {
 			expect(model.id).toBe("claude-sonnet-4-6")
 			expect(model.info.maxTokens).toBe(64000)
 			expect(model.info.contextWindow).toBe(1000000) // Native 1M context per official Anthropic docs
-			expect(model.info.supportsReasoningBudget).toBe(true)
+			expect(model.info.supportsTemperature).toBe(false)
+			expect(model.info.supportsReasoningEffort).toEqual(["disable", "low", "medium", "high"])
+			expect(model.info.requiredReasoningEffort).toBe(true)
 		})
 
-		it("should have native 1M context for Claude 4.5 Sonnet (beta retired)", () => {
+		it("should keep Claude 4.5 Sonnet on the 200K default context window", () => {
 			const handler = new AnthropicHandler({
 				apiKey: "test-api-key",
 				apiModelId: "claude-sonnet-4-5",
-				// No beta flag needed — 1M is now the default
 			})
 			const model = handler.getModel()
-			expect(model.info.contextWindow).toBe(1_000_000)
+			expect(model.info.contextWindow).toBe(200_000)
 		})
 
 		it("should have native 1M context for Claude 4.6 Sonnet (beta retired)", () => {
@@ -331,6 +350,22 @@ describe("AnthropicHandler", () => {
 			const model = handler.getModel()
 			expect(model.info.contextWindow).toBe(1_000_000)
 		})
+
+		it("should treat Claude Opus 4.6 as an adaptive 1M-context model", () => {
+			const handler = new AnthropicHandler({
+				apiKey: "test-api-key",
+				apiModelId: "claude-opus-4-6",
+			})
+			const model = handler.getModel()
+			expect(model.id).toBe("claude-opus-4-6")
+			expect(model.info.maxTokens).toBe(128_000)
+			expect(model.info.contextWindow).toBe(1_000_000)
+			expect(model.info.supportsTemperature).toBe(false)
+			expect(model.info.supportsReasoningEffort).toEqual(["disable", "low", "medium", "high"])
+			expect(model.info.requiredReasoningEffort).toBe(true)
+			expect(model.temperature).toBeUndefined()
+		})
+
 		it("should handle claude-fable-5 model with adaptive thinking and no temperature", () => {
 			const handler = new AnthropicHandler({
 				apiKey: "test-api-key",
@@ -342,7 +377,8 @@ describe("AnthropicHandler", () => {
 			expect(model.info.maxTokens).toBe(128_000)
 			expect(model.info.contextWindow).toBe(1_000_000)
 			expect(model.info.supportsTemperature).toBe(false)
-			expect(model.info.supportsReasoningBudget).toBe(true)
+			expect(model.info.supportsReasoningEffort).toEqual(["disable", "low", "medium", "high"])
+			expect(model.info.requiredReasoningEffort).toBe(true)
 			// Temperature should be undefined for claude-fable-5
 			expect(model.temperature).toBeUndefined()
 		})
@@ -466,7 +502,7 @@ describe("AnthropicHandler", () => {
 			expect(requestBody.output_config).toBeUndefined()
 		})
 
-		it.each(["claude-opus-4-7", "claude-opus-4-8"])(
+		it.each(["claude-sonnet-4-6", "claude-opus-4-6", "claude-opus-4-7", "claude-opus-4-8"])(
 			"should enable adaptive thinking and prompt caching for %s",
 			async (modelId) => {
 				const opusHandler = new AnthropicHandler({

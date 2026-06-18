@@ -80,6 +80,26 @@ describe("getModelMaxOutputTokens", () => {
 		expect(result).toBe(ANTHROPIC_DEFAULT_MAX_TOKENS) // Should be 8192, not 64_000
 	})
 
+	test("should return model.maxTokens for adaptive Anthropic models that use reasoning effort instead of budget tokens", () => {
+		const anthropicModelId = "claude-opus-4-6"
+		const model: ModelInfo = {
+			contextWindow: 1_000_000,
+			supportsPromptCache: true,
+			maxTokens: 128_000,
+			supportsTemperature: false,
+			supportsReasoningEffort: ["disable", "low", "medium", "high"],
+			requiredReasoningEffort: true,
+			reasoningEffort: "high",
+		}
+
+		const settings: ProviderSettings = {
+			apiProvider: "anthropic",
+		}
+
+		const result = getModelMaxOutputTokens({ modelId: anthropicModelId, model, settings })
+		expect(result).toBe(128_000)
+	})
+
 	test("should return model.maxTokens for non-Anthropic models that support reasoning budget but aren't using it", () => {
 		const geminiModelId = "gemini-2.5-flash-preview-04-17"
 		const model: ModelInfo = {

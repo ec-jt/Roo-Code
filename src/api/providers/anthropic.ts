@@ -62,7 +62,8 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 			reasoning: thinking,
 		} = model
 
-		// For adaptive thinking models (e.g. claude-fable-5, opus 4.6+), use
+		// For adaptive thinking models (e.g. claude-fable-5, claude-sonnet-4-6,
+		// claude-opus-4-6+), use
 		// `{ type: "adaptive" }` and control effort via `output_config.effort`
 		// instead of `budget_tokens`. These models reason by default, so thinking
 		// is ON unless the user explicitly disabled it (enableReasoningEffort === false).
@@ -88,12 +89,6 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 
 		// Filter out non-Anthropic blocks (reasoning, thoughtSignature, etc.) before sending to the API
 		const sanitizedMessages = filterNonAnthropicBlocks(messages)
-
-		// Preserve old working Opus 4.6 behavior: default 200K context, opt-in 1M
-		// context via the `context-1m-2025-08-07` beta flag.
-		if (modelId === "claude-opus-4-6" && this.options.anthropicBeta1MContext) {
-			betas.push("context-1m-2025-08-07")
-		}
 
 		const toolChoice = convertOpenAIToolChoiceToAnthropic(metadata?.tool_choice, metadata?.parallelToolCalls)
 
@@ -144,10 +139,19 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 				const lastUserMsgIndex = userMsgIndices[userMsgIndices.length - 1] ?? -1
 				const secondLastMsgUserIndex = userMsgIndices[userMsgIndices.length - 2] ?? -1
 
-				// Build output_config for adaptive thinking models (e.g. claude-fable-5, opus 4.6+)
+				// Build output_config for adaptive thinking models (e.g. claude-fable-5,
+				// claude-sonnet-4-6, claude-opus-4-6+)
 				// that use output_config.effort instead of thinking.budget_tokens.
 				// Only include when adaptive thinking is actually active (thinking is set).
-				const outputConfig = useAdaptiveThinking && thinking ? { effort: reasoningEffort ?? "high" } : undefined
+				const outputConfig =
+					useAdaptiveThinking && thinking
+						? {
+								effort: (reasoningEffort ?? model.info.reasoningEffort ?? "high") as
+									| "low"
+									| "medium"
+									| "high",
+							}
+						: undefined
 
 				stream = await this.client.messages.create(
 					{
@@ -360,23 +364,7 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 	getModel() {
 		const modelId = this.options.apiModelId
 		let id = modelId && modelId in anthropicModels ? (modelId as AnthropicModelId) : anthropicDefaultModelId
-		let info: ModelInfo = anthropicModels[id]
-
-		// Preserve old working Opus 4.6 behavior: 200K by default, 1M only when
-		// the legacy 1M beta toggle is enabled.
-		if (id === "claude-opus-4-6" && this.options.anthropicBeta1MContext) {
-			const tier = info.tiers?.[0]
-			if (tier) {
-				info = {
-					...info,
-					contextWindow: tier.contextWindow,
-					inputPrice: tier.inputPrice,
-					outputPrice: tier.outputPrice,
-					cacheWritesPrice: tier.cacheWritesPrice,
-					cacheReadsPrice: tier.cacheReadsPrice,
-				}
-			}
-		}
+		const info: ModelInfo = anthropicModels[id]
 
 		const params = getModelParams({
 			format: "anthropic",
@@ -399,11 +387,11 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 	}
 
 	async completePrompt(prompt: string) {
-		let { id: model, temperature } = this.getModel()
+		let { id: model, temperature, maxTokens } = this.getModel()
 
 		const message = await this.client.messages.create({
 			model,
-			max_tokens: ANTHROPIC_DEFAULT_MAX_TOKENS,
+			max_tokens: maxTokens ?? ANTHROPIC_DEFAULT_MAX_TOKENS,
 			thinking: undefined,
 			temperature,
 			messages: [{ role: "user", content: prompt }],
