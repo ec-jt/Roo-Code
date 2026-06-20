@@ -2,6 +2,7 @@ import * as path from "path"
 import * as vscode from "vscode"
 import os from "os"
 import crypto from "crypto"
+import fs from "fs"
 import { v7 as uuidv7 } from "uuid"
 import EventEmitter from "events"
 
@@ -136,6 +137,57 @@ const DEFAULT_USAGE_COLLECTION_TIMEOUT_MS = 5000 // 5 seconds
 const FORCED_CONTEXT_REDUCTION_PERCENT = 75 // Keep 75% of context (remove 25%) on context window errors
 const MAX_CONTEXT_WINDOW_RETRIES = 3 // Maximum retries for context window errors
 const MAX_EMPTY_RESPONSE_RETRIES = 3 // Maximum auto-retries for consecutive empty API responses before prompting user
+const DEBUG_LOG = "/tmp/roo-cli-debug.log"
+
+function debugTrace(message: string, data?: unknown) {
+	const timestamp = new Date().toISOString()
+	const entry = data
+		? `[${timestamp}] ${message}: ${JSON.stringify(data, null, 2)}\n`
+		: `[${timestamp}] ${message}\n`
+
+	try {
+		fs.appendFileSync(DEBUG_LOG, entry)
+	} catch {
+		// Best-effort file logging only.
+	}
+}
+
+function summarizeAssistantBlocks(blocks: AssistantMessageContent[]) {
+	return blocks.map((block: any, index: number) => ({
+		index,
+		type: block?.type,
+		partial: block?.partial,
+		name: block?.name,
+		id: block?.id,
+		paramsKeys: block?.params ? Object.keys(block.params) : undefined,
+		nativeArgKeys: block?.nativeArgs ? Object.keys(block.nativeArgs) : undefined,
+		contentLength: typeof block?.content === "string" ? block.content.length : undefined,
+	}))
+}
+
+function summarizeApiMessages(messages: ApiMessage[]) {
+	return messages.map((message: any, index: number) => {
+		const content = message?.content
+		const parts = Array.isArray(content) ? content : [content]
+
+		return {
+			index,
+			role: message?.role,
+			partCount: parts.length,
+			partTypes: parts.map((part: any) => (typeof part === "string" ? "text" : part?.type)),
+			textChars: parts.reduce(
+				(sum: number, part: any) =>
+					sum +
+					(typeof part === "string"
+						? part.length
+						: typeof part?.text === "string"
+							? part.text.length
+							: 0),
+				0,
+			),
+		}
+	})
+}
 
 export interface TaskOptions extends CreateTaskOptions {
 	provider: ClineProvider
@@ -2842,14 +2894,21 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 							case "tool_call_partial": {
 								// Process raw tool call chunk through NativeToolCallParser
 								// which handles tracking, buffering, and emits events
-								const events = NativeToolCallParser.processRawChunk({
-									index: chunk.index,
-									id: chunk.id,
-									name: chunk.name,
-									arguments: chunk.arguments,
-								})
+							const events = NativeToolCallParser.processRawChunk({
+								index: chunk.index,
+								id: chunk.id,
+								name: chunk.name,
+								arguments: chunk.arguments,
+							})
 
-								for (const event of events) {
+							debugTrace(`[FLOW][Task ${this.taskId}.${this.instanceId}] tool_call_partial chunk`, {
+								provider: this.apiConfiguration.apiProvider,
+								modelId: getModelId(this.apiConfiguration),
+								chunk,
+								events,
+							})
+
+							for (const event of events) {
 									if (event.type === "tool_call_start") {
 										// Guard against duplicate tool_call_start events for the same tool ID.
 										// This can occur due to stream retry, reconnection, or API quirks.
@@ -3264,6 +3323,11 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				// This is critical for MCP tools which need tool_call_end events to be properly
 				// converted from ToolUse to McpToolUse via finalizeStreamingToolCall()
 				const finalizeEvents = NativeToolCallParser.finalizeRawChunks()
+				debugTrace(`[FLOW][Task ${this.taskId}.${this.instanceId}] finalizeRawChunks`, {
+					finalizeEvents,
+					streamingToolCallIndices: Array.from(this.streamingToolCallIndices.entries()),
+					assistantMessageContent: summarizeAssistantBlocks(this.assistantMessageContent),
+				})
 				for (const event of finalizeEvents) {
 					if (event.type === "tool_call_end") {
 						// Finalize the streaming tool call
@@ -3364,6 +3428,19 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				const hasToolUses = this.assistantMessageContent.some(
 					(block) => block.type === "tool_use" || block.type === "mcp_tool_use",
 				)
+
+				debugTrace(`[STATE][Task ${this.taskId}.${this.instanceId}] assistant content classification`, {
+					provider: this.apiConfiguration.apiProvider,
+					modelId: getModelId(this.apiConfiguration),
+					hasTextContent,
+					hasReasoningContent,
+					hasToolUses,
+					assistantMessageLength: assistantMessage.length,
+					reasoningMessageLength: reasoningMessage.length,
+					assistantMessageContent: summarizeAssistantBlocks(this.assistantMessageContent),
+					streamingToolCallIndices: Array.from(this.streamingToolCallIndices.entries()),
+					pendingGroundingSources: pendingGroundingSources.length,
+				})
 
 				if (hasTextContent || hasToolUses || hasReasoningContent) {
 					// Reset counter when we get a successful response with content
@@ -3567,6 +3644,21 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 					// If there's no assistant_responses, that means we got no text
 					// or tool_use content blocks from API which we should assume is
 					// an error.
+
+					debugTrace(`[ERROR][Task ${this.taskId}.${this.instanceId}] no assistant content after stream`, {
+						provider: this.apiConfiguration.apiProvider,
+						modelId: getModelId(this.apiConfiguration),
+						assistantMessageLength: assistantMessage.length,
+						reasoningMessageLength: reasoningMessage.length,
+						assistantMessageContent: summarizeAssistantBlocks(this.assistantMessageContent),
+						streamingToolCallIndices: Array.from(this.streamingToolCallIndices.entries()),
+						conversationHistoryTail: this.apiConversationHistory.slice(-3).map((msg) => ({
+							role: msg.role,
+							contentTypes: Array.isArray(msg.content)
+								? msg.content.map((block: any) => block.type)
+								: typeof msg.content,
+						})),
+					})
 
 					// Increment consecutive no-assistant-messages counter
 					this.consecutiveNoAssistantMessagesCount++
@@ -3944,6 +4036,31 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 		// Get condensing configuration for automatic triggers.
 		const customCondensingPrompt = state?.customSupportPrompts?.CONDENSE
+		const resolvedModel = this.api.getModel()
+		const shouldDebugAnthropicRequest =
+			apiConfiguration?.apiProvider === "anthropic" || resolvedModel.id.toLowerCase().includes("claude")
+
+		if (shouldDebugAnthropicRequest) {
+			debugTrace("[ANTHROPIC][Task] attemptApiRequest:start", {
+				taskId: this.taskId,
+				instanceId: this.instanceId,
+				retryAttempt,
+				currentApiConfigName: state?.currentApiConfigName,
+				taskApiConfigName: this._taskApiConfigName,
+				apiProvider: apiConfiguration?.apiProvider,
+				configuredModelId: getModelId(apiConfiguration ?? this.apiConfiguration),
+				resolvedModelId: resolvedModel.id,
+				contextWindow: resolvedModel.info.contextWindow,
+				modelInfoMaxTokens: resolvedModel.info.maxTokens,
+				resolvedRequestMaxTokens: (resolvedModel as any).maxTokens,
+				temperature: (resolvedModel as any).temperature,
+				reasoning: (resolvedModel as any).reasoning,
+				reasoningEffort: (resolvedModel as any).reasoningEffort,
+				autoCondenseContext,
+				autoCondenseContextPercent,
+				storedHistoryCount: this.apiConversationHistory.length,
+			})
+		}
 
 		if (!options.skipProviderRateLimit) {
 			await this.maybeWaitForProviderRateLimit(retryAttempt)
@@ -3996,6 +4113,23 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				currentProfileId,
 				lastMessageTokens,
 			})
+
+			if (shouldDebugAnthropicRequest) {
+				debugTrace("[ANTHROPIC][Task] attemptApiRequest:context-check", {
+					taskId: this.taskId,
+					currentApiConfigName: state?.currentApiConfigName,
+					resolvedModelId: this.api.getModel().id,
+					contextTokens,
+					lastMessageTokens,
+					contextWindow,
+					maxTokens,
+					currentProfileId,
+					contextManagementWillRun,
+					autoCondenseContext,
+					autoCondenseContextPercent,
+					historyCount: this.apiConversationHistory.length,
+				})
+			}
 
 			// Send condenseTaskContextStarted BEFORE manageContext to show in-progress indicator
 			// This notification must be sent here (not earlier) because the early check uses stale token count
@@ -4212,6 +4346,23 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				: {}),
 		}
 
+		if (shouldDebugAnthropicRequest) {
+			debugTrace("[ANTHROPIC][Task] attemptApiRequest:dispatch", {
+				taskId: this.taskId,
+				instanceId: this.instanceId,
+				currentApiConfigName: state?.currentApiConfigName,
+				resolvedModelId: this.api.getModel().id,
+				contextWindow: modelInfo.contextWindow,
+				cleanConversationHistoryCount: cleanConversationHistory.length,
+				cleanConversationHistorySummary: summarizeApiMessages(cleanConversationHistory as ApiMessage[]),
+				systemPromptLength: systemPrompt.length,
+				toolsCount: metadata.tools?.length ?? 0,
+				toolNames: metadata.tools?.map((tool: any) => tool?.function?.name ?? tool?.name),
+				toolChoice: metadata.tool_choice,
+				parallelToolCalls: metadata.parallelToolCalls,
+			})
+		}
+
 		// Create an AbortController to allow cancelling the request mid-stream
 		this.currentRequestAbortController = new AbortController()
 		const abortSignal = this.currentRequestAbortController.signal
@@ -4262,6 +4413,20 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			this.isWaitingForFirstChunk = false
 			this.currentRequestAbortController = undefined
 			const isContextWindowExceededError = checkContextWindowExceededError(error)
+
+			if (shouldDebugAnthropicRequest) {
+				debugTrace("[ANTHROPIC][Task] attemptApiRequest:first-chunk-error", {
+					taskId: this.taskId,
+					instanceId: this.instanceId,
+					currentApiConfigName: state?.currentApiConfigName,
+					configuredModelId: getModelId(apiConfiguration ?? this.apiConfiguration),
+					resolvedModelId: this.api.getModel().id,
+					contextWindow: this.api.getModel().info.contextWindow,
+					isContextWindowExceededError,
+					retryAttempt,
+					error: serializeError(error),
+				})
+			}
 
 			// If it's a context window error and we haven't exceeded max retries for this error type
 			if (isContextWindowExceededError && retryAttempt < MAX_CONTEXT_WINDOW_RETRIES) {

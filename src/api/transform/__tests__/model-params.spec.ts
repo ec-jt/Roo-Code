@@ -760,6 +760,28 @@ describe("getModelParams", () => {
 			expect(result.reasoningBudget).toBeUndefined()
 			expect(result.reasoningEffort).toBe("low")
 		})
+
+		it("should keep Claude Opus 4.6 on the legacy reasoning-budget path", () => {
+			const legacyOpus46: ModelInfo = {
+				...baseModel,
+				contextWindow: 200_000,
+				maxTokens: 128_000,
+				supportsReasoningBudget: true,
+			}
+
+			const result = getModelParams({
+				...anthropicParams,
+				modelId: "claude-opus-4-6",
+				settings: {},
+				model: legacyOpus46,
+			})
+
+			expect(result.maxTokens).toBe(ANTHROPIC_DEFAULT_MAX_TOKENS)
+			expect(result.temperature).toBe(0)
+			expect(result.reasoningBudget).toBeUndefined()
+			expect(result.reasoningEffort).toBeUndefined()
+			expect(result.reasoning).toBeUndefined()
+		})
 	})
 
 	describe("Edge cases and combinations", () => {

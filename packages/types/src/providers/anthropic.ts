@@ -150,28 +150,19 @@ export const anthropicModels = {
 	},
 	"claude-opus-4-6": {
 		maxTokens: 128_000,
-		contextWindow: 1_000_000, // Native 1M context window per official Anthropic docs
+		contextWindow: 200_000, // Default 200K, extendable to 1M with legacy beta flag
 		supportsImages: true,
 		supportsPromptCache: true,
-		supportsTemperature: false,
+		supportsTemperature: true,
 		inputPrice: 5.0, // $5 per million input tokens (≤200K context)
 		outputPrice: 25.0, // $25 per million output tokens (≤200K context)
 		cacheWritesPrice: 6.25, // $6.25 per million tokens
 		cacheReadsPrice: 0.5, // $0.50 per million tokens
-		longContextPricing: {
-			thresholdTokens: 200_000,
-			inputPriceMultiplier: 2,
-			outputPriceMultiplier: 1.5,
-			cacheWritesPriceMultiplier: 2,
-			cacheReadsPriceMultiplier: 2,
-		},
-		supportsReasoningEffort: ["disable", "low", "medium", "high"],
-		requiredReasoningEffort: true,
-		reasoningEffort: "high",
-		// Tiered pricing: higher rates apply when using >200K context
+		supportsReasoningBudget: true,
+		// Tiered pricing for legacy 1M beta mode
 		tiers: [
 			{
-				contextWindow: 1_000_000, // >200K context tier
+				contextWindow: 1_000_000,
 				inputPrice: 10.0, // $10 per million input tokens (>200K context)
 				outputPrice: 37.5, // $37.50 per million output tokens (>200K context)
 				cacheWritesPrice: 12.5, // $12.50 per million tokens (>200K context)

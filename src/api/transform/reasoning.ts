@@ -110,7 +110,7 @@ export const getRooReasoning = ({
  */
 export const isAdaptiveThinkingModel = (modelId: string): boolean => {
 	const id = modelId.toLowerCase()
-	const adaptiveOpusVersions = ["4-6", "4.6", "4-7", "4.7", "4-8", "4.8"]
+	const adaptiveOpusVersions = ["4-7", "4.7", "4-8", "4.8"]
 	return (
 		id.includes("claude-fable-5") ||
 		id.includes("claude-sonnet-4-6") ||

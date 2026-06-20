@@ -1,3 +1,4 @@
+import fs from "fs"
 import { parseJSON } from "partial-json"
 
 import { type ToolName, toolNames, type FileEntry } from "@roo-code/types"
@@ -17,6 +18,28 @@ import type {
 	ApiStreamToolCallEndChunk,
 } from "../../api/transform/stream"
 import { MCP_TOOL_PREFIX, MCP_TOOL_SEPARATOR, parseMcpToolName, normalizeMcpToolName } from "../../utils/mcp-name"
+
+const DEBUG_LOG = "/tmp/roo-cli-debug.log"
+
+function debugTrace(message: string, data?: unknown) {
+	const timestamp = new Date().toISOString()
+	const entry = data
+		? `[${timestamp}] ${message}: ${JSON.stringify(data, null, 2)}\n`
+		: `[${timestamp}] ${message}\n`
+
+	try {
+		fs.appendFileSync(DEBUG_LOG, entry)
+	} catch {
+		// Best-effort file logging only.
+	}
+}
+
+function truncateValue(value: string | undefined, max = 300) {
+	if (!value) {
+		return value
+	}
+	return value.length > max ? `${value.slice(0, max)}…` : value
+}
 
 /**
  * Helper type to extract properly typed native arguments for a given tool.
@@ -160,6 +183,23 @@ export class NativeToolCallParser {
 			}
 		}
 
+		debugTrace("[FLOW][NativeToolCallParser] processRawChunk", {
+			chunk: {
+				...chunk,
+				arguments: truncateValue(chunk.arguments),
+			},
+			tracked: tracked
+				? {
+					id: tracked.id,
+					name: tracked.name,
+					hasStarted: tracked.hasStarted,
+					deltaBufferLength: tracked.deltaBuffer.length,
+				}
+				: undefined,
+			events,
+			rawChunkTrackerSize: this.rawChunkTracker.size,
+		})
+
 		return events
 	}
 
@@ -250,6 +290,7 @@ export class NativeToolCallParser {
 	public static processStreamingChunk(id: string, chunk: string): ToolUse | null {
 		const toolCall = this.streamingToolCalls.get(id)
 		if (!toolCall) {
+			debugTrace("[ERROR][NativeToolCallParser] processStreamingChunk missing toolCall", { id, chunk })
 			return null
 		}
 
@@ -273,16 +314,33 @@ export class NativeToolCallParser {
 			const originalName = toolCall.name !== resolvedName ? toolCall.name : undefined
 
 			// Create partial ToolUse with extracted values
-			return this.createPartialToolUse(
+			const partialToolUse = this.createPartialToolUse(
 				toolCall.id,
 				resolvedName,
 				partialArgs || {},
 				true, // partial
 				originalName,
 			)
+
+			debugTrace("[FLOW][NativeToolCallParser] processStreamingChunk parsed", {
+				id,
+				name: toolCall.name,
+				accumulatorLength: toolCall.argumentsAccumulator.length,
+				accumulatorPreview: truncateValue(toolCall.argumentsAccumulator),
+				partialArgKeys: partialArgs ? Object.keys(partialArgs) : [],
+				hasPartialToolUse: !!partialToolUse,
+			})
+
+			return partialToolUse
 		} catch {
 			// Even partial-json-parser can fail on severely malformed JSON
 			// Return null and wait for next chunk
+			debugTrace("[ERROR][NativeToolCallParser] processStreamingChunk parse failure", {
+				id,
+				name: toolCall.name,
+				accumulatorLength: toolCall.argumentsAccumulator.length,
+				accumulatorPreview: truncateValue(toolCall.argumentsAccumulator),
+			})
 			return null
 		}
 	}
@@ -294,6 +352,7 @@ export class NativeToolCallParser {
 	public static finalizeStreamingToolCall(id: string): ToolUse | McpToolUse | null {
 		const toolCall = this.streamingToolCalls.get(id)
 		if (!toolCall) {
+			debugTrace("[ERROR][NativeToolCallParser] finalizeStreamingToolCall missing toolCall", { id })
 			return null
 		}
 
@@ -307,6 +366,16 @@ export class NativeToolCallParser {
 
 		// Clean up streaming state
 		this.streamingToolCalls.delete(id)
+
+		debugTrace("[FLOW][NativeToolCallParser] finalizeStreamingToolCall", {
+			id,
+			name: toolCall.name,
+			accumulatorLength: toolCall.argumentsAccumulator.length,
+			accumulatorPreview: truncateValue(toolCall.argumentsAccumulator),
+			resultType: finalToolUse?.type,
+			resultName: finalToolUse?.type === "tool_use" ? finalToolUse.name : finalToolUse?.toolName,
+			hasNativeArgs: finalToolUse?.type === "tool_use" ? !!finalToolUse.nativeArgs : undefined,
+		})
 
 		return finalToolUse
 	}
@@ -1050,6 +1119,12 @@ export class NativeToolCallParser {
 
 			return result
 		} catch (error) {
+			debugTrace("[ERROR][NativeToolCallParser] parseToolCall failure", {
+				name: toolCall.name,
+				id: toolCall.id,
+				argumentsPreview: truncateValue(toolCall.arguments),
+				error: error instanceof Error ? error.message : String(error),
+			})
 			console.error(
 				`Failed to parse tool call arguments: ${error instanceof Error ? error.message : String(error)}`,
 			)

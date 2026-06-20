@@ -342,8 +342,28 @@ function getSelectedModel({
 			provider satisfies "anthropic" | "gemini-cli" | "fake-ai"
 			const id = apiConfiguration.apiModelId ?? defaultModelId
 			const baseInfo = anthropicModels[id as keyof typeof anthropicModels]
+			const baseModelInfo = baseInfo as ModelInfo | undefined
 
-			return { id, info: baseInfo }
+			if (
+				provider === "anthropic" &&
+				id === "claude-opus-4-6" &&
+				apiConfiguration.anthropicBeta1MContext &&
+				baseModelInfo?.tiers?.[0]
+			) {
+				const tier = baseModelInfo.tiers![0]
+				const info: ModelInfo = {
+					...baseModelInfo,
+					contextWindow: tier.contextWindow,
+					inputPrice: tier.inputPrice,
+					outputPrice: tier.outputPrice,
+					cacheWritesPrice: tier.cacheWritesPrice,
+					cacheReadsPrice: tier.cacheReadsPrice,
+				}
+
+				return { id, info }
+			}
+
+			return { id, info: baseModelInfo }
 		}
 	}
 }

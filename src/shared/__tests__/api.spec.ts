@@ -81,7 +81,7 @@ describe("getModelMaxOutputTokens", () => {
 	})
 
 	test("should return model.maxTokens for adaptive Anthropic models that use reasoning effort instead of budget tokens", () => {
-		const anthropicModelId = "claude-opus-4-6"
+		const anthropicModelId = "claude-opus-4-7"
 		const model: ModelInfo = {
 			contextWindow: 1_000_000,
 			supportsPromptCache: true,

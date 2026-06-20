@@ -1,3 +1,5 @@
+import fs from "fs"
+
 import { Anthropic } from "@anthropic-ai/sdk"
 import { Stream as AnthropicStream } from "@anthropic-ai/sdk/streaming"
 import { CacheControlEphemeral } from "@anthropic-ai/sdk/resources"
@@ -26,6 +28,59 @@ import {
 	convertOpenAIToolsToAnthropic,
 	convertOpenAIToolChoiceToAnthropic,
 } from "../../core/prompts/tools/native-tools/converters"
+
+const DEBUG_LOG = "/tmp/roo-cli-debug.log"
+
+function debugTrace(message: string, data?: unknown) {
+	const timestamp = new Date().toISOString()
+	const entry = data
+		? `[${timestamp}] ${message}: ${JSON.stringify(data, null, 2)}\n`
+		: `[${timestamp}] ${message}\n`
+
+	try {
+		fs.appendFileSync(DEBUG_LOG, entry)
+	} catch {
+		// Best-effort file logging only.
+	}
+}
+
+function summarizeAnthropicMessages(messages: Anthropic.Messages.MessageParam[]) {
+	return messages.map((message: any, index: number) => {
+		const content = message?.content
+		const parts = Array.isArray(content) ? content : [content]
+
+		return {
+			index,
+			role: message?.role,
+			partCount: parts.length,
+			partTypes: parts.map((part: any) => (typeof part === "string" ? "text" : part?.type)),
+			textChars: parts.reduce(
+				(sum: number, part: any) =>
+					sum +
+					(typeof part === "string"
+						? part.length
+						: typeof part?.text === "string"
+							? part.text.length
+							: 0),
+				0,
+			),
+		}
+	})
+}
+
+function summarizeAnthropicError(error: unknown) {
+	const err = error as any
+	return {
+		name: err?.name,
+		message: err?.message,
+		status: err?.status,
+		code: err?.code,
+		type: err?.type,
+		error: err?.error,
+		response: err?.response,
+		cause: err?.cause,
+	}
+}
 
 export class AnthropicHandler extends BaseProvider implements SingleCompletionHandler {
 	private options: ApiHandlerOptions
@@ -90,18 +145,55 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 		// Filter out non-Anthropic blocks (reasoning, thoughtSignature, etc.) before sending to the API
 		const sanitizedMessages = filterNonAnthropicBlocks(messages)
 
+		if (
+			modelId === "claude-opus-4-6" &&
+			this.options.anthropicBeta1MContext &&
+			!betas.includes("context-1m-2025-08-07")
+		) {
+			betas.push("context-1m-2025-08-07")
+		}
+
 		const toolChoice = convertOpenAIToolChoiceToAnthropic(metadata?.tool_choice, metadata?.parallelToolCalls)
 
 		const nativeToolParams = {
 			tools: convertOpenAIToolsToAnthropic(metadata?.tools ?? []),
 			// Anthropic rejects forced tool use (tool_choice type "any" or "tool")
-			// when extended/adaptive thinking is enabled, so fall back to letting
+			// when adaptive thinking is enabled, so fall back to letting
 			// the model decide in that case.
 			tool_choice:
-				thinking && toolChoice && (toolChoice.type === "any" || toolChoice.type === "tool")
+				useAdaptiveThinking && thinking && toolChoice && (toolChoice.type === "any" || toolChoice.type === "tool")
 					? undefined
 					: toolChoice,
 		}
+
+		debugTrace("[ANTHROPIC] createMessage:resolved-model", {
+			taskId: metadata?.taskId,
+			mode: metadata?.mode,
+			configuredModelId: this.options.apiModelId,
+			resolvedModelId: modelId,
+			contextWindow: model.info.contextWindow,
+			modelInfoMaxTokens: model.info.maxTokens,
+			effectiveMaxTokens: maxTokens,
+			temperature,
+			reasoningEffort,
+			thinking,
+			useAdaptiveThinking,
+			supportsReasoningEffort: model.info.supportsReasoningEffort,
+			supportsReasoningBudget: model.info.supportsReasoningBudget,
+			messageCount: messages.length,
+			sanitizedMessageCount: sanitizedMessages.length,
+			systemPromptLength: systemPrompt.length,
+			messageSummary: summarizeAnthropicMessages(sanitizedMessages),
+			toolCount: nativeToolParams.tools.length,
+			toolNames: nativeToolParams.tools.map((tool: any) => tool?.name),
+			toolChoice:
+				nativeToolParams.tool_choice && typeof nativeToolParams.tool_choice === "object"
+					? {
+						type: (nativeToolParams.tool_choice as any).type,
+						name: (nativeToolParams.tool_choice as any).name,
+					}
+					: nativeToolParams.tool_choice,
+		})
 
 		switch (modelId) {
 			case "claude-fable-5":
@@ -153,79 +245,135 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 							}
 						: undefined
 
-				stream = await this.client.messages.create(
-					{
-						model: modelId,
-						max_tokens: maxTokens ?? ANTHROPIC_DEFAULT_MAX_TOKENS,
-						temperature,
-						thinking,
-						// output_config is not in the SDK types yet (requires SDK >= 0.50+),
-						// so we cast to bypass type checking.
-						...(outputConfig && { output_config: outputConfig }),
-						// Setting cache breakpoint for system prompt so new tasks can reuse it.
-						system: [{ text: systemPrompt, type: "text", cache_control: cacheControl }],
-						messages: sanitizedMessages.map((message, index) => {
-							if (index === lastUserMsgIndex || index === secondLastMsgUserIndex) {
-								return {
-									...message,
-									content:
-										typeof message.content === "string"
-											? [{ type: "text", text: message.content, cache_control: cacheControl }]
-											: message.content.map((content, contentIndex) =>
-													contentIndex === message.content.length - 1
-														? { ...content, cache_control: cacheControl }
-														: content,
-												),
-								}
-							}
-							return message
-						}),
-						stream: true,
-						...nativeToolParams,
-					},
-					(() => {
-						// prompt caching: https://x.com/alexalbert__/status/1823751995901272068
-						// https://github.com/anthropics/anthropic-sdk-typescript?tab=readme-ov-file#default-headers
-						// https://github.com/anthropics/anthropic-sdk-typescript/commit/c920b77fc67bd839bfeb6716ceab9d7c9bbe7393
+				const requestMessages = sanitizedMessages.map((message, index) => {
+					if (index === lastUserMsgIndex || index === secondLastMsgUserIndex) {
+						return {
+							...message,
+							content:
+								typeof message.content === "string"
+									? [{ type: "text" as const, text: message.content, cache_control: cacheControl }]
+									: message.content.map((content, contentIndex) =>
+											contentIndex === message.content.length - 1
+												? { ...content, cache_control: cacheControl }
+												: content,
+									  ),
+						} as Anthropic.Messages.MessageParam
+					}
+					return message
+				}) as Anthropic.Messages.MessageParam[]
 
-						// Then check for models that support prompt caching
-						switch (modelId) {
-							case "claude-fable-5":
-							case "claude-sonnet-4-6":
-							case "claude-sonnet-4-5-20250929":
-							case "claude-sonnet-4-5":
-							case "claude-sonnet-4-20250514":
-							case "claude-opus-4-8":
-							case "claude-opus-4-7":
-							case "claude-opus-4-6":
-							case "claude-opus-4-5-20251101":
-							case "claude-opus-4-1-20250805":
-							case "claude-opus-4-20250514":
-							case "claude-3-7-sonnet-20250219":
-							case "claude-3-5-sonnet-20241022":
-							case "claude-3-5-haiku-20241022":
-							case "claude-3-opus-20240229":
-							case "claude-haiku-4-5-20251001":
-							case "claude-3-haiku-20240307":
-								betas.push("prompt-caching-2024-07-31")
-								return { headers: { "anthropic-beta": betas.join(",") } }
-							default:
-								return undefined
-						}
-					})(),
-				)
-				break
-			}
-			default: {
-				stream = (await this.client.messages.create({
+				const requestBody = {
 					model: modelId,
 					max_tokens: maxTokens ?? ANTHROPIC_DEFAULT_MAX_TOKENS,
 					temperature,
-					system: [{ text: systemPrompt, type: "text" }],
-					messages: sanitizedMessages,
-					stream: true,
+					thinking,
+					...(outputConfig && { output_config: outputConfig }),
+					// Setting cache breakpoint for system prompt so new tasks can reuse it.
+					system: [{ text: systemPrompt, type: "text" as const, cache_control: cacheControl }],
+					messages: requestMessages,
+					stream: true as const,
 					...nativeToolParams,
-				})) as any
+				}
+
+				const requestOptions = (() => {
+					// prompt caching: https://x.com/alexalbert__/status/1823751995901272068
+					// https://github.com/anthropics/anthropic-sdk-typescript?tab=readme-ov-file#default-headers
+					// https://github.com/anthropics/anthropic-sdk-typescript/commit/c920b77fc67bd839bfeb6716ceab9d7c9bbe7393
+
+					// Then check for models that support prompt caching
+					switch (modelId) {
+						case "claude-fable-5":
+						case "claude-sonnet-4-6":
+						case "claude-sonnet-4-5-20250929":
+						case "claude-sonnet-4-5":
+						case "claude-sonnet-4-20250514":
+						case "claude-opus-4-8":
+						case "claude-opus-4-7":
+						case "claude-opus-4-6":
+						case "claude-opus-4-5-20251101":
+						case "claude-opus-4-1-20250805":
+						case "claude-opus-4-20250514":
+						case "claude-3-7-sonnet-20250219":
+						case "claude-3-5-sonnet-20241022":
+						case "claude-3-5-haiku-20241022":
+						case "claude-3-opus-20240229":
+						case "claude-haiku-4-5-20251001":
+						case "claude-3-haiku-20240307":
+							betas.push("prompt-caching-2024-07-31")
+							return { headers: { "anthropic-beta": betas.join(",") } }
+						default:
+							return undefined
+					}
+				})()
+
+				debugTrace("[ANTHROPIC] createMessage:request", {
+					taskId: metadata?.taskId,
+					resolvedModelId: modelId,
+					contextWindow: model.info.contextWindow,
+					requestMaxTokens: requestBody.max_tokens,
+					thinking: requestBody.thinking,
+					outputConfig,
+					toolCount: nativeToolParams.tools.length,
+					headers: requestOptions?.headers,
+					messageSummary: summarizeAnthropicMessages(requestMessages),
+				})
+
+				try {
+					stream = await this.client.messages.create(
+						requestBody as Anthropic.Messages.MessageCreateParamsStreaming,
+						requestOptions,
+					)
+				} catch (error) {
+					debugTrace("[ANTHROPIC] createMessage:error", {
+						taskId: metadata?.taskId,
+						resolvedModelId: modelId,
+						contextWindow: model.info.contextWindow,
+						requestMaxTokens: requestBody.max_tokens,
+						thinking: requestBody.thinking,
+						error: summarizeAnthropicError(error),
+					})
+					throw error
+				}
+				break
+			}
+			default: {
+				const requestBody = {
+					model: modelId,
+					max_tokens: maxTokens ?? ANTHROPIC_DEFAULT_MAX_TOKENS,
+					temperature,
+					system: [{ text: systemPrompt, type: "text" as const }],
+					messages: sanitizedMessages,
+					stream: true as const,
+					...nativeToolParams,
+				}
+
+				debugTrace("[ANTHROPIC] createMessage:request", {
+					taskId: metadata?.taskId,
+					resolvedModelId: modelId,
+					contextWindow: model.info.contextWindow,
+					requestMaxTokens: requestBody.max_tokens,
+					thinking: undefined,
+					outputConfig: undefined,
+					toolCount: nativeToolParams.tools.length,
+					headers: undefined,
+					messageSummary: summarizeAnthropicMessages(requestBody.messages),
+				})
+
+				try {
+					stream = (await this.client.messages.create(
+						requestBody as Anthropic.Messages.MessageCreateParamsStreaming,
+					)) as any
+				} catch (error) {
+					debugTrace("[ANTHROPIC] createMessage:error", {
+						taskId: metadata?.taskId,
+						resolvedModelId: modelId,
+						contextWindow: model.info.contextWindow,
+						requestMaxTokens: requestBody.max_tokens,
+						thinking: undefined,
+						error: summarizeAnthropicError(error),
+					})
+					throw error
+				}
 				break
 			}
 		}
@@ -364,7 +512,21 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 	getModel() {
 		const modelId = this.options.apiModelId
 		let id = modelId && modelId in anthropicModels ? (modelId as AnthropicModelId) : anthropicDefaultModelId
-		const info: ModelInfo = anthropicModels[id]
+		let info: ModelInfo = anthropicModels[id]
+
+		if (id === "claude-opus-4-6" && this.options.anthropicBeta1MContext) {
+			const tier = info.tiers?.[0]
+			if (tier) {
+				info = {
+					...info,
+					contextWindow: tier.contextWindow,
+					inputPrice: tier.inputPrice,
+					outputPrice: tier.outputPrice,
+					cacheWritesPrice: tier.cacheWritesPrice,
+					cacheReadsPrice: tier.cacheReadsPrice,
+				}
+			}
+		}
 
 		const params = getModelParams({
 			format: "anthropic",

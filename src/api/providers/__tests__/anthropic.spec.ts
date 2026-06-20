@@ -241,13 +241,13 @@ describe("AnthropicHandler", () => {
 		it("should use model-native max_tokens and omit temperature for adaptive Anthropic models in completePrompt", async () => {
 			const handler = new AnthropicHandler({
 				apiKey: "test-api-key",
-				apiModelId: "claude-opus-4-6",
+				apiModelId: "claude-opus-4-7",
 			})
 
 			await handler.completePrompt("Test prompt")
 
 			expect(mockCreate).toHaveBeenCalledWith({
-				model: "claude-opus-4-6",
+				model: "claude-opus-4-7",
 				messages: [{ role: "user", content: "Test prompt" }],
 				max_tokens: 128_000,
 				temperature: undefined,
@@ -351,7 +351,7 @@ describe("AnthropicHandler", () => {
 			expect(model.info.contextWindow).toBe(1_000_000)
 		})
 
-		it("should treat Claude Opus 4.6 as an adaptive 1M-context model", () => {
+		it("should keep Claude Opus 4.6 on the legacy 200K budget-based path by default", () => {
 			const handler = new AnthropicHandler({
 				apiKey: "test-api-key",
 				apiModelId: "claude-opus-4-6",
@@ -359,11 +359,22 @@ describe("AnthropicHandler", () => {
 			const model = handler.getModel()
 			expect(model.id).toBe("claude-opus-4-6")
 			expect(model.info.maxTokens).toBe(128_000)
+			expect(model.info.contextWindow).toBe(200_000)
+			expect(model.info.supportsReasoningBudget).toBe(true)
+			expect(model.info.supportsReasoningEffort).toBeUndefined()
+			expect(model.temperature).toBe(0)
+		})
+
+		it("should enable legacy 1M beta context for Claude Opus 4.6 when anthropicBeta1MContext is set", () => {
+			const handler = new AnthropicHandler({
+				apiKey: "test-api-key",
+				apiModelId: "claude-opus-4-6",
+				anthropicBeta1MContext: true,
+			})
+			const model = handler.getModel()
 			expect(model.info.contextWindow).toBe(1_000_000)
-			expect(model.info.supportsTemperature).toBe(false)
-			expect(model.info.supportsReasoningEffort).toEqual(["disable", "low", "medium", "high"])
-			expect(model.info.requiredReasoningEffort).toBe(true)
-			expect(model.temperature).toBeUndefined()
+			expect(model.info.inputPrice).toBe(10.0)
+			expect(model.info.outputPrice).toBe(37.5)
 		})
 
 		it("should handle claude-fable-5 model with adaptive thinking and no temperature", () => {
@@ -502,7 +513,7 @@ describe("AnthropicHandler", () => {
 			expect(requestBody.output_config).toBeUndefined()
 		})
 
-		it.each(["claude-sonnet-4-6", "claude-opus-4-6", "claude-opus-4-7", "claude-opus-4-8"])(
+		it.each(["claude-sonnet-4-6", "claude-opus-4-7", "claude-opus-4-8"])(
 			"should enable adaptive thinking and prompt caching for %s",
 			async (modelId) => {
 				const opusHandler = new AnthropicHandler({
@@ -530,6 +541,33 @@ describe("AnthropicHandler", () => {
 				expect(requestBody.system[0].cache_control).toEqual({ type: "ephemeral" })
 			},
 		)
+
+		it("should keep Claude Opus 4.6 on budget-based thinking and include the legacy 1M beta header when enabled", async () => {
+			const opus46Handler = new AnthropicHandler({
+				apiKey: "test-api-key",
+				apiModelId: "claude-opus-4-6",
+				anthropicBeta1MContext: true,
+				enableReasoningEffort: true,
+				modelMaxTokens: 32_768,
+				modelMaxThinkingTokens: 8_192,
+			})
+
+			const stream = opus46Handler.createMessage(systemPrompt, [
+				{ role: "user", content: [{ type: "text" as const, text: "Hello" }] },
+			])
+
+			for await (const _chunk of stream) {
+				// Consume stream
+			}
+
+			const requestBody = mockCreate.mock.calls[mockCreate.mock.calls.length - 1]?.[0]
+			const requestOptions = mockCreate.mock.calls[mockCreate.mock.calls.length - 1]?.[1]
+			expect(requestBody.model).toBe("claude-opus-4-6")
+			expect(requestBody.thinking).toEqual({ type: "enabled", budget_tokens: 8_192 })
+			expect(requestBody.output_config).toBeUndefined()
+			expect(requestBody.temperature).toBe(1.0)
+			expect(requestOptions?.headers?.["anthropic-beta"]).toContain("context-1m-2025-08-07")
+		})
 
 		it("should not force tool_choice when thinking is enabled", async () => {
 			const fableHandler = new AnthropicHandler({
