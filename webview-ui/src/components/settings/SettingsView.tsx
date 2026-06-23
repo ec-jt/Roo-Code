@@ -205,6 +205,8 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 		imageGenerationProvider,
 		braveApiKey,
 		context7ApiKey,
+		githubToken,
+		nativeToolEnabled,
 		openRouterImageApiKey,
 		openRouterImageGenerationSelectedModel,
 		reasoningBlockCollapsed,
@@ -360,6 +362,25 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 		})
 	}, [])
 
+	const setGithubToken = useCallback((token: string) => {
+		setCachedState((prevState) => {
+			if ((prevState as any).githubToken !== token) {
+				setChangeDetected(true)
+			}
+			return { ...prevState, githubToken: token } as typeof prevState
+		})
+	}, [])
+
+	const setNativeToolEnabled = useCallback((map: Record<string, boolean>) => {
+		setCachedState((prevState) => {
+			const prev = (prevState as any).nativeToolEnabled ?? {}
+			if (JSON.stringify(prev) !== JSON.stringify(map)) {
+				setChangeDetected(true)
+			}
+			return { ...prevState, nativeToolEnabled: map } as typeof prevState
+		})
+	}, [])
+
 	const setCustomSupportPromptsField = useCallback((prompts: Record<string, string | undefined>) => {
 		setCachedState((prevState) => {
 			const previousStr = JSON.stringify(prevState.customSupportPrompts)
@@ -444,6 +465,8 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 					imageGenerationProvider,
 					braveApiKey,
 					context7ApiKey,
+					githubToken,
+					nativeToolEnabled,
 					openRouterImageApiKey,
 					openRouterImageGenerationSelectedModel,
 					experiments,
@@ -945,6 +968,8 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 								imageGenerationProvider={imageGenerationProvider}
 								braveApiKey={braveApiKey as string | undefined}
 								context7ApiKey={context7ApiKey as string | undefined}
+								githubToken={githubToken as string | undefined}
+								nativeToolEnabled={nativeToolEnabled as Record<string, boolean> | undefined}
 								openRouterImageApiKey={openRouterImageApiKey as string | undefined}
 								openRouterImageGenerationSelectedModel={
 									openRouterImageGenerationSelectedModel as string | undefined
@@ -952,6 +977,8 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 								setImageGenerationProvider={setImageGenerationProvider}
 								setBraveApiKey={setBraveApiKey}
 								setContext7ApiKey={setContext7ApiKey}
+								setGithubToken={setGithubToken}
+								setNativeToolEnabled={setNativeToolEnabled}
 								setOpenRouterImageApiKey={setOpenRouterImageApiKey}
 								setImageGenerationSelectedModel={setImageGenerationSelectedModel}
 							/>

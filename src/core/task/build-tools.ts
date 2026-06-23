@@ -112,9 +112,71 @@ export async function buildNativeToolsArrayWithRestrictions(options: BuildToolsO
 	const supportsImages = modelInfo?.supportsImages ?? false
 
 	// Build native tools with dynamic read_file tool based on settings.
-	const nativeTools = getNativeTools({
+	let nativeTools = getNativeTools({
 		supportsImages,
 	})
+
+	// Per-tool enable map and credentials live in extension state.
+	// We resolve them here so the gating works for every call site without
+	// changing the BuildToolsOptions shape used by callers.
+	const state = await provider.getState()
+	const nativeToolEnabled = (state as any)?.nativeToolEnabled as Record<string, boolean> | undefined
+	const braveApiKey = (state as any)?.braveApiKey as string | undefined
+	const context7ApiKey = (state as any)?.context7ApiKey as string | undefined
+	const githubToken = (state as any)?.githubToken as string | undefined
+
+	// Build the set of tool names that should be excluded because the user
+	// turned them off in Settings → Experimental → Native Tool Integrations
+	// OR because a required credential is missing.
+	const nativeToolGate = new Set<string>()
+	const isUserEnabled = (name: string): boolean => {
+		if (!nativeToolEnabled) return true
+		const v = nativeToolEnabled[name]
+		return v !== false
+	}
+	const CREDENTIAL_REQUIREMENTS: Record<string, string | undefined> = {
+		brave_web_search: braveApiKey,
+		brave_local_search: braveApiKey,
+		context7_resolve_library_id: context7ApiKey,
+		context7_query_docs: context7ApiKey,
+		// git_* tools work without a token on public repos; we only auto-disable
+		// them when the user has explicitly toggled them off.
+	}
+	for (const name of [
+		"brave_web_search",
+		"brave_local_search",
+		"context7_resolve_library_id",
+		"context7_query_docs",
+		"file_system",
+		"markdownify",
+		"git_tools",
+		"git_repo_research",
+	]) {
+		const requiredCred = CREDENTIAL_REQUIREMENTS[name]
+		if (!isUserEnabled(name)) {
+			nativeToolGate.add(name)
+			continue
+		}
+		if (requiredCred !== undefined && !requiredCred) {
+			nativeToolGate.add(name)
+		}
+	}
+
+	if (nativeToolGate.size > 0) {
+		nativeTools = nativeTools.filter((t) => {
+			const fnName = (t as any)?.function?.name as string | undefined
+			return !fnName || !nativeToolGate.has(fnName)
+		})
+	}
+
+	// Expose the resolved token to subprocess-spawning tools (git) so the
+	// underlying `git` CLI can authenticate against private GitHub remotes.
+	// We set GH_TOKEN/GITHUB_TOKEN on process.env so child `git` processes
+	// inherit them. The setter is idempotent.
+	if (githubToken) {
+		process.env.GH_TOKEN = githubToken
+		process.env.GITHUB_TOKEN = githubToken
+	}
 
 	// Filter native tools based on mode restrictions.
 	const filteredNativeTools = filterNativeToolsForMode(

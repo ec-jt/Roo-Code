@@ -307,6 +307,8 @@ export type ExtensionState = Pick<
 	| "imageGenerationProvider"
 	| "braveApiKey"
 	| "context7ApiKey"
+	| "githubToken"
+	| "nativeToolEnabled"
 	| "openRouterImageGenerationSelectedModel"
 	| "includeTaskHistoryInEnhance"
 	| "reasoningBlockCollapsed"

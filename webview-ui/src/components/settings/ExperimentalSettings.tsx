@@ -26,11 +26,15 @@ type ExperimentalSettingsProps = HTMLAttributes<HTMLDivElement> & {
 	openRouterImageGenerationSelectedModel?: string
 	braveApiKey?: string
 	context7ApiKey?: string
+	githubToken?: string
+	nativeToolEnabled?: Record<string, boolean>
 	setImageGenerationProvider?: (provider: ImageGenerationProvider) => void
 	setOpenRouterImageApiKey?: (apiKey: string) => void
 	setImageGenerationSelectedModel?: (model: string) => void
 	setBraveApiKey?: (apiKey: string) => void
 	setContext7ApiKey?: (apiKey: string) => void
+	setGithubToken?: (token: string) => void
+	setNativeToolEnabled?: (map: Record<string, boolean>) => void
 }
 
 export const ExperimentalSettings = ({
@@ -43,11 +47,15 @@ export const ExperimentalSettings = ({
 	openRouterImageGenerationSelectedModel,
 	braveApiKey,
 	context7ApiKey,
+	githubToken,
+	nativeToolEnabled,
 	setImageGenerationProvider,
 	setOpenRouterImageApiKey,
 	setImageGenerationSelectedModel,
 	setBraveApiKey,
 	setContext7ApiKey,
+	setGithubToken,
+	setNativeToolEnabled,
 	className,
 	...props
 }: ExperimentalSettingsProps) => {
@@ -65,8 +73,12 @@ export const ExperimentalSettings = ({
 					<NativeToolIntegrationsSettings
 						braveApiKey={braveApiKey}
 						context7ApiKey={context7ApiKey}
+						githubToken={githubToken}
+						nativeToolEnabled={nativeToolEnabled}
 						setBraveApiKey={setBraveApiKey ?? (() => {})}
 						setContext7ApiKey={setContext7ApiKey ?? (() => {})}
+						setGithubToken={setGithubToken}
+						setNativeToolEnabled={setNativeToolEnabled}
 					/>
 				</SearchableSetting>
 				{Object.entries(experimentConfigsMap)

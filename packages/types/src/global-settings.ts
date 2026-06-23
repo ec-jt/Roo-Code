@@ -93,6 +93,11 @@ export const globalSettingsSchema = z.object({
 	openRouterImageGenerationSelectedModel: z.string().optional(),
 	braveApiKey: z.string().optional(),
 	context7ApiKey: z.string().optional(),
+	githubToken: z.string().optional(),
+	// Per-tool enable map for native tools that are surfaced in the
+	// Experimental → Native Tool Integrations panel. Each key is a tool name
+	// (e.g. "brave_web_search", "git_tools"). Unset = enabled (default ON).
+	nativeToolEnabled: z.record(z.string(), z.boolean()).optional(),
 
 	customCondensingPrompt: z.string().optional(),
 
@@ -294,6 +299,7 @@ export const GLOBAL_SECRET_KEYS = [
 	"openRouterImageApiKey", // For image generation
 	"braveApiKey",
 	"context7ApiKey",
+	"githubToken",
 ] as const
 
 // Type for the actual secret storage keys
