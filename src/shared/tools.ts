@@ -37,6 +37,7 @@ export const toolParamNames = [
 	"regex",
 	"file_pattern",
 	"recursive",
+	"count",
 	"action",
 	"url",
 	"coordinate",
@@ -48,6 +49,8 @@ export const toolParamNames = [
 	"question",
 	"result",
 	"diff",
+	"libraryName",
+	"libraryId",
 	"mode_slug",
 	"reason",
 	"line",
@@ -98,6 +101,20 @@ export type ToolParamName = (typeof toolParamNames)[number]
  */
 export type NativeToolArgs = {
 	access_mcp_resource: { server_name: string; uri: string }
+	brave_web_search: { query: string; count?: number; offset?: number }
+	brave_local_search: { query: string; count?: number }
+	context7_resolve_library_id: { libraryName: string; query: string }
+	context7_query_docs: { libraryId: string; query: string }
+	file_system: {
+		action: "read_text_file" | "list_directory" | "search_files"
+		path: string
+		regex?: string
+		file_pattern?: string | null
+		recursive?: boolean
+	}
+	markdownify: { path?: string; url?: string }
+	git_repo_research: { action: "search_commits" | "get_commit_info" | "get_working_state"; query?: string }
+	git_tools: { action: "status" | "working_state" | "search_commits" | "commit_info"; query?: string }
 	read_file: import("@roo-code/types").ReadFileToolParams
 	read_command_output: { artifact_id: string; search?: string; offset?: number; limit?: number }
 	attempt_completion: { result: string }
@@ -278,6 +295,14 @@ export const TOOL_DISPLAY_NAMES: Record<ToolName, string> = {
 	browser_action: "use a browser",
 	read_file: "read files",
 	read_command_output: "read command output",
+	file_system: "use file system tools",
+	markdownify: "convert content to markdown",
+	git_repo_research: "research git repositories",
+	git_tools: "inspect git repositories",
+	brave_web_search: "search the web with Brave",
+	brave_local_search: "search local places with Brave",
+	context7_resolve_library_id: "resolve Context7 library IDs",
+	context7_query_docs: "query Context7 documentation",
 	write_to_file: "write files",
 	apply_diff: "apply changes",
 	edit: "edit files",
@@ -304,7 +329,20 @@ export const TOOL_DISPLAY_NAMES: Record<ToolName, string> = {
 // Define available tool groups.
 export const TOOL_GROUPS: Record<ToolGroup, ToolGroupConfig> = {
 	read: {
-		tools: ["read_file", "search_files", "list_files", "codebase_search"],
+		tools: [
+			"read_file",
+			"search_files",
+			"list_files",
+			"codebase_search",
+			"file_system",
+			"markdownify",
+			"git_repo_research",
+			"git_tools",
+			"brave_web_search",
+			"brave_local_search",
+			"context7_resolve_library_id",
+			"context7_query_docs",
+		],
 	},
 	edit: {
 		tools: ["apply_diff", "write_to_file", "generate_image"],

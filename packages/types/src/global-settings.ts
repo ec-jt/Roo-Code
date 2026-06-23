@@ -91,6 +91,8 @@ export const globalSettingsSchema = z.object({
 	imageGenerationProvider: z.enum(["openrouter"]).optional(),
 	openRouterImageApiKey: z.string().optional(),
 	openRouterImageGenerationSelectedModel: z.string().optional(),
+	braveApiKey: z.string().optional(),
+	context7ApiKey: z.string().optional(),
 
 	customCondensingPrompt: z.string().optional(),
 
@@ -290,6 +292,8 @@ export const SECRET_STATE_KEYS = [
 // Global secrets that are part of GlobalSettings (not ProviderSettings)
 export const GLOBAL_SECRET_KEYS = [
 	"openRouterImageApiKey", // For image generation
+	"braveApiKey",
+	"context7ApiKey",
 ] as const
 
 // Type for the actual secret storage keys

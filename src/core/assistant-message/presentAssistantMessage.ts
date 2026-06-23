@@ -15,6 +15,14 @@ import { Task } from "../task/Task"
 import { listFilesTool } from "../tools/ListFilesTool"
 import { readFileTool } from "../tools/ReadFileTool"
 import { readCommandOutputTool } from "../tools/ReadCommandOutputTool"
+import { braveWebSearchTool } from "../tools/BraveWebSearchTool"
+import { braveLocalSearchTool } from "../tools/BraveLocalSearchTool"
+import { context7ResolveLibraryIdTool } from "../tools/Context7ResolveLibraryIdTool"
+import { context7QueryDocsTool } from "../tools/Context7QueryDocsTool"
+import { fileSystemTool } from "../tools/FileSystemTool"
+import { markdownifyTool } from "../tools/MarkdownifyTool"
+import { gitRepoResearchTool } from "../tools/GitRepoResearchTool"
+import { gitToolsTool } from "../tools/GitToolsTool"
 import { writeToFileTool } from "../tools/WriteToFileTool"
 import { editTool } from "../tools/EditTool"
 import { searchReplaceTool } from "../tools/SearchReplaceTool"
@@ -652,6 +660,62 @@ export async function presentAssistantMessage(cline: Task) {
 			}
 
 			switch (block.name) {
+				case "brave_web_search":
+					await braveWebSearchTool.handle(cline, block as ToolUse<"brave_web_search">, {
+						askApproval,
+						handleError,
+						pushToolResult,
+					})
+					break
+				case "brave_local_search":
+					await braveLocalSearchTool.handle(cline, block as ToolUse<"brave_local_search">, {
+						askApproval,
+						handleError,
+						pushToolResult,
+					})
+					break
+				case "context7_resolve_library_id":
+					await context7ResolveLibraryIdTool.handle(cline, block as ToolUse<"context7_resolve_library_id">, {
+						askApproval,
+						handleError,
+						pushToolResult,
+					})
+					break
+				case "context7_query_docs":
+					await context7QueryDocsTool.handle(cline, block as ToolUse<"context7_query_docs">, {
+						askApproval,
+						handleError,
+						pushToolResult,
+					})
+					break
+				case "file_system":
+					await fileSystemTool.handle(cline, block as ToolUse<"file_system">, {
+						askApproval,
+						handleError,
+						pushToolResult,
+					})
+					break
+				case "markdownify":
+					await markdownifyTool.handle(cline, block as ToolUse<"markdownify">, {
+						askApproval,
+						handleError,
+						pushToolResult,
+					})
+					break
+				case "git_repo_research":
+					await gitRepoResearchTool.handle(cline, block as ToolUse<"git_repo_research">, {
+						askApproval,
+						handleError,
+						pushToolResult,
+					})
+					break
+				case "git_tools":
+					await gitToolsTool.handle(cline, block as ToolUse<"git_tools">, {
+						askApproval,
+						handleError,
+						pushToolResult,
+					})
+					break
 				case "write_to_file":
 					await checkpointSaveAndMark(cline)
 					await writeToFileTool.handle(cline, block as ToolUse<"write_to_file">, {

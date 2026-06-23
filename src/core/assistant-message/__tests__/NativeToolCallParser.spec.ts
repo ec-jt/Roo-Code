@@ -291,6 +291,115 @@ describe("NativeToolCallParser", () => {
 				})
 			})
 		})
+
+		describe("native integration tools", () => {
+			it("should parse brave_web_search args", () => {
+				const toolCall = {
+					id: "toolu_brave_1",
+					name: "brave_web_search" as const,
+					arguments: JSON.stringify({
+						query: "roo code mcp",
+						count: 5,
+						offset: 2,
+					}),
+				}
+
+				const result = NativeToolCallParser.parseToolCall(toolCall)
+
+				expect(result).not.toBeNull()
+				expect(result?.type).toBe("tool_use")
+				if (result?.type === "tool_use") {
+					expect(result.nativeArgs).toEqual({ query: "roo code mcp", count: 5, offset: 2 })
+				}
+			})
+
+			it("should parse context7_resolve_library_id args", () => {
+				const toolCall = {
+					id: "toolu_ctx7_1",
+					name: "context7_resolve_library_id" as const,
+					arguments: JSON.stringify({
+						libraryName: "Next.js",
+						query: "middleware examples",
+					}),
+				}
+
+				const result = NativeToolCallParser.parseToolCall(toolCall)
+
+				expect(result).not.toBeNull()
+				expect(result?.type).toBe("tool_use")
+				if (result?.type === "tool_use") {
+					expect(result.nativeArgs).toEqual({ libraryName: "Next.js", query: "middleware examples" })
+				}
+			})
+
+			it("should parse file_system args", () => {
+				const toolCall = {
+					id: "toolu_fs_1",
+					name: "file_system" as const,
+					arguments: JSON.stringify({
+						action: "search_files",
+						path: "src",
+						regex: "TODO",
+						file_pattern: "*.ts",
+						recursive: true,
+					}),
+				}
+
+				const result = NativeToolCallParser.parseToolCall(toolCall)
+
+				expect(result).not.toBeNull()
+				expect(result?.type).toBe("tool_use")
+				if (result?.type === "tool_use") {
+					expect(result.nativeArgs).toEqual({
+						action: "search_files",
+						path: "src",
+						regex: "TODO",
+						file_pattern: "*.ts",
+						recursive: true,
+					})
+				}
+			})
+
+			it("should parse markdownify args", () => {
+				const toolCall = {
+					id: "toolu_md_1",
+					name: "markdownify" as const,
+					arguments: JSON.stringify({
+						url: "https://context7.com/docs/api-guide",
+					}),
+				}
+
+				const result = NativeToolCallParser.parseToolCall(toolCall)
+
+				expect(result).not.toBeNull()
+				expect(result?.type).toBe("tool_use")
+				if (result?.type === "tool_use") {
+					expect(result.nativeArgs).toEqual({
+						path: undefined,
+						url: "https://context7.com/docs/api-guide",
+					})
+				}
+			})
+
+			it("should parse git_tools args", () => {
+				const toolCall = {
+					id: "toolu_git_1",
+					name: "git_tools" as const,
+					arguments: JSON.stringify({
+						action: "commit_info",
+						query: "abc123",
+					}),
+				}
+
+				const result = NativeToolCallParser.parseToolCall(toolCall)
+
+				expect(result).not.toBeNull()
+				expect(result?.type).toBe("tool_use")
+				if (result?.type === "tool_use") {
+					expect(result.nativeArgs).toEqual({ action: "commit_info", query: "abc123" })
+				}
+			})
+		})
 	})
 
 	describe("processStreamingChunk", () => {

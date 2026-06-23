@@ -1004,7 +1004,24 @@ export const ChatRowContent = ({
 					</>
 				)
 			default:
-				return null
+				return (
+					<>
+						<div style={headerStyle}>
+							{toolIcon("tools")}
+							<span style={{ fontWeight: "bold" }}>{tool.tool}</span>
+						</div>
+						<div className="pl-6">
+							<ToolUseBlock>
+								<div className="p-2 text-sm text-vscode-descriptionForeground">
+									{tool.action && <div>action: {tool.action}</div>}
+									{tool.query && <div>query: {tool.query}</div>}
+									{tool.path && <div>path: {tool.path}</div>}
+									{tool.url && <div>url: {tool.url}</div>}
+								</div>
+							</ToolUseBlock>
+						</div>
+					</>
+				)
 		}
 	}
 

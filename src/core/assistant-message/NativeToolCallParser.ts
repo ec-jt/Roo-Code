@@ -865,6 +865,25 @@ export class NativeToolCallParser {
 					}
 					break
 
+				case "brave_web_search":
+					if (args.query !== undefined) {
+						nativeArgs = {
+							query: args.query,
+							count: this.coerceOptionalNumber(args.count),
+							offset: this.coerceOptionalNumber(args.offset),
+						} as NativeArgsFor<TName>
+					}
+					break
+
+				case "brave_local_search":
+					if (args.query !== undefined) {
+						nativeArgs = {
+							query: args.query,
+							count: this.coerceOptionalNumber(args.count),
+						} as NativeArgsFor<TName>
+					}
+					break
+
 				case "browser_action":
 					if (args.action !== undefined) {
 						nativeArgs = {
@@ -927,6 +946,24 @@ export class NativeToolCallParser {
 						nativeArgs = {
 							query: args.query,
 							path: args.path,
+						} as NativeArgsFor<TName>
+					}
+					break
+
+				case "context7_resolve_library_id":
+					if (args.libraryName !== undefined && args.query !== undefined) {
+						nativeArgs = {
+							libraryName: args.libraryName,
+							query: args.query,
+						} as NativeArgsFor<TName>
+					}
+					break
+
+				case "context7_query_docs":
+					if (args.libraryId !== undefined && args.query !== undefined) {
+						nativeArgs = {
+							libraryId: args.libraryId,
+							query: args.query,
 						} as NativeArgsFor<TName>
 					}
 					break
@@ -1002,6 +1039,45 @@ export class NativeToolCallParser {
 						nativeArgs = {
 							path: args.path,
 							content: args.content,
+						} as NativeArgsFor<TName>
+					}
+					break
+
+				case "file_system":
+					if (args.action !== undefined && args.path !== undefined) {
+						nativeArgs = {
+							action: args.action,
+							path: args.path,
+							regex: args.regex,
+							file_pattern: args.file_pattern,
+							recursive: this.coerceOptionalBoolean(args.recursive),
+						} as NativeArgsFor<TName>
+					}
+					break
+
+				case "markdownify":
+					if (args.path !== undefined || args.url !== undefined) {
+						nativeArgs = {
+							path: args.path,
+							url: args.url,
+						} as NativeArgsFor<TName>
+					}
+					break
+
+				case "git_repo_research":
+					if (args.action !== undefined) {
+						nativeArgs = {
+							action: args.action,
+							query: args.query,
+						} as NativeArgsFor<TName>
+					}
+					break
+
+				case "git_tools":
+					if (args.action !== undefined) {
+						nativeArgs = {
+							action: args.action,
+							query: args.query,
 						} as NativeArgsFor<TName>
 					}
 					break

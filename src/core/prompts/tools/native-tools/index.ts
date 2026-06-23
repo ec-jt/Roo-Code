@@ -5,11 +5,19 @@ import applyPatch from "./apply_patch"
 import askFollowupQuestion from "./ask_followup_question"
 import attemptCompletion from "./attempt_completion"
 import browserAction from "./browser_action"
+import braveLocalSearch from "./brave_local_search"
+import braveWebSearch from "./brave_web_search"
 import codebaseSearch from "./codebase_search"
+import context7QueryDocs from "./context7_query_docs"
+import context7ResolveLibraryId from "./context7_resolve_library_id"
 import editTool from "./edit"
 import executeCommand from "./execute_command"
+import fileSystem from "./file_system"
 import generateImage from "./generate_image"
+import gitRepoResearch from "./git_repo_research"
+import gitTools from "./git_tools"
 import listFiles from "./list_files"
+import markdownify from "./markdownify"
 import newTask from "./new_task"
 import readCommandOutput from "./read_command_output"
 import { createReadFileTool, type ReadFileToolOptions } from "./read_file"
@@ -54,10 +62,18 @@ export function getNativeTools(options: NativeToolsOptions = {}): OpenAI.Chat.Ch
 		askFollowupQuestion,
 		attemptCompletion,
 		browserAction,
+		braveLocalSearch,
+		braveWebSearch,
 		codebaseSearch,
+		context7QueryDocs,
+		context7ResolveLibraryId,
 		executeCommand,
+		fileSystem,
 		generateImage,
+		gitRepoResearch,
+		gitTools,
 		listFiles,
+		markdownify,
 		newTask,
 		readCommandOutput,
 		createReadFileTool(readFileOptions),

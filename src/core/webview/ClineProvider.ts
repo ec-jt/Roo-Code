@@ -2054,6 +2054,8 @@ export class ClineProvider
 			includeCurrentCost,
 			maxGitStatusFiles,
 			imageGenerationProvider,
+			braveApiKey,
+			context7ApiKey,
 			openRouterImageApiKey,
 			openRouterImageGenerationSelectedModel,
 			lockApiConfigAcrossModes,
@@ -2168,6 +2170,8 @@ export class ClineProvider
 			includeCurrentCost: includeCurrentCost ?? false,
 			maxGitStatusFiles: maxGitStatusFiles ?? 0,
 			imageGenerationProvider,
+			braveApiKey,
+			context7ApiKey,
 			openRouterImageApiKey,
 			openRouterImageGenerationSelectedModel,
 			openAiCodexIsAuthenticated: await (async () => {
@@ -2319,6 +2323,8 @@ export class ClineProvider
 			includeCurrentCost: stateValues.includeCurrentCost ?? false,
 			maxGitStatusFiles: stateValues.maxGitStatusFiles ?? 0,
 			imageGenerationProvider: stateValues.imageGenerationProvider,
+			braveApiKey: stateValues.braveApiKey,
+			context7ApiKey: stateValues.context7ApiKey,
 			openRouterImageApiKey: stateValues.openRouterImageApiKey,
 			openRouterImageGenerationSelectedModel: stateValues.openRouterImageGenerationSelectedModel,
 		}

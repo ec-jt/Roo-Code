@@ -305,6 +305,8 @@ export type ExtensionState = Pick<
 	| "includeDiagnosticMessages"
 	| "maxDiagnosticMessages"
 	| "imageGenerationProvider"
+	| "braveApiKey"
+	| "context7ApiKey"
 	| "openRouterImageGenerationSelectedModel"
 	| "includeTaskHistoryInEnhance"
 	| "reasoningBlockCollapsed"
@@ -774,10 +776,20 @@ export interface ClineSayTool {
 		| "finishTask"
 		| "generateImage"
 		| "imageGenerated"
+		| "fileSystem"
+		| "markdownify"
+		| "gitRepoResearch"
+		| "gitTools"
+		| "braveWebSearch"
+		| "braveLocalSearch"
+		| "context7ResolveLibraryId"
+		| "context7QueryDocs"
 		| "runSlashCommand"
 		| "updateTodoList"
 		| "skill"
 	path?: string
+	url?: string
+	action?: string
 	// For readCommandOutput
 	readStart?: number
 	readEnd?: number

@@ -203,6 +203,8 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 		maxDiagnosticMessages,
 		includeTaskHistoryInEnhance,
 		imageGenerationProvider,
+		braveApiKey,
+		context7ApiKey,
 		openRouterImageApiKey,
 		openRouterImageGenerationSelectedModel,
 		reasoningBlockCollapsed,
@@ -338,6 +340,26 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 		})
 	}, [])
 
+	const setBraveApiKey = useCallback((apiKey: string) => {
+		setCachedState((prevState) => {
+			if ((prevState as any).braveApiKey !== apiKey) {
+				setChangeDetected(true)
+			}
+
+			return { ...prevState, braveApiKey: apiKey }
+		})
+	}, [])
+
+	const setContext7ApiKey = useCallback((apiKey: string) => {
+		setCachedState((prevState) => {
+			if ((prevState as any).context7ApiKey !== apiKey) {
+				setChangeDetected(true)
+			}
+
+			return { ...prevState, context7ApiKey: apiKey }
+		})
+	}, [])
+
 	const setCustomSupportPromptsField = useCallback((prompts: Record<string, string | undefined>) => {
 		setCachedState((prevState) => {
 			const previousStr = JSON.stringify(prevState.customSupportPrompts)
@@ -420,6 +442,8 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 					maxGitStatusFiles: maxGitStatusFiles ?? 0,
 					profileThresholds,
 					imageGenerationProvider,
+					braveApiKey,
+					context7ApiKey,
 					openRouterImageApiKey,
 					openRouterImageGenerationSelectedModel,
 					experiments,
@@ -919,11 +943,15 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 								apiConfiguration={apiConfiguration}
 								setApiConfigurationField={setApiConfigurationField}
 								imageGenerationProvider={imageGenerationProvider}
+								braveApiKey={braveApiKey as string | undefined}
+								context7ApiKey={context7ApiKey as string | undefined}
 								openRouterImageApiKey={openRouterImageApiKey as string | undefined}
 								openRouterImageGenerationSelectedModel={
 									openRouterImageGenerationSelectedModel as string | undefined
 								}
 								setImageGenerationProvider={setImageGenerationProvider}
+								setBraveApiKey={setBraveApiKey}
+								setContext7ApiKey={setContext7ApiKey}
 								setOpenRouterImageApiKey={setOpenRouterImageApiKey}
 								setImageGenerationSelectedModel={setImageGenerationSelectedModel}
 							/>

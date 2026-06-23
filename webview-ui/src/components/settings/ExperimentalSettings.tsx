@@ -13,6 +13,7 @@ import { Section } from "./Section"
 import { SearchableSetting } from "./SearchableSetting"
 import { ExperimentalFeature } from "./ExperimentalFeature"
 import { ImageGenerationSettings } from "./ImageGenerationSettings"
+import { NativeToolIntegrationsSettings } from "./NativeToolIntegrationsSettings"
 import { CustomToolsSettings } from "./CustomToolsSettings"
 
 type ExperimentalSettingsProps = HTMLAttributes<HTMLDivElement> & {
@@ -23,9 +24,13 @@ type ExperimentalSettingsProps = HTMLAttributes<HTMLDivElement> & {
 	imageGenerationProvider?: ImageGenerationProvider
 	openRouterImageApiKey?: string
 	openRouterImageGenerationSelectedModel?: string
+	braveApiKey?: string
+	context7ApiKey?: string
 	setImageGenerationProvider?: (provider: ImageGenerationProvider) => void
 	setOpenRouterImageApiKey?: (apiKey: string) => void
 	setImageGenerationSelectedModel?: (model: string) => void
+	setBraveApiKey?: (apiKey: string) => void
+	setContext7ApiKey?: (apiKey: string) => void
 }
 
 export const ExperimentalSettings = ({
@@ -36,9 +41,13 @@ export const ExperimentalSettings = ({
 	imageGenerationProvider,
 	openRouterImageApiKey,
 	openRouterImageGenerationSelectedModel,
+	braveApiKey,
+	context7ApiKey,
 	setImageGenerationProvider,
 	setOpenRouterImageApiKey,
 	setImageGenerationSelectedModel,
+	setBraveApiKey,
+	setContext7ApiKey,
 	className,
 	...props
 }: ExperimentalSettingsProps) => {
@@ -49,6 +58,17 @@ export const ExperimentalSettings = ({
 			<SectionHeader>{t("settings:sections.experimental")}</SectionHeader>
 
 			<Section>
+				<SearchableSetting
+					settingId="experimental-native-integrations"
+					section="experimental"
+					label="Native Tool Integrations">
+					<NativeToolIntegrationsSettings
+						braveApiKey={braveApiKey}
+						context7ApiKey={context7ApiKey}
+						setBraveApiKey={setBraveApiKey ?? (() => {})}
+						setContext7ApiKey={setContext7ApiKey ?? (() => {})}
+					/>
+				</SearchableSetting>
 				{Object.entries(experimentConfigsMap)
 					.filter(([key]) => key in EXPERIMENT_IDS)
 					.map((config) => {
