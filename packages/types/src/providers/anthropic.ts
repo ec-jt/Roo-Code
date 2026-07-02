@@ -4,9 +4,25 @@ import type { ModelInfo } from "../model.js"
 // https://platform.claude.com/docs/en/about-claude/pricing
 
 export type AnthropicModelId = keyof typeof anthropicModels
-export const anthropicDefaultModelId: AnthropicModelId = "claude-sonnet-4-5"
+export const anthropicDefaultModelId: AnthropicModelId = "claude-sonnet-5"
 
 export const anthropicModels = {
+	"claude-sonnet-5": {
+		maxTokens: 128_000,
+		contextWindow: 1_000_000,
+		supportsImages: true,
+		supportsPromptCache: true,
+		supportsTemperature: false,
+		inputPrice: 3.0, // Standard price after intro period ($2/$10 through 2026-08-31)
+		outputPrice: 15.0,
+		cacheWritesPrice: 3.75,
+		cacheReadsPrice: 0.3,
+		supportsReasoningEffort: ["disable", "low", "medium", "high"],
+		requiredReasoningEffort: true,
+		reasoningEffort: "high",
+		description:
+			"Claude Sonnet 5 is Anthropic's current Sonnet model with a native 1M context window, 128K max output, adaptive thinking, and the same tools/features as Sonnet 4.6 except Priority Tier.",
+	},
 	"claude-fable-5": {
 		maxTokens: 128_000,
 		contextWindow: 1_000_000, // Native 1M context window (no beta flag needed)
