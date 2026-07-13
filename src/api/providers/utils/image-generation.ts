@@ -180,9 +180,15 @@ export async function generateImageWithImagesApi(options: ImagesApiOptions): Pro
 
 	try {
 		const url = `${baseURL}/images/generations`
+		const normalizedModel = model.toLowerCase()
+		const usesBlackForestLabsEditing =
+			normalizedModel.startsWith("bfl/") ||
+			normalizedModel.startsWith("flux") ||
+			normalizedModel.startsWith("image/flux") ||
+			normalizedModel.startsWith("sd/flux")
 
 		// Build the request body
-		// For BFL models, inputImage is passed via providerOptions.blackForestLabs.inputImage
+		// For Flux/Kontext-style models, inputImage is passed via providerOptions.blackForestLabs.inputImage
 		const requestBody: Record<string, unknown> = {
 			model,
 			prompt,
@@ -197,8 +203,8 @@ export async function generateImageWithImagesApi(options: ImagesApiOptions): Pro
 			requestBody.quality = options.quality
 		}
 
-		// For BFL (Black Forest Labs) models like flux-pro-1.1, use providerOptions
-		if (model.startsWith("bfl/")) {
+		// For BFL / Flux / Kontext-style models, use providerOptions.blackForestLabs
+		if (usesBlackForestLabsEditing) {
 			requestBody.providerOptions = {
 				blackForestLabs: {
 					outputFormat: outputFormat,

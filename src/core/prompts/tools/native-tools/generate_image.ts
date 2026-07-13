@@ -1,6 +1,6 @@
 import type OpenAI from "openai"
 
-const GENERATE_IMAGE_DESCRIPTION = `Request to generate or edit an image using AI models through OpenRouter API. This tool can create new images from text prompts or modify existing images based on your instructions. When an input image is provided, the AI will apply the requested edits, transformations, or enhancements to that image.
+const GENERATE_IMAGE_DESCRIPTION = `Request to generate or edit an image using AI models through the configured image-generation provider. This tool can create new images from text prompts or modify existing images based on your instructions. When an input image is provided, the AI will apply the requested edits, transformations, or enhancements to that image.
 
 Parameters:
 - prompt: (required) The text prompt describing what to generate or how to edit the image

@@ -23,9 +23,7 @@ const DEBUG_LOG = "/tmp/roo-cli-debug.log"
 
 function debugTrace(message: string, data?: unknown) {
 	const timestamp = new Date().toISOString()
-	const entry = data
-		? `[${timestamp}] ${message}: ${JSON.stringify(data, null, 2)}\n`
-		: `[${timestamp}] ${message}\n`
+	const entry = data ? `[${timestamp}] ${message}: ${JSON.stringify(data, null, 2)}\n` : `[${timestamp}] ${message}\n`
 
 	try {
 		fs.appendFileSync(DEBUG_LOG, entry)
@@ -190,11 +188,11 @@ export class NativeToolCallParser {
 			},
 			tracked: tracked
 				? {
-					id: tracked.id,
-					name: tracked.name,
-					hasStarted: tracked.hasStarted,
-					deltaBufferLength: tracked.deltaBuffer.length,
-				}
+						id: tracked.id,
+						name: tracked.name,
+						hasStarted: tracked.hasStarted,
+						deltaBufferLength: tracked.deltaBuffer.length,
+					}
 				: undefined,
 			events,
 			rawChunkTrackerSize: this.rawChunkTracker.size,
@@ -583,6 +581,7 @@ export class NativeToolCallParser {
 				break
 
 			case "generate_image":
+			case "generate_video":
 				if (partialArgs.prompt !== undefined || partialArgs.path !== undefined) {
 					nativeArgs = {
 						prompt: partialArgs.prompt,
@@ -969,6 +968,7 @@ export class NativeToolCallParser {
 					break
 
 				case "generate_image":
+				case "generate_video":
 					if (args.prompt !== undefined && args.path !== undefined) {
 						nativeArgs = {
 							prompt: args.prompt,

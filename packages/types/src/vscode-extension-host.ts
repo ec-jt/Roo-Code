@@ -305,6 +305,10 @@ export type ExtensionState = Pick<
 	| "includeDiagnosticMessages"
 	| "maxDiagnosticMessages"
 	| "imageGenerationProvider"
+	| "liteLlmImageBaseUrl"
+	| "liteLlmImageGenerationSelectedModel"
+	| "liteLlmImageEditingSelectedModel"
+	| "liteLlmVideoGenerationSelectedModel"
 	| "braveApiKey"
 	| "context7ApiKey"
 	| "githubToken"
@@ -369,6 +373,11 @@ export type ExtensionState = Pick<
 	profileThresholds: Record<string, number>
 	hasOpenedModeSelector: boolean
 	openRouterImageApiKey?: string
+	liteLlmImageApiKey?: string
+	liteLlmImageBaseUrl?: string
+	liteLlmImageGenerationSelectedModel?: string
+	liteLlmImageEditingSelectedModel?: string
+	liteLlmVideoGenerationSelectedModel?: string
 	messageQueue?: QueuedMessage[]
 	lastShownAnnouncementId?: string
 	apiModelId?: string

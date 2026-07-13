@@ -24,13 +24,22 @@ type ExperimentalSettingsProps = HTMLAttributes<HTMLDivElement> & {
 	imageGenerationProvider?: ImageGenerationProvider
 	openRouterImageApiKey?: string
 	openRouterImageGenerationSelectedModel?: string
+	liteLlmImageApiKey?: string
+	liteLlmImageBaseUrl?: string
+	liteLlmImageGenerationSelectedModel?: string
+	liteLlmImageEditingSelectedModel?: string
+	liteLlmVideoGenerationSelectedModel?: string
 	braveApiKey?: string
 	context7ApiKey?: string
 	githubToken?: string
 	nativeToolEnabled?: Record<string, boolean>
 	setImageGenerationProvider?: (provider: ImageGenerationProvider) => void
 	setOpenRouterImageApiKey?: (apiKey: string) => void
-	setImageGenerationSelectedModel?: (model: string) => void
+	setLiteLlmImageApiKey?: (apiKey: string) => void
+	setLiteLlmImageBaseUrl?: (baseUrl: string) => void
+	setImageGenerationSelectedModel?: (model: string, provider?: ImageGenerationProvider) => void
+	setLiteLlmImageEditingSelectedModel?: (model: string) => void
+	setLiteLlmVideoGenerationSelectedModel?: (model: string) => void
 	setBraveApiKey?: (apiKey: string) => void
 	setContext7ApiKey?: (apiKey: string) => void
 	setGithubToken?: (token: string) => void
@@ -45,13 +54,22 @@ export const ExperimentalSettings = ({
 	imageGenerationProvider,
 	openRouterImageApiKey,
 	openRouterImageGenerationSelectedModel,
+	liteLlmImageApiKey,
+	liteLlmImageBaseUrl,
+	liteLlmImageGenerationSelectedModel,
+	liteLlmImageEditingSelectedModel,
+	liteLlmVideoGenerationSelectedModel,
 	braveApiKey,
 	context7ApiKey,
 	githubToken,
 	nativeToolEnabled,
 	setImageGenerationProvider,
 	setOpenRouterImageApiKey,
+	setLiteLlmImageApiKey,
+	setLiteLlmImageBaseUrl,
 	setImageGenerationSelectedModel,
+	setLiteLlmImageEditingSelectedModel,
+	setLiteLlmVideoGenerationSelectedModel,
 	setBraveApiKey,
 	setContext7ApiKey,
 	setGithubToken,
@@ -84,7 +102,6 @@ export const ExperimentalSettings = ({
 				{Object.entries(experimentConfigsMap)
 					.filter(([key]) => key in EXPERIMENT_IDS)
 					.map((config) => {
-						// Use the same translation key pattern as ExperimentalFeature
 						const experimentKey = config[0]
 						const label = t(`settings:experimental.${experimentKey}.name`)
 
@@ -92,7 +109,11 @@ export const ExperimentalSettings = ({
 							config[0] === "IMAGE_GENERATION" &&
 							setImageGenerationProvider &&
 							setOpenRouterImageApiKey &&
-							setImageGenerationSelectedModel
+							setLiteLlmImageApiKey &&
+							setLiteLlmImageBaseUrl &&
+							setImageGenerationSelectedModel &&
+							setLiteLlmImageEditingSelectedModel &&
+							setLiteLlmVideoGenerationSelectedModel
 						) {
 							return (
 								<SearchableSetting
@@ -108,9 +129,19 @@ export const ExperimentalSettings = ({
 										imageGenerationProvider={imageGenerationProvider}
 										openRouterImageApiKey={openRouterImageApiKey}
 										openRouterImageGenerationSelectedModel={openRouterImageGenerationSelectedModel}
+										liteLlmImageApiKey={liteLlmImageApiKey}
+										liteLlmImageBaseUrl={liteLlmImageBaseUrl}
+										liteLlmImageGenerationSelectedModel={liteLlmImageGenerationSelectedModel}
+										liteLlmImageEditingSelectedModel={liteLlmImageEditingSelectedModel}
+										liteLlmVideoGenerationSelectedModel={liteLlmVideoGenerationSelectedModel}
+										liteLlmProviderApiKey={apiConfiguration?.litellmApiKey}
 										setImageGenerationProvider={setImageGenerationProvider}
 										setOpenRouterImageApiKey={setOpenRouterImageApiKey}
+										setLiteLlmImageApiKey={setLiteLlmImageApiKey}
+										setLiteLlmImageBaseUrl={setLiteLlmImageBaseUrl}
 										setImageGenerationSelectedModel={setImageGenerationSelectedModel}
+										setLiteLlmImageEditingSelectedModel={setLiteLlmImageEditingSelectedModel}
+										setLiteLlmVideoGenerationSelectedModel={setLiteLlmVideoGenerationSelectedModel}
 									/>
 								</SearchableSetting>
 							)

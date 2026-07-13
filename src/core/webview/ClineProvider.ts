@@ -2058,6 +2058,11 @@ export class ClineProvider
 			context7ApiKey,
 			openRouterImageApiKey,
 			openRouterImageGenerationSelectedModel,
+			liteLlmImageApiKey,
+			liteLlmImageBaseUrl,
+			liteLlmImageGenerationSelectedModel,
+			liteLlmImageEditingSelectedModel,
+			liteLlmVideoGenerationSelectedModel,
 			lockApiConfigAcrossModes,
 		} = await this.getState()
 
@@ -2174,6 +2179,11 @@ export class ClineProvider
 			context7ApiKey,
 			openRouterImageApiKey,
 			openRouterImageGenerationSelectedModel,
+			liteLlmImageApiKey,
+			liteLlmImageBaseUrl,
+			liteLlmImageGenerationSelectedModel,
+			liteLlmImageEditingSelectedModel,
+			liteLlmVideoGenerationSelectedModel,
 			openAiCodexIsAuthenticated: await (async () => {
 				try {
 					const { openAiCodexOAuthManager } = await import("../../integrations/openai-codex/oauth")
@@ -2327,6 +2337,11 @@ export class ClineProvider
 			context7ApiKey: stateValues.context7ApiKey,
 			openRouterImageApiKey: stateValues.openRouterImageApiKey,
 			openRouterImageGenerationSelectedModel: stateValues.openRouterImageGenerationSelectedModel,
+			liteLlmImageApiKey: (stateValues as any).liteLlmImageApiKey,
+			liteLlmImageBaseUrl: (stateValues as any).liteLlmImageBaseUrl,
+			liteLlmImageGenerationSelectedModel: (stateValues as any).liteLlmImageGenerationSelectedModel,
+			liteLlmImageEditingSelectedModel: (stateValues as any).liteLlmImageEditingSelectedModel,
+			liteLlmVideoGenerationSelectedModel: (stateValues as any).liteLlmVideoGenerationSelectedModel,
 		}
 	}
 

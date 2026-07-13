@@ -14,6 +14,7 @@ import { getReadablePath } from "../../utils/path"
 import { isPathOutsideWorkspace } from "../../utils/pathUtils"
 import { EXPERIMENT_IDS, experiments } from "../../shared/experiments"
 import { OpenRouterHandler } from "../../api/providers/openrouter"
+import { generateImageWithImagesApi } from "../../api/providers/utils/image-generation"
 import { BaseTool, ToolCallbacks } from "./BaseTool"
 import type { ToolUse } from "../../shared/tools"
 import { t } from "../../i18n"
@@ -124,16 +125,29 @@ export class GenerateImageTool extends BaseTool<"generate_image"> {
 		// Use shared utility for backwards compatibility logic
 		const imageProvider = getImageGenerationProvider(
 			state?.imageGenerationProvider,
-			!!state?.openRouterImageGenerationSelectedModel,
+			!!state?.openRouterImageGenerationSelectedModel || !!state?.liteLlmImageGenerationSelectedModel,
 		)
 
+		const openRouterApiKey = state?.openRouterImageApiKey
+		const liteLlmApiKey = state?.liteLlmImageApiKey || state?.apiConfiguration?.litellmApiKey
+		const liteLlmBaseUrl = state?.liteLlmImageBaseUrl || state?.apiConfiguration?.litellmBaseUrl
+
 		// Get the selected model
-		let selectedModel = state?.openRouterImageGenerationSelectedModel
+		let selectedModel =
+			imageProvider === "litellm"
+				? inputImageData
+					? state?.liteLlmImageEditingSelectedModel || state?.liteLlmImageGenerationSelectedModel
+					: state?.liteLlmImageGenerationSelectedModel
+				: state?.openRouterImageGenerationSelectedModel
 		let modelInfo = undefined
 
-		// Find the model info matching both value AND provider
-		// (since the same model value can exist for multiple providers)
-		if (selectedModel) {
+		if (imageProvider === "litellm") {
+			modelInfo = selectedModel
+				? { value: selectedModel, label: selectedModel, provider: "litellm" as const }
+				: undefined
+		} else if (selectedModel) {
+			// Find the model info matching both value AND provider
+			// (since the same model value can exist for multiple providers)
 			modelInfo = IMAGE_GENERATION_MODELS.find((m) => m.value === selectedModel && m.provider === imageProvider)
 			if (!modelInfo) {
 				// Model doesn't exist for this provider, use first model for selected provider
@@ -152,14 +166,34 @@ export class GenerateImageTool extends BaseTool<"generate_image"> {
 		const modelProvider = imageProvider
 		const apiMethod = modelInfo?.apiMethod
 
-		// Validate API key for OpenRouter
-		const openRouterApiKey = state?.openRouterImageApiKey
+		// Validate provider-specific auth
 
 		if (imageProvider === "openrouter" && !openRouterApiKey) {
 			const errorMessage = t("tools:generateImage.openRouterApiKeyRequired")
 			await task.say("error", errorMessage)
 			pushToolResult(formatResponse.toolError(errorMessage))
 			return
+		}
+
+		if (imageProvider === "litellm") {
+			if (!liteLlmApiKey) {
+				const errorMessage = "LiteLLM API key is required for image generation"
+				await task.say("error", errorMessage)
+				pushToolResult(formatResponse.toolError(errorMessage))
+				return
+			}
+			if (!liteLlmBaseUrl) {
+				const errorMessage = "LiteLLM base URL is required for image generation"
+				await task.say("error", errorMessage)
+				pushToolResult(formatResponse.toolError(errorMessage))
+				return
+			}
+			if (!selectedModel) {
+				const errorMessage = "No LiteLLM image model selected"
+				await task.say("error", errorMessage)
+				pushToolResult(formatResponse.toolError(errorMessage))
+				return
+			}
 		}
 
 		const fullPath = path.resolve(task.cwd, relPath)
@@ -188,13 +222,21 @@ export class GenerateImageTool extends BaseTool<"generate_image"> {
 				return
 			}
 
-			const openRouterHandler = new OpenRouterHandler({} as any)
-			const result = await openRouterHandler.generateImage(
-				prompt,
-				selectedModel,
-				openRouterApiKey!,
-				inputImageData,
-			)
+			const result =
+				imageProvider === "litellm"
+					? await generateImageWithImagesApi({
+							baseURL: liteLlmBaseUrl!,
+							authToken: liteLlmApiKey!,
+							model: selectedModel!,
+							prompt,
+							inputImage: inputImageData,
+						})
+					: await new OpenRouterHandler({} as any).generateImage(
+							prompt,
+							selectedModel,
+							openRouterApiKey!,
+							inputImageData,
+						)
 
 			if (!result.success) {
 				await task.say("error", result.error || "Failed to generate image")

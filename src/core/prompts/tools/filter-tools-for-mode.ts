@@ -286,9 +286,10 @@ export function filterNativeToolsForMode(
 		allowedToolNames.delete("update_todo_list")
 	}
 
-	// Conditionally exclude generate_image if experiment is not enabled
+	// Conditionally exclude generate_image / generate_video if experiment is not enabled
 	if (!experiments?.imageGeneration) {
 		allowedToolNames.delete("generate_image")
+		allowedToolNames.delete("generate_video")
 	}
 
 	// Conditionally exclude run_slash_command if experiment is not enabled
@@ -378,7 +379,7 @@ export function isToolAllowedInMode(
 		if (toolName === "update_todo_list") {
 			return settings?.todoListEnabled !== false
 		}
-		if (toolName === "generate_image") {
+		if (toolName === "generate_image" || toolName === "generate_video") {
 			return experiments?.imageGeneration === true
 		}
 		if (toolName === "run_slash_command") {

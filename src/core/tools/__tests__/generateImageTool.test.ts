@@ -8,6 +8,7 @@ import * as fileUtils from "../../../utils/fs"
 import { formatResponse } from "../../prompts/responses"
 import { EXPERIMENT_IDS } from "../../../shared/experiments"
 import { OpenRouterHandler } from "../../../api/providers/openrouter"
+import * as imageGenerationUtils from "../../../api/providers/utils/image-generation"
 
 // Mock dependencies
 vi.mock("fs/promises")
@@ -15,6 +16,7 @@ vi.mock("../../../utils/pathUtils")
 vi.mock("../../../utils/fs")
 vi.mock("../../../utils/safeWriteJson")
 vi.mock("../../../api/providers/openrouter")
+vi.mock("../../../api/providers/utils/image-generation")
 
 describe("generateImageTool", () => {
 	let mockCline: any
@@ -28,6 +30,10 @@ describe("generateImageTool", () => {
 		// Setup mock Cline instance
 		mockCline = {
 			cwd: "/test/workspace",
+			apiConfiguration: {
+				litellmBaseUrl: "http://localhost:4000",
+				litellmApiKey: "provider-litellm-key",
+			},
 			consecutiveMistakeCount: 0,
 			recordToolError: vi.fn(),
 			recordToolUsage: vi.fn(),
@@ -47,6 +53,10 @@ describe("generateImageTool", () => {
 						},
 						openRouterImageApiKey: "test-api-key",
 						openRouterImageGenerationSelectedModel: "google/gemini-2.5-flash-image",
+						apiConfiguration: {
+							litellmBaseUrl: "http://localhost:4000",
+							litellmApiKey: "provider-litellm-key",
+						},
 					}),
 				}),
 			},
@@ -66,6 +76,10 @@ describe("generateImageTool", () => {
 		vi.mocked(fs.mkdir).mockResolvedValue(undefined)
 		vi.mocked(fs.writeFile).mockResolvedValue(undefined)
 		vi.mocked(pathUtils.isPathOutsideWorkspace).mockReturnValue(false)
+		vi.mocked(imageGenerationUtils.generateImageWithImagesApi).mockResolvedValue({
+			success: true,
+			imageData: "data:image/png;base64,fakebase64data",
+		})
 	})
 
 	describe("partial block handling", () => {
@@ -164,6 +178,139 @@ describe("generateImageTool", () => {
 			expect(mockAskApproval).toHaveBeenCalled()
 			expect(mockGenerateImage).toHaveBeenCalled()
 			expect(mockPushToolResult).toHaveBeenCalled()
+		})
+
+		it("should route LiteLLM image generation through the images API helper", async () => {
+			const completeBlock: ToolUse = {
+				type: "tool_use",
+				name: "generate_image",
+				params: {
+					prompt: "Generate a LiteLLM image",
+					path: "litellm-image.png",
+				},
+				nativeArgs: {
+					prompt: "Generate a LiteLLM image",
+					path: "litellm-image.png",
+				},
+				partial: false,
+			}
+
+			mockCline.providerRef.deref().getState.mockResolvedValue({
+				experiments: {
+					[EXPERIMENT_IDS.IMAGE_GENERATION]: true,
+				},
+				imageGenerationProvider: "litellm",
+				liteLlmImageApiKey: "litellm-image-key",
+				liteLlmImageGenerationSelectedModel: "image/demo-model",
+				apiConfiguration: {
+					litellmBaseUrl: "http://localhost:4000",
+					litellmApiKey: "provider-litellm-key",
+				},
+			})
+
+			await generateImageTool.handle(mockCline as Task, completeBlock as ToolUse<"generate_image">, {
+				askApproval: mockAskApproval,
+				handleError: mockHandleError,
+				pushToolResult: mockPushToolResult,
+			})
+
+			expect(imageGenerationUtils.generateImageWithImagesApi).toHaveBeenCalledWith(
+				expect.objectContaining({
+					baseURL: "http://localhost:4000",
+					authToken: "litellm-image-key",
+					model: "image/demo-model",
+					prompt: "Generate a LiteLLM image",
+				}),
+			)
+		})
+
+		it("should use the dedicated LiteLLM image-to-image model when an input image is provided", async () => {
+			const completeBlock: ToolUse = {
+				type: "tool_use",
+				name: "generate_image",
+				params: {
+					prompt: "Edit this image",
+					path: "litellm-edited-image.png",
+					image: "images/source.png",
+				},
+				nativeArgs: {
+					prompt: "Edit this image",
+					path: "litellm-edited-image.png",
+					image: "images/source.png",
+				},
+				partial: false,
+			}
+
+			mockCline.providerRef.deref().getState.mockResolvedValue({
+				experiments: {
+					[EXPERIMENT_IDS.IMAGE_GENERATION]: true,
+				},
+				imageGenerationProvider: "litellm",
+				liteLlmImageApiKey: "litellm-image-key",
+				liteLlmImageGenerationSelectedModel: "image/demo-model",
+				liteLlmImageEditingSelectedModel: "image/flux-kontext-dev",
+				apiConfiguration: {
+					litellmBaseUrl: "http://localhost:4000",
+					litellmApiKey: "provider-litellm-key",
+				},
+			})
+
+			await generateImageTool.handle(mockCline as Task, completeBlock as ToolUse<"generate_image">, {
+				askApproval: mockAskApproval,
+				handleError: mockHandleError,
+				pushToolResult: mockPushToolResult,
+			})
+
+			expect(imageGenerationUtils.generateImageWithImagesApi).toHaveBeenCalledWith(
+				expect.objectContaining({
+					model: "image/flux-kontext-dev",
+					inputImage: expect.stringMatching(/^data:image\/png;base64,/),
+				}),
+			)
+		})
+
+		it("should fall back to the LiteLLM text-to-image model for image-to-image when no dedicated editing model is selected", async () => {
+			const completeBlock: ToolUse = {
+				type: "tool_use",
+				name: "generate_image",
+				params: {
+					prompt: "Edit this image",
+					path: "litellm-edited-image.png",
+					image: "images/source.png",
+				},
+				nativeArgs: {
+					prompt: "Edit this image",
+					path: "litellm-edited-image.png",
+					image: "images/source.png",
+				},
+				partial: false,
+			}
+
+			mockCline.providerRef.deref().getState.mockResolvedValue({
+				experiments: {
+					[EXPERIMENT_IDS.IMAGE_GENERATION]: true,
+				},
+				imageGenerationProvider: "litellm",
+				liteLlmImageApiKey: "litellm-image-key",
+				liteLlmImageGenerationSelectedModel: "image/demo-model",
+				apiConfiguration: {
+					litellmBaseUrl: "http://localhost:4000",
+					litellmApiKey: "provider-litellm-key",
+				},
+			})
+
+			await generateImageTool.handle(mockCline as Task, completeBlock as ToolUse<"generate_image">, {
+				askApproval: mockAskApproval,
+				handleError: mockHandleError,
+				pushToolResult: mockPushToolResult,
+			})
+
+			expect(imageGenerationUtils.generateImageWithImagesApi).toHaveBeenCalledWith(
+				expect.objectContaining({
+					model: "image/demo-model",
+					inputImage: expect.stringMatching(/^data:image\/png;base64,/),
+				}),
+			)
 		})
 
 		it("should add cache-busting parameter to image URI", async () => {

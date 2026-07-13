@@ -937,8 +937,9 @@ export const webviewMessageHandler = async (
 			]
 
 			// LiteLLM is conditional on baseUrl+apiKey
-			const litellmApiKey = apiConfiguration.litellmApiKey || message?.values?.litellmApiKey
-			const litellmBaseUrl = apiConfiguration.litellmBaseUrl || message?.values?.litellmBaseUrl
+			// Prefer explicit message values from the Experimental media settings refresh flow.
+			const litellmApiKey = message?.values?.litellmApiKey || apiConfiguration.litellmApiKey
+			const litellmBaseUrl = message?.values?.litellmBaseUrl || apiConfiguration.litellmBaseUrl
 
 			if (litellmApiKey && litellmBaseUrl) {
 				// If explicit credentials are provided in message.values (from Refresh Models button),

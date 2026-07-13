@@ -14,6 +14,7 @@ import editTool from "./edit"
 import executeCommand from "./execute_command"
 import fileSystem from "./file_system"
 import generateImage from "./generate_image"
+import generateVideo from "./generate_video"
 import gitRepoResearch from "./git_repo_research"
 import gitTools from "./git_tools"
 import listFiles from "./list_files"
@@ -70,6 +71,7 @@ export function getNativeTools(options: NativeToolsOptions = {}): OpenAI.Chat.Ch
 		executeCommand,
 		fileSystem,
 		generateImage,
+		generateVideo,
 		gitRepoResearch,
 		gitTools,
 		listFiles,

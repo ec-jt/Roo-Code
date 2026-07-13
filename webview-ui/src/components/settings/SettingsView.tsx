@@ -209,6 +209,11 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 		nativeToolEnabled,
 		openRouterImageApiKey,
 		openRouterImageGenerationSelectedModel,
+		liteLlmImageApiKey,
+		liteLlmImageBaseUrl,
+		liteLlmImageGenerationSelectedModel,
+		liteLlmImageEditingSelectedModel,
+		liteLlmVideoGenerationSelectedModel,
 		reasoningBlockCollapsed,
 		enterBehavior,
 		includeCurrentTime,
@@ -332,13 +337,60 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 		})
 	}, [])
 
-	const setImageGenerationSelectedModel = useCallback((model: string) => {
+	const setLiteLlmImageApiKey = useCallback((apiKey: string) => {
 		setCachedState((prevState) => {
-			if (prevState.openRouterImageGenerationSelectedModel !== model) {
+			if ((prevState as any).liteLlmImageApiKey !== apiKey) {
 				setChangeDetected(true)
 			}
 
-			return { ...prevState, openRouterImageGenerationSelectedModel: model }
+			return { ...prevState, liteLlmImageApiKey: apiKey }
+		})
+	}, [])
+
+	const setLiteLlmImageBaseUrl = useCallback((baseUrl: string) => {
+		setCachedState((prevState) => {
+			if ((prevState as any).liteLlmImageBaseUrl !== baseUrl) {
+				setChangeDetected(true)
+			}
+
+			return { ...prevState, liteLlmImageBaseUrl: baseUrl }
+		})
+	}, [])
+
+	const setImageGenerationSelectedModel = useCallback((model: string, provider?: ImageGenerationProvider) => {
+		setCachedState((prevState) => {
+			const targetProvider = provider ?? prevState.imageGenerationProvider ?? "openrouter"
+			if (
+				targetProvider === "litellm"
+					? (prevState as any).liteLlmImageGenerationSelectedModel !== model
+					: prevState.openRouterImageGenerationSelectedModel !== model
+			) {
+				setChangeDetected(true)
+			}
+
+			return targetProvider === "litellm"
+				? { ...prevState, liteLlmImageGenerationSelectedModel: model }
+				: { ...prevState, openRouterImageGenerationSelectedModel: model }
+		})
+	}, [])
+
+	const setLiteLlmImageEditingSelectedModel = useCallback((model: string) => {
+		setCachedState((prevState) => {
+			if ((prevState as any).liteLlmImageEditingSelectedModel !== model) {
+				setChangeDetected(true)
+			}
+
+			return { ...prevState, liteLlmImageEditingSelectedModel: model }
+		})
+	}, [])
+
+	const setLiteLlmVideoGenerationSelectedModel = useCallback((model: string) => {
+		setCachedState((prevState) => {
+			if ((prevState as any).liteLlmVideoGenerationSelectedModel !== model) {
+				setChangeDetected(true)
+			}
+
+			return { ...prevState, liteLlmVideoGenerationSelectedModel: model }
 		})
 	}, [])
 
@@ -469,6 +521,11 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 					nativeToolEnabled,
 					openRouterImageApiKey,
 					openRouterImageGenerationSelectedModel,
+					liteLlmImageApiKey,
+					liteLlmImageBaseUrl,
+					liteLlmImageGenerationSelectedModel,
+					liteLlmImageEditingSelectedModel,
+					liteLlmVideoGenerationSelectedModel,
 					experiments,
 					customSupportPrompts,
 				},
@@ -974,13 +1031,28 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 								openRouterImageGenerationSelectedModel={
 									openRouterImageGenerationSelectedModel as string | undefined
 								}
+								liteLlmImageApiKey={liteLlmImageApiKey as string | undefined}
+								liteLlmImageBaseUrl={liteLlmImageBaseUrl as string | undefined}
+								liteLlmImageGenerationSelectedModel={
+									liteLlmImageGenerationSelectedModel as string | undefined
+								}
+								liteLlmImageEditingSelectedModel={
+									liteLlmImageEditingSelectedModel as string | undefined
+								}
+								liteLlmVideoGenerationSelectedModel={
+									liteLlmVideoGenerationSelectedModel as string | undefined
+								}
 								setImageGenerationProvider={setImageGenerationProvider}
 								setBraveApiKey={setBraveApiKey}
 								setContext7ApiKey={setContext7ApiKey}
 								setGithubToken={setGithubToken}
 								setNativeToolEnabled={setNativeToolEnabled}
 								setOpenRouterImageApiKey={setOpenRouterImageApiKey}
+								setLiteLlmImageApiKey={setLiteLlmImageApiKey}
+								setLiteLlmImageBaseUrl={setLiteLlmImageBaseUrl}
 								setImageGenerationSelectedModel={setImageGenerationSelectedModel}
+								setLiteLlmImageEditingSelectedModel={setLiteLlmImageEditingSelectedModel}
+								setLiteLlmVideoGenerationSelectedModel={setLiteLlmVideoGenerationSelectedModel}
 							/>
 						)}
 

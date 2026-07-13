@@ -88,9 +88,14 @@ export const globalSettingsSchema = z.object({
 	dismissedUpsells: z.array(z.string()).optional(),
 
 	// Image generation settings (experimental) - flattened for simplicity
-	imageGenerationProvider: z.enum(["openrouter"]).optional(),
+	imageGenerationProvider: z.enum(["openrouter", "litellm"]).optional(),
 	openRouterImageApiKey: z.string().optional(),
 	openRouterImageGenerationSelectedModel: z.string().optional(),
+	liteLlmImageApiKey: z.string().optional(),
+	liteLlmImageBaseUrl: z.string().optional(),
+	liteLlmImageGenerationSelectedModel: z.string().optional(),
+	liteLlmImageEditingSelectedModel: z.string().optional(),
+	liteLlmVideoGenerationSelectedModel: z.string().optional(),
 	braveApiKey: z.string().optional(),
 	context7ApiKey: z.string().optional(),
 	githubToken: z.string().optional(),
@@ -297,6 +302,7 @@ export const SECRET_STATE_KEYS = [
 // Global secrets that are part of GlobalSettings (not ProviderSettings)
 export const GLOBAL_SECRET_KEYS = [
 	"openRouterImageApiKey", // For image generation
+	"liteLlmImageApiKey", // For LiteLLM image generation
 	"braveApiKey",
 	"context7ApiKey",
 	"githubToken",

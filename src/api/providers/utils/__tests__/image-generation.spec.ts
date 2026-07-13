@@ -275,6 +275,38 @@ describe("generateImageWithImagesApi", () => {
 			expect(callUrl).toContain("/images/generations")
 		})
 
+		it("should send Flux/Kontext-style editing requests through providerOptions.blackForestLabs", async () => {
+			const mockBase64 = Buffer.from("fake image data").toString("base64")
+			const mockResponse = {
+				ok: true,
+				json: vi.fn().mockResolvedValue({
+					data: [{ b64_json: mockBase64 }],
+				}),
+			}
+
+			vi.mocked(global.fetch).mockResolvedValue(mockResponse as any)
+
+			const inputImageDataUrl = `data:image/png;base64,${mockBase64}`
+
+			await generateImageWithImagesApi({
+				baseURL: "https://api.example.com/v1",
+				authToken: "test-token",
+				model: "image/flux-kontext-dev",
+				prompt: "Make it blue",
+				inputImage: inputImageDataUrl,
+				outputFormat: "png",
+			})
+
+			const callArgs = vi.mocked(global.fetch).mock.calls[0]
+			const body = JSON.parse(callArgs[1]?.body as string)
+			expect(body.providerOptions).toEqual({
+				blackForestLabs: {
+					outputFormat: "png",
+					inputImage: inputImageDataUrl,
+				},
+			})
+		})
+
 		it("should handle edit operation errors", async () => {
 			const mockResponse = {
 				ok: false,

@@ -116,3 +116,9 @@ export interface GenerateImageParams {
 	path: string
 	image?: string
 }
+
+export interface GenerateVideoParams {
+	prompt: string
+	path: string
+	image?: string
+}
