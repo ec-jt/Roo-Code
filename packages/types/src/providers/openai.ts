@@ -3,9 +3,87 @@ import type { ModelInfo } from "../model.js"
 // https://openai.com/api/pricing/
 export type OpenAiNativeModelId = keyof typeof openAiNativeModels
 
-export const openAiNativeDefaultModelId: OpenAiNativeModelId = "gpt-5.1-codex-max"
+export const openAiNativeDefaultModelId: OpenAiNativeModelId = "gpt-5.6-sol"
 
 export const openAiNativeModels = {
+	"gpt-5.6-sol": {
+		maxTokens: 128000,
+		contextWindow: 1_050_000,
+		includedTools: ["apply_patch"],
+		excludedTools: ["apply_diff", "write_to_file"],
+		supportsImages: true,
+		supportsPromptCache: true,
+		supportsReasoningEffort: ["none", "low", "medium", "high", "xhigh"],
+		reasoningEffort: "none",
+		inputPrice: 5.0,
+		outputPrice: 30.0,
+		cacheWritesPrice: 6.25,
+		cacheReadsPrice: 0.5,
+		longContextPricing: {
+			thresholdTokens: 272_000,
+			inputPriceMultiplier: 2,
+			outputPriceMultiplier: 1.5,
+			cacheWritesPriceMultiplier: 2,
+			cacheReadsPriceMultiplier: 2,
+			appliesToServiceTiers: ["default", "flex"],
+		},
+		supportsVerbosity: true,
+		supportsTemperature: false,
+		description:
+			"GPT-5.6 Sol: OpenAI's flagship frontier model for the hardest reasoning, coding, and agentic tasks",
+	},
+	"gpt-5.6-terra": {
+		maxTokens: 128000,
+		contextWindow: 1_050_000,
+		includedTools: ["apply_patch"],
+		excludedTools: ["apply_diff", "write_to_file"],
+		supportsImages: true,
+		supportsPromptCache: true,
+		supportsReasoningEffort: ["none", "low", "medium", "high", "xhigh"],
+		reasoningEffort: "none",
+		inputPrice: 2.5,
+		outputPrice: 15.0,
+		cacheWritesPrice: 3.125,
+		cacheReadsPrice: 0.25,
+		longContextPricing: {
+			thresholdTokens: 272_000,
+			inputPriceMultiplier: 2,
+			outputPriceMultiplier: 1.5,
+			cacheWritesPriceMultiplier: 2,
+			cacheReadsPriceMultiplier: 2,
+			appliesToServiceTiers: ["default", "flex"],
+		},
+		supportsVerbosity: true,
+		supportsTemperature: false,
+		description:
+			"GPT-5.6 Terra: Mid-tier frontier model balancing capability, speed, and cost for advanced production workloads",
+	},
+	"gpt-5.6-luna": {
+		maxTokens: 128000,
+		contextWindow: 1_050_000,
+		includedTools: ["apply_patch"],
+		excludedTools: ["apply_diff", "write_to_file"],
+		supportsImages: true,
+		supportsPromptCache: true,
+		supportsReasoningEffort: ["none", "low", "medium", "high", "xhigh"],
+		reasoningEffort: "none",
+		inputPrice: 1.0,
+		outputPrice: 6.0,
+		cacheWritesPrice: 1.25,
+		cacheReadsPrice: 0.1,
+		longContextPricing: {
+			thresholdTokens: 272_000,
+			inputPriceMultiplier: 2,
+			outputPriceMultiplier: 1.5,
+			cacheWritesPriceMultiplier: 2,
+			cacheReadsPriceMultiplier: 2,
+			appliesToServiceTiers: ["default", "flex"],
+		},
+		supportsVerbosity: true,
+		supportsTemperature: false,
+		description:
+			"GPT-5.6 Luna: Smallest GPT-5.6 frontier model with long context and strong multimodal capabilities",
+	},
 	"gpt-5.5": {
 		maxTokens: 128000,
 		contextWindow: 1_050_000,
