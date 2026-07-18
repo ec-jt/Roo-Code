@@ -50,6 +50,8 @@ export default {
 						"press",
 						"scroll_down",
 						"scroll_up",
+						"scroll_to_top",
+						"scroll_to_bottom",
 						"resize",
 						"close",
 						"screenshot",

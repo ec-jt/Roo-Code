@@ -198,6 +198,12 @@ export async function browserActionTool(
 					case "scroll_up":
 						browserActionResult = await cline.browserSession.scrollUp()
 						break
+					case "scroll_to_top":
+						browserActionResult = await cline.browserSession.scrollToTop()
+						break
+					case "scroll_to_bottom":
+						browserActionResult = await cline.browserSession.scrollToBottom()
+						break
 					case "resize":
 						browserActionResult = await cline.browserSession.resize(size!)
 						break
@@ -223,6 +229,8 @@ export async function browserActionTool(
 				case "press":
 				case "scroll_down":
 				case "scroll_up":
+				case "scroll_to_top":
+				case "scroll_to_bottom":
 				case "resize":
 				case "screenshot": {
 					await cline.say("browser_action_result", JSON.stringify(browserActionResult))
@@ -246,6 +254,17 @@ export async function browserActionTool(
 					// Include browser viewport dimensions (for reference only)
 					if (browserActionResult?.viewportWidth && browserActionResult?.viewportHeight) {
 						messageText += `\n\nBrowser viewport: ${browserActionResult.viewportWidth}x${browserActionResult.viewportHeight}`
+					}
+
+					// Include scroll/navigation state to reduce repeated looping
+					if (
+						typeof browserActionResult?.scrollY === "number" &&
+						typeof browserActionResult?.maxScrollY === "number" &&
+						typeof browserActionResult?.scrollPercent === "number"
+					) {
+						messageText += `\nScroll position: ${browserActionResult.scrollY}px / ${browserActionResult.maxScrollY}px (${browserActionResult.scrollPercent}%)`
+						messageText += `\nCan scroll up: ${browserActionResult.canScrollUp ? "yes" : "no"}`
+						messageText += `\nCan scroll down: ${browserActionResult.canScrollDown ? "yes" : "no"}`
 					}
 
 					// Include cursor position if available

@@ -867,6 +867,8 @@ export const browserActions = [
 	"press",
 	"scroll_down",
 	"scroll_up",
+	"scroll_to_top",
+	"scroll_to_bottom",
 	"resize",
 	"close",
 	"screenshot",
@@ -897,6 +899,11 @@ export type BrowserActionResult = {
 	currentMousePosition?: string
 	viewportWidth?: number
 	viewportHeight?: number
+	scrollY?: number
+	maxScrollY?: number
+	scrollPercent?: number
+	canScrollUp?: boolean
+	canScrollDown?: boolean
 	totalPageHeight?: number
 	pageTitle?: string
 }

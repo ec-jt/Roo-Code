@@ -283,6 +283,39 @@ export class BrowserSession {
 		this.browserTempDir = undefined
 	}
 
+	private async getScrollState(page: Page): Promise<{
+		scrollY: number
+		maxScrollY: number
+		scrollPercent: number
+		canScrollUp: boolean
+		canScrollDown: boolean
+		totalPageHeight: number
+	}> {
+		return page.evaluate(() => {
+			const doc = document.documentElement
+			const body = document.body
+			const totalHeight = Math.max(
+				doc.clientHeight,
+				body?.scrollHeight || 0,
+				doc.scrollHeight,
+				body?.offsetHeight || 0,
+				doc.offsetHeight,
+			)
+			const viewportHeight = window.innerHeight || doc.clientHeight || 0
+			const scrollY = window.scrollY || doc.scrollTop || 0
+			const maxScrollY = Math.max(0, totalHeight - viewportHeight)
+			const scrollPercent = maxScrollY <= 0 ? 100 : Math.round((scrollY / maxScrollY) * 100)
+			return {
+				scrollY,
+				maxScrollY,
+				scrollPercent,
+				canScrollUp: scrollY > 0,
+				canScrollDown: scrollY < maxScrollY,
+				totalPageHeight: totalHeight,
+			}
+		})
+	}
+
 	async doAction(action: (page: Page) => Promise<void>): Promise<BrowserActionResult> {
 		if (!this.page) {
 			throw new Error(
@@ -366,6 +399,7 @@ export class BrowserSession {
 
 		// Get actual viewport dimensions
 		const viewport = this.page.viewport()
+		const scrollState = await this.getScrollState(this.page)
 
 		// Persist last known viewport dimensions
 		this.lastViewportWidth = viewport?.width
@@ -378,6 +412,12 @@ export class BrowserSession {
 			currentMousePosition: this.currentMousePosition,
 			viewportWidth: viewport?.width,
 			viewportHeight: viewport?.height,
+			scrollY: scrollState.scrollY,
+			maxScrollY: scrollState.maxScrollY,
+			scrollPercent: scrollState.scrollPercent,
+			canScrollUp: scrollState.canScrollUp,
+			canScrollDown: scrollState.canScrollDown,
+			totalPageHeight: scrollState.totalPageHeight,
 		}
 	}
 
@@ -774,6 +814,20 @@ export class BrowserSession {
 	async scrollUp(): Promise<BrowserActionResult> {
 		return this.doAction(async (page) => {
 			await this.scrollPage(page, "up")
+		})
+	}
+
+	async scrollToTop(): Promise<BrowserActionResult> {
+		return this.doAction(async (page) => {
+			await page.evaluate(() => window.scrollTo(0, 0))
+			await delay(300)
+		})
+	}
+
+	async scrollToBottom(): Promise<BrowserActionResult> {
+		return this.doAction(async (page) => {
+			await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
+			await delay(300)
 		})
 	}
 
