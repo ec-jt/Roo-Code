@@ -64,12 +64,10 @@ export class BrowserSession {
 	}
 
 	private async ensureBrowserTempBaseDir(): Promise<string> {
-		const globalStoragePath = this.context?.globalStorageUri?.fsPath
-		if (!globalStoragePath) {
-			throw new Error("Global storage uri is invalid")
-		}
-
-		const tmpBaseDir = path.join(globalStoragePath, "browser-tmp")
+		// Keep Chromium profile paths short enough to avoid Linux Unix-socket path limits.
+		// Using extension global storage here creates very long nested paths that Chromium
+		// may expand internally, causing launch failures. Use a short /tmp-based prefix instead.
+		const tmpBaseDir = path.join(os.tmpdir(), "roo-browser-tmp")
 		await fs.mkdir(tmpBaseDir, { recursive: true })
 		return tmpBaseDir
 	}
