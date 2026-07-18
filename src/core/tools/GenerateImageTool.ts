@@ -233,7 +233,7 @@ export class GenerateImageTool extends BaseTool<"generate_image"> {
 						})
 					: await new OpenRouterHandler({} as any).generateImage(
 							prompt,
-							selectedModel,
+							selectedModel!,
 							openRouterApiKey!,
 							inputImageData,
 						)

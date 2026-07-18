@@ -1,6 +1,7 @@
 import * as vscode from "vscode"
 import * as fs from "fs/promises"
 import * as path from "path"
+import * as os from "os"
 import { Browser, Page, ScreenshotOptions, TimeoutError, launch, connect, KeyInput } from "puppeteer-core"
 // @ts-ignore
 import PCR from "puppeteer-chromium-resolver"
@@ -33,6 +34,8 @@ export class BrowserSession {
 	// Track last known viewport to surface in environment details
 	private lastViewportWidth?: number
 	private lastViewportHeight?: number
+	private userDataDir?: string
+	private browserTempDir?: string
 
 	constructor(context: vscode.ExtensionContext, onStateChange?: (isActive: boolean) => void) {
 		this.context = context
@@ -60,6 +63,30 @@ export class BrowserSession {
 		return stats
 	}
 
+	private async ensureBrowserTempBaseDir(): Promise<string> {
+		const globalStoragePath = this.context?.globalStorageUri?.fsPath
+		if (!globalStoragePath) {
+			throw new Error("Global storage uri is invalid")
+		}
+
+		const tmpBaseDir = path.join(globalStoragePath, "browser-tmp")
+		await fs.mkdir(tmpBaseDir, { recursive: true })
+		return tmpBaseDir
+	}
+
+	private async cleanupOrphanedBrowserTempDirs(baseDir: string): Promise<void> {
+		try {
+			const entries = await fs.readdir(baseDir, { withFileTypes: true })
+			await Promise.all(
+				entries
+					.filter((entry) => entry.isDirectory() && entry.name.startsWith("roo-browser-profile-"))
+					.map((entry) => fs.rm(path.join(baseDir, entry.name), { recursive: true, force: true })),
+			)
+		} catch {
+			// best effort cleanup only
+		}
+	}
+
 	/**
 	 * Gets the viewport size from global state or returns default
 	 */
@@ -76,14 +103,25 @@ export class BrowserSession {
 		console.log("Launching local browser")
 		const stats = await this.ensureChromiumExists()
 		const viewport = this.getViewport()
+		const tmpBaseDir = await this.ensureBrowserTempBaseDir()
+		await this.cleanupOrphanedBrowserTempDirs(tmpBaseDir)
+		this.userDataDir = await fs.mkdtemp(path.join(tmpBaseDir, "roo-browser-profile-"))
+		this.browserTempDir = tmpBaseDir
 		this.browser = await stats.puppeteer.launch({
 			args: [
 				"--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
 				"--no-sandbox",
 				"--disable-setuid-sandbox",
 			],
+			env: {
+				...process.env,
+				TMPDIR: tmpBaseDir,
+				TMP: tmpBaseDir,
+				TEMP: tmpBaseDir,
+			},
 			executablePath: stats.executablePath,
 			defaultViewport: { ...viewport, deviceScaleFactor: 1 },
+			userDataDir: this.userDataDir,
 			// headless: false,
 		})
 		this.isUsingRemoteBrowser = false
@@ -219,6 +257,9 @@ export class BrowserSession {
 				await this.browser.disconnect().catch(() => {})
 			} else {
 				await this.browser?.close().catch(() => {})
+				if (this.userDataDir) {
+					await fs.rm(this.userDataDir, { recursive: true, force: true }).catch(() => {})
+				}
 			}
 			this.resetBrowserState()
 
@@ -240,6 +281,8 @@ export class BrowserSession {
 		this.isUsingRemoteBrowser = false
 		this.lastViewportWidth = undefined
 		this.lastViewportHeight = undefined
+		this.userDataDir = undefined
+		this.browserTempDir = undefined
 	}
 
 	async doAction(action: (page: Page) => Promise<void>): Promise<BrowserActionResult> {

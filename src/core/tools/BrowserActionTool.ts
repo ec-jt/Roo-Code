@@ -271,8 +271,9 @@ export async function browserActionTool(
 					const sections = browserActionResult?.screenshots || []
 
 					// Determine max sections to send based on a reasonable limit
-					// Each image is ~1500 tokens, so 20 sections = ~30K tokens
-					const MAX_SECTIONS_PER_RESULT = 20
+					// Each image is ~1500 tokens, so 8 sections ≈ 12K image tokens.
+					// This keeps full-page captures useful without dominating context.
+					const MAX_SECTIONS_PER_RESULT = 8
 					const sectionsToSend = sections.slice(0, MAX_SECTIONS_PER_RESULT)
 					const hasMore = sections.length > MAX_SECTIONS_PER_RESULT
 

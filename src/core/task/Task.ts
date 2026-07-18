@@ -1083,11 +1083,66 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			}
 
 			const validatedMessage = validateAndFixToolResultIds(messageToAdd, historyForValidation)
+			if (this.isBrowserToolResultMessage(validatedMessage, lastEffective)) {
+				this.compactHistoricalBrowserImages()
+			}
 			const messageWithTs = { ...validatedMessage, ts: Date.now() }
 			this.apiConversationHistory.push(messageWithTs)
 		}
 
 		await this.saveApiConversationHistory()
+	}
+
+	private isBrowserToolResultMessage(message: Anthropic.MessageParam, previousAssistant?: ApiMessage): boolean {
+		if (!Array.isArray(message.content) || previousAssistant?.role !== "assistant") {
+			return false
+		}
+
+		const hasImageBlocks = message.content.some((block) => block.type === "image")
+		if (!hasImageBlocks) {
+			return false
+		}
+
+		if (!Array.isArray(previousAssistant.content)) {
+			return false
+		}
+
+		return previousAssistant.content.some(
+			(block) => block.type === "tool_use" && (block as Anthropic.ToolUseBlock).name === "browser_action",
+		)
+	}
+
+	private compactHistoricalBrowserImages(): void {
+		let previousAssistantWasBrowserAction = false
+
+		for (const message of this.apiConversationHistory) {
+			if (message.role === "assistant") {
+				previousAssistantWasBrowserAction =
+					Array.isArray(message.content) &&
+					message.content.some(
+						(block) => block.type === "tool_use" && (block as Anthropic.ToolUseBlock).name === "browser_action",
+					)
+				continue
+			}
+
+			if (!previousAssistantWasBrowserAction || !Array.isArray(message.content)) {
+				continue
+			}
+
+			const hasImageBlocks = message.content.some((block) => block.type === "image")
+			if (!hasImageBlocks) {
+				continue
+			}
+
+			const nonImageBlocks = message.content.filter((block) => block.type !== "image")
+			message.content = [
+				...nonImageBlocks,
+				{
+					type: "text",
+					text: "[Older browser screenshot omitted from model history; see Browser Session tab for visual history]",
+				} satisfies Anthropic.TextBlockParam,
+			]
+		}
 	}
 
 	// NOTE: We intentionally do NOT mutate stored messages to merge consecutive user turns.
