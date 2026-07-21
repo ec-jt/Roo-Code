@@ -3,9 +3,22 @@ import type { ModelInfo } from "../model.js"
 // https://platform.moonshot.ai/
 export type MoonshotModelId = keyof typeof moonshotModels
 
-export const moonshotDefaultModelId: MoonshotModelId = "kimi-k2-0905-preview"
+export const moonshotDefaultModelId: MoonshotModelId = "kimi-k3"
 
 export const moonshotModels = {
+	"kimi-k3": {
+		maxTokens: 131_072,
+		contextWindow: 1_000_000,
+		supportsImages: true,
+		supportsPromptCache: true,
+		inputPrice: 3.0,
+		outputPrice: 15.0,
+		cacheReadsPrice: 0.3,
+		supportsTemperature: true,
+		defaultTemperature: 1.0,
+		description:
+			"Kimi K3 is Moonshot AI's flagship model for long-horizon coding, knowledge work, and multimodal reasoning with a 1M-token context window.",
+	},
 	"kimi-k2-0711-preview": {
 		maxTokens: 32_000,
 		contextWindow: 131_072,
