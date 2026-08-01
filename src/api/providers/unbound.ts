@@ -17,6 +17,7 @@ import { BaseProvider } from "./base-provider"
 import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata } from "../index"
 import { handleOpenAIError } from "./utils/openai-error-handler"
 import { applyRouterToolPreferences } from "./utils/router-tool-preferences"
+import { getApiRequestTimeout } from "./utils/timeout-config"
 
 // Unbound usage includes extra fields for Anthropic cache tokens.
 interface UnboundUsage extends OpenAI.CompletionUsage {
@@ -56,6 +57,7 @@ export class UnboundHandler extends BaseProvider implements SingleCompletionHand
 		const apiKey = this.options.unboundApiKey ?? "not-provided"
 
 		this.client = new OpenAI({
+			timeout: getApiRequestTimeout(),
 			baseURL: "https://api.getunbound.ai/v1",
 			apiKey: apiKey,
 			defaultHeaders: {

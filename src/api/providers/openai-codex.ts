@@ -24,6 +24,7 @@ import { isMcpTool } from "../../utils/mcp-name"
 import { sanitizeOpenAiCallId } from "../../utils/tool-id"
 import { openAiCodexOAuthManager } from "../../integrations/openai-codex/oauth"
 import { t } from "../../i18n"
+import { getApiRequestTimeout } from "./utils/timeout-config"
 
 export type OpenAiCodexModel = ReturnType<OpenAiCodexHandler["getModel"]>
 
@@ -366,6 +367,7 @@ export class OpenAiCodexHandler extends BaseProvider implements SingleCompletion
 				const client =
 					this.client ??
 					new OpenAI({
+						timeout: getApiRequestTimeout(),
 						apiKey: accessToken,
 						baseURL: CODEX_API_BASE_URL,
 						defaultHeaders: codexHeaders,

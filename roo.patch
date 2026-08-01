@@ -1,0 +1,161 @@
+diff --git a/src/api/providers/openai-codex.ts b/src/api/providers/openai-codex.ts
+index e0ae65f..163dbf6 100644
+--- a/src/api/providers/openai-codex.ts
++++ b/src/api/providers/openai-codex.ts
+@@ -24,6 +24,7 @@ import { isMcpTool } from "../../utils/mcp-name"
+ import { sanitizeOpenAiCallId } from "../../utils/tool-id"
+ import { openAiCodexOAuthManager } from "../../integrations/openai-codex/oauth"
+ import { t } from "../../i18n"
++import { getApiRequestTimeout } from "./utils/timeout-config"
+ 
+ export type OpenAiCodexModel = ReturnType<OpenAiCodexHandler["getModel"]>
+ 
+@@ -366,6 +367,7 @@ export class OpenAiCodexHandler extends BaseProvider implements SingleCompletion
+ 				const client =
+ 					this.client ??
+ 					new OpenAI({
++						timeout: getApiRequestTimeout(),
+ 						apiKey: accessToken,
+ 						baseURL: CODEX_API_BASE_URL,
+ 						defaultHeaders: codexHeaders,
+diff --git a/src/api/providers/openai-native.ts b/src/api/providers/openai-native.ts
+index a04c17f..4b7a245 100644
+--- a/src/api/providers/openai-native.ts
++++ b/src/api/providers/openai-native.ts
+@@ -27,6 +27,7 @@ import { BaseProvider } from "./base-provider"
+ import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata } from "../index"
+ import { isMcpTool } from "../../utils/mcp-name"
+ import { sanitizeOpenAiCallId } from "../../utils/tool-id"
++import { getApiRequestTimeout } from "./utils/timeout-config"
+ 
+ export type OpenAiNativeModel = ReturnType<OpenAiNativeHandler["getModel"]>
+ 
+@@ -95,6 +96,7 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
+ 		// Include originator, session_id, and User-Agent headers for API tracking and debugging
+ 		const userAgent = `roo-code/${Package.version} (${os.platform()} ${os.release()}; ${os.arch()}) node/${process.version.slice(1)}`
+ 		this.client = new OpenAI({
++			timeout: getApiRequestTimeout(),
+ 			baseURL: this.options.openAiNativeBaseUrl || undefined,
+ 			apiKey,
+ 			defaultHeaders: {
+diff --git a/src/api/providers/openrouter.ts b/src/api/providers/openrouter.ts
+index f154212..33ac199 100644
+--- a/src/api/providers/openrouter.ts
++++ b/src/api/providers/openrouter.ts
+@@ -37,6 +37,7 @@ import type { ApiHandlerCreateMessageMetadata, SingleCompletionHandler } from ".
+ import { handleOpenAIError } from "./utils/openai-error-handler"
+ import { generateImageWithProvider, ImageGenerationResult } from "./utils/image-generation"
+ import { applyRouterToolPreferences } from "./utils/router-tool-preferences"
++import { getApiRequestTimeout } from "./utils/timeout-config"
+ 
+ // Add custom interface for OpenRouter params.
+ type OpenRouterChatCompletionParams = OpenAI.Chat.ChatCompletionCreateParams & {
+@@ -151,7 +152,7 @@ export class OpenRouterHandler extends BaseProvider implements SingleCompletionH
+ 		const baseURL = this.options.openRouterBaseUrl || "https://openrouter.ai/api/v1"
+ 		const apiKey = this.options.openRouterApiKey ?? "not-provided"
+ 
+-		this.client = new OpenAI({ baseURL, apiKey, defaultHeaders: DEFAULT_HEADERS })
++		this.client = new OpenAI({ baseURL, apiKey, defaultHeaders: DEFAULT_HEADERS, timeout: getApiRequestTimeout() })
+ 
+ 		// Load models asynchronously to populate cache before getModel() is called
+ 		this.loadDynamicModels().catch((error) => {
+diff --git a/src/api/providers/qwen-code.ts b/src/api/providers/qwen-code.ts
+index f2a2070..c3f988d 100644
+--- a/src/api/providers/qwen-code.ts
++++ b/src/api/providers/qwen-code.ts
+@@ -15,6 +15,7 @@ import { ApiStream } from "../transform/stream"
+ 
+ import { BaseProvider } from "./base-provider"
+ import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata } from "../index"
++import { getApiRequestTimeout } from "./utils/timeout-config"
+ 
+ const QWEN_OAUTH_BASE_URL = "https://chat.qwen.ai"
+ const QWEN_OAUTH_TOKEN_ENDPOINT = `${QWEN_OAUTH_BASE_URL}/api/v1/oauth2/token`
+@@ -67,6 +68,7 @@ export class QwenCodeHandler extends BaseProvider implements SingleCompletionHan
+ 			// Create the client instance with dummy key initially
+ 			// The API key will be updated dynamically via ensureAuthenticated
+ 			this.client = new OpenAI({
++				timeout: getApiRequestTimeout(),
+ 				apiKey: "dummy-key-will-be-replaced",
+ 				baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+ 				defaultHeaders: {
+diff --git a/src/api/providers/requesty.ts b/src/api/providers/requesty.ts
+index b241c34..636de5c 100644
+--- a/src/api/providers/requesty.ts
++++ b/src/api/providers/requesty.ts
+@@ -18,6 +18,7 @@ import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata } from ".
+ import { toRequestyServiceUrl } from "../../shared/utils/requesty"
+ import { handleOpenAIError } from "./utils/openai-error-handler"
+ import { applyRouterToolPreferences } from "./utils/router-tool-preferences"
++import { getApiRequestTimeout } from "./utils/timeout-config"
+ 
+ // Requesty usage includes an extra field for Anthropic use cases.
+ // Safely cast the prompt token details section to the appropriate structure.
+@@ -65,6 +66,7 @@ export class RequestyHandler extends BaseProvider implements SingleCompletionHan
+ 		const apiKey = this.options.requestyApiKey ?? "not-provided"
+ 
+ 		this.client = new OpenAI({
++			timeout: getApiRequestTimeout(),
+ 			baseURL: this.baseURL,
+ 			apiKey: apiKey,
+ 			defaultHeaders: DEFAULT_HEADERS,
+diff --git a/src/api/providers/router-provider.ts b/src/api/providers/router-provider.ts
+index 09b102d..a67958d 100644
+--- a/src/api/providers/router-provider.ts
++++ b/src/api/providers/router-provider.ts
+@@ -8,6 +8,7 @@ import { BaseProvider } from "./base-provider"
+ import { getModels, getModelsFromCache } from "./fetchers/modelCache"
+ 
+ import { DEFAULT_HEADERS } from "./constants"
++import { getApiRequestTimeout } from "./utils/timeout-config"
+ 
+ type RouterProviderOptions = {
+ 	name: RouterName
+@@ -46,6 +47,7 @@ export abstract class RouterProvider extends BaseProvider {
+ 		this.defaultModelInfo = defaultModelInfo
+ 
+ 		this.client = new OpenAI({
++			timeout: getApiRequestTimeout(),
+ 			baseURL,
+ 			apiKey,
+ 			defaultHeaders: {
+diff --git a/src/api/providers/unbound.ts b/src/api/providers/unbound.ts
+index d50bfcc..b725e27 100644
+--- a/src/api/providers/unbound.ts
++++ b/src/api/providers/unbound.ts
+@@ -17,6 +17,7 @@ import { BaseProvider } from "./base-provider"
+ import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata } from "../index"
+ import { handleOpenAIError } from "./utils/openai-error-handler"
+ import { applyRouterToolPreferences } from "./utils/router-tool-preferences"
++import { getApiRequestTimeout } from "./utils/timeout-config"
+ 
+ // Unbound usage includes extra fields for Anthropic cache tokens.
+ interface UnboundUsage extends OpenAI.CompletionUsage {
+@@ -56,6 +57,7 @@ export class UnboundHandler extends BaseProvider implements SingleCompletionHand
+ 		const apiKey = this.options.unboundApiKey ?? "not-provided"
+ 
+ 		this.client = new OpenAI({
++			timeout: getApiRequestTimeout(),
+ 			baseURL: "https://api.getunbound.ai/v1",
+ 			apiKey: apiKey,
+ 			defaultHeaders: {
+diff --git a/src/api/providers/xai.ts b/src/api/providers/xai.ts
+index 4db605c..cbfa1fa 100644
+--- a/src/api/providers/xai.ts
++++ b/src/api/providers/xai.ts
+@@ -15,6 +15,7 @@ import { BaseProvider } from "./base-provider"
+ import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata } from "../index"
+ import { handleOpenAIError } from "./utils/openai-error-handler"
+ import { isMcpTool } from "../../utils/mcp-name"
++import { getApiRequestTimeout } from "./utils/timeout-config"
+ 
+ const XAI_DEFAULT_TEMPERATURE = 0
+ 
+@@ -30,6 +31,7 @@ export class XAIHandler extends BaseProvider implements SingleCompletionHandler
+ 		const apiKey = this.options.xaiApiKey ?? "not-provided"
+ 
+ 		this.client = new OpenAI({
++			timeout: getApiRequestTimeout(),
+ 			baseURL: "https://api.x.ai/v1",
+ 			apiKey: apiKey,
+ 			defaultHeaders: DEFAULT_HEADERS,
