@@ -27,6 +27,21 @@ import { getPoeModels } from "./poe"
 
 const memoryCache = new NodeCache({ stdTTL: 5 * 60, checkperiod: 5 * 60 })
 
+// Hard deadline for any provider model-list fetch, regardless of transport
+// (axios, SDK libraries, etc.). Prevents a single hung endpoint from blocking
+// webview initialization or the requestRouterModels aggregation forever.
+const MODEL_FETCH_DEADLINE_MS = 15_000
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+	let timer: NodeJS.Timeout | undefined
+	const timeout = new Promise<never>((_, reject) => {
+		timer = setTimeout(() => reject(new Error(`Timed out after ${ms}ms fetching models for ${label}`)), ms)
+	})
+	return Promise.race([promise, timeout]).finally(() => {
+		if (timer) clearTimeout(timer)
+	}) as Promise<T>
+}
+
 // Zod schema for validating ModelRecord structure from disk cache
 const modelRecordSchema = z.record(z.string(), modelInfoSchema)
 
@@ -118,7 +133,7 @@ export const getModels = async (options: GetModelsOptions): Promise<ModelRecord>
 	}
 
 	try {
-		models = await fetchModelsFromProvider(options)
+		models = await withTimeout(fetchModelsFromProvider(options), MODEL_FETCH_DEADLINE_MS, provider)
 		const modelCount = Object.keys(models).length
 
 		// Only cache non-empty results to prevent persisting failed API responses.
@@ -164,7 +179,7 @@ export const refreshModels = async (options: GetModelsOptions): Promise<ModelRec
 	const refreshPromise = (async (): Promise<ModelRecord> => {
 		try {
 			// Force fresh API fetch - skip getModelsFromCache() check
-			const models = await fetchModelsFromProvider(options)
+			const models = await withTimeout(fetchModelsFromProvider(options), MODEL_FETCH_DEADLINE_MS, provider)
 			const modelCount = Object.keys(models).length
 
 			// Get existing cached data for comparison

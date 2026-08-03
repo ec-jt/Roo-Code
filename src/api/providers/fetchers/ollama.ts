@@ -1,6 +1,7 @@
 import axios from "axios"
 import { ModelInfo, ollamaDefaultModelInfo } from "@roo-code/types"
 import { z } from "zod"
+import { MODEL_FETCH_TIMEOUT_MS } from "./fetch-timeout"
 
 const OllamaModelDetailsSchema = z.object({
 	family: z.string(),
@@ -79,7 +80,7 @@ export async function getOllamaModels(
 			headers["Authorization"] = `Bearer ${apiKey}`
 		}
 
-		const response = await axios.get<OllamaModelsResponse>(`${baseUrl}/api/tags`, { headers })
+		const response = await axios.get<OllamaModelsResponse>(`${baseUrl}/api/tags`, { headers, timeout: MODEL_FETCH_TIMEOUT_MS })
 		const parsedResponse = OllamaModelsResponseSchema.safeParse(response.data)
 		let modelInfoPromises = []
 
@@ -92,7 +93,7 @@ export async function getOllamaModels(
 							{
 								model: ollamaModel.model,
 							},
-							{ headers },
+							{ headers, timeout: MODEL_FETCH_TIMEOUT_MS },
 						)
 						.then((ollamaModelInfo) => {
 							const modelInfo = parseOllamaModel(ollamaModelInfo.data)

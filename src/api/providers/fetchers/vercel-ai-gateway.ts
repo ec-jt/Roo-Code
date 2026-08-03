@@ -6,6 +6,7 @@ import { VERCEL_AI_GATEWAY_VISION_ONLY_MODELS, VERCEL_AI_GATEWAY_VISION_AND_TOOL
 
 import type { ApiHandlerOptions } from "../../../shared/api"
 import { parseApiPrice } from "../../../shared/cost"
+import { MODEL_FETCH_TIMEOUT_MS } from "./fetch-timeout"
 
 /**
  * VercelAiGatewayPricing
@@ -58,7 +59,7 @@ export async function getVercelAiGatewayModels(options?: ApiHandlerOptions): Pro
 	const baseURL = "https://ai-gateway.vercel.sh/v1"
 
 	try {
-		const response = await axios.get<VercelAiGatewayModelsResponse>(`${baseURL}/models`)
+		const response = await axios.get<VercelAiGatewayModelsResponse>(`${baseURL}/models`, { timeout: MODEL_FETCH_TIMEOUT_MS })
 		const result = vercelAiGatewayModelsResponseSchema.safeParse(response.data)
 		const data = result.success ? result.data.data : response.data.data
 

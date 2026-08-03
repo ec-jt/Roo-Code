@@ -11,6 +11,7 @@ import {
 
 import type { ApiHandlerOptions } from "../../../shared/api"
 import { parseApiPrice } from "../../../shared/cost"
+import { MODEL_FETCH_TIMEOUT_MS } from "./fetch-timeout"
 
 /**
  * OpenRouterBaseModel
@@ -99,7 +100,7 @@ export async function getOpenRouterModels(options?: ApiHandlerOptions): Promise<
 	const baseURL = options?.openRouterBaseUrl || "https://openrouter.ai/api/v1"
 
 	try {
-		const response = await axios.get<OpenRouterModelsResponse>(`${baseURL}/models`)
+		const response = await axios.get<OpenRouterModelsResponse>(`${baseURL}/models`, { timeout: MODEL_FETCH_TIMEOUT_MS })
 		const result = openRouterModelsResponseSchema.safeParse(response.data)
 		const data = result.success ? result.data.data : response.data.data
 
@@ -147,7 +148,7 @@ export async function getOpenRouterModelEndpoints(
 	const baseURL = options?.openRouterBaseUrl || "https://openrouter.ai/api/v1"
 
 	try {
-		const response = await axios.get<OpenRouterModelEndpointsResponse>(`${baseURL}/models/${modelId}/endpoints`)
+		const response = await axios.get<OpenRouterModelEndpointsResponse>(`${baseURL}/models/${modelId}/endpoints`, { timeout: MODEL_FETCH_TIMEOUT_MS })
 		const result = openRouterModelEndpointsResponseSchema.safeParse(response.data)
 		const data = result.success ? result.data.data : response.data.data
 
