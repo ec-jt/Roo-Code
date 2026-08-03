@@ -2370,11 +2370,27 @@ export class ClineProvider
 	}
 
 	/**
-	 * Schedule a debounced write-through of task history to globalState.
-	 * Only used for backward compatibility during the transition period.
-	 * Per-task files are authoritative; globalState is the downgrade fallback.
+	 * The globalState mirror of task history is opt-in.
+	 *
+	 * Per-task files (TaskHistoryStore) are authoritative. This mirror exists
+	 * only so a downgrade to a build predating TaskHistoryStore can still read
+	 * the history. Writing it serialises the whole history array across the
+	 * extension-host RPC boundary on every mutation -- multi-MB for large
+	 * histories, which stalls the ext host on a remote//web session.
+	 *
+	 * Enable with "roo-cline.taskHistoryGlobalStateWriteThrough": true
 	 */
+	private static globalStateWriteThroughEnabled(): boolean {
+		return vscode.workspace
+			.getConfiguration("roo-cline")
+			.get<boolean>("taskHistoryGlobalStateWriteThrough", false)
+	}
+
 	private scheduleGlobalStateWriteThrough(): void {
+		if (!ClineProvider.globalStateWriteThroughEnabled()) {
+			return
+		}
+
 		if (this.globalStateWriteThroughTimer) {
 			clearTimeout(this.globalStateWriteThroughTimer)
 		}
@@ -2396,6 +2412,10 @@ export class ClineProvider
 	 * Flush any pending debounced globalState write-through immediately.
 	 */
 	private flushGlobalStateWriteThrough(): void {
+		if (!ClineProvider.globalStateWriteThroughEnabled()) {
+			return
+		}
+
 		if (this.globalStateWriteThroughTimer) {
 			clearTimeout(this.globalStateWriteThroughTimer)
 			this.globalStateWriteThroughTimer = null

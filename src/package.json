@@ -424,6 +424,11 @@
 					"default": false,
 					"description": "%settings.debugProxy.tlsInsecure.description%",
 					"markdownDescription": "%settings.debugProxy.tlsInsecure.description%"
+				},
+				"roo-cline.taskHistoryGlobalStateWriteThrough": {
+					"type": "boolean",
+					"default": false,
+					"description": "Mirror the full task history into globalState for backward compatibility with builds predating the per-task file store. Serialises the entire history on every change, which can stall the extension host on remote/web sessions with large histories."
 				}
 			}
 		}
