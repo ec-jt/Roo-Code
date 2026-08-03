@@ -317,6 +317,34 @@ export class ClineProvider
 				this.log("[initializeTaskHistoryStore] Migration complete")
 			}
 
+			// Drop the redundant globalState mirror.
+			//
+			// ExtensionMemento ships the extension's entire state object on every
+			// write, so a multi-MB taskHistory resident in globalState taxes every
+			// unrelated setting change with a multi-MB RPC frame. On a remote/web
+			// session that is enough to trip the ext-host unresponsive watchdog.
+			//
+			// Only drop it once the file store demonstrably has at least as many
+			// entries, so an interrupted migration can never lose history.
+			if (!ClineProvider.globalStateWriteThroughEnabled()) {
+				const mirrored = this.context.globalState.get<HistoryItem[]>("taskHistory") ?? []
+
+				if (mirrored.length > 0) {
+					const stored = this.taskHistoryStore.getAll().length
+
+					if (stored >= mirrored.length) {
+						await this.updateGlobalState("taskHistory", undefined)
+						this.log(
+							`[initializeTaskHistoryStore] Dropped globalState mirror of ${mirrored.length} entries (${stored} in file store)`,
+						)
+					} else {
+						this.log(
+							`[initializeTaskHistoryStore] Keeping globalState mirror: file store has ${stored} of ${mirrored.length} entries`,
+						)
+					}
+				}
+			}
+
 			this.taskHistoryStoreInitialized = true
 		} catch (error) {
 			this.log(`[initializeTaskHistoryStore] Error: ${error instanceof Error ? error.message : String(error)}`)
