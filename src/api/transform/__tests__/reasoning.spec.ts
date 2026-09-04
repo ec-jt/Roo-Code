@@ -293,7 +293,15 @@ describe("reasoning.ts", () => {
 	})
 
 	describe("isAdaptiveThinkingModel", () => {
-		it.each(["claude-fable-5", "claude-sonnet-4-6", "claude-opus-4-7", "claude-opus-4-8"])(
+		it.each([
+			"claude-fable-5",
+			"claude-fable-5-1",
+			"claude-opus-5",
+			"claude-sonnet-5",
+			"claude-sonnet-4-6",
+			"claude-opus-4-7",
+			"claude-opus-4-8",
+		])(
 			"should return true for adaptive Anthropic model %s",
 			(modelId) => {
 				expect(isAdaptiveThinkingModel(modelId)).toBe(true)

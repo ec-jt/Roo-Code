@@ -128,9 +128,14 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 		// API allows (allowed values: "summarized" | "omitted"). On newer adaptive
 		// models the default is "omitted", which yields an EMPTY thinking block
 		// (signature only) — without this the UI would never show any reasoning.
+		// Claude Fable 5.1 cannot disable adaptive thinking: the API rejects
+		// thinking {"type": "disabled"} with a 400 error, so keep it on regardless
+		// of the user's reasoning setting.
+		const alwaysOnThinking = modelId.includes("claude-fable-5-1") || modelId.includes("claude-mythos-5-1")
+
 		const useAdaptiveThinking = isAdaptiveThinkingModel(modelId)
 		if (useAdaptiveThinking) {
-			if (this.options.enableReasoningEffort === false) {
+			if (this.options.enableReasoningEffort === false && !alwaysOnThinking) {
 				thinking = undefined
 			} else {
 				thinking = { type: "adaptive", display: "summarized" } as any
@@ -161,7 +166,9 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 			// when adaptive thinking is enabled, so fall back to letting
 			// the model decide in that case.
 			tool_choice:
-				useAdaptiveThinking && thinking && toolChoice && (toolChoice.type === "any" || toolChoice.type === "tool")
+				(useAdaptiveThinking && thinking && toolChoice && (toolChoice.type === "any" || toolChoice.type === "tool")) ||
+				// Claude Fable 5.1 rejects forced tool use (type "any" or "tool") with a 400
+				(alwaysOnThinking && toolChoice && (toolChoice.type === "any" || toolChoice.type === "tool"))
 					? undefined
 					: toolChoice,
 		}
@@ -196,6 +203,8 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 		})
 
 		switch (modelId) {
+			case "claude-fable-5-1":
+			case "claude-opus-5":
 			case "claude-fable-5":
 			case "claude-sonnet-4-6":
 			case "claude-sonnet-4-5-20250929":
@@ -241,7 +250,9 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 								effort: (reasoningEffort ?? model.info.reasoningEffort ?? "high") as
 									| "low"
 									| "medium"
-									| "high",
+									| "high"
+									| "xhigh"
+									| "max",
 							}
 						: undefined
 
@@ -282,6 +293,8 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 
 					// Then check for models that support prompt caching
 					switch (modelId) {
+						case "claude-fable-5-1":
+						case "claude-opus-5":
 						case "claude-fable-5":
 						case "claude-sonnet-4-6":
 						case "claude-sonnet-4-5-20250929":

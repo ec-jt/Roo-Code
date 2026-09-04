@@ -23,6 +23,39 @@ export const anthropicModels = {
 		description:
 			"Claude Sonnet 5 is Anthropic's current Sonnet model with a native 1M context window, 128K max output, adaptive thinking, and the same tools/features as Sonnet 4.6 except Priority Tier.",
 	},
+	"claude-fable-5-1": {
+		maxTokens: 128_000,
+		contextWindow: 1_000_000, // Native 1M context window (default and maximum, standard pricing across the whole window)
+		supportsImages: true,
+		supportsPromptCache: true,
+		supportsTemperature: false, // Non-default temperature values return a 400 error
+		inputPrice: 10.0, // $10 per million input tokens
+		outputPrice: 50.0, // $50 per million output tokens
+		cacheWritesPrice: 12.5, // $12.50 per million tokens (5m cache write)
+		cacheReadsPrice: 0.25, // $0.25 per million tokens (0.025x base input price)
+		supportsReasoningEffort: ["low", "medium", "high", "xhigh", "max"],
+		requiredReasoningEffort: true, // Adaptive thinking is always on — cannot be disabled
+		reasoningEffort: "high",
+		description:
+			"Claude Fable 5.1 extends Claude Fable 5 with stronger long-running agentic coding, multistep research, and document, spreadsheet, and slide work. Adaptive thinking is always on.",
+	},
+	"claude-opus-5": {
+		maxTokens: 128_000,
+		contextWindow: 1_000_000, // 1M is both the default and the maximum; there is no smaller context variant
+		supportsImages: true,
+		supportsPromptCache: true,
+		supportsTemperature: false, // Adaptive thinking model — temperature not supported
+		inputPrice: 5.0, // $5 per million input tokens
+		outputPrice: 25.0, // $25 per million output tokens
+		cacheWritesPrice: 6.25, // $6.25 per million tokens (5m cache write)
+		cacheReadsPrice: 0.5, // $0.50 per million tokens
+		supportsReasoningEffort: ["disable", "low", "medium", "high", "xhigh", "max"],
+		requiredReasoningEffort: true,
+		reasoningEffort: "high",
+		// Thinking is on by default; disabling is only allowed at effort high or below
+		description:
+			"Claude Opus 5 is a step-change improvement over Claude Opus 4.8, with the largest gains in deep reasoning, agentic and long-horizon tasks, and test-time compute scaling.",
+	},
 	"claude-fable-5": {
 		maxTokens: 128_000,
 		contextWindow: 1_000_000, // Native 1M context window (no beta flag needed)

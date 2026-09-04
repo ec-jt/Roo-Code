@@ -6,6 +6,42 @@ export type OpenAiNativeModelId = keyof typeof openAiNativeModels
 export const openAiNativeDefaultModelId: OpenAiNativeModelId = "gpt-5.6-sol"
 
 export const openAiNativeModels = {
+	"gpt-6-astra": {
+		maxTokens: 128000,
+		contextWindow: 1_050_000,
+		includedTools: ["apply_patch"],
+		excludedTools: ["apply_diff", "write_to_file"],
+		supportsImages: true,
+		supportsPromptCache: true,
+		supportsReasoningEffort: ["low", "medium", "high", "xhigh", "max"],
+		reasoningEffort: "high",
+		inputPrice: 10.0,
+		outputPrice: 50.0,
+		cacheWritesPrice: 12.5,
+		cacheReadsPrice: 1.0,
+		longContextPricing: {
+			thresholdTokens: 272_000,
+			inputPriceMultiplier: 2,
+			outputPriceMultiplier: 1.5,
+			cacheWritesPriceMultiplier: 2,
+			cacheReadsPriceMultiplier: 2,
+			appliesToServiceTiers: ["default", "flex"],
+		},
+		supportsVerbosity: true,
+		supportsTemperature: false,
+		tiers: [
+			{
+				name: "flex",
+				contextWindow: 1_050_000,
+				inputPrice: 5.0,
+				outputPrice: 25.0,
+				cacheWritesPrice: 6.25,
+				cacheReadsPrice: 0.5,
+			},
+		],
+		description:
+			"GPT-6 Astra: OpenAI's most capable model, built for the hardest end-to-end work in complex reasoning, coding, computer use, research, and document creation",
+	},
 	"gpt-5.6-sol": {
 		maxTokens: 128000,
 		contextWindow: 1_050_000,

@@ -113,6 +113,9 @@ export const isAdaptiveThinkingModel = (modelId: string): boolean => {
 	const adaptiveOpusVersions = ["4-7", "4.7", "4-8", "4.8"]
 	return (
 		id.includes("claude-fable-5") ||
+		id.includes("claude-mythos-5") ||
+		id.includes("claude-sonnet-5") ||
+		id.includes("claude-opus-5") ||
 		id.includes("claude-sonnet-4-6") ||
 		id.includes("claude-sonnet-4.6") ||
 		adaptiveOpusVersions.some(

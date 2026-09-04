@@ -631,6 +631,180 @@ describe("AnthropicHandler", () => {
 		})
 	})
 
+	describe("claude-fable-5-1 adaptive thinking (always on)", () => {
+		const systemPrompt = "You are a helpful assistant."
+
+		it("should use adaptive thinking with default high effort and native 1M context", async () => {
+			const fable51Handler = new AnthropicHandler({
+				apiKey: "test-api-key",
+				apiModelId: "claude-fable-5-1",
+			})
+
+			const stream = fable51Handler.createMessage(systemPrompt, [
+				{ role: "user", content: [{ type: "text" as const, text: "Hello" }] },
+			])
+
+			for await (const _chunk of stream) {
+				// Consume stream
+			}
+
+			const requestBody = mockCreate.mock.calls[mockCreate.mock.calls.length - 1]?.[0]
+			const requestOptions = mockCreate.mock.calls[mockCreate.mock.calls.length - 1]?.[1]
+			expect(requestBody.model).toBe("claude-fable-5-1")
+			expect(requestBody.thinking).toEqual({ type: "adaptive", display: "summarized" })
+			expect(requestBody.output_config).toEqual({ effort: "high" })
+			expect(requestBody.temperature).toBeUndefined()
+			expect(requestBody.max_tokens).toBe(128_000)
+			expect(requestBody.system[0].cache_control).toEqual({ type: "ephemeral" })
+			expect(requestOptions?.headers?.["anthropic-beta"]).toContain("prompt-caching-2024-07-31")
+		})
+
+		it("should keep adaptive thinking enabled even when reasoning is explicitly disabled", async () => {
+			const fable51Handler = new AnthropicHandler({
+				apiKey: "test-api-key",
+				apiModelId: "claude-fable-5-1",
+				enableReasoningEffort: false,
+			})
+
+			const stream = fable51Handler.createMessage(systemPrompt, [
+				{ role: "user", content: [{ type: "text" as const, text: "Hello" }] },
+			])
+
+			for await (const _chunk of stream) {
+				// Consume stream
+			}
+
+			const requestBody = mockCreate.mock.calls[mockCreate.mock.calls.length - 1]?.[0]
+			// Fable 5.1 rejects thinking {"type": "disabled"} — adaptive thinking is always on
+			expect(requestBody.thinking).toEqual({ type: "adaptive", display: "summarized" })
+			expect(requestBody.output_config).toEqual({ effort: "high" })
+		})
+
+		it("should never send forced tool_choice even with thinking nominally disabled", async () => {
+			const fable51Handler = new AnthropicHandler({
+				apiKey: "test-api-key",
+				apiModelId: "claude-fable-5-1",
+				enableReasoningEffort: false,
+			})
+
+			const stream = fable51Handler.createMessage(
+				systemPrompt,
+				[{ role: "user", content: [{ type: "text" as const, text: "Hello" }] }],
+				{
+					taskId: "test-task",
+					tools: [
+						{
+							type: "function" as const,
+							function: { name: "get_weather", description: "", parameters: {} },
+						},
+					],
+					tool_choice: "required",
+				},
+			)
+
+			for await (const _chunk of stream) {
+				// Consume stream
+			}
+
+			const requestBody = mockCreate.mock.calls[mockCreate.mock.calls.length - 1]?.[0]
+			// Fable 5.1 rejects forced tool use (type "any" or "tool") with a 400
+			expect(requestBody.tool_choice).toBeUndefined()
+			expect(requestBody.tools).toEqual(expect.any(Array))
+		})
+
+		it("should pass through xhigh and max effort levels", async () => {
+			for (const effort of ["xhigh", "max"] as const) {
+				const fable51Handler = new AnthropicHandler({
+					apiKey: "test-api-key",
+					apiModelId: "claude-fable-5-1",
+					reasoningEffort: effort,
+				})
+
+				const stream = fable51Handler.createMessage(systemPrompt, [
+					{ role: "user", content: [{ type: "text" as const, text: "Hello" }] },
+				])
+
+				for await (const _chunk of stream) {
+					// Consume stream
+				}
+
+				const requestBody = mockCreate.mock.calls[mockCreate.mock.calls.length - 1]?.[0]
+				expect(requestBody.output_config).toEqual({ effort })
+			}
+		})
+	})
+
+	describe("claude-opus-5 adaptive thinking", () => {
+		const systemPrompt = "You are a helpful assistant."
+
+		it("should use adaptive thinking with default high effort and native 1M context", async () => {
+			const opus5Handler = new AnthropicHandler({
+				apiKey: "test-api-key",
+				apiModelId: "claude-opus-5",
+			})
+
+			const stream = opus5Handler.createMessage(systemPrompt, [
+				{ role: "user", content: [{ type: "text" as const, text: "Hello" }] },
+			])
+
+			for await (const _chunk of stream) {
+				// Consume stream
+			}
+
+			const requestBody = mockCreate.mock.calls[mockCreate.mock.calls.length - 1]?.[0]
+			const requestOptions = mockCreate.mock.calls[mockCreate.mock.calls.length - 1]?.[1]
+			expect(requestBody.model).toBe("claude-opus-5")
+			expect(requestBody.thinking).toEqual({ type: "adaptive", display: "summarized" })
+			expect(requestBody.output_config).toEqual({ effort: "high" })
+			expect(requestBody.temperature).toBeUndefined()
+			expect(requestBody.max_tokens).toBe(128_000)
+			expect(requestBody.system[0].cache_control).toEqual({ type: "ephemeral" })
+			expect(requestOptions?.headers?.["anthropic-beta"]).toContain("prompt-caching-2024-07-31")
+		})
+
+		it("should omit thinking when explicitly disabled at high effort or below", async () => {
+			const opus5Handler = new AnthropicHandler({
+				apiKey: "test-api-key",
+				apiModelId: "claude-opus-5",
+				enableReasoningEffort: false,
+			})
+
+			const stream = opus5Handler.createMessage(systemPrompt, [
+				{ role: "user", content: [{ type: "text" as const, text: "Hello" }] },
+			])
+
+			for await (const _chunk of stream) {
+				// Consume stream
+			}
+
+			const requestBody = mockCreate.mock.calls[mockCreate.mock.calls.length - 1]?.[0]
+			// Opus 5 allows disabling thinking at high effort or below
+			expect(requestBody.thinking).toBeUndefined()
+			expect(requestBody.output_config).toBeUndefined()
+		})
+
+		it("should pass through xhigh and max effort levels", async () => {
+			for (const effort of ["xhigh", "max"] as const) {
+				const opus5Handler = new AnthropicHandler({
+					apiKey: "test-api-key",
+					apiModelId: "claude-opus-5",
+					reasoningEffort: effort,
+				})
+
+				const stream = opus5Handler.createMessage(systemPrompt, [
+					{ role: "user", content: [{ type: "text" as const, text: "Hello" }] },
+				])
+
+				for await (const _chunk of stream) {
+					// Consume stream
+				}
+
+				const requestBody = mockCreate.mock.calls[mockCreate.mock.calls.length - 1]?.[0]
+				expect(requestBody.output_config).toEqual({ effort })
+			}
+		})
+	})
+
 	describe("reasoning block filtering", () => {
 		const systemPrompt = "You are a helpful assistant."
 

@@ -3,7 +3,7 @@
 import { Anthropic } from "@anthropic-ai/sdk"
 import OpenAI from "openai"
 
-import {} from "@roo-code/types"
+import { openAiNativeDefaultModelId } from "@roo-code/types"
 
 import { OpenAiNativeHandler } from "../openai-native"
 import { ApiHandlerOptions } from "../../../shared/api"
@@ -238,6 +238,23 @@ describe("OpenAiNativeHandler", () => {
 			expect(modelInfo.info.supportsReasoningEffort).toEqual(["low", "medium", "high", "xhigh"])
 		})
 
+		it("should return GPT-6 Astra model info when selected", () => {
+			const astraHandler = new OpenAiNativeHandler({
+				...mockOptions,
+				apiModelId: "gpt-6-astra",
+			})
+
+			const modelInfo = astraHandler.getModel()
+			expect(modelInfo.id).toBe("gpt-6-astra")
+			expect(modelInfo.info.maxTokens).toBe(128000)
+			expect(modelInfo.info.contextWindow).toBe(1_050_000)
+			expect(modelInfo.info.supportsImages).toBe(true)
+			expect(modelInfo.info.supportsPromptCache).toBe(true)
+			expect(modelInfo.info.supportsVerbosity).toBe(true)
+			expect(modelInfo.info.supportsReasoningEffort).toEqual(["low", "medium", "high", "xhigh", "max"])
+			expect(modelInfo.info.reasoningEffort).toBe("high")
+		})
+
 		it("should return GPT-5.4 model info when selected", () => {
 			const gpt54Handler = new OpenAiNativeHandler({
 				...mockOptions,
@@ -310,7 +327,7 @@ describe("OpenAiNativeHandler", () => {
 				openAiNativeApiKey: "test-api-key",
 			})
 			const modelInfo = handlerWithoutModel.getModel()
-			expect(modelInfo.id).toBe("gpt-5.1-codex-max") // Default model
+			expect(modelInfo.id).toBe(openAiNativeDefaultModelId) // Default model
 			expect(modelInfo.info).toBeDefined()
 		})
 	})
@@ -707,6 +724,48 @@ describe("OpenAiNativeHandler", () => {
 					body: expect.stringContaining('"effort":"xhigh"'),
 				}),
 			)
+		})
+
+		it("should support max reasoning effort for GPT-6 Astra", async () => {
+			// Mock fetch for Responses API
+			const mockFetch = vitest.fn().mockResolvedValue({
+				ok: true,
+				body: new ReadableStream({
+					start(controller) {
+						controller.enqueue(
+							new TextEncoder().encode(
+								'data: {"type":"response.output_item.added","item":{"type":"text","text":"Max effort"}}\n\n',
+							),
+						)
+						controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"))
+						controller.close()
+					},
+				}),
+			})
+			global.fetch = mockFetch as any
+
+			// Mock SDK to fail
+			mockResponsesCreate.mockRejectedValue(new Error("SDK not available"))
+
+			handler = new OpenAiNativeHandler({
+				...mockOptions,
+				apiModelId: "gpt-6-astra",
+				reasoningEffort: "max",
+			})
+
+			const stream = handler.createMessage(systemPrompt, messages)
+			for await (const _chunk of stream) {
+				// drain
+			}
+
+			expect(mockFetch).toHaveBeenCalledWith(
+				"https://api.openai.com/v1/responses",
+				expect.objectContaining({
+					body: expect.stringContaining('"effort":"max"'),
+				}),
+			)
+			const parsedBody = JSON.parse(mockFetch.mock.calls[0][1].body as string)
+			expect(parsedBody.model).toBe("gpt-6-astra")
 		})
 
 		it("should omit reasoning when selection is 'disable'", async () => {

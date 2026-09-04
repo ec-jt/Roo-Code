@@ -305,6 +305,26 @@ describe("ThinkingBudget", () => {
 			expect(screen.getByTestId("select-item-high")).toBeInTheDocument()
 		})
 
+		it("should show 'max' option when supportsReasoningEffort array includes max", () => {
+			render(
+				<ThinkingBudget
+					{...defaultProps}
+					modelInfo={{
+						...reasoningEffortModelInfo,
+						supportsReasoningEffort: ["low", "medium", "high", "xhigh", "max"],
+					}}
+				/>,
+			)
+
+			expect(screen.getByTestId("reasoning-effort")).toBeInTheDocument()
+			// Only values from the explicit array should be shown
+			expect(screen.getByTestId("select-item-low")).toBeInTheDocument()
+			expect(screen.getByTestId("select-item-medium")).toBeInTheDocument()
+			expect(screen.getByTestId("select-item-high")).toBeInTheDocument()
+			expect(screen.getByTestId("select-item-xhigh")).toBeInTheDocument()
+			expect(screen.getByTestId("select-item-max")).toBeInTheDocument()
+		})
+
 		it("should default to the model reasoning effort when explicit disable is supported", () => {
 			render(
 				<ThinkingBudget
