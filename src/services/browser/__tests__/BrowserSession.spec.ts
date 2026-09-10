@@ -72,12 +72,12 @@ describe("sandboxed browser launch", () => {
 		)
 	})
 
-	it("rejects missing display without downloading or launching", async () => {
+	it("falls back to headless when headed mode has no display", async () => {
 		settings.browserHeaded = true
 		vi.stubEnv("DISPLAY", "")
-		await expect(session.launchBrowser()).rejects.toThrow("accessible display")
-		expect(PCR).not.toHaveBeenCalled()
-		expect(launch).not.toHaveBeenCalled()
+		vi.stubEnv("WAYLAND_DISPLAY", "")
+		await session.launchBrowser()
+		expect(launch).toHaveBeenCalledWith(expect.objectContaining({ headless: true }))
 	})
 
 	it("allows headless mode without a display", async () => {
@@ -86,11 +86,11 @@ describe("sandboxed browser launch", () => {
 		expect(launch).toHaveBeenCalledWith(expect.objectContaining({ headless: true }))
 	})
 
-	it("rejects root without unsafe fallback", async () => {
+	it("falls back to headless for root without disabling the sandbox", async () => {
+		settings.browserHeaded = true
 		vi.stubGlobal("process", { ...process, getuid: () => 0 })
-		await expect(session.launchBrowser()).rejects.toThrow("non-root user")
-		expect(launch).not.toHaveBeenCalled()
-		expect(PCR).not.toHaveBeenCalled()
+		await session.launchBrowser()
+		expect(launch).toHaveBeenCalledWith(expect.objectContaining({ headless: true, args: [] }))
 	})
 
 	it.each(["No usable sandbox", "Missing X server or $DISPLAY"])(
@@ -107,12 +107,13 @@ describe("sandboxed browser launch", () => {
 		},
 	)
 
-	it("does not impose Linux display requirements on other platforms", async () => {
+	it("falls back to headless without a display on other platforms", async () => {
 		vi.stubGlobal("process", { ...process, platform: "darwin" })
 		vi.stubEnv("DISPLAY", "")
+		vi.stubEnv("WAYLAND_DISPLAY", "")
 		settings.browserHeaded = true
 		await session.launchBrowser()
-		expect(launch).toHaveBeenCalledWith(expect.objectContaining({ headless: false }))
+		expect(launch).toHaveBeenCalledWith(expect.objectContaining({ headless: true }))
 	})
 
 	it("fails remote discovery without launching a local browser", async () => {

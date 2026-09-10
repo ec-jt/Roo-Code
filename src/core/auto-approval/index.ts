@@ -15,6 +15,7 @@ import { getCommandDecision } from "./commands"
 
 // We have auto-approval actions for different categories.
 export type AutoApprovalState =
+	| "alwaysAllowAll"
 	| "alwaysAllowReadOnly"
 	| "alwaysAllowWrite"
 	| "alwaysAllowBrowser"
@@ -62,6 +63,12 @@ export async function checkAutoApproval({
 
 	if (!state || !state.autoApprovalEnabled) {
 		return { decision: "ask" }
+	}
+
+	// Explicit opt-in for trusted, unattended environments. This preserves the
+	// master auto-approval gate and intentionally bypasses category restrictions.
+	if (state.alwaysAllowAll === true) {
+		return { decision: "approve" }
 	}
 
 	if (ask === "followup") {

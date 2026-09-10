@@ -278,6 +278,10 @@
 		"description": "Run these actions without asking for permission. Only enable for actions you fully trust and if you understand the security risks.",
 		"toggleShortcut": "You can configure a keyboard shortcut for this setting <SettingsLink>in your IDE preferences</SettingsLink>.",
 		"enabled": "Auto-Approve Enabled",
+		"all": {
+			"label": "All Actions",
+			"description": "Dangerous: auto-approve every action without confirmation, including commands, file edits, browser actions, and tool use. Only enable for fully trusted, unattended environments."
+		},
 		"readOnly": {
 			"label": "Read",
 			"description": "When enabled, Roo will automatically view directory contents and read files without requiring you to click the Approve button.",

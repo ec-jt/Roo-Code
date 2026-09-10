@@ -7,6 +7,7 @@ import { useExtensionState } from "@src/context/ExtensionStateContext"
  */
 export function useAutoApprovalToggles() {
 	const {
+		alwaysAllowAll,
 		alwaysAllowReadOnly,
 		alwaysAllowWrite,
 		alwaysAllowBrowser,
@@ -19,6 +20,7 @@ export function useAutoApprovalToggles() {
 
 	const toggles = useMemo(
 		() => ({
+			alwaysAllowAll,
 			alwaysAllowReadOnly,
 			alwaysAllowWrite,
 			alwaysAllowBrowser,
@@ -29,6 +31,7 @@ export function useAutoApprovalToggles() {
 			alwaysAllowFollowupQuestions,
 		}),
 		[
+			alwaysAllowAll,
 			alwaysAllowReadOnly,
 			alwaysAllowWrite,
 			alwaysAllowBrowser,

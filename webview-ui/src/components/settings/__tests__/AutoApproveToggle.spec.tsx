@@ -17,6 +17,7 @@ vi.mock("@/i18n/TranslationContext", () => {
 describe("AutoApproveToggle", () => {
 	const mockOnToggle = vi.fn()
 	const initialProps = {
+		alwaysAllowAll: false,
 		alwaysAllowReadOnly: true,
 		alwaysAllowWrite: false,
 		alwaysAllowBrowser: false,

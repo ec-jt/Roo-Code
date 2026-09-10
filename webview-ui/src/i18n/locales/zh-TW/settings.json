@@ -224,6 +224,10 @@
 		"description": "無需詢問許可即可執行下列動作。請僅在您完全信任且了解安全風險的情況下啟用此功能。",
 		"toggleShortcut": "您可於 <SettingsLink>IDE 偏好設定</SettingsLink> 中自訂此功能的快捷鍵。",
 		"enabled": "自動核准已啟用",
+		"all": {
+			"label": "All Actions",
+			"description": "Dangerous: auto-approve every action without confirmation, including commands, file edits, browser actions, and tool use. Only enable for fully trusted, unattended environments."
+		},
 		"readOnly": {
 			"label": "讀取",
 			"description": "啟用後，Roo 將自動檢視目錄內容並讀取檔案，無需等待您的核准。",

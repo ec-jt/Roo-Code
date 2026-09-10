@@ -31,6 +31,7 @@ export const AutoApproveDropdown = ({ disabled = false, triggerClassName = "" }:
 	const {
 		autoApprovalEnabled,
 		setAutoApprovalEnabled,
+		setAlwaysAllowAll,
 		setAlwaysAllowReadOnly,
 		setAlwaysAllowWrite,
 		setAlwaysAllowBrowser,
@@ -48,6 +49,9 @@ export const AutoApproveDropdown = ({ disabled = false, triggerClassName = "" }:
 			vscode.postMessage({ type: "updateSettings", updatedSettings: { [key]: value } })
 
 			switch (key) {
+				case "alwaysAllowAll":
+					setAlwaysAllowAll(value)
+					break
 				case "alwaysAllowReadOnly":
 					setAlwaysAllowReadOnly(value)
 					break
@@ -82,6 +86,7 @@ export const AutoApproveDropdown = ({ disabled = false, triggerClassName = "" }:
 		},
 		[
 			autoApprovalEnabled,
+			setAlwaysAllowAll,
 			setAlwaysAllowReadOnly,
 			setAlwaysAllowWrite,
 			setAlwaysAllowBrowser,

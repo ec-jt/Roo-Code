@@ -149,6 +149,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 	const [cachedState, setCachedState] = useState(() => extensionState)
 
 	const {
+		alwaysAllowAll,
 		alwaysAllowReadOnly,
 		alwaysAllowReadOnlyOutsideWorkspace,
 		allowedCommands,
@@ -888,6 +889,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 						{/* Auto-Approve Section */}
 						{renderTab === "autoApprove" && (
 							<AutoApproveSettings
+								alwaysAllowAll={alwaysAllowAll}
 								alwaysAllowReadOnly={alwaysAllowReadOnly}
 								alwaysAllowReadOnlyOutsideWorkspace={alwaysAllowReadOnlyOutsideWorkspace}
 								alwaysAllowWrite={alwaysAllowWrite}

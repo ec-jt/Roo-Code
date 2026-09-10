@@ -99,18 +99,16 @@ export class BrowserSession {
 	 */
 	private async launchLocalBrowser(): Promise<void> {
 		console.log("Launching local browser")
-		const headed = this.context.globalState.get<boolean>("browserHeaded") ?? false
-		if (process.platform === "linux") {
-			if (process.getuid?.() === 0) {
-				throw new Error(
-					"Cannot launch sandboxed Chromium as root. Run the extension host as a non-root user with a usable Chromium sandbox, or configure a trusted remote browser. Roo will not disable the sandbox.",
-				)
-			}
-			if (headed && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) {
-				throw new Error(
-					"A visible browser requires an accessible display on the extension host. Start Roo in a graphical session with DISPLAY or WAYLAND_DISPLAY configured, or connect to a trusted visible remote browser. Roo will not fall back to headless mode.",
-				)
-			}
+		const requestedHeaded = this.context.globalState.get<boolean>("browserHeaded") ?? false
+		const isRoot = process.platform === "linux" && process.getuid?.() === 0
+		const hasDisplay = Boolean(process.env.DISPLAY || process.env.WAYLAND_DISPLAY)
+		const headed = requestedHeaded && hasDisplay && !isRoot
+		if (requestedHeaded && !headed) {
+			console.warn(
+				isRoot
+					? "Visible browser requested as root; falling back to headless Chromium to preserve sandbox security"
+					: "Visible browser requested without an accessible display; falling back to headless Chromium",
+			)
 		}
 		const stats = await this.ensureChromiumExists()
 		const viewport = this.getViewport()
@@ -144,7 +142,7 @@ export class BrowserSession {
 					"Run the extension host as a non-root user with a usable Chromium sandbox. " +
 					"On Linux, AppArmor or user-namespace restrictions may require administrator review; Roo does not change host security policy. " +
 					(headed ? "Verify that the extension host can access its X11 or Wayland display. " : "") +
-					"Alternatively, configure a trusted remote browser. No sandbox-disabled or headless fallback was attempted. " +
+					"Alternatively, configure a trusted remote browser. No sandbox-disabled fallback was attempted. " +
 					`Original error: ${detail}`,
 			)
 		}

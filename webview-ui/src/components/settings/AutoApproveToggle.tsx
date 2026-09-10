@@ -6,6 +6,7 @@ import { Button, StandardTooltip } from "@/components/ui"
 
 type AutoApproveToggles = Pick<
 	GlobalSettings,
+	| "alwaysAllowAll"
 	| "alwaysAllowReadOnly"
 	| "alwaysAllowWrite"
 	| "alwaysAllowBrowser"
@@ -27,6 +28,13 @@ type AutoApproveConfig = {
 }
 
 export const autoApproveSettingsConfig: Record<AutoApproveSetting, AutoApproveConfig> = {
+	alwaysAllowAll: {
+		key: "alwaysAllowAll",
+		labelKey: "settings:autoApprove.all.label",
+		descriptionKey: "settings:autoApprove.all.description",
+		icon: "zap",
+		testId: "always-allow-all-toggle",
+	},
 	alwaysAllowReadOnly: {
 		key: "alwaysAllowReadOnly",
 		labelKey: "settings:autoApprove.readOnly.label",
