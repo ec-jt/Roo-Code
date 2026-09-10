@@ -252,6 +252,13 @@ const BrowserSessionRow = memo((props: BrowserSessionRowProps) => {
 	const prevPagesLengthRef = useRef(0)
 
 	useEffect(() => {
+		// Clamp the index when the page list shrinks (e.g. a session closes) so
+		// derived lookups never read out of bounds.
+		if (pages.length > 0 && currentPageIndex > pages.length - 1) {
+			setCurrentPageIndex(pages.length - 1)
+			prevPagesLengthRef.current = pages.length
+			return
+		}
 		// Initialize to last page on mount
 		if (!didInitIndexRef.current && pages.length > 0) {
 			didInitIndexRef.current = true
@@ -306,7 +313,7 @@ const BrowserSessionRow = memo((props: BrowserSessionRowProps) => {
 	// Find the last available screenshot and its associated data to use as placeholders
 	const lastPageWithScreenshot = useMemo(() => {
 		for (let i = pages.length - 1; i >= 0; i--) {
-			if (pages[i].screenshot) {
+			if (pages[i]?.screenshot) {
 				return pages[i]
 			}
 		}
@@ -316,7 +323,7 @@ const BrowserSessionRow = memo((props: BrowserSessionRowProps) => {
 	// Find last mouse position up to current page (not from future pages)
 	const lastPageWithMousePositionUpToCurrent = useMemo(() => {
 		for (let i = currentPageIndex; i >= 0; i--) {
-			if (pages[i].mousePosition) {
+			if (pages[i]?.mousePosition) {
 				return pages[i]
 			}
 		}
