@@ -24,12 +24,14 @@ import { SetCachedStateField } from "./types"
 type BrowserSettingsProps = HTMLAttributes<HTMLDivElement> & {
 	browserToolEnabled?: boolean
 	browserViewportSize?: string
+	browserHeaded?: boolean
 	screenshotQuality?: number
 	remoteBrowserHost?: string
 	remoteBrowserEnabled?: boolean
 	setCachedStateField: SetCachedStateField<
 		| "browserToolEnabled"
 		| "browserViewportSize"
+		| "browserHeaded"
 		| "screenshotQuality"
 		| "remoteBrowserHost"
 		| "remoteBrowserEnabled"
@@ -39,6 +41,7 @@ type BrowserSettingsProps = HTMLAttributes<HTMLDivElement> & {
 export const BrowserSettings = ({
 	browserToolEnabled,
 	browserViewportSize,
+	browserHeaded,
 	screenshotQuality,
 	remoteBrowserHost,
 	remoteBrowserEnabled,
@@ -133,6 +136,20 @@ export const BrowserSettings = ({
 
 				{browserToolEnabled && (
 					<div className="flex flex-col gap-3 pl-3 border-l-2 border-vscode-button-background">
+						<SearchableSetting
+							settingId="browser-headed"
+							section="browser"
+							label={t("settings:browser.headed.label")}>
+							<VSCodeCheckbox
+								checked={browserHeaded ?? false}
+								disabled={remoteBrowserEnabled}
+								onChange={(e: any) => setCachedStateField("browserHeaded", e.target.checked)}>
+								<span className="font-medium">{t("settings:browser.headed.label")}</span>
+							</VSCodeCheckbox>
+							<div className="text-vscode-descriptionForeground text-sm mt-1">
+								{t("settings:browser.headed.description")}
+							</div>
+						</SearchableSetting>
 						<SearchableSetting
 							settingId="browser-viewport"
 							section="browser"

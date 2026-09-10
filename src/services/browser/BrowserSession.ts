@@ -99,29 +99,55 @@ export class BrowserSession {
 	 */
 	private async launchLocalBrowser(): Promise<void> {
 		console.log("Launching local browser")
+		const headed = this.context.globalState.get<boolean>("browserHeaded") ?? false
+		if (process.platform === "linux") {
+			if (process.getuid?.() === 0) {
+				throw new Error(
+					"Cannot launch sandboxed Chromium as root. Run the extension host as a non-root user with a usable Chromium sandbox, or configure a trusted remote browser. Roo will not disable the sandbox.",
+				)
+			}
+			if (headed && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) {
+				throw new Error(
+					"A visible browser requires an accessible display on the extension host. Start Roo in a graphical session with DISPLAY or WAYLAND_DISPLAY configured, or connect to a trusted visible remote browser. Roo will not fall back to headless mode.",
+				)
+			}
+		}
 		const stats = await this.ensureChromiumExists()
 		const viewport = this.getViewport()
 		const tmpBaseDir = await this.ensureBrowserTempBaseDir()
 		await this.cleanupOrphanedBrowserTempDirs(tmpBaseDir)
 		this.userDataDir = await fs.mkdtemp(path.join(tmpBaseDir, "roo-browser-profile-"))
 		this.browserTempDir = tmpBaseDir
-		this.browser = await stats.puppeteer.launch({
-			args: [
-				"--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-				"--no-sandbox",
-				"--disable-setuid-sandbox",
-			],
-			env: {
-				...process.env,
-				TMPDIR: tmpBaseDir,
-				TMP: tmpBaseDir,
-				TEMP: tmpBaseDir,
-			},
-			executablePath: stats.executablePath,
-			defaultViewport: { ...viewport, deviceScaleFactor: 1 },
-			userDataDir: this.userDataDir,
-			// headless: false,
-		})
+		try {
+			this.browser = await stats.puppeteer.launch({
+				headless: !headed,
+				args:
+					headed && process.platform === "linux" && !process.env.DISPLAY && process.env.WAYLAND_DISPLAY
+						? ["--ozone-platform=wayland"]
+						: [],
+				env: {
+					...process.env,
+					TMPDIR: tmpBaseDir,
+					TMP: tmpBaseDir,
+					TEMP: tmpBaseDir,
+				},
+				executablePath: stats.executablePath,
+				defaultViewport: { ...viewport, deviceScaleFactor: 1 },
+				userDataDir: this.userDataDir,
+			})
+		} catch (error) {
+			await fs.rm(this.userDataDir, { recursive: true, force: true }).catch(() => {})
+			this.resetBrowserState()
+			const detail = error instanceof Error ? error.message : String(error)
+			throw new Error(
+				`Failed to launch ${headed ? "visible" : "headless"} sandboxed Chromium. ` +
+					"Run the extension host as a non-root user with a usable Chromium sandbox. " +
+					"On Linux, AppArmor or user-namespace restrictions may require administrator review; Roo does not change host security policy. " +
+					(headed ? "Verify that the extension host can access its X11 or Wayland display. " : "") +
+					"Alternatively, configure a trusted remote browser. No sandbox-disabled or headless fallback was attempted. " +
+					`Original error: ${detail}`,
+			)
+		}
 		this.isUsingRemoteBrowser = false
 	}
 
@@ -204,7 +230,7 @@ export class BrowserSession {
 			}
 		} catch (error) {
 			console.error(`Auto-discovery failed: ${error}`)
-			// Fall back to local browser if auto-discovery fails
+			// Report failure to the caller without launching a different browser.
 		}
 
 		return false
@@ -231,10 +257,10 @@ export class BrowserSession {
 			// Remote browser connection is enabled
 			const remoteConnected = await this.connectToRemoteBrowser()
 
-			// If all remote connection attempts fail, fall back to local browser
 			if (!remoteConnected) {
-				console.log("Falling back to local browser")
-				await this.launchLocalBrowser()
+				throw new Error(
+					"Could not connect to the configured remote browser. Check its debugging endpoint and network access, or explicitly disable remote browser connection to use a local sandboxed browser. No local fallback was attempted.",
+				)
 			}
 		}
 

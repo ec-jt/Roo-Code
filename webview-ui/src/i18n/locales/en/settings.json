@@ -618,6 +618,10 @@
 		"retiredRooProviderMessage": "The Roo Code Router is no longer available. It was a hosted service that has been discontinued."
 	},
 	"browser": {
+		"headed": {
+			"label": "Show browser window",
+			"description": "Open a visible local browser on the extension host's display for manual interaction. Applies on the next launch. Requires an accessible graphical session and a usable Chromium sandbox; Linux cannot launch as root. Remote browser visibility is controlled separately. Roo never disables the sandbox or silently falls back to another browser mode."
+		},
 		"enable": {
 			"label": "Enable browser tool",
 			"description": "When enabled, Roo can use a browser to interact with websites when using models that support computer use. <0>Learn more</0>"
