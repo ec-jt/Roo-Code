@@ -135,7 +135,7 @@ describe("DeepSeekHandler", () => {
 	beforeEach(() => {
 		mockOptions = {
 			deepSeekApiKey: "test-api-key",
-			apiModelId: "deepseek-chat",
+			apiModelId: deepSeekDefaultModelId,
 			deepSeekBaseUrl: "https://api.deepseek.com",
 		}
 		handler = new DeepSeekHandler(mockOptions)
@@ -206,9 +206,9 @@ describe("DeepSeekHandler", () => {
 			const model = handler.getModel()
 			expect(model.id).toBe(mockOptions.apiModelId)
 			expect(model.info).toBeDefined()
-			expect(model.info.maxTokens).toBe(8192) // deepseek-chat has 8K max
-			expect(model.info.contextWindow).toBe(128_000)
-			expect(model.info.supportsImages).toBe(false)
+			expect(model.info.maxTokens).toBe(384_000) // deepseek-flash (default) has 384K max
+			expect(model.info.contextWindow).toBe(1_000_000)
+			expect(model.info.supportsImages).toBe(true)
 			expect(model.info.supportsPromptCache).toBe(true) // Should be true now
 		})
 
@@ -240,11 +240,12 @@ describe("DeepSeekHandler", () => {
 			expect((model.info as ModelInfo).preserveReasoning).toBe(true)
 		})
 
-		it("should NOT have preserveReasoning enabled for deepseek-chat", () => {
-			// deepseek-chat doesn't use thinking mode, so no need to preserve reasoning
+		it("should have preserveReasoning enabled for the default model (deepseek-flash)", () => {
+			// The default model (deepseek-flash / V4.1-Flash) is a reasoning model that uses
+			// interleaved thinking with tool calls, so reasoning_content must be preserved.
 			const model = handler.getModel()
 			// Cast to ModelInfo to access preserveReasoning which is an optional property
-			expect((model.info as ModelInfo).preserveReasoning).toBeUndefined()
+			expect((model.info as ModelInfo).preserveReasoning).toBe(true)
 		})
 
 		it("should return provided model ID with default model info if model does not exist", () => {

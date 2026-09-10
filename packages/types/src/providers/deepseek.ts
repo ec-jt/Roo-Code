@@ -6,9 +6,43 @@ import type { ModelInfo } from "../model.js"
 // continuation within the same turn. See: https://api-docs.deepseek.com/guides/thinking_mode
 export type DeepSeekModelId = keyof typeof deepSeekModels
 
-export const deepSeekDefaultModelId: DeepSeekModelId = "deepseek-chat"
+export const deepSeekDefaultModelId: DeepSeekModelId = "deepseek-flash"
 
 export const deepSeekModels = {
+	// Canonical ID for DeepSeek V4.1-Flash (native multimodal). V4-Flash and
+	// V4-Flash-Vision-Exp are retired; the v4-flash IDs temporarily route here.
+	"deepseek-flash": {
+		maxTokens: 384_000,
+		contextWindow: 1_000_000,
+		supportsImages: true, // V4.1-Flash has native multimodal (vision) support
+		supportsPromptCache: true,
+		preserveReasoning: true,
+		// Peak rates (DeepSeek bills peak/off-peak); off-peak is half.
+		inputPrice: 0.3, // cache miss
+		outputPrice: 1.2,
+		cacheWritesPrice: 0.3, // cache miss
+		cacheReadsPrice: 0.006, // cache hit
+		description:
+			"DeepSeek V4.1-Flash is the current flagship model: fast, cost-efficient, natively multimodal, with a 1M context window and strong tool-use capabilities.",
+	},
+	// Forward-compatible ID for DeepSeek V4.1-Pro. Not yet live on the API; it
+	// will become the pro-tier model once V4.1-Pro launches (V4-Pro is being
+	// phased out and routes to V4.1-Flash from 2026-09-14 until then).
+	"deepseek-pro": {
+		maxTokens: 384_000,
+		contextWindow: 1_000_000,
+		supportsImages: false, // V4-Pro has no vision; V4.1-Pro parity until launch
+		supportsPromptCache: true,
+		preserveReasoning: true,
+		// Peak rates (DeepSeek bills peak/off-peak); off-peak is half.
+		inputPrice: 1.32, // cache miss
+		outputPrice: 3.96,
+		cacheWritesPrice: 1.32, // cache miss
+		cacheReadsPrice: 0.044, // cache hit
+		description:
+			"DeepSeek V4.1-Pro (upcoming). The pro-tier successor to V4-Pro with a 1M context window, advanced structured output, and agentic performance.",
+	},
+	// Retired: V4-Flash temporarily routes to V4.1-Flash.
 	"deepseek-v4-flash": {
 		maxTokens: 384_000,
 		contextWindow: 1_000_000,
@@ -35,6 +69,7 @@ export const deepSeekModels = {
 		description:
 			"DeepSeek V4 Pro is a flagship reasoning model with a 1M context window, advanced structured output, and agentic performance.",
 	},
+	// Legacy aliases (discontinued 2026-07-24): point at V4.1-Flash behavior.
 	"deepseek-chat": {
 		maxTokens: 8192, // 8K max output
 		contextWindow: 128_000,
