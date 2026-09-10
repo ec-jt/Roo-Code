@@ -5,6 +5,8 @@ import {
 	type FollowUpData,
 	type ExtensionState,
 	isNonBlockingAsk,
+	isIdleAsk,
+	isResumableAsk,
 } from "@roo-code/types"
 
 import { ClineAskResponse } from "../../shared/WebviewMessage"
@@ -67,7 +69,10 @@ export async function checkAutoApproval({
 
 	// Explicit opt-in for trusted, unattended environments. This preserves the
 	// master auto-approval gate and intentionally bypasses category restrictions.
-	if (state.alwaysAllowAll === true) {
+	// It must never auto-approve idle/resumable asks: those are how the task loop
+	// pauses and terminates (task completion, API failure, resume, mistake limit,
+	// auto-approval request limit). Approving them makes the task loop forever.
+	if (state.alwaysAllowAll === true && !isIdleAsk(ask) && !isResumableAsk(ask)) {
 		return { decision: "approve" }
 	}
 

@@ -41,4 +41,19 @@ describe("alwaysAllowAll", () => {
 
 		expect(await checkAutoApproval({ state, ask: "browser_action_launch" })).toEqual({ decision: "ask" })
 	})
+
+	it.each([
+		"completion_result",
+		"api_req_failed",
+		"resume_completed_task",
+		"mistake_limit_reached",
+		"auto_approval_max_req_reached",
+		"resume_task",
+	] as const)("never auto-approves the idle/resumable ask %s so the task can terminate", async (ask) => {
+		const state = { ...baseState, alwaysAllowAll: true as const }
+
+		// These asks must reach the user (or at least not be blanket-approved),
+		// otherwise the task loop never stops after a successful completion.
+		expect(await checkAutoApproval({ state, ask, text: "{}" })).toEqual({ decision: "ask" })
+	})
 })
