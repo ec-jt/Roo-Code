@@ -72,7 +72,9 @@ export async function checkAutoApproval({
 	// It must never auto-approve idle/resumable asks: those are how the task loop
 	// pauses and terminates (task completion, API failure, resume, mistake limit,
 	// auto-approval request limit). Approving them makes the task loop forever.
-	if (state.alwaysAllowAll === true && !isIdleAsk(ask) && !isResumableAsk(ask)) {
+	// Follow-up questions are honored separately below so users can keep manual
+	// control over clarifying questions even in all-actions mode.
+	if (state.alwaysAllowAll === true && ask !== "followup" && !isIdleAsk(ask) && !isResumableAsk(ask)) {
 		return { decision: "approve" }
 	}
 

@@ -56,4 +56,32 @@ describe("alwaysAllowAll", () => {
 		// otherwise the task loop never stops after a successful completion.
 		expect(await checkAutoApproval({ state, ask, text: "{}" })).toEqual({ decision: "ask" })
 	})
+
+	it("still pauses for follow-up questions when the Question toggle is off, even in all-actions mode", async () => {
+		// alwaysAllowAll on, but alwaysAllowFollowupQuestions off -> questions pause for the user.
+		const state = { ...baseState, alwaysAllowAll: true as const, alwaysAllowFollowupQuestions: false as const }
+
+		const result = await checkAutoApproval({
+			state,
+			ask: "followup",
+			text: JSON.stringify({ suggest: [{ answer: "yes" }] }),
+		})
+		expect(result).toEqual({ decision: "ask" })
+	})
+
+	it("auto-approves follow-up questions when the Question toggle is on in all-actions mode", async () => {
+		const state = {
+			...baseState,
+			alwaysAllowAll: true as const,
+			alwaysAllowFollowupQuestions: true as const,
+			followupAutoApproveTimeoutMs: 5000,
+		}
+
+		const result = await checkAutoApproval({
+			state,
+			ask: "followup",
+			text: JSON.stringify({ suggest: [{ answer: "yes" }] }),
+		})
+		expect(result.decision).toBe("timeout")
+	})
 })
