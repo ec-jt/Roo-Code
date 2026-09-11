@@ -23,14 +23,15 @@ describe("getApiRequestTimeout", () => {
 		})
 	})
 
-	it("should return default timeout of 600000ms when no configuration is set", () => {
-		mockGetConfig.mockReturnValue(600)
+	it("should default to no timeout (undefined) when no configuration is set", () => {
+		mockGetConfig.mockReturnValue(0)
 
 		const timeout = getApiRequestTimeout()
 
 		expect(vscode.workspace.getConfiguration).toHaveBeenCalledWith("roo-cline")
-		expect(mockGetConfig).toHaveBeenCalledWith("apiRequestTimeout", 600)
-		expect(timeout).toBe(600000) // 600 seconds in milliseconds
+		expect(mockGetConfig).toHaveBeenCalledWith("apiRequestTimeout", 0)
+		// Default is no client-side timeout so background/hidden-tab tasks keep running
+		expect(timeout).toBeUndefined()
 	})
 
 	it("should return custom timeout in milliseconds", () => {
@@ -60,43 +61,43 @@ describe("getApiRequestTimeout", () => {
 		expect(timeout).toBeUndefined()
 	})
 
-	it("should handle null by using default", () => {
+	it("should handle null by using no-timeout default", () => {
 		mockGetConfig.mockReturnValue(null)
 
 		const timeout = getApiRequestTimeout()
 
-		expect(timeout).toBe(600000) // Should fall back to default 600 seconds
+		expect(timeout).toBeUndefined() // Invalid value -> no timeout
 	})
 
-	it("should handle undefined by using default", () => {
+	it("should handle undefined by using no-timeout default", () => {
 		mockGetConfig.mockReturnValue(undefined)
 
 		const timeout = getApiRequestTimeout()
 
-		expect(timeout).toBe(600000) // Should fall back to default 600 seconds
+		expect(timeout).toBeUndefined() // Invalid value -> no timeout
 	})
 
-	it("should handle NaN by using default", () => {
+	it("should handle NaN by using no-timeout default", () => {
 		mockGetConfig.mockReturnValue(NaN)
 
 		const timeout = getApiRequestTimeout()
 
-		expect(timeout).toBe(600000) // Should fall back to default 600 seconds
+		expect(timeout).toBeUndefined() // Invalid value -> no timeout
 	})
 
-	it("should handle string values by using default", () => {
+	it("should handle string values by using no-timeout default", () => {
 		mockGetConfig.mockReturnValue("not-a-number") // String instead of number
 
 		const timeout = getApiRequestTimeout()
 
-		expect(timeout).toBe(600000) // Should fall back to default since it's not a number
+		expect(timeout).toBeUndefined() // Invalid value -> no timeout
 	})
 
-	it("should handle boolean values by using default", () => {
+	it("should handle boolean values by using no-timeout default", () => {
 		mockGetConfig.mockReturnValue(true) // Boolean instead of number
 
 		const timeout = getApiRequestTimeout()
 
-		expect(timeout).toBe(600000) // Should fall back to default since it's not a number
+		expect(timeout).toBeUndefined() // Invalid value -> no timeout
 	})
 })
