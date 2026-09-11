@@ -78,8 +78,10 @@ const TaskGroupItem = ({
 				<div
 					data-testid="subtask-list"
 					className={cn(
-						"overflow-clip transition-all duration-500",
-						isExpanded ? "max-h-[2000px] pb-2" : "max-h-0",
+						"transition-all duration-500",
+						// Expanded subtask trees can be very tall; cap the height but make the
+						// region independently scrollable so long lists remain reachable.
+						isExpanded ? "max-h-[70vh] overflow-y-auto pb-2" : "max-h-0 overflow-clip",
 					)}>
 					{subtasks.map((node) => (
 						<SubtaskRow key={node.item.id} node={node} depth={1} onToggleExpand={onToggleSubtaskExpand} />
