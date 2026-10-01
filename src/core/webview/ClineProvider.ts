@@ -778,14 +778,19 @@ export class ClineProvider
 			localResourceRoots: resourceRoots,
 		}
 
+		// Attach the message listener BEFORE assigning the HTML.
+		//
+		// The html assignment awaits getHtmlContent, which gives the webview time to
+		// load and post `webviewDidLaunch`. Attaching the listener afterwards leaves a
+		// window in which that first message is dropped; the webview then never
+		// receives its state reply and renders a blank panel, because nothing retries.
+		// See plans/webview-blank-panel-diagnosis.md.
+		this.setWebviewMessageListener(webviewView.webview)
+
 		webviewView.webview.html =
 			this.contextProxy.extensionMode === vscode.ExtensionMode.Development
 				? await this.getHMRHtmlContent(webviewView.webview)
 				: await this.getHtmlContent(webviewView.webview)
-
-		// Sets up an event listener to listen for messages passed from the webview view context
-		// and executes code based on the message that is received.
-		this.setWebviewMessageListener(webviewView.webview)
 
 		// Initialize code index status subscription for the current workspace.
 		this.updateCodeIndexStatusSubscription()
@@ -798,25 +803,39 @@ export class ClineProvider
 		})
 		this.webviewDisposables.push(activeEditorSubscription)
 
+		// Tell the webview it became visible, and re-post a lightweight state.
+		//
+		// The state re-post is the recovery path for a webview that lost its hydration
+		// reply: without it, a single dropped `webviewDidLaunch` reply leaves the panel
+		// blank until the window is reloaded. It omits clineMessages and taskHistory so
+		// a focus change stays cheap. See plans/webview-blank-panel-diagnosis.md.
+		const notifyBecameVisible = () => {
+			if (!this.view?.visible) {
+				return
+			}
+
+			this.postMessageToWebview({ type: "action", action: "didBecomeVisible" })
+
+			this.postStateToWebviewWithoutClineMessages().catch((error) => {
+				this.log(
+					`[visibility] Failed to re-post state on becoming visible: ${
+						error instanceof Error ? error.message : String(error)
+					}`,
+				)
+			})
+		}
+
 		// Listen for when the panel becomes visible.
 		// https://github.com/microsoft/vscode-discussions/discussions/840
 		if ("onDidChangeViewState" in webviewView) {
 			// WebviewView and WebviewPanel have all the same properties except
 			// for this visibility listener panel.
-			const viewStateDisposable = webviewView.onDidChangeViewState(() => {
-				if (this.view?.visible) {
-					this.postMessageToWebview({ type: "action", action: "didBecomeVisible" })
-				}
-			})
+			const viewStateDisposable = webviewView.onDidChangeViewState(notifyBecameVisible)
 
 			this.webviewDisposables.push(viewStateDisposable)
 		} else if ("onDidChangeVisibility" in webviewView) {
 			// sidebar
-			const visibilityDisposable = webviewView.onDidChangeVisibility(() => {
-				if (this.view?.visible) {
-					this.postMessageToWebview({ type: "action", action: "didBecomeVisible" })
-				}
-			})
+			const visibilityDisposable = webviewView.onDidChangeVisibility(notifyBecameVisible)
 
 			this.webviewDisposables.push(visibilityDisposable)
 		}
@@ -1861,10 +1880,26 @@ export class ClineProvider
 	}
 
 	async postStateToWebview() {
+		const startedAt = Date.now()
 		const state = await this.getStateToPostToWebview()
 		this.clineMessagesSeq++
 		state.clineMessagesSeq = this.clineMessagesSeq
-		this.postMessageToWebview({ type: "state", state })
+		await this.postMessageToWebview({ type: "state", state })
+
+		// Slow state posts are the ones that coincide with a blank panel: the webview
+		// stays unhydrated while this runs, and on Windows the history read competes
+		// with task writes. Log duration and heap so a recurrence is diagnosable from
+		// the Roo Code output channel alone.
+		// See plans/webview-blank-panel-diagnosis.md.
+		const durationMs = Date.now() - startedAt
+
+		if (durationMs > 1000) {
+			this.log(
+				`[postStateToWebview] slow state post: ${durationMs}ms (heap ${Math.round(
+					process.memoryUsage().heapUsed / 1048576,
+				)} MB)`,
+			)
+		}
 	}
 
 	/**
@@ -2002,8 +2037,23 @@ export class ClineProvider
 	}
 
 	async getStateToPostToWebview(): Promise<ExtensionState> {
-		// Ensure the store is initialized before reading task history
-		await this.taskHistoryStore.initialized
+		// Ensure the store is initialized before reading task history.
+		//
+		// This is the heaviest and most failure-prone part of building the state
+		// payload: it touches task JSON on disk, which on Windows can be locked or
+		// scanned by antivirus. A rejection here used to fail the whole state post,
+		// leaving the webview unhydrated and blank. Degrade to an empty history
+		// instead; the next successful post repairs it.
+		// See plans/webview-blank-panel-diagnosis.md.
+		try {
+			await this.taskHistoryStore.initialized
+		} catch (error) {
+			this.log(
+				`[getStateToPostToWebview] task history store unavailable; continuing without history: ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+			)
+		}
 
 		const {
 			apiConfiguration,

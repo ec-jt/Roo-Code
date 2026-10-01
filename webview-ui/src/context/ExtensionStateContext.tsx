@@ -32,6 +32,8 @@ import { convertTextMateToHljs } from "@src/utils/textMateToHljs"
 export interface ExtensionStateContextType extends ExtensionState {
 	historyPreviewCollapsed?: boolean // Add the new state property
 	didHydrateState: boolean
+	// True once the bounded hydration watchdog has given up waiting for a state reply.
+	hydrationFailed?: boolean
 	showWelcome: boolean
 	theme: any
 	mcpServers: McpServer[]
@@ -269,6 +271,7 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 	})
 
 	const [didHydrateState, setDidHydrateState] = useState(false)
+	const [hydrationFailed, setHydrationFailed] = useState(false)
 	const [showWelcome, setShowWelcome] = useState(false)
 	const [theme, setTheme] = useState<any>(undefined)
 	const [filePaths, setFilePaths] = useState<string[]>([])
@@ -313,6 +316,7 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 					setState((prevState) => mergeExtensionState(prevState, newState))
 					setShowWelcome(!checkExistKey(newState.apiConfiguration))
 					setDidHydrateState(true)
+					setHydrationFailed(false)
 					// Update alwaysAllowFollowupQuestions if present in state message
 					if ((newState as any).alwaysAllowFollowupQuestions !== undefined) {
 						setAlwaysAllowFollowupQuestions((newState as any).alwaysAllowFollowupQuestions)
@@ -476,10 +480,50 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 		vscode.postMessage({ type: "webviewDidLaunch" })
 	}, [])
 
+	// Hydration watchdog.
+	//
+	// `didHydrateState` is only ever set by a `state` reply. That reply can be lost
+	// to the listener-registration race, or never sent when the extension's state
+	// read fails. Without a retry the webview renders nothing forever, which is the
+	// mid-task grey panel symptom. Re-ask a bounded number of times, then surface a
+	// visible fallback instead of returning null.
+	//
+	// The retries also cover a webview reload after memory pressure: the reload
+	// resets this state and re-runs the same handshake.
+	// See plans/webview-blank-panel-diagnosis.md.
+	useEffect(() => {
+		if (didHydrateState) {
+			return
+		}
+
+		const HYDRATION_RETRY_INTERVAL_MS = 2000
+		const MAX_HYDRATION_ATTEMPTS = 3
+		let attempts = 0
+
+		const timer = setInterval(() => {
+			attempts += 1
+
+			if (attempts > MAX_HYDRATION_ATTEMPTS) {
+				clearInterval(timer)
+				console.warn(
+					`[Roo] Webview state hydration failed after ${MAX_HYDRATION_ATTEMPTS} retries; showing fallback UI`,
+				)
+				setHydrationFailed(true)
+				return
+			}
+
+			console.warn(`[Roo] Webview state hydration pending; retry ${attempts}/${MAX_HYDRATION_ATTEMPTS}`)
+			vscode.postMessage({ type: "webviewDidLaunch" })
+		}, HYDRATION_RETRY_INTERVAL_MS)
+
+		return () => clearInterval(timer)
+	}, [didHydrateState])
+
 	const contextValue: ExtensionStateContextType = {
 		...state,
 		reasoningBlockCollapsed: state.reasoningBlockCollapsed ?? true,
 		didHydrateState,
+		hydrationFailed,
 		showWelcome,
 		theme,
 		mcpServers,

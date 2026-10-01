@@ -218,6 +218,45 @@ export function buildAuthorizationUrl(codeChallenge: string, state: string): str
 }
 
 /**
+	* Parses a callback value pasted in by the user into its parts.
+	*
+	* Accepts any of:
+	* - the full callback URL from the browser address bar, including an error redirect
+	* - a bare query string such as `code=...&state=...`
+	* - the raw authorization code on its own
+	*
+	* This exists because the fixed loopback redirect only works when the browser runs on the same
+	* machine as the extension host. Remote setups (code-server, SSH remote, WSL, dev containers)
+	* cannot complete the redirect, so the user has to hand the value back.
+	*/
+export function parseCallbackInput(input: string): { code?: string; state?: string; error?: string } {
+	const raw = (input ?? "").trim().replace(/^["'`]+|["'`]+$/g, "")
+	if (!raw) {
+		return {}
+	}
+
+	// Anything shaped like a URL or a query string is parsed as one. Anything else is treated as a
+	// bare authorization code, which is what a user has when the redirect never reaches the host.
+	if (/^https?:\/\//i.test(raw) || raw.startsWith("?") || raw.includes("=")) {
+		const withProtocol = /^https?:\/\//i.test(raw)
+			? raw
+			: `http://localhost/auth/callback${raw.startsWith("?") ? "" : "?"}${raw}`
+
+		try {
+			const params = new URL(withProtocol).searchParams
+			const code = params.get("code") ?? undefined
+			const state = params.get("state") ?? undefined
+			const error = params.get("error") ?? undefined
+			return code || state || error ? { code, state, error } : {}
+		} catch {
+			return {}
+		}
+	}
+
+	return { code: raw }
+}
+
+/**
  * Exchanges the authorization code for tokens
  * Important: Uses application/x-www-form-urlencoded (not JSON)
  * Important: state must NOT be included in token exchange body
@@ -347,6 +386,11 @@ export class OpenAiCodexOAuthManager {
 		codeVerifier: string
 		state: string
 		server?: http.Server
+		/**
+		 * Settles the promise returned by waitForCallback. Kept on the pending flow so a callback
+		 * URL pasted in by the user resolves the same waiter the browser redirect would have.
+		 */
+		settle?: (outcome: { credentials?: OpenAiCodexCredentials; error?: unknown }) => void
 	} | null = null
 
 	private log(message: string): void {
@@ -586,6 +630,19 @@ export class OpenAiCodexOAuthManager {
 		}
 
 		return new Promise((resolve, reject) => {
+			// A callback URL pasted in by the user must settle the same promise the browser
+			// redirect would have settled.
+			const pendingAuth = this.pendingAuth
+			if (pendingAuth) {
+				pendingAuth.settle = (outcome) => {
+					if (outcome.credentials) {
+						resolve(outcome.credentials)
+					} else {
+						reject(outcome.error ?? new Error("Authentication failed"))
+					}
+				}
+			}
+
 			const server = http.createServer(async (req, res) => {
 				try {
 					const url = new URL(req.url || "", `http://localhost:${OPENAI_CODEX_OAUTH_CONFIG.callbackPort}`)
@@ -683,12 +740,14 @@ export class OpenAiCodexOAuthManager {
 			})
 
 			server.on("error", (err: NodeJS.ErrnoException) => {
-				this.pendingAuth = null
+				// pendingAuth is deliberately kept. The manual "paste the callback URL" path still
+				// works without a listening socket, for example when the Codex CLI already holds 1455.
 				if (err.code === "EADDRINUSE") {
 					reject(
 						new Error(
 							`Port ${OPENAI_CODEX_OAUTH_CONFIG.callbackPort} is already in use. ` +
-								`Please close any other applications using this port and try again.`,
+								`Close the other application using it, or complete sign in by pasting the ` +
+								`callback URL from your browser address bar.`,
 						),
 					)
 				} else {
@@ -716,6 +775,53 @@ export class OpenAiCodexOAuthManager {
 				clearTimeout(timeout)
 			})
 		})
+	}
+
+	/**
+	 * Completes a sign in started by startAuthorizationFlow/waitForCallback using a callback URL
+	 * the user copied out of the browser.
+	 *
+	 * Required whenever the browser cannot reach the loopback listener, which is always the case
+	 * when the extension host is remote (code-server, SSH remote, WSL, dev container) and the
+	 * browser runs on the user's own machine: there `localhost:1455` is the user's machine, not
+	 * the machine hosting this extension.
+	 */
+	async submitCallbackUrl(input: string): Promise<OpenAiCodexCredentials> {
+		const pending = this.pendingAuth
+		if (!pending) {
+			throw new Error(
+				"No sign in is in progress. Click Sign in, finish the login in the browser, then paste the callback URL.",
+			)
+		}
+
+		const { code, state, error } = parseCallbackInput(input)
+		if (error) {
+			throw new Error(`The login page reported an error: ${error}`)
+		}
+		if (!code) {
+			throw new Error("No authorization code found. Paste the full callback URL from the browser address bar.")
+		}
+		if (state && state !== pending.state) {
+			throw new Error("State mismatch. Click Sign in again and paste the URL from the new attempt.")
+		}
+
+		this.log("[openai-codex-oauth] Completing sign in from a pasted callback URL")
+
+		const credentials = await exchangeCodeForTokens(code, pending.codeVerifier)
+		await this.saveCredentials(credentials)
+
+		const settle = pending.settle
+		if (this.pendingAuth === pending) {
+			this.pendingAuth = null
+		}
+		try {
+			pending.server?.close()
+		} catch {
+			// Ignore errors when closing
+		}
+		settle?.({ credentials })
+
+		return credentials
 	}
 
 	/**

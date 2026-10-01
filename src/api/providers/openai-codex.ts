@@ -32,7 +32,7 @@ export type OpenAiCodexModel = ReturnType<OpenAiCodexHandler["getModel"]>
  * OpenAI Codex base URL for API requests
  * Per the implementation guide: requests are routed to chatgpt.com/backend-api/codex
  */
-const CODEX_API_BASE_URL = "https://chatgpt.com/backend-api/codex"
+export const CODEX_API_BASE_URL = "https://chatgpt.com/backend-api/codex"
 
 /**
  * OpenAiCodexHandler - Uses OpenAI Responses API with OAuth authentication
@@ -359,6 +359,10 @@ export class OpenAiCodexHandler extends BaseProvider implements SingleCompletion
 				const codexHeaders: Record<string, string> = {
 					originator: "roo-code",
 					session_id: taskId || this.sessionId,
+					// Codex backend parity with the reference implementations: opt into the
+					// experimental Responses surface and mirror session_id for upstream correlation.
+					"OpenAI-Beta": "responses=experimental",
+					"x-client-request-id": taskId || this.sessionId,
 					"User-Agent": `roo-code/${Package.version} (${os.platform()} ${os.release()}; ${os.arch()}) node/${process.version.slice(1)}`,
 					...(accountId ? { "ChatGPT-Account-Id": accountId } : {}),
 				}
@@ -505,6 +509,9 @@ export class OpenAiCodexHandler extends BaseProvider implements SingleCompletion
 			Authorization: `Bearer ${accessToken}`,
 			originator: "roo-code",
 			session_id: taskId || this.sessionId,
+			// Codex backend parity: beta flag plus a client request id matching session_id.
+			"OpenAI-Beta": "responses=experimental",
+			"x-client-request-id": taskId || this.sessionId,
 			"User-Agent": `roo-code/${Package.version} (${os.platform()} ${os.release()}; ${os.arch()}) node/${process.version.slice(1)}`,
 		}
 
@@ -1197,6 +1204,9 @@ export class OpenAiCodexHandler extends BaseProvider implements SingleCompletion
 				Authorization: `Bearer ${accessToken}`,
 				originator: "roo-code",
 				session_id: this.sessionId,
+				// Codex backend parity: beta flag plus a client request id matching session_id.
+				"OpenAI-Beta": "responses=experimental",
+				"x-client-request-id": this.sessionId,
 				"User-Agent": `roo-code/${Package.version} (${os.platform()} ${os.release()}; ${os.arch()}) node/${process.version.slice(1)}`,
 			}
 

@@ -96,6 +96,8 @@ export interface ExtensionMessage {
 		| "modes"
 		| "taskWithAggregatedCosts"
 		| "openAiCodexRateLimits"
+		| "openAiCodexModels"
+		| "openAiCodexCallbackResult"
 		// Worktree response types
 		| "worktreeList"
 		| "worktreeResult"
@@ -140,6 +142,8 @@ export interface ExtensionMessage {
 	}>
 	clineMessage?: ClineMessage
 	routerModels?: RouterModels
+	/** Account-entitled OpenAI Codex model ids discovered from the ChatGPT backend. */
+	openAiCodexModels?: string[]
 	openAiModels?: string[]
 	ollamaModels?: ModelRecord
 	lmStudioModels?: ModelRecord
@@ -521,6 +525,7 @@ export interface WebviewMessage {
 		| "lockApiConfigAcrossModes"
 		| "openAiCodexSignIn"
 		| "openAiCodexSignOut"
+		| "openAiCodexSubmitCallbackUrl"
 		| "condenseTaskContextRequest"
 		| "requestIndexingStatus"
 		| "startIndexing"
@@ -569,6 +574,7 @@ export interface WebviewMessage {
 		| "openDebugUiHistory"
 		| "downloadErrorDiagnostics"
 		| "requestOpenAiCodexRateLimits"
+		| "requestOpenAiCodexModels"
 		| "refreshCustomTools"
 		| "requestModes"
 		| "switchMode"

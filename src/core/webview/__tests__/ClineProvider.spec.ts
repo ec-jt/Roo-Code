@@ -447,6 +447,45 @@ describe("ClineProvider", () => {
 		expect(mockWebviewView.webview.html).toContain("<!DOCTYPE html>")
 	})
 
+	// Regression test for the blank-panel bug: the html assignment awaits
+	// getHtmlContent, which gives the webview time to post `webviewDidLaunch`. If the
+	// listener is attached afterwards, that message is dropped and the webview never
+	// hydrates, rendering a blank panel. See plans/webview-blank-panel-diagnosis.md.
+	test("resolveWebviewView attaches the message listener before assigning webview html", async () => {
+		const order: string[] = []
+
+		const webview = {
+			postMessage: vi.fn(),
+			options: {},
+			onDidReceiveMessage: vi.fn(() => ({ dispose: vi.fn() })),
+			asWebviewUri: vi.fn(),
+			cspSource: "vscode-webview://test-csp-source",
+		} as unknown as vscode.Webview
+
+		// Record when the html is assigned.
+		Object.defineProperty(webview, "html", {
+			configurable: true,
+			get: () => "",
+			set: () => order.push("html"),
+		})
+
+		const webviewView = {
+			webview,
+			visible: true,
+			onDidDispose: vi.fn(() => ({ dispose: vi.fn() })),
+			onDidChangeVisibility: vi.fn(() => ({ dispose: vi.fn() })),
+		} as unknown as vscode.WebviewView
+
+		// @ts-ignore - private method, but its ordering is the contract under test.
+		vi.spyOn(provider as any, "setWebviewMessageListener").mockImplementation(() => {
+			order.push("listener")
+		})
+
+		await provider.resolveWebviewView(webviewView)
+
+		expect(order).toEqual(["listener", "html"])
+	})
+
 	test("resolveWebviewView sets up webview correctly in development mode even if local server is not running", async () => {
 		provider = new ClineProvider(
 			{ ...mockContext, extensionMode: vscode.ExtensionMode.Development },
@@ -589,6 +628,64 @@ describe("ClineProvider", () => {
 
 		// Should post state and theme to webview
 		expect(mockPostMessage).toHaveBeenCalled()
+	})
+
+	// Regression test for the blank-panel bug: a failing full state post used to be
+	// fire-and-forget, so the webview never hydrated and showed a blank panel with
+	// nothing logged. The handler must fall back to the lighter payload and log.
+	test("webviewDidLaunch falls back to state without task history when the state post fails", async () => {
+		await provider.resolveWebviewView(mockWebviewView)
+
+		const messageHandler = (mockWebviewView.webview.onDidReceiveMessage as any).mock.calls[0][0]
+
+		const fullStatePost = vi
+			.spyOn(provider, "postStateToWebview")
+			.mockRejectedValueOnce(new Error("task history read failed"))
+		const fallbackStatePost = vi
+			.spyOn(provider, "postStateToWebviewWithoutTaskHistory")
+			.mockResolvedValue(undefined)
+		const logSpy = vi.spyOn(provider, "log")
+
+		await messageHandler({ type: "webviewDidLaunch" })
+
+		expect(fullStatePost).toHaveBeenCalled()
+		expect(fallbackStatePost).toHaveBeenCalled()
+		expect(logSpy.mock.calls.some(([msg]) => String(msg).includes("[webviewDidLaunch]"))).toBe(true)
+	})
+
+	// Regression test for the blank-panel recovery path: re-post a lightweight state
+	// when the view becomes visible so a webview that lost its hydration reply can
+	// recover without reloading the window. See plans/webview-blank-panel-diagnosis.md.
+	test("re-posts lightweight state when the view becomes visible", async () => {
+		let visibilityHandler: (() => void) | undefined
+
+		const webviewView = {
+			webview: {
+				postMessage: vi.fn(),
+				html: "",
+				options: {},
+				onDidReceiveMessage: vi.fn(),
+				asWebviewUri: vi.fn(),
+				cspSource: "vscode-webview://test-csp-source",
+			},
+			visible: true,
+			onDidDispose: vi.fn(() => ({ dispose: vi.fn() })),
+			onDidChangeVisibility: vi.fn((callback: () => void) => {
+				visibilityHandler = callback
+				return { dispose: vi.fn() }
+			}),
+		} as unknown as vscode.WebviewView
+
+		const statePost = vi
+			.spyOn(provider, "postStateToWebviewWithoutClineMessages")
+			.mockResolvedValue(undefined)
+
+		await provider.resolveWebviewView(webviewView)
+
+		expect(visibilityHandler).toBeDefined()
+		visibilityHandler?.()
+
+		expect(statePost).toHaveBeenCalled()
 	})
 
 	test("clearTask aborts current task", async () => {

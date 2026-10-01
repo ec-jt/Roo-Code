@@ -9,6 +9,7 @@ vi.mock("../../../integrations/openai-codex/oauth", () => ({
 	openAiCodexOAuthManager: {
 		getAccessToken: vi.fn(),
 		getAccountId: vi.fn(),
+		submitCallbackUrl: vi.fn(),
 	},
 }))
 
@@ -50,6 +51,7 @@ const mockGetModels = getModels as Mock<typeof getModels>
 const mockGetCommands = vi.mocked(getCommands)
 const mockGetAccessToken = vi.mocked(openAiCodexOAuthManager.getAccessToken)
 const mockGetAccountId = vi.mocked(openAiCodexOAuthManager.getAccountId)
+const mockSubmitCallbackUrl = vi.mocked(openAiCodexOAuthManager.submitCallbackUrl)
 const mockFetchOpenAiCodexRateLimitInfo = vi.mocked(fetchOpenAiCodexRateLimitInfo)
 
 // Mock ClineProvider
@@ -588,6 +590,64 @@ describe("webviewMessageHandler - requestOpenAiCodexRateLimits", () => {
 				primary: { usedPercent: 10, resetsAt: 1700000000000 },
 				fetchedAt: 1700000000000,
 			},
+		})
+	})
+})
+
+describe("webviewMessageHandler - openAiCodexSubmitCallbackUrl", () => {
+	beforeEach(() => {
+		vi.clearAllMocks()
+	})
+
+	const credentials = {
+		type: "openai-codex" as const,
+		access_token: "access-token",
+		refresh_token: "refresh-token",
+		expires: Date.now() + 3600_000,
+	}
+
+	it("completes sign in from a pasted callback URL and reports success", async () => {
+		mockSubmitCallbackUrl.mockResolvedValue(credentials)
+
+		await webviewMessageHandler(mockClineProvider, {
+			type: "openAiCodexSubmitCallbackUrl",
+			text: "http://localhost:1455/auth/callback?code=abc&state=xyz",
+		} as any)
+
+		expect(mockSubmitCallbackUrl).toHaveBeenCalledWith("http://localhost:1455/auth/callback?code=abc&state=xyz")
+		expect(mockClineProvider.postMessageToWebview).toHaveBeenCalledWith({
+			type: "openAiCodexCallbackResult",
+			success: true,
+			error: undefined,
+		})
+	})
+
+	it("reports the OAuth failure without throwing", async () => {
+		mockSubmitCallbackUrl.mockRejectedValue(new Error("State mismatch. Click Sign in again."))
+
+		await webviewMessageHandler(mockClineProvider, {
+			type: "openAiCodexSubmitCallbackUrl",
+			text: "http://localhost:1455/auth/callback?code=abc&state=wrong",
+		} as any)
+
+		expect(mockClineProvider.postMessageToWebview).toHaveBeenCalledWith({
+			type: "openAiCodexCallbackResult",
+			success: false,
+			error: "State mismatch. Click Sign in again.",
+		})
+	})
+
+	it("rejects an empty paste without calling the OAuth manager", async () => {
+		await webviewMessageHandler(mockClineProvider, {
+			type: "openAiCodexSubmitCallbackUrl",
+			text: "   ",
+		} as any)
+
+		expect(mockSubmitCallbackUrl).not.toHaveBeenCalled()
+		expect(mockClineProvider.postMessageToWebview).toHaveBeenCalledWith({
+			type: "openAiCodexCallbackResult",
+			success: false,
+			error: "Paste the callback URL from your browser first.",
 		})
 	})
 })

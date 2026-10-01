@@ -86,6 +86,13 @@ import {
 	handleCheckoutBranch,
 } from "./worktree"
 
+/**
+ * Session cache for OpenAI Codex model discovery, keyed by ChatGPT account id.
+ * Discovery is best-effort and the account is stable per sign-in, so a non-empty result
+ * is reused for the lifetime of the extension host.
+ */
+let openAiCodexModelsCache: { accountId: string | null; models: string[] } | undefined
+
 export const webviewMessageHandler = async (
 	provider: ClineProvider,
 	message: WebviewMessage,
@@ -533,11 +540,48 @@ export const webviewMessageHandler = async (
 
 	switch (message.type) {
 		case "webviewDidLaunch":
+			// Log arrival with heap pressure. A repeated hydration request mid-task is the
+			// signature of a webview reload, often after the renderer was killed under
+			// memory pressure, so this line distinguishes "the webview asked again" from
+			// "the extension never answered". See plans/webview-blank-panel-diagnosis.md.
+			provider.log(
+				`[webviewDidLaunch] webview requested hydration (extension heap ${Math.round(
+					process.memoryUsage().heapUsed / 1048576,
+				)} MB)`,
+			)
+
 			// Load custom modes first
 			const customModes = await provider.customModesManager.getCustomModes()
 			await updateGlobalState("customModes", customModes)
 
-			provider.postStateToWebview()
+			// Hydration must not depend on the heaviest state read succeeding.
+			//
+			// This used to fire and forget: if getStateToPostToWebview() rejected, the
+			// rejection was unhandled, no `state` message was sent, and the webview sat
+			// unhydrated showing a blank panel with nothing logged. Await it, surface a
+			// failure, and fall back to the lighter payload, which still sets
+			// didHydrateState. See plans/webview-blank-panel-diagnosis.md.
+			try {
+				await provider.postStateToWebview()
+			} catch (error) {
+				const hydrationError = error instanceof Error ? error.message : String(error)
+				provider.log(
+					`[webviewDidLaunch] Failed to post full state; retrying without task history: ${hydrationError}`,
+				)
+
+				try {
+					await provider.postStateToWebviewWithoutTaskHistory()
+				} catch (fallbackError) {
+					provider.log(
+						`[webviewDidLaunch] Fallback state post failed: ${
+							fallbackError instanceof Error ? fallbackError.message : String(fallbackError)
+						}`,
+					)
+				}
+			}
+
+			provider.log(`[webviewDidLaunch] hydration state dispatched`)
+
 			provider.workspaceTracker?.initializeFilePaths() // Don't await.
 
 			getTheme().then((theme) => provider.postMessageToWebview({ type: "theme", text: JSON.stringify(theme) }))
@@ -2243,6 +2287,14 @@ export const webviewMessageHandler = async (
 				// Open the authorization URL in the browser
 				await vscode.env.openExternal(vscode.Uri.parse(authUrl))
 
+				// A loopback listener on this host is unreachable from a browser running somewhere
+				// else, which is always the case for the web UIs. Tell the user before they leave.
+				if (vscode.env?.uiKind === vscode.UIKind?.Web) {
+					vscode.window.showInformationMessage(
+						"If the browser cannot reach localhost:1455, copy the callback URL from its address bar and paste it into the OpenAI Codex settings panel to finish signing in.",
+					)
+				}
+
 				// Wait for the callback in a separate promise (non-blocking)
 				openAiCodexOAuthManager
 					.waitForCallback()
@@ -2272,6 +2324,30 @@ export const webviewMessageHandler = async (
 				provider.log(`OpenAI Codex sign out failed: ${error}`)
 				vscode.window.showErrorMessage("OpenAI Codex sign out failed.")
 			}
+			break
+		}
+		case "openAiCodexSubmitCallbackUrl": {
+			// Completes a sign in when the browser could not reach the loopback listener, which is
+			// always the case for a remote extension host (code-server, SSH remote, WSL, dev
+			// container) because the redirect targets localhost:1455 on the browser's own machine.
+			let errorText: string | undefined
+			try {
+				const { openAiCodexOAuthManager } = await import("../../integrations/openai-codex/oauth")
+				const raw = (message.text ?? "").trim()
+				if (!raw) {
+					throw new Error("Paste the callback URL from your browser first.")
+				}
+				await openAiCodexOAuthManager.submitCallbackUrl(raw)
+				await provider.postStateToWebview()
+			} catch (error) {
+				errorText = error instanceof Error ? error.message : String(error)
+				provider.log(`OpenAI Codex pasted callback sign in failed: ${errorText}`)
+			}
+			await provider.postMessageToWebview({
+				type: "openAiCodexCallbackResult",
+				success: errorText === undefined,
+				error: errorText,
+			})
 			break
 		}
 		case "saveCodeIndexSettingsAtomic": {
@@ -3099,6 +3175,53 @@ export const webviewMessageHandler = async (
 					type: "openAiCodexRateLimits",
 					error: errorMessage,
 				})
+			}
+			break
+		}
+
+		case "requestOpenAiCodexModels": {
+			try {
+				const { openAiCodexOAuthManager } = await import("../../integrations/openai-codex/oauth")
+				const accessToken = await openAiCodexOAuthManager.getAccessToken()
+
+				// Discovery needs an authenticated ChatGPT account. Without one, reply with an empty
+				// list so the webview falls back to the static curated catalog.
+				if (!accessToken) {
+					provider.postMessageToWebview({ type: "openAiCodexModels", openAiCodexModels: [] })
+					break
+				}
+
+				const accountId = await openAiCodexOAuthManager.getAccountId()
+
+				if (openAiCodexModelsCache && openAiCodexModelsCache.accountId === (accountId ?? null)) {
+					provider.postMessageToWebview({
+						type: "openAiCodexModels",
+						openAiCodexModels: openAiCodexModelsCache.models,
+					})
+					break
+				}
+
+				const { fetchOpenAiCodexModels } = await import("../../api/providers/fetchers/openai-codex")
+				const { CODEX_API_BASE_URL } = await import("../../api/providers/openai-codex")
+
+				const models = await fetchOpenAiCodexModels({
+					baseUrl: CODEX_API_BASE_URL,
+					accessToken,
+					accountId,
+				})
+
+				// Only cache non-empty results: an empty list can be the silent empty-200 trap
+				// (a missing account id header), which must not outlive the request.
+				if (models.length > 0) {
+					openAiCodexModelsCache = { accountId: accountId ?? null, models }
+				}
+
+				provider.postMessageToWebview({ type: "openAiCodexModels", openAiCodexModels: models })
+			} catch (error) {
+				// Never surface a discovery failure; degrade silently to the static list.
+				const errorMessage = error instanceof Error ? error.message : String(error)
+				provider.log(`Error discovering OpenAI Codex models: ${errorMessage}`)
+				provider.postMessageToWebview({ type: "openAiCodexModels", openAiCodexModels: [] })
 			}
 			break
 		}

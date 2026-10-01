@@ -270,4 +270,34 @@ describe("App", () => {
 		expect(chatView.getAttribute("data-hidden")).toBe("false")
 		expect(screen.queryByTestId("marketplace-view")).not.toBeInTheDocument()
 	})
+
+	it("renders the hydration fallback instead of a blank panel when hydration fails", () => {
+		mockUseExtensionState.mockReturnValue({
+			didHydrateState: false,
+			hydrationFailed: true,
+			showWelcome: false,
+			shouldShowAnnouncement: false,
+			experiments: {},
+			language: "en",
+		})
+
+		render(<AppWithProviders />)
+
+		expect(screen.getByText("Roo Code could not load its state.")).toBeInTheDocument()
+	})
+
+	it("renders nothing while hydration is still pending", () => {
+		mockUseExtensionState.mockReturnValue({
+			didHydrateState: false,
+			hydrationFailed: false,
+			showWelcome: false,
+			shouldShowAnnouncement: false,
+			experiments: {},
+			language: "en",
+		})
+
+		const { container } = render(<AppWithProviders />)
+
+		expect(container).toBeEmptyDOMElement()
+	})
 })

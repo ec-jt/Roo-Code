@@ -51,7 +51,7 @@ const tabsByMessageAction: Partial<Record<NonNullable<ExtensionMessage["action"]
 }
 
 const App = () => {
-	const { didHydrateState, showWelcome, shouldShowAnnouncement, renderContext, cloudUserInfo, cloudIsAuthenticated, cloudApiUrl, cloudOrganizations } = useExtensionState()
+	const { didHydrateState, hydrationFailed, showWelcome, shouldShowAnnouncement, renderContext, cloudUserInfo, cloudIsAuthenticated, cloudApiUrl, cloudOrganizations } = useExtensionState()
 
 	// Create a persistent state manager
 	const marketplaceStateManager = useMemo(() => new MarketplaceViewStateManager(), [])
@@ -178,7 +178,25 @@ const App = () => {
 		}, [renderContext]),
 	)
 	if (!didHydrateState) {
-		return null
+		// Render nothing during the normal startup window. Once the hydration watchdog
+		// has given up, show a recoverable fallback instead of a permanently blank
+		// panel, which is the mid-task grey panel symptom.
+		// See plans/webview-blank-panel-diagnosis.md.
+		return hydrationFailed ? (
+			<div className="flex flex-col items-center justify-center gap-2 p-4 text-center">
+				<div className="text-vscode-foreground">Roo Code could not load its state.</div>
+				<div className="text-vscode-descriptionForeground text-sm">
+					The webview did not receive a state reply from the extension. This can follow a webview reload or
+					memory pressure.
+				</div>
+				<button type="button" className="mt-2 underline" onClick={() => vscode.postMessage({ type: "webviewDidLaunch" })}>
+					Retry loading
+				</button>
+				<div className="text-vscode-descriptionForeground text-xs">
+					If this keeps happening, run "Developer: Reload Window".
+				</div>
+			</div>
+		) : null
 	}
 
 	// Do not conditionally load ChatView, it's expensive and there's state we
