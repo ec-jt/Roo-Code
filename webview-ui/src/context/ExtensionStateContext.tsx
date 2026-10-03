@@ -164,6 +164,28 @@ export const mergeExtensionState = (prevState: ExtensionState, newState: Partial
 	const customModePrompts = { ...prevCustomModePrompts, ...(newCustomModePrompts ?? {}) }
 	const experiments = { ...prevExperiments, ...(newExperiments ?? {}) }
 	const rest = { ...prevRest, ...newRest }
+	// Readiness and mandatory approvals must never regress with a delayed state push.
+	const previousOperation = prevState.modelOperation
+	const nextOperation = newState.modelOperation
+	if (
+		(newState.clineMessagesSeq !== undefined &&
+			prevState.clineMessagesSeq !== undefined &&
+			newState.clineMessagesSeq < prevState.clineMessagesSeq) ||
+		(previousOperation &&
+			nextOperation &&
+			previousOperation.taskId === nextOperation.taskId &&
+			previousOperation.instanceId === nextOperation.instanceId &&
+			nextOperation.revision < previousOperation.revision)
+	) {
+		rest.modelOperation = previousOperation
+		rest.clineMessagesSeq = prevState.clineMessagesSeq
+	} else if (
+		Object.prototype.hasOwnProperty.call(newState, "currentTaskId") &&
+		newState.currentTaskId !== prevState.currentTaskId &&
+		!nextOperation
+	) {
+		rest.modelOperation = undefined
+	}
 
 	// Protect clineMessages from stale state pushes using sequence numbering.
 	// Multiple async event sources (settings, task streaming) can trigger

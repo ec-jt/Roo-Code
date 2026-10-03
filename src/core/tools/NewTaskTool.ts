@@ -15,13 +15,14 @@ interface NewTaskParams {
 	mode: string
 	message: string
 	todos?: string
+	reason?: string
 }
 
 export class NewTaskTool extends BaseTool<"new_task"> {
 	readonly name = "new_task" as const
 
 	async execute(params: NewTaskParams, task: Task, callbacks: ToolCallbacks): Promise<void> {
-		const { mode, message, todos } = params
+		const { mode, message, todos, reason } = params
 		const { askApproval, handleError, pushToolResult } = callbacks
 
 		try {
@@ -50,6 +51,7 @@ export class NewTaskTool extends BaseTool<"new_task"> {
 				return
 			}
 
+			const expectedRevision = provider.delegationRevision
 			const state = await provider.getState()
 
 			// Use Package.name (dynamic at build time) as the VSCode configuration namespace.
@@ -110,11 +112,14 @@ export class NewTaskTool extends BaseTool<"new_task"> {
 			}
 
 			// Delegate parent and open child as sole active task
-			const child = await (provider as any).delegateParentAndOpenChild({
+			const child = await provider.delegateParentAndOpenChild({
 				parentTaskId: task.taskId,
+				parentInstanceId: task.instanceId,
+				expectedRevision,
 				message: unescapedMessage,
 				initialTodos: todoItems,
 				mode,
+				reason,
 			})
 
 			// Reflect delegation in tool result (no pause/unpause, no wait)

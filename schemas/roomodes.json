@@ -37,7 +37,7 @@
 							"anyOf": [
 								{
 									"type": "string",
-									"enum": ["read", "edit", "command", "mcp", "modes", "browser"]
+									"enum": ["read", "edit", "browser", "command", "mcp", "modes"]
 								},
 								{
 									"type": "array",
@@ -46,7 +46,7 @@
 									"items": [
 										{
 											"type": "string",
-											"enum": ["read", "edit", "command", "mcp", "modes", "browser"]
+											"enum": ["read", "edit", "browser", "command", "mcp", "modes"]
 										},
 										{
 											"type": "object",

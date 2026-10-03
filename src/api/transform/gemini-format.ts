@@ -86,10 +86,6 @@ export function convertAnthropicContentToGemini(
 					...(functionCallSignature ? { thoughtSignature: functionCallSignature } : {}),
 				} as Part
 			case "tool_result": {
-				if (!block.content) {
-					return []
-				}
-
 				// Get tool name from the map (built from tool_use blocks in message history).
 				// The map must contain the tool name - if it doesn't, this indicates a bug
 				// where the conversation history is incomplete or tool_use blocks are missing.
@@ -102,9 +98,13 @@ export function convertAnthropicContentToGemini(
 					)
 				}
 
-				if (typeof block.content === "string") {
+				// An empty or omitted result still completes the corresponding function call.
+				if (typeof block.content === "string" || block.content == null) {
 					return {
-						functionResponse: { name: toolName, response: { name: toolName, content: block.content } },
+						functionResponse: {
+							name: toolName,
+							response: { name: toolName, content: block.content ?? "" },
+						},
 					}
 				}
 

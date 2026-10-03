@@ -67,6 +67,7 @@ import { sanitizeToolUseId } from "../../utils/tool-id"
  */
 
 export async function presentAssistantMessage(cline: Task) {
+	if (cline.modelOperationDispatchClosed) return
 	if (cline.abort) {
 		throw new Error(`[Task#presentAssistantMessage] task ${cline.taskId}.${cline.instanceId} aborted`)
 	}
@@ -109,884 +110,929 @@ export async function presentAssistantMessage(cline: Task) {
 		return
 	}
 
-	switch (block.type) {
-		case "mcp_tool_use": {
-			// Handle native MCP tool calls (from mcp_serverName_toolName dynamic tools)
-			// These are converted to the same execution path as use_mcp_tool but preserve
-			// their original name in API history
-			const mcpBlock = block as McpToolUse
-
-			if (cline.didRejectTool) {
-				// For native protocol, we must send a tool_result for every tool_use to avoid API errors
-				const toolCallId = mcpBlock.id
-				const errorMessage = !mcpBlock.partial
-					? `Skipping MCP tool ${mcpBlock.name} due to user rejecting a previous tool.`
-					: `MCP tool ${mcpBlock.name} was interrupted and not executed due to user rejecting a previous tool.`
-
-				if (toolCallId) {
-					cline.pushToolResultToUserContent({
-						type: "tool_result",
-						tool_use_id: sanitizeToolUseId(toolCallId),
-						content: errorMessage,
-						is_error: true,
-					})
-				}
-				break
+	try {
+		let admitted = true
+		if (block.type === "tool_use" || block.type === "mcp_tool_use") {
+			// Even partial handlers can open editors or touch external state. Do not invoke them.
+			// Also preserve assistant/tool-result ordering before admitting any effect.
+			if (block.partial || !cline.assistantMessageSavedToHistory) {
+				cline.presentAssistantMessageLocked = false
+				return
 			}
-
-			// Track if we've already pushed a tool result
-			let hasToolResult = false
-			const toolCallId = mcpBlock.id
-
-			// Store approval feedback to merge into tool result (GitHub #10465)
-			let approvalFeedback: { text: string; images?: string[] } | undefined
-
-			const pushToolResult = (content: ToolResponse, feedbackImages?: string[]) => {
-				if (hasToolResult) {
-					console.warn(
-						`[presentAssistantMessage] Skipping duplicate tool_result for mcp_tool_use: ${toolCallId}`,
-					)
-					return
-				}
-
-				let resultContent: string
-				let imageBlocks: Anthropic.ImageBlockParam[] = []
-
-				if (typeof content === "string") {
-					resultContent = content || "(tool did not return anything)"
-				} else {
-					const textBlocks = content.filter((item) => item.type === "text")
-					imageBlocks = content.filter((item) => item.type === "image") as Anthropic.ImageBlockParam[]
-					resultContent =
-						textBlocks.map((item) => (item as Anthropic.TextBlockParam).text).join("\n") ||
-						"(tool did not return anything)"
-				}
-
-				// Merge approval feedback into tool result (GitHub #10465)
-				if (approvalFeedback) {
-					const feedbackText = formatResponse.toolApprovedWithFeedback(approvalFeedback.text)
-					resultContent = `${feedbackText}\n\n${resultContent}`
-
-					// Add feedback images to the image blocks
-					if (approvalFeedback.images) {
-						const feedbackImageBlocks = formatResponse.imageBlocks(approvalFeedback.images)
-						imageBlocks = [...feedbackImageBlocks, ...imageBlocks]
-					}
-				}
-
-				if (toolCallId) {
-					cline.pushToolResultToUserContent({
-						type: "tool_result",
-						tool_use_id: sanitizeToolUseId(toolCallId),
-						content: resultContent,
-					})
-
-					if (imageBlocks.length > 0) {
-						cline.userMessageContent.push(...imageBlocks)
-					}
-				}
-
-				hasToolResult = true
-			}
-
-			const toolDescription = () => `[mcp_tool: ${mcpBlock.serverName}/${mcpBlock.toolName}]`
-
-			const askApproval = async (
-				type: ClineAsk,
-				partialMessage?: string,
-				progressStatus?: ToolProgressStatus,
-				isProtected?: boolean,
-			) => {
-				const { response, text, images } = await cline.ask(
-					type,
-					partialMessage,
-					false,
-					progressStatus,
-					isProtected || false,
-				)
-
-				if (response !== "yesButtonClicked") {
-					if (text) {
-						await cline.say("user_feedback", text, images)
-						pushToolResult(formatResponse.toolResult(formatResponse.toolDeniedWithFeedback(text), images))
-					} else {
-						pushToolResult(formatResponse.toolDenied())
-					}
+			if (!cline.didRejectTool && (typeof block.id === "string" || block.type === "mcp_tool_use")) {
+				admitted = typeof block.id === "string" && (await cline.admitModelOperationTool(block.name, block.id))
+				if (!admitted) {
+					if (block.id)
+						cline.pushToolResultToUserContent({
+							type: "tool_result",
+							tool_use_id: sanitizeToolUseId(block.id),
+							is_error: true,
+							content:
+								"Tool execution was not approved. Delegation is unavailable for model-operation branches.",
+						})
 					cline.didRejectTool = true
-					return false
-				}
-
-				// Store approval feedback to be merged into tool result (GitHub #10465)
-				// Don't push it as a separate tool_result here - that would create duplicates.
-				// The tool will call pushToolResult, which will merge the feedback into the actual result.
-				if (text) {
-					await cline.say("user_feedback", text, images)
-					approvalFeedback = { text, images }
-				}
-
-				return true
-			}
-
-			const handleError = async (action: string, error: Error) => {
-				// Silently ignore AskIgnoredError - this is an internal control flow
-				// signal, not an actual error. It occurs when a newer ask supersedes an older one.
-				if (error instanceof AskIgnoredError) {
-					return
-				}
-				const errorString = `Error ${action}: ${JSON.stringify(serializeError(error))}`
-				await cline.say(
-					"error",
-					`Error ${action}:\n${error.message ?? JSON.stringify(serializeError(error), null, 2)}`,
-				)
-				pushToolResult(formatResponse.toolError(errorString))
-			}
-
-			if (!mcpBlock.partial) {
-				cline.recordToolUsage("use_mcp_tool")
-			}
-
-			// Resolve sanitized server name back to original server name
-			// The serverName from parsing is sanitized (e.g., "my_server" from "my server")
-			// We need the original name to find the actual MCP connection
-			const mcpHub = cline.providerRef.deref()?.getMcpHub()
-			let resolvedServerName = mcpBlock.serverName
-			if (mcpHub) {
-				const originalName = mcpHub.findServerNameBySanitizedName(mcpBlock.serverName)
-				if (originalName) {
-					resolvedServerName = originalName
 				}
 			}
-
-			// Execute the MCP tool using the same handler as use_mcp_tool
-			// Create a synthetic ToolUse block that the useMcpToolTool can handle
-			const syntheticToolUse: ToolUse<"use_mcp_tool"> = {
-				type: "tool_use",
-				id: mcpBlock.id,
-				name: "use_mcp_tool",
-				params: {
-					server_name: resolvedServerName,
-					tool_name: mcpBlock.toolName,
-					arguments: JSON.stringify(mcpBlock.arguments),
-				},
-				partial: mcpBlock.partial,
-				nativeArgs: {
-					server_name: resolvedServerName,
-					tool_name: mcpBlock.toolName,
-					arguments: mcpBlock.arguments,
-				},
-			}
-
-			await useMcpToolTool.handle(cline, syntheticToolUse, {
-				askApproval,
-				handleError,
-				pushToolResult,
-			})
-			break
 		}
-		case "text": {
-			if (cline.didRejectTool || cline.didAlreadyUseTool) {
-				break
-			}
+		if (cline.abort || cline.modelOperationDispatchClosed) return
+		if (admitted)
+			switch (block.type) {
+				case "mcp_tool_use": {
+					// Handle native MCP tool calls (from mcp_serverName_toolName dynamic tools)
+					// These are converted to the same execution path as use_mcp_tool but preserve
+					// their original name in API history
+					const mcpBlock = block as McpToolUse
 
-			let content = block.content
+					if (cline.didRejectTool) {
+						// For native protocol, we must send a tool_result for every tool_use to avoid API errors
+						const toolCallId = mcpBlock.id
+						const errorMessage = !mcpBlock.partial
+							? `Skipping MCP tool ${mcpBlock.name} due to user rejecting a previous tool.`
+							: `MCP tool ${mcpBlock.name} was interrupted and not executed due to user rejecting a previous tool.`
 
-			if (content) {
-				// Have to do this for partial and complete since sending
-				// content in thinking tags to markdown renderer will
-				// automatically be removed.
-				// Strip any streamed <thinking> tags from text output.
-				content = content.replace(/<thinking>\s?/g, "")
-				content = content.replace(/\s?<\/thinking>/g, "")
-			}
-
-			await cline.say("text", content, undefined, block.partial)
-			break
-		}
-		case "tool_use": {
-			// Native tool calling is the only supported tool calling mechanism.
-			// A tool_use block without an id is invalid and cannot be executed.
-			const toolCallId = (block as any).id as string | undefined
-			if (!toolCallId) {
-				const errorMessage =
-					"Invalid tool call: missing tool_use.id. XML tool calls are no longer supported. Remove any XML tool markup (e.g. <read_file>...</read_file>) and use native tool calling instead."
-				// Record a tool error for visibility. Use the reported tool name if present.
-				try {
-					if (
-						typeof (cline as any).recordToolError === "function" &&
-						typeof (block as any).name === "string"
-					) {
-						;(cline as any).recordToolError((block as any).name as ToolName, errorMessage)
-					}
-				} catch {
-					// Best-effort only
-				}
-				cline.consecutiveMistakeCount++
-				await cline.say("error", errorMessage)
-				cline.userMessageContent.push({ type: "text", text: errorMessage })
-				cline.didAlreadyUseTool = true
-				break
-			}
-
-			// Fetch state early so it's available for toolDescription and validation
-			const state = await cline.providerRef.deref()?.getState()
-			const { mode, customModes, experiments: stateExperiments, disabledTools } = state ?? {}
-
-			const toolDescription = (): string => {
-				switch (block.name) {
-					case "browser_action":
-						return `[${block.name} for '${block.params.action}']`
-					case "execute_command":
-						return `[${block.name} for '${block.params.command}']`
-					case "read_file":
-						// Prefer native typed args when available; fall back to legacy params
-						// Check if nativeArgs exists (native protocol)
-						if (block.nativeArgs) {
-							return readFileTool.getReadFileToolDescription(block.name, block.nativeArgs)
+						if (toolCallId) {
+							cline.pushToolResultToUserContent({
+								type: "tool_result",
+								tool_use_id: sanitizeToolUseId(toolCallId),
+								content: errorMessage,
+								is_error: true,
+							})
 						}
-						return readFileTool.getReadFileToolDescription(block.name, block.params)
-					case "write_to_file":
-						return `[${block.name} for '${block.params.path}']`
-					case "apply_diff":
-						// Native-only: tool args are structured (no XML payloads).
-						return block.params?.path ? `[${block.name} for '${block.params.path}']` : `[${block.name}]`
-					case "search_files":
-						return `[${block.name} for '${block.params.regex}'${
-							block.params.file_pattern ? ` in '${block.params.file_pattern}'` : ""
-						}]`
-					case "edit":
-					case "search_and_replace":
-						return `[${block.name} for '${block.params.file_path}']`
-					case "search_replace":
-						return `[${block.name} for '${block.params.file_path}']`
-					case "edit_file":
-						return `[${block.name} for '${block.params.file_path}']`
-					case "apply_patch":
-						return `[${block.name}]`
-					case "list_files":
-						return `[${block.name} for '${block.params.path}']`
-					case "use_mcp_tool":
-						return `[${block.name} for '${block.params.server_name}']`
-					case "access_mcp_resource":
-						return `[${block.name} for '${block.params.server_name}']`
-					case "ask_followup_question":
-						return `[${block.name} for '${block.params.question}']`
-					case "attempt_completion":
-						return `[${block.name}]`
-					case "switch_mode":
-						return `[${block.name} to '${block.params.mode_slug}'${block.params.reason ? ` because: ${block.params.reason}` : ""}]`
-					case "codebase_search":
-						return `[${block.name} for '${block.params.query}']`
-					case "read_command_output":
-						return `[${block.name} for '${block.params.artifact_id}']`
-					case "update_todo_list":
-						return `[${block.name}]`
-					case "new_task": {
-						const mode = block.params.mode ?? defaultModeSlug
-						const message = block.params.message ?? "(no message)"
-						const modeName = getModeBySlug(mode, customModes)?.name ?? mode
-						return `[${block.name} in ${modeName} mode: '${message}']`
-					}
-					case "run_slash_command":
-						return `[${block.name} for '${block.params.command}'${block.params.args ? ` with args: ${block.params.args}` : ""}]`
-					case "skill":
-						return `[${block.name} for '${block.params.skill}'${block.params.args ? ` with args: ${block.params.args}` : ""}]`
-					case "generate_image":
-					case "generate_video":
-						return `[${block.name} for '${block.params.path}']`
-					default:
-						return `[${block.name}]`
-				}
-			}
-
-			if (cline.didRejectTool) {
-				// Ignore any tool content after user has rejected tool once.
-				// For native tool calling, we must send a tool_result for every tool_use to avoid API errors
-				const errorMessage = !block.partial
-					? `Skipping tool ${toolDescription()} due to user rejecting a previous tool.`
-					: `Tool ${toolDescription()} was interrupted and not executed due to user rejecting a previous tool.`
-
-				cline.pushToolResultToUserContent({
-					type: "tool_result",
-					tool_use_id: sanitizeToolUseId(toolCallId),
-					content: errorMessage,
-					is_error: true,
-				})
-
-				break
-			}
-
-			// Track if we've already pushed a tool result for this tool call (native tool calling only)
-			let hasToolResult = false
-
-			// If this is a native tool call but the parser couldn't construct nativeArgs
-			// (e.g., malformed/unfinished JSON in a streaming tool call), we must NOT attempt to
-			// execute the tool. Instead, emit exactly one structured tool_result so the provider
-			// receives a matching tool_result for the tool_use_id.
-			//
-			// This avoids executing an invalid tool_use block and prevents duplicate/fragmented
-			// error reporting.
-			if (!block.partial) {
-				const customTool = stateExperiments?.customTools ? customToolRegistry.get(block.name) : undefined
-				const isKnownTool = isValidToolName(String(block.name), stateExperiments)
-				if (isKnownTool && !block.nativeArgs && !customTool) {
-					const errorMessage =
-						`Invalid tool call for '${block.name}': missing nativeArgs. ` +
-						`This usually means the model streamed invalid or incomplete arguments and the call could not be finalized.`
-
-					cline.consecutiveMistakeCount++
-					try {
-						cline.recordToolError(block.name as ToolName, errorMessage)
-					} catch {
-						// Best-effort only
-					}
-
-					// Push tool_result directly without setting didAlreadyUseTool so streaming can
-					// continue gracefully.
-					cline.pushToolResultToUserContent({
-						type: "tool_result",
-						tool_use_id: sanitizeToolUseId(toolCallId),
-						content: formatResponse.toolError(errorMessage),
-						is_error: true,
-					})
-
-					break
-				}
-			}
-
-			// Store approval feedback to merge into tool result (GitHub #10465)
-			let approvalFeedback: { text: string; images?: string[] } | undefined
-
-			const pushToolResult = (content: ToolResponse) => {
-				// Native tool calling: only allow ONE tool_result per tool call
-				if (hasToolResult) {
-					console.warn(
-						`[presentAssistantMessage] Skipping duplicate tool_result for tool_use_id: ${toolCallId}`,
-					)
-					return
-				}
-
-				let resultContent: string
-				let imageBlocks: Anthropic.ImageBlockParam[] = []
-
-				if (typeof content === "string") {
-					resultContent = content || "(tool did not return anything)"
-				} else {
-					const textBlocks = content.filter((item) => item.type === "text")
-					imageBlocks = content.filter((item) => item.type === "image") as Anthropic.ImageBlockParam[]
-					resultContent =
-						textBlocks.map((item) => (item as Anthropic.TextBlockParam).text).join("\n") ||
-						"(tool did not return anything)"
-				}
-
-				// Merge approval feedback into tool result (GitHub #10465)
-				if (approvalFeedback) {
-					const feedbackText = formatResponse.toolApprovedWithFeedback(approvalFeedback.text)
-					resultContent = `${feedbackText}\n\n${resultContent}`
-					if (approvalFeedback.images) {
-						const feedbackImageBlocks = formatResponse.imageBlocks(approvalFeedback.images)
-						imageBlocks = [...feedbackImageBlocks, ...imageBlocks]
-					}
-				}
-
-				cline.pushToolResultToUserContent({
-					type: "tool_result",
-					tool_use_id: sanitizeToolUseId(toolCallId),
-					content: resultContent,
-				})
-
-				if (imageBlocks.length > 0) {
-					cline.userMessageContent.push(...imageBlocks)
-				}
-
-				hasToolResult = true
-			}
-
-			const askApproval = async (
-				type: ClineAsk,
-				partialMessage?: string,
-				progressStatus?: ToolProgressStatus,
-				isProtected?: boolean,
-			) => {
-				const { response, text, images } = await cline.ask(
-					type,
-					partialMessage,
-					false,
-					progressStatus,
-					isProtected || false,
-				)
-
-				if (response !== "yesButtonClicked") {
-					// Handle both messageResponse and noButtonClicked with text.
-					if (text) {
-						await cline.say("user_feedback", text, images)
-						pushToolResult(formatResponse.toolResult(formatResponse.toolDeniedWithFeedback(text), images))
-					} else {
-						pushToolResult(formatResponse.toolDenied())
-					}
-					cline.didRejectTool = true
-					return false
-				}
-
-				// Store approval feedback to be merged into tool result (GitHub #10465)
-				// Don't push it as a separate tool_result here - that would create duplicates.
-				// The tool will call pushToolResult, which will merge the feedback into the actual result.
-				if (text) {
-					await cline.say("user_feedback", text, images)
-					approvalFeedback = { text, images }
-				}
-
-				return true
-			}
-
-			const askFinishSubTaskApproval = async () => {
-				// Ask the user to approve this task has completed, and he has
-				// reviewed it, and we can declare task is finished and return
-				// control to the parent task to continue running the rest of
-				// the sub-tasks.
-				const toolMessage = JSON.stringify({ tool: "finishTask" })
-				return await askApproval("tool", toolMessage)
-			}
-
-			const handleError = async (action: string, error: Error) => {
-				// Silently ignore AskIgnoredError - this is an internal control flow
-				// signal, not an actual error. It occurs when a newer ask supersedes an older one.
-				if (error instanceof AskIgnoredError) {
-					return
-				}
-				const errorString = `Error ${action}: ${JSON.stringify(serializeError(error))}`
-
-				await cline.say(
-					"error",
-					`Error ${action}:\n${error.message ?? JSON.stringify(serializeError(error), null, 2)}`,
-				)
-
-				pushToolResult(formatResponse.toolError(errorString))
-			}
-
-			if (!block.partial) {
-				// Check if this is a custom tool - if so, record as "custom_tool" (like MCP tools)
-				const isCustomTool = stateExperiments?.customTools && customToolRegistry.has(block.name)
-				const recordName = isCustomTool ? "custom_tool" : block.name
-				cline.recordToolUsage(recordName)
-			}
-
-			// Validate tool use before execution - ONLY for complete (non-partial) blocks.
-			// Validating partial blocks would cause validation errors to be thrown repeatedly
-			// during streaming, pushing multiple tool_results for the same tool_use_id and
-			// potentially causing the stream to appear frozen.
-			if (!block.partial) {
-				const modelInfo = cline.api.getModel()
-				// Resolve aliases in includedTools before validation
-				// e.g., "edit_file" should resolve to "apply_diff"
-				const rawIncludedTools = modelInfo?.info?.includedTools
-				const { resolveToolAlias } = await import("../prompts/tools/filter-tools-for-mode")
-				const includedTools = rawIncludedTools?.map((tool) => resolveToolAlias(tool))
-
-				try {
-					const toolRequirements =
-						disabledTools?.reduce(
-							(acc: Record<string, boolean>, tool: string) => {
-								acc[tool] = false
-								const resolvedToolName = resolveToolAlias(tool)
-								acc[resolvedToolName] = false
-								return acc
-							},
-							{} as Record<string, boolean>,
-						) ?? {}
-
-					validateToolUse(
-						block.name as ToolName,
-						mode ?? defaultModeSlug,
-						customModes ?? [],
-						toolRequirements,
-						block.params,
-						stateExperiments,
-						includedTools,
-					)
-				} catch (error) {
-					cline.consecutiveMistakeCount++
-					// For validation errors (unknown tool, tool not allowed for mode), we need to:
-					// 1. Send a tool_result with the error (required for native tool calling)
-					// 2. NOT set didAlreadyUseTool = true (the tool was never executed, just failed validation)
-					// This prevents the stream from being interrupted with "Response interrupted by tool use result"
-					// which would cause the extension to appear to hang
-					const errorContent = formatResponse.toolError(error.message)
-					// Push tool_result directly without setting didAlreadyUseTool
-					cline.pushToolResultToUserContent({
-						type: "tool_result",
-						tool_use_id: sanitizeToolUseId(toolCallId),
-						content: typeof errorContent === "string" ? errorContent : "(validation error)",
-						is_error: true,
-					})
-
-					break
-				}
-			}
-
-			// Check for identical consecutive tool calls.
-			if (!block.partial) {
-				// Use the detector to check for repetition, passing the ToolUse
-				// block directly.
-				const repetitionCheck = cline.toolRepetitionDetector.check(block)
-
-				// If execution is not allowed, notify user and break.
-				if (!repetitionCheck.allowExecution && repetitionCheck.askUser) {
-					// Handle repetition similar to mistake_limit_reached pattern.
-					const { response, text, images } = await cline.ask(
-						repetitionCheck.askUser.messageKey as ClineAsk,
-						repetitionCheck.askUser.messageDetail.replace("{toolName}", block.name),
-					)
-
-					if (response === "messageResponse") {
-						// Add user feedback to userContent.
-						cline.userMessageContent.push(
-							{
-								type: "text" as const,
-								text: `Tool repetition limit reached. User feedback: ${text}`,
-							},
-							...formatResponse.imageBlocks(images),
-						)
-
-						// Add user feedback to chat.
-						await cline.say("user_feedback", text, images)
-					}
-
-					// Return tool result message about the repetition
-					pushToolResult(
-						formatResponse.toolError(
-							`Tool call repetition limit reached for ${block.name}. Please try a different approach.`,
-						),
-					)
-					break
-				}
-			}
-
-			switch (block.name) {
-				case "brave_web_search":
-					await braveWebSearchTool.handle(cline, block as ToolUse<"brave_web_search">, {
-						askApproval,
-						handleError,
-						pushToolResult,
-					})
-					break
-				case "brave_local_search":
-					await braveLocalSearchTool.handle(cline, block as ToolUse<"brave_local_search">, {
-						askApproval,
-						handleError,
-						pushToolResult,
-					})
-					break
-				case "context7_resolve_library_id":
-					await context7ResolveLibraryIdTool.handle(cline, block as ToolUse<"context7_resolve_library_id">, {
-						askApproval,
-						handleError,
-						pushToolResult,
-					})
-					break
-				case "context7_query_docs":
-					await context7QueryDocsTool.handle(cline, block as ToolUse<"context7_query_docs">, {
-						askApproval,
-						handleError,
-						pushToolResult,
-					})
-					break
-				case "file_system":
-					await fileSystemTool.handle(cline, block as ToolUse<"file_system">, {
-						askApproval,
-						handleError,
-						pushToolResult,
-					})
-					break
-				case "markdownify":
-					await markdownifyTool.handle(cline, block as ToolUse<"markdownify">, {
-						askApproval,
-						handleError,
-						pushToolResult,
-					})
-					break
-				case "git_repo_research":
-					await gitRepoResearchTool.handle(cline, block as ToolUse<"git_repo_research">, {
-						askApproval,
-						handleError,
-						pushToolResult,
-					})
-					break
-				case "git_tools":
-					await gitToolsTool.handle(cline, block as ToolUse<"git_tools">, {
-						askApproval,
-						handleError,
-						pushToolResult,
-					})
-					break
-				case "write_to_file":
-					await checkpointSaveAndMark(cline)
-					await writeToFileTool.handle(cline, block as ToolUse<"write_to_file">, {
-						askApproval,
-						handleError,
-						pushToolResult,
-					})
-					break
-				case "update_todo_list":
-					await updateTodoListTool.handle(cline, block as ToolUse<"update_todo_list">, {
-						askApproval,
-						handleError,
-						pushToolResult,
-					})
-					break
-				case "apply_diff":
-					await checkpointSaveAndMark(cline)
-					await applyDiffToolClass.handle(cline, block as ToolUse<"apply_diff">, {
-						askApproval,
-						handleError,
-						pushToolResult,
-					})
-					break
-				case "edit":
-				case "search_and_replace":
-					await checkpointSaveAndMark(cline)
-					await editTool.handle(cline, block as ToolUse<"edit">, {
-						askApproval,
-						handleError,
-						pushToolResult,
-					})
-					break
-				case "search_replace":
-					await checkpointSaveAndMark(cline)
-					await searchReplaceTool.handle(cline, block as ToolUse<"search_replace">, {
-						askApproval,
-						handleError,
-						pushToolResult,
-					})
-					break
-				case "edit_file":
-					await checkpointSaveAndMark(cline)
-					await editFileTool.handle(cline, block as ToolUse<"edit_file">, {
-						askApproval,
-						handleError,
-						pushToolResult,
-					})
-					break
-				case "apply_patch":
-					await checkpointSaveAndMark(cline)
-					await applyPatchTool.handle(cline, block as ToolUse<"apply_patch">, {
-						askApproval,
-						handleError,
-						pushToolResult,
-					})
-					break
-				case "read_file":
-					// Type assertion is safe here because we're in the "read_file" case
-					await readFileTool.handle(cline, block as ToolUse<"read_file">, {
-						askApproval,
-						handleError,
-						pushToolResult,
-					})
-					break
-				case "list_files":
-					await listFilesTool.handle(cline, block as ToolUse<"list_files">, {
-						askApproval,
-						handleError,
-						pushToolResult,
-					})
-					break
-				case "codebase_search":
-					await codebaseSearchTool.handle(cline, block as ToolUse<"codebase_search">, {
-						askApproval,
-						handleError,
-						pushToolResult,
-					})
-					break
-				case "search_files":
-					await searchFilesTool.handle(cline, block as ToolUse<"search_files">, {
-						askApproval,
-						handleError,
-						pushToolResult,
-					})
-					break
-				case "browser_action":
-					await browserActionTool(
-						cline,
-						block as ToolUse<"browser_action">,
-						askApproval,
-						handleError,
-						pushToolResult,
-					)
-					break
-				case "execute_command":
-					await executeCommandTool.handle(cline, block as ToolUse<"execute_command">, {
-						askApproval,
-						handleError,
-						pushToolResult,
-					})
-					break
-				case "read_command_output":
-					await readCommandOutputTool.handle(cline, block as ToolUse<"read_command_output">, {
-						askApproval,
-						handleError,
-						pushToolResult,
-					})
-					break
-				case "use_mcp_tool":
-					await useMcpToolTool.handle(cline, block as ToolUse<"use_mcp_tool">, {
-						askApproval,
-						handleError,
-						pushToolResult,
-					})
-					break
-				case "access_mcp_resource":
-					await accessMcpResourceTool.handle(cline, block as ToolUse<"access_mcp_resource">, {
-						askApproval,
-						handleError,
-						pushToolResult,
-					})
-					break
-				case "ask_followup_question":
-					await askFollowupQuestionTool.handle(cline, block as ToolUse<"ask_followup_question">, {
-						askApproval,
-						handleError,
-						pushToolResult,
-					})
-					break
-				case "switch_mode":
-					await switchModeTool.handle(cline, block as ToolUse<"switch_mode">, {
-						askApproval,
-						handleError,
-						pushToolResult,
-					})
-					break
-				case "new_task":
-					await checkpointSaveAndMark(cline)
-					await newTaskTool.handle(cline, block as ToolUse<"new_task">, {
-						askApproval,
-						handleError,
-						pushToolResult,
-						toolCallId: block.id,
-					})
-					break
-				case "attempt_completion": {
-					const completionCallbacks: AttemptCompletionCallbacks = {
-						askApproval,
-						handleError,
-						pushToolResult,
-						askFinishSubTaskApproval,
-						toolDescription,
-					}
-					await attemptCompletionTool.handle(
-						cline,
-						block as ToolUse<"attempt_completion">,
-						completionCallbacks,
-					)
-					break
-				}
-				case "run_slash_command":
-					await runSlashCommandTool.handle(cline, block as ToolUse<"run_slash_command">, {
-						askApproval,
-						handleError,
-						pushToolResult,
-					})
-					break
-				case "skill":
-					await skillTool.handle(cline, block as ToolUse<"skill">, {
-						askApproval,
-						handleError,
-						pushToolResult,
-					})
-					break
-				case "generate_image":
-					await checkpointSaveAndMark(cline)
-					await generateImageTool.handle(cline, block as ToolUse<"generate_image">, {
-						askApproval,
-						handleError,
-						pushToolResult,
-					})
-					break
-				case "generate_video":
-					await checkpointSaveAndMark(cline)
-					await generateVideoTool.handle(cline, block as ToolUse<"generate_video">, {
-						askApproval,
-						handleError,
-						pushToolResult,
-					})
-					break
-				default: {
-					// Handle unknown/invalid tool names OR custom tools
-					// This is critical for native tool calling where every tool_use MUST have a tool_result
-
-					// CRITICAL: Don't process partial blocks for unknown tools - just let them stream in.
-					// If we try to show errors for partial blocks, we'd show the error on every streaming chunk,
-					// creating a loop that appears to freeze the extension. Only handle complete blocks.
-					if (block.partial) {
 						break
 					}
 
-					const customTool = stateExperiments?.customTools ? customToolRegistry.get(block.name) : undefined
+					// Track if we've already pushed a tool result
+					let hasToolResult = false
+					const toolCallId = mcpBlock.id
 
-					if (customTool) {
-						try {
-							let customToolArgs
+					// Store approval feedback to merge into tool result (GitHub #10465)
+					let approvalFeedback: { text: string; images?: string[] } | undefined
 
-							if (customTool.parameters) {
-								try {
-									customToolArgs = customTool.parameters.parse(block.nativeArgs || block.params || {})
-								} catch (parseParamsError) {
-									const message = `Custom tool "${block.name}" argument validation failed: ${parseParamsError.message}`
-									console.error(message)
-									cline.consecutiveMistakeCount++
-									await cline.say("error", message)
-									pushToolResult(formatResponse.toolError(message))
-									break
-								}
+					const pushToolResult = (content: ToolResponse, feedbackImages?: string[]) => {
+						if (hasToolResult) {
+							console.warn(
+								`[presentAssistantMessage] Skipping duplicate tool_result for mcp_tool_use: ${toolCallId}`,
+							)
+							return
+						}
+
+						let resultContent: string
+						let imageBlocks: Anthropic.ImageBlockParam[] = []
+
+						if (typeof content === "string") {
+							resultContent = content || "(tool did not return anything)"
+						} else {
+							const textBlocks = content.filter((item) => item.type === "text")
+							imageBlocks = content.filter((item) => item.type === "image") as Anthropic.ImageBlockParam[]
+							resultContent =
+								textBlocks.map((item) => (item as Anthropic.TextBlockParam).text).join("\n") ||
+								"(tool did not return anything)"
+						}
+
+						// Merge approval feedback into tool result (GitHub #10465)
+						if (approvalFeedback) {
+							const feedbackText = formatResponse.toolApprovedWithFeedback(approvalFeedback.text)
+							resultContent = `${feedbackText}\n\n${resultContent}`
+
+							// Add feedback images to the image blocks
+							if (approvalFeedback.images) {
+								const feedbackImageBlocks = formatResponse.imageBlocks(approvalFeedback.images)
+								imageBlocks = [...feedbackImageBlocks, ...imageBlocks]
 							}
+						}
 
-							const result = await customTool.execute(customToolArgs, {
-								mode: mode ?? defaultModeSlug,
-								task: cline,
+						if (toolCallId) {
+							cline.pushToolResultToUserContent({
+								type: "tool_result",
+								tool_use_id: sanitizeToolUseId(toolCallId),
+								content: resultContent,
 							})
 
-							console.log(
-								`${customTool.name}.execute(): ${JSON.stringify(customToolArgs)} -> ${JSON.stringify(result)}`,
-							)
-
-							pushToolResult(result)
-							cline.consecutiveMistakeCount = 0
-						} catch (executionError: any) {
-							cline.consecutiveMistakeCount++
-							// Record custom tool error with static name
-							cline.recordToolError("custom_tool", executionError.message)
-							await handleError(`executing custom tool "${block.name}"`, executionError)
+							if (imageBlocks.length > 0) {
+								cline.userMessageContent.push(...imageBlocks)
+							}
 						}
+
+						hasToolResult = true
+					}
+
+					const toolDescription = () => `[mcp_tool: ${mcpBlock.serverName}/${mcpBlock.toolName}]`
+
+					const askApproval = async (
+						type: ClineAsk,
+						partialMessage?: string,
+						progressStatus?: ToolProgressStatus,
+						isProtected?: boolean,
+					) => {
+						const { response, text, images } = await cline.ask(
+							type,
+							partialMessage,
+							false,
+							progressStatus,
+							isProtected || false,
+						)
+
+						if (response !== "yesButtonClicked") {
+							if (text) {
+								await cline.say("user_feedback", text, images)
+								pushToolResult(
+									formatResponse.toolResult(formatResponse.toolDeniedWithFeedback(text), images),
+								)
+							} else {
+								pushToolResult(formatResponse.toolDenied())
+							}
+							cline.didRejectTool = true
+							return false
+						}
+
+						// Store approval feedback to be merged into tool result (GitHub #10465)
+						// Don't push it as a separate tool_result here - that would create duplicates.
+						// The tool will call pushToolResult, which will merge the feedback into the actual result.
+						if (text) {
+							await cline.say("user_feedback", text, images)
+							approvalFeedback = { text, images }
+						}
+
+						return true
+					}
+
+					const handleError = async (action: string, error: Error) => {
+						// Silently ignore AskIgnoredError - this is an internal control flow
+						// signal, not an actual error. It occurs when a newer ask supersedes an older one.
+						if (error instanceof AskIgnoredError) {
+							return
+						}
+						const errorString = `Error ${action}: ${JSON.stringify(serializeError(error))}`
+						await cline.say(
+							"error",
+							`Error ${action}:\n${error.message ?? JSON.stringify(serializeError(error), null, 2)}`,
+						)
+						pushToolResult(formatResponse.toolError(errorString))
+					}
+
+					if (!mcpBlock.partial) {
+						cline.recordToolUsage("use_mcp_tool")
+					}
+
+					// Resolve sanitized server name back to original server name
+					// The serverName from parsing is sanitized (e.g., "my_server" from "my server")
+					// We need the original name to find the actual MCP connection
+					const mcpHub = cline.providerRef.deref()?.getMcpHub()
+					let resolvedServerName = mcpBlock.serverName
+					if (mcpHub) {
+						const originalName = mcpHub.findServerNameBySanitizedName(mcpBlock.serverName)
+						if (originalName) {
+							resolvedServerName = originalName
+						}
+					}
+
+					// Execute the MCP tool using the same handler as use_mcp_tool
+					// Create a synthetic ToolUse block that the useMcpToolTool can handle
+					const syntheticToolUse: ToolUse<"use_mcp_tool"> = {
+						type: "tool_use",
+						id: mcpBlock.id,
+						name: "use_mcp_tool",
+						params: {
+							server_name: resolvedServerName,
+							tool_name: mcpBlock.toolName,
+							arguments: JSON.stringify(mcpBlock.arguments),
+						},
+						partial: mcpBlock.partial,
+						nativeArgs: {
+							server_name: resolvedServerName,
+							tool_name: mcpBlock.toolName,
+							arguments: mcpBlock.arguments,
+						},
+					}
+
+					await useMcpToolTool.handle(cline, syntheticToolUse, {
+						askApproval,
+						handleError,
+						pushToolResult,
+					})
+					break
+				}
+				case "text": {
+					if (cline.didRejectTool || cline.didAlreadyUseTool) {
+						break
+					}
+
+					let content = block.content
+
+					if (content) {
+						// Have to do this for partial and complete since sending
+						// content in thinking tags to markdown renderer will
+						// automatically be removed.
+						// Strip any streamed <thinking> tags from text output.
+						content = content.replace(/<thinking>\s?/g, "")
+						content = content.replace(/\s?<\/thinking>/g, "")
+					}
+
+					await cline.say("text", content, undefined, block.partial)
+					break
+				}
+				case "tool_use": {
+					// Native tool calling is the only supported tool calling mechanism.
+					// A tool_use block without an id is invalid and cannot be executed.
+					const toolCallId = (block as any).id as string | undefined
+					if (!toolCallId) {
+						const errorMessage =
+							"Invalid tool call: missing tool_use.id. XML tool calls are no longer supported. Remove any XML tool markup (e.g. <read_file>...</read_file>) and use native tool calling instead."
+						// Record a tool error for visibility. Use the reported tool name if present.
+						try {
+							if (
+								typeof (cline as any).recordToolError === "function" &&
+								typeof (block as any).name === "string"
+							) {
+								;(cline as any).recordToolError((block as any).name as ToolName, errorMessage)
+							}
+						} catch {
+							// Best-effort only
+						}
+						cline.consecutiveMistakeCount++
+						await cline.say("error", errorMessage)
+						cline.userMessageContent.push({ type: "text", text: errorMessage })
+						cline.didAlreadyUseTool = true
+						break
+					}
+
+					// Fetch state early so it's available for toolDescription and validation
+					const state = await cline.providerRef.deref()?.getState()
+					const { mode, customModes, experiments: stateExperiments, disabledTools } = state ?? {}
+
+					const toolDescription = (): string => {
+						switch (block.name) {
+							case "browser_action":
+								return `[${block.name} for '${block.params.action}']`
+							case "execute_command":
+								return `[${block.name} for '${block.params.command}']`
+							case "read_file":
+								// Prefer native typed args when available; fall back to legacy params
+								// Check if nativeArgs exists (native protocol)
+								if (block.nativeArgs) {
+									return readFileTool.getReadFileToolDescription(block.name, block.nativeArgs)
+								}
+								return readFileTool.getReadFileToolDescription(block.name, block.params)
+							case "write_to_file":
+								return `[${block.name} for '${block.params.path}']`
+							case "apply_diff":
+								// Native-only: tool args are structured (no XML payloads).
+								return block.params?.path
+									? `[${block.name} for '${block.params.path}']`
+									: `[${block.name}]`
+							case "search_files":
+								return `[${block.name} for '${block.params.regex}'${
+									block.params.file_pattern ? ` in '${block.params.file_pattern}'` : ""
+								}]`
+							case "edit":
+							case "search_and_replace":
+								return `[${block.name} for '${block.params.file_path}']`
+							case "search_replace":
+								return `[${block.name} for '${block.params.file_path}']`
+							case "edit_file":
+								return `[${block.name} for '${block.params.file_path}']`
+							case "apply_patch":
+								return `[${block.name}]`
+							case "list_files":
+								return `[${block.name} for '${block.params.path}']`
+							case "use_mcp_tool":
+								return `[${block.name} for '${block.params.server_name}']`
+							case "access_mcp_resource":
+								return `[${block.name} for '${block.params.server_name}']`
+							case "ask_followup_question":
+								return `[${block.name} for '${block.params.question}']`
+							case "attempt_completion":
+								return `[${block.name}]`
+							case "switch_mode":
+								return `[${block.name} to '${block.params.mode_slug}'${block.params.reason ? ` because: ${block.params.reason}` : ""}]`
+							case "codebase_search":
+								return `[${block.name} for '${block.params.query}']`
+							case "read_command_output":
+								return `[${block.name} for '${block.params.artifact_id}']`
+							case "update_todo_list":
+								return `[${block.name}]`
+							case "new_task": {
+								const mode = block.params.mode ?? defaultModeSlug
+								const message = block.params.message ?? "(no message)"
+								const modeName = getModeBySlug(mode, customModes)?.name ?? mode
+								return `[${block.name} in ${modeName} mode: '${message}']`
+							}
+							case "run_slash_command":
+								return `[${block.name} for '${block.params.command}'${block.params.args ? ` with args: ${block.params.args}` : ""}]`
+							case "skill":
+								return `[${block.name} for '${block.params.skill}'${block.params.args ? ` with args: ${block.params.args}` : ""}]`
+							case "generate_image":
+							case "generate_video":
+								return `[${block.name} for '${block.params.path}']`
+							default:
+								return `[${block.name}]`
+						}
+					}
+
+					if (cline.didRejectTool) {
+						// Ignore any tool content after user has rejected tool once.
+						// For native tool calling, we must send a tool_result for every tool_use to avoid API errors
+						const errorMessage = !block.partial
+							? `Skipping tool ${toolDescription()} due to user rejecting a previous tool.`
+							: `Tool ${toolDescription()} was interrupted and not executed due to user rejecting a previous tool.`
+
+						cline.pushToolResultToUserContent({
+							type: "tool_result",
+							tool_use_id: sanitizeToolUseId(toolCallId),
+							content: errorMessage,
+							is_error: true,
+						})
 
 						break
 					}
 
-					// Not a custom tool - handle as unknown tool error
-					const errorMessage = `Unknown tool "${block.name}". This tool does not exist. Please use one of the available tools.`
-					cline.consecutiveMistakeCount++
-					cline.recordToolError(block.name as ToolName, errorMessage)
-					await cline.say("error", t("tools:unknownToolError", { toolName: block.name }))
-					// Push tool_result directly WITHOUT setting didAlreadyUseTool
-					// This prevents the stream from being interrupted with "Response interrupted by tool use result"
-					cline.pushToolResultToUserContent({
-						type: "tool_result",
-						tool_use_id: sanitizeToolUseId(toolCallId),
-						content: formatResponse.toolError(errorMessage),
-						is_error: true,
-					})
+					// Track if we've already pushed a tool result for this tool call (native tool calling only)
+					let hasToolResult = false
+
+					// If this is a native tool call but the parser couldn't construct nativeArgs
+					// (e.g., malformed/unfinished JSON in a streaming tool call), we must NOT attempt to
+					// execute the tool. Instead, emit exactly one structured tool_result so the provider
+					// receives a matching tool_result for the tool_use_id.
+					//
+					// This avoids executing an invalid tool_use block and prevents duplicate/fragmented
+					// error reporting.
+					if (!block.partial) {
+						const customTool = stateExperiments?.customTools
+							? customToolRegistry.get(block.name)
+							: undefined
+						const isKnownTool = isValidToolName(String(block.name), stateExperiments)
+						if (isKnownTool && !block.nativeArgs && !customTool) {
+							const errorMessage =
+								`Invalid tool call for '${block.name}': missing nativeArgs. ` +
+								`This usually means the model streamed invalid or incomplete arguments and the call could not be finalized.`
+
+							cline.consecutiveMistakeCount++
+							try {
+								cline.recordToolError(block.name as ToolName, errorMessage)
+							} catch {
+								// Best-effort only
+							}
+
+							// Push tool_result directly without setting didAlreadyUseTool so streaming can
+							// continue gracefully.
+							cline.pushToolResultToUserContent({
+								type: "tool_result",
+								tool_use_id: sanitizeToolUseId(toolCallId),
+								content: formatResponse.toolError(errorMessage),
+								is_error: true,
+							})
+
+							break
+						}
+					}
+
+					// Store approval feedback to merge into tool result (GitHub #10465)
+					let approvalFeedback: { text: string; images?: string[] } | undefined
+
+					const pushToolResult = (content: ToolResponse) => {
+						// Native tool calling: only allow ONE tool_result per tool call
+						if (hasToolResult) {
+							console.warn(
+								`[presentAssistantMessage] Skipping duplicate tool_result for tool_use_id: ${toolCallId}`,
+							)
+							return
+						}
+
+						let resultContent: string
+						let imageBlocks: Anthropic.ImageBlockParam[] = []
+
+						if (typeof content === "string") {
+							resultContent = content || "(tool did not return anything)"
+						} else {
+							const textBlocks = content.filter((item) => item.type === "text")
+							imageBlocks = content.filter((item) => item.type === "image") as Anthropic.ImageBlockParam[]
+							resultContent =
+								textBlocks.map((item) => (item as Anthropic.TextBlockParam).text).join("\n") ||
+								"(tool did not return anything)"
+						}
+
+						// Merge approval feedback into tool result (GitHub #10465)
+						if (approvalFeedback) {
+							const feedbackText = formatResponse.toolApprovedWithFeedback(approvalFeedback.text)
+							resultContent = `${feedbackText}\n\n${resultContent}`
+							if (approvalFeedback.images) {
+								const feedbackImageBlocks = formatResponse.imageBlocks(approvalFeedback.images)
+								imageBlocks = [...feedbackImageBlocks, ...imageBlocks]
+							}
+						}
+
+						cline.pushToolResultToUserContent({
+							type: "tool_result",
+							tool_use_id: sanitizeToolUseId(toolCallId),
+							content: resultContent,
+						})
+
+						if (imageBlocks.length > 0) {
+							cline.userMessageContent.push(...imageBlocks)
+						}
+
+						hasToolResult = true
+					}
+
+					const askApproval = async (
+						type: ClineAsk,
+						partialMessage?: string,
+						progressStatus?: ToolProgressStatus,
+						isProtected?: boolean,
+					) => {
+						const { response, text, images } = await cline.ask(
+							type,
+							partialMessage,
+							false,
+							progressStatus,
+							isProtected || false,
+						)
+
+						if (response !== "yesButtonClicked") {
+							// Handle both messageResponse and noButtonClicked with text.
+							if (text) {
+								await cline.say("user_feedback", text, images)
+								pushToolResult(
+									formatResponse.toolResult(formatResponse.toolDeniedWithFeedback(text), images),
+								)
+							} else {
+								pushToolResult(formatResponse.toolDenied())
+							}
+							cline.didRejectTool = true
+							return false
+						}
+
+						// Store approval feedback to be merged into tool result (GitHub #10465)
+						// Don't push it as a separate tool_result here - that would create duplicates.
+						// The tool will call pushToolResult, which will merge the feedback into the actual result.
+						if (text) {
+							await cline.say("user_feedback", text, images)
+							approvalFeedback = { text, images }
+						}
+
+						return true
+					}
+
+					const askFinishSubTaskApproval = async () => {
+						// Ask the user to approve this task has completed, and he has
+						// reviewed it, and we can declare task is finished and return
+						// control to the parent task to continue running the rest of
+						// the sub-tasks.
+						const toolMessage = JSON.stringify({ tool: "finishTask" })
+						return await askApproval("tool", toolMessage)
+					}
+
+					const handleError = async (action: string, error: Error) => {
+						// Silently ignore AskIgnoredError - this is an internal control flow
+						// signal, not an actual error. It occurs when a newer ask supersedes an older one.
+						if (error instanceof AskIgnoredError) {
+							return
+						}
+						const errorString = `Error ${action}: ${JSON.stringify(serializeError(error))}`
+
+						await cline.say(
+							"error",
+							`Error ${action}:\n${error.message ?? JSON.stringify(serializeError(error), null, 2)}`,
+						)
+
+						pushToolResult(formatResponse.toolError(errorString))
+					}
+
+					if (!block.partial) {
+						// Check if this is a custom tool - if so, record as "custom_tool" (like MCP tools)
+						const isCustomTool = stateExperiments?.customTools && customToolRegistry.has(block.name)
+						const recordName = isCustomTool ? "custom_tool" : block.name
+						cline.recordToolUsage(recordName)
+					}
+
+					// Validate tool use before execution - ONLY for complete (non-partial) blocks.
+					// Validating partial blocks would cause validation errors to be thrown repeatedly
+					// during streaming, pushing multiple tool_results for the same tool_use_id and
+					// potentially causing the stream to appear frozen.
+					if (!block.partial) {
+						const modelInfo = cline.api.getModel()
+						// Resolve aliases in includedTools before validation
+						// e.g., "edit_file" should resolve to "apply_diff"
+						const rawIncludedTools = modelInfo?.info?.includedTools
+						const { resolveToolAlias } = await import("../prompts/tools/filter-tools-for-mode")
+						const includedTools = rawIncludedTools?.map((tool) => resolveToolAlias(tool))
+
+						try {
+							const toolRequirements =
+								disabledTools?.reduce(
+									(acc: Record<string, boolean>, tool: string) => {
+										acc[tool] = false
+										const resolvedToolName = resolveToolAlias(tool)
+										acc[resolvedToolName] = false
+										return acc
+									},
+									{} as Record<string, boolean>,
+								) ?? {}
+
+							validateToolUse(
+								block.name as ToolName,
+								mode ?? defaultModeSlug,
+								customModes ?? [],
+								toolRequirements,
+								block.params,
+								stateExperiments,
+								includedTools,
+							)
+						} catch (error) {
+							cline.consecutiveMistakeCount++
+							// For validation errors (unknown tool, tool not allowed for mode), we need to:
+							// 1. Send a tool_result with the error (required for native tool calling)
+							// 2. NOT set didAlreadyUseTool = true (the tool was never executed, just failed validation)
+							// This prevents the stream from being interrupted with "Response interrupted by tool use result"
+							// which would cause the extension to appear to hang
+							const errorContent = formatResponse.toolError(error.message)
+							// Push tool_result directly without setting didAlreadyUseTool
+							cline.pushToolResultToUserContent({
+								type: "tool_result",
+								tool_use_id: sanitizeToolUseId(toolCallId),
+								content: typeof errorContent === "string" ? errorContent : "(validation error)",
+								is_error: true,
+							})
+
+							break
+						}
+					}
+
+					// Check for identical consecutive tool calls.
+					if (!block.partial) {
+						// Use the detector to check for repetition, passing the ToolUse
+						// block directly.
+						const repetitionCheck = cline.toolRepetitionDetector.check(block)
+
+						// If execution is not allowed, notify user and break.
+						if (!repetitionCheck.allowExecution && repetitionCheck.askUser) {
+							// Handle repetition similar to mistake_limit_reached pattern.
+							const { response, text, images } = await cline.ask(
+								repetitionCheck.askUser.messageKey as ClineAsk,
+								repetitionCheck.askUser.messageDetail.replace("{toolName}", block.name),
+							)
+
+							if (response === "messageResponse") {
+								// Add user feedback to userContent.
+								cline.userMessageContent.push(
+									{
+										type: "text" as const,
+										text: `Tool repetition limit reached. User feedback: ${text}`,
+									},
+									...formatResponse.imageBlocks(images),
+								)
+
+								// Add user feedback to chat.
+								await cline.say("user_feedback", text, images)
+							}
+
+							// Return tool result message about the repetition
+							pushToolResult(
+								formatResponse.toolError(
+									`Tool call repetition limit reached for ${block.name}. Please try a different approach.`,
+								),
+							)
+							break
+						}
+					}
+
+					switch (block.name) {
+						case "brave_web_search":
+							await braveWebSearchTool.handle(cline, block as ToolUse<"brave_web_search">, {
+								askApproval,
+								handleError,
+								pushToolResult,
+							})
+							break
+						case "brave_local_search":
+							await braveLocalSearchTool.handle(cline, block as ToolUse<"brave_local_search">, {
+								askApproval,
+								handleError,
+								pushToolResult,
+							})
+							break
+						case "context7_resolve_library_id":
+							await context7ResolveLibraryIdTool.handle(
+								cline,
+								block as ToolUse<"context7_resolve_library_id">,
+								{
+									askApproval,
+									handleError,
+									pushToolResult,
+								},
+							)
+							break
+						case "context7_query_docs":
+							await context7QueryDocsTool.handle(cline, block as ToolUse<"context7_query_docs">, {
+								askApproval,
+								handleError,
+								pushToolResult,
+							})
+							break
+						case "file_system":
+							await fileSystemTool.handle(cline, block as ToolUse<"file_system">, {
+								askApproval,
+								handleError,
+								pushToolResult,
+							})
+							break
+						case "markdownify":
+							await markdownifyTool.handle(cline, block as ToolUse<"markdownify">, {
+								askApproval,
+								handleError,
+								pushToolResult,
+							})
+							break
+						case "git_repo_research":
+							await gitRepoResearchTool.handle(cline, block as ToolUse<"git_repo_research">, {
+								askApproval,
+								handleError,
+								pushToolResult,
+							})
+							break
+						case "git_tools":
+							await gitToolsTool.handle(cline, block as ToolUse<"git_tools">, {
+								askApproval,
+								handleError,
+								pushToolResult,
+							})
+							break
+						case "write_to_file":
+							await checkpointSaveAndMark(cline)
+							await writeToFileTool.handle(cline, block as ToolUse<"write_to_file">, {
+								askApproval,
+								handleError,
+								pushToolResult,
+							})
+							break
+						case "update_todo_list":
+							await updateTodoListTool.handle(cline, block as ToolUse<"update_todo_list">, {
+								askApproval,
+								handleError,
+								pushToolResult,
+							})
+							break
+						case "apply_diff":
+							await checkpointSaveAndMark(cline)
+							await applyDiffToolClass.handle(cline, block as ToolUse<"apply_diff">, {
+								askApproval,
+								handleError,
+								pushToolResult,
+							})
+							break
+						case "edit":
+						case "search_and_replace":
+							await checkpointSaveAndMark(cline)
+							await editTool.handle(cline, block as ToolUse<"edit">, {
+								askApproval,
+								handleError,
+								pushToolResult,
+							})
+							break
+						case "search_replace":
+							await checkpointSaveAndMark(cline)
+							await searchReplaceTool.handle(cline, block as ToolUse<"search_replace">, {
+								askApproval,
+								handleError,
+								pushToolResult,
+							})
+							break
+						case "edit_file":
+							await checkpointSaveAndMark(cline)
+							await editFileTool.handle(cline, block as ToolUse<"edit_file">, {
+								askApproval,
+								handleError,
+								pushToolResult,
+							})
+							break
+						case "apply_patch":
+							await checkpointSaveAndMark(cline)
+							await applyPatchTool.handle(cline, block as ToolUse<"apply_patch">, {
+								askApproval,
+								handleError,
+								pushToolResult,
+							})
+							break
+						case "read_file":
+							// Type assertion is safe here because we're in the "read_file" case
+							await readFileTool.handle(cline, block as ToolUse<"read_file">, {
+								askApproval,
+								handleError,
+								pushToolResult,
+							})
+							break
+						case "list_files":
+							await listFilesTool.handle(cline, block as ToolUse<"list_files">, {
+								askApproval,
+								handleError,
+								pushToolResult,
+							})
+							break
+						case "codebase_search":
+							await codebaseSearchTool.handle(cline, block as ToolUse<"codebase_search">, {
+								askApproval,
+								handleError,
+								pushToolResult,
+							})
+							break
+						case "search_files":
+							await searchFilesTool.handle(cline, block as ToolUse<"search_files">, {
+								askApproval,
+								handleError,
+								pushToolResult,
+							})
+							break
+						case "browser_action":
+							await browserActionTool(
+								cline,
+								block as ToolUse<"browser_action">,
+								askApproval,
+								handleError,
+								pushToolResult,
+							)
+							break
+						case "execute_command":
+							await executeCommandTool.handle(cline, block as ToolUse<"execute_command">, {
+								askApproval,
+								handleError,
+								pushToolResult,
+							})
+							break
+						case "read_command_output":
+							await readCommandOutputTool.handle(cline, block as ToolUse<"read_command_output">, {
+								askApproval,
+								handleError,
+								pushToolResult,
+							})
+							break
+						case "use_mcp_tool":
+							await useMcpToolTool.handle(cline, block as ToolUse<"use_mcp_tool">, {
+								askApproval,
+								handleError,
+								pushToolResult,
+							})
+							break
+						case "access_mcp_resource":
+							await accessMcpResourceTool.handle(cline, block as ToolUse<"access_mcp_resource">, {
+								askApproval,
+								handleError,
+								pushToolResult,
+							})
+							break
+						case "ask_followup_question":
+							await askFollowupQuestionTool.handle(cline, block as ToolUse<"ask_followup_question">, {
+								askApproval,
+								handleError,
+								pushToolResult,
+							})
+							break
+						case "switch_mode":
+							await switchModeTool.handle(cline, block as ToolUse<"switch_mode">, {
+								askApproval,
+								handleError,
+								pushToolResult,
+							})
+							break
+						case "new_task":
+							await checkpointSaveAndMark(cline)
+							await newTaskTool.handle(cline, block as ToolUse<"new_task">, {
+								askApproval,
+								handleError,
+								pushToolResult,
+								toolCallId: block.id,
+							})
+							break
+						case "attempt_completion": {
+							const completionCallbacks: AttemptCompletionCallbacks = {
+								askApproval,
+								handleError,
+								pushToolResult,
+								askFinishSubTaskApproval,
+								toolDescription,
+							}
+							await attemptCompletionTool.handle(
+								cline,
+								block as ToolUse<"attempt_completion">,
+								completionCallbacks,
+							)
+							break
+						}
+						case "run_slash_command":
+							await runSlashCommandTool.handle(cline, block as ToolUse<"run_slash_command">, {
+								askApproval,
+								handleError,
+								pushToolResult,
+							})
+							break
+						case "skill":
+							await skillTool.handle(cline, block as ToolUse<"skill">, {
+								askApproval,
+								handleError,
+								pushToolResult,
+							})
+							break
+						case "generate_image":
+							await checkpointSaveAndMark(cline)
+							await generateImageTool.handle(cline, block as ToolUse<"generate_image">, {
+								askApproval,
+								handleError,
+								pushToolResult,
+							})
+							break
+						case "generate_video":
+							await checkpointSaveAndMark(cline)
+							await generateVideoTool.handle(cline, block as ToolUse<"generate_video">, {
+								askApproval,
+								handleError,
+								pushToolResult,
+							})
+							break
+						default: {
+							// Handle unknown/invalid tool names OR custom tools
+							// This is critical for native tool calling where every tool_use MUST have a tool_result
+
+							// CRITICAL: Don't process partial blocks for unknown tools - just let them stream in.
+							// If we try to show errors for partial blocks, we'd show the error on every streaming chunk,
+							// creating a loop that appears to freeze the extension. Only handle complete blocks.
+							if (block.partial) {
+								break
+							}
+
+							const customTool = stateExperiments?.customTools
+								? customToolRegistry.get(block.name)
+								: undefined
+
+							if (customTool) {
+								try {
+									let customToolArgs
+
+									if (customTool.parameters) {
+										try {
+											customToolArgs = customTool.parameters.parse(
+												block.nativeArgs || block.params || {},
+											)
+										} catch (parseParamsError) {
+											const message = `Custom tool "${block.name}" argument validation failed: ${parseParamsError.message}`
+											console.error(message)
+											cline.consecutiveMistakeCount++
+											await cline.say("error", message)
+											pushToolResult(formatResponse.toolError(message))
+											break
+										}
+									}
+
+									const result = await customTool.execute(customToolArgs, {
+										mode: mode ?? defaultModeSlug,
+										task: cline,
+									})
+
+									console.log(
+										`${customTool.name}.execute(): ${JSON.stringify(customToolArgs)} -> ${JSON.stringify(result)}`,
+									)
+
+									pushToolResult(result)
+									cline.consecutiveMistakeCount = 0
+								} catch (executionError: any) {
+									cline.consecutiveMistakeCount++
+									// Record custom tool error with static name
+									cline.recordToolError("custom_tool", executionError.message)
+									await handleError(`executing custom tool "${block.name}"`, executionError)
+								}
+
+								break
+							}
+
+							// Not a custom tool - handle as unknown tool error
+							const errorMessage = `Unknown tool "${block.name}". This tool does not exist. Please use one of the available tools.`
+							cline.consecutiveMistakeCount++
+							cline.recordToolError(block.name as ToolName, errorMessage)
+							await cline.say("error", t("tools:unknownToolError", { toolName: block.name }))
+							// Push tool_result directly WITHOUT setting didAlreadyUseTool
+							// This prevents the stream from being interrupted with "Response interrupted by tool use result"
+							cline.pushToolResultToUserContent({
+								type: "tool_result",
+								tool_use_id: sanitizeToolUseId(toolCallId),
+								content: formatResponse.toolError(errorMessage),
+								is_error: true,
+							})
+							break
+						}
+					}
+
 					break
 				}
 			}
 
-			break
-		}
+		// Seeing out of bounds is fine, it means that the next too call is being
+		// built up and ready to add to assistantMessageContent to present.
+		// When you see the UI inactive during this, it means that a tool is
+		// breaking without presenting any UI. For example the write_to_file tool
+		// was breaking when relpath was undefined, and for invalid relpath it never
+		// presented UI.
+		// This needs to be placed here, if not then calling
+	} finally {
+		cline.presentAssistantMessageLocked = false
 	}
-
-	// Seeing out of bounds is fine, it means that the next too call is being
-	// built up and ready to add to assistantMessageContent to present.
-	// When you see the UI inactive during this, it means that a tool is
-	// breaking without presenting any UI. For example the write_to_file tool
-	// was breaking when relpath was undefined, and for invalid relpath it never
-	// presented UI.
-	// This needs to be placed here, if not then calling
 	// cline.presentAssistantMessage below would fail (sometimes) since it's
 	// locked.
 	cline.presentAssistantMessageLocked = false

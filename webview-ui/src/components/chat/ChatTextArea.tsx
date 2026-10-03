@@ -27,6 +27,7 @@ import { StandardTooltip } from "@src/components/ui"
 import Thumbnails from "../common/Thumbnails"
 import { ModeSelector } from "./ModeSelector"
 import { ApiConfigSelector } from "./ApiConfigSelector"
+import { useModelOperation } from "./ModelOperationContext"
 import { AutoApproveDropdown } from "./AutoApproveDropdown"
 import { MAX_IMAGES_PER_MESSAGE } from "./ChatView"
 import ContextMenu from "./ContextMenu"
@@ -82,6 +83,7 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 		ref,
 	) => {
 		const { t } = useAppTranslation()
+		const modelOperationControls = useModelOperation()
 		const {
 			filePaths,
 			openedTabs,
@@ -97,16 +99,21 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 			commands,
 			enterBehavior,
 			lockApiConfigAcrossModes,
+			modelOperation,
 		} = useExtensionState()
 
 		// Find the ID and display text for the currently selected API configuration.
 		const { currentConfigId, displayName } = useMemo(() => {
-			const currentConfig = listApiConfigMeta?.find((config) => config.name === currentApiConfigName)
+			const currentConfig = listApiConfigMeta?.find((config) =>
+				modelOperation?.profileId
+					? config.id === modelOperation.profileId
+					: config.name === currentApiConfigName,
+			)
 			return {
 				currentConfigId: currentConfig?.id || "",
-				displayName: currentApiConfigName || "", // Use the name directly for display.
+				displayName: currentConfig?.name || currentApiConfigName || "",
 			}
-		}, [listApiConfigMeta, currentApiConfigName])
+		}, [listApiConfigMeta, currentApiConfigName, modelOperation?.profileId])
 
 		const [gitCommits, setGitCommits] = useState<any[]>([])
 		const [showDropdown, setShowDropdown] = useState(false)
@@ -935,9 +942,16 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 		)
 
 		// Helper function to handle API config change
-		const handleApiConfigChange = useCallback((value: string) => {
-			vscode.postMessage({ type: "loadApiConfigurationById", text: value })
-		}, [])
+		const handleApiConfigChange = useCallback(
+			(value: string) => {
+				if (isStreaming) {
+					modelOperationControls?.open("switch", undefined, value)
+					return
+				}
+				vscode.postMessage({ type: "loadApiConfigurationById", text: value })
+			},
+			[isStreaming, modelOperationControls],
+		)
 
 		const handleToggleLockApiConfig = useCallback(() => {
 			const newValue = !lockApiConfigAcrossModes
@@ -1308,7 +1322,11 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 						<ApiConfigSelector
 							value={currentConfigId}
 							displayName={displayName}
-							disabled={selectApiConfigDisabled}
+							disabled={
+								isStreaming
+									? !modelOperationControls || modelOperationControls.busy
+									: selectApiConfigDisabled
+							}
 							title={t("chat:selectApiConfig")}
 							onChange={handleApiConfigChange}
 							triggerClassName="min-w-[28px] text-ellipsis overflow-hidden flex-shrink"

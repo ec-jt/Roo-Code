@@ -198,22 +198,106 @@ describe("convertAnthropicMessageToGemini", () => {
 		])
 	})
 
-	it("should handle empty tool result content", () => {
+	it.each([
+		["empty string", { content: "" }],
+		["omitted", {}],
+		["empty array", { content: [] }],
+		["empty text block", { content: [{ type: "text", text: "" }] }],
+		["legacy null", { content: null as any }],
+	] satisfies [string, Partial<Anthropic.ToolResultBlockParam>][])(
+		"should preserve a complete tool pair with %s result content",
+		(_label, resultContent) => {
+			const toolCall: Anthropic.ToolUseBlockParam = {
+				type: "tool_use",
+				id: "calculator-123",
+				name: "calculator",
+				input: { operation: "add", numbers: [2, 3] },
+			}
+			const messages: Anthropic.Messages.MessageParam[] = [
+				{ role: "assistant", content: [toolCall] },
+				{
+					role: "user",
+					content: [{ type: "tool_result", tool_use_id: toolCall.id, ...resultContent }],
+				},
+			]
+			const toolIdToName = new Map([[toolCall.id, toolCall.name]])
+
+			expect(messages.flatMap((message) => convertAnthropicMessageToGemini(message, { toolIdToName }))).toEqual([
+				{
+					role: "model",
+					parts: [
+						{
+							functionCall: { name: "calculator", args: toolCall.input },
+							thoughtSignature: "skip_thought_signature_validator",
+						},
+					],
+				},
+				{
+					role: "user",
+					parts: [
+						{ functionResponse: { name: "calculator", response: { name: "calculator", content: "" } } },
+					],
+				},
+			])
+		},
+	)
+
+	it("should preserve parallel empty results alongside user text", () => {
+		const calls: Anthropic.ToolUseBlockParam[] = [
+			{ type: "tool_use", id: "call-1", name: "first_tool", input: {} },
+			{ type: "tool_use", id: "call-2", name: "second_tool", input: {} },
+		]
+		const messages: Anthropic.Messages.MessageParam[] = [
+			{ role: "assistant", content: calls },
+			{
+				role: "user",
+				content: [
+					{ type: "tool_result", tool_use_id: "call-1", content: "" },
+					{ type: "tool_result", tool_use_id: "call-2" },
+					{ type: "text", text: "Continue with these results." },
+				],
+			},
+		]
+		const toolIdToName = new Map(calls.map((call) => [call.id, call.name]))
+		const payload = messages.flatMap((message) => convertAnthropicMessageToGemini(message, { toolIdToName }))
+
+		expect(payload).toEqual([
+			{
+				role: "model",
+				parts: [
+					{
+						functionCall: { name: "first_tool", args: {} },
+						thoughtSignature: "skip_thought_signature_validator",
+					},
+					{ functionCall: { name: "second_tool", args: {} } },
+				],
+			},
+			{
+				role: "user",
+				parts: [
+					{ functionResponse: { name: "first_tool", response: { name: "first_tool", content: "" } } },
+					{ functionResponse: { name: "second_tool", response: { name: "second_tool", content: "" } } },
+					{ text: "Continue with these results." },
+				],
+			},
+		])
+	})
+
+	it("should reject an empty result without its corresponding tool name", () => {
 		const anthropicMessage: Anthropic.Messages.MessageParam = {
 			role: "user",
 			content: [
 				{
 					type: "tool_result",
 					tool_use_id: "calculator-123",
-					content: null as any, // Empty content
+					content: "",
 				},
 			],
 		}
 
-		const result = convertAnthropicMessageToGemini(anthropicMessage)
-
-		// Should skip the empty tool result
-		expect(result).toEqual([])
+		expect(() => convertAnthropicMessageToGemini(anthropicMessage)).toThrow(
+			'Unable to find tool name for tool_use_id "calculator-123"',
+		)
 	})
 
 	it("should convert a message with tool result as array with text only", () => {

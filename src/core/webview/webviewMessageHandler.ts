@@ -539,6 +539,12 @@ export const webviewMessageHandler = async (
 	}
 
 	switch (message.type) {
+		case "modelOperation":
+			await provider.handleModelOperation(message.modelOperation)
+			break
+		case "modelOperationApproval":
+			await provider.handleModelOperationApproval(message.modelOperationApproval)
+			break
 		case "webviewDidLaunch":
 			// Log arrival with heap pressure. A repeated hydration request mid-task is the
 			// signature of a webview reload, often after the renderer was killed under

@@ -1,27 +1,28 @@
 // npx vitest run api/transform/__tests__/mistral-format.spec.ts
 
 import { Anthropic } from "@anthropic-ai/sdk"
+import { assistantMessageToJSON } from "@mistralai/mistralai/models/components/assistantmessage"
+import { toolMessageToJSON } from "@mistralai/mistralai/models/components/toolmessage"
 
 import { convertToMistralMessages, normalizeMistralToolCallId } from "../mistral-format"
 
 describe("normalizeMistralToolCallId", () => {
-	it("should strip non-alphanumeric characters and truncate to 9 characters", () => {
-		// OpenAI-style tool call ID: "call_5019f900..." -> "call5019f900..." -> first 9 chars = "call5019f"
-		expect(normalizeMistralToolCallId("call_5019f900a247472bacde0b82")).toBe("call5019f")
-	})
-
-	it("should handle Anthropic-style tool call IDs", () => {
-		// Anthropic-style tool call ID
-		expect(normalizeMistralToolCallId("toolu_01234567890abcdef")).toBe("toolu0123")
-	})
-
-	it("should pad short IDs to 9 characters", () => {
-		expect(normalizeMistralToolCallId("abc")).toBe("abc000000")
-		expect(normalizeMistralToolCallId("tool-1")).toBe("tool10000")
+	it.each([
+		["call_5019f900a247472bacde0b82", "vjuc54vf1"],
+		["toolu_01234567890abcdef", "rfuunh5el"],
+		["abc", "m3vt5as31"],
+		["tool-1", "yethm7ltb"],
+		["", "ixqqhkd3p"],
+		["---___---", "iifa9x6ig"],
+		["a-b_c.d@e", "2z3gkdexy"],
+	])("should hash the entire invalid ID %j deterministically", (id, expected) => {
+		expect(normalizeMistralToolCallId(id)).toBe(expected)
+		expect(normalizeMistralToolCallId(id)).toMatch(/^[a-zA-Z0-9]{9}$/)
 	})
 
 	it("should handle IDs that are exactly 9 alphanumeric characters", () => {
 		expect(normalizeMistralToolCallId("abcd12345")).toBe("abcd12345")
+		expect(normalizeMistralToolCallId("AbC012xY9")).toBe("AbC012xY9")
 	})
 
 	it("should return consistent results for the same input", () => {
@@ -29,16 +30,18 @@ describe("normalizeMistralToolCallId", () => {
 		expect(normalizeMistralToolCallId(id)).toBe(normalizeMistralToolCallId(id))
 	})
 
-	it("should handle edge cases", () => {
-		// Empty string
-		expect(normalizeMistralToolCallId("")).toBe("000000000")
-
-		// Only non-alphanumeric characters
-		expect(normalizeMistralToolCallId("---___---")).toBe("000000000")
-
-		// Mixed special characters
-		expect(normalizeMistralToolCallId("a-b_c.d@e")).toBe("abcde0000")
-	})
+	it.each([
+		["call_12345_first", "call_12345_second"],
+		["toolu_012345_first", "toolu_012345_second"],
+		["tool-1", "tool_1"],
+		["abc", "abc0"],
+		["", "---___---"],
+	])(
+		"should distinguish IDs previously collapsed by truncation, stripping, or padding: %j and %j",
+		(first, second) => {
+			expect(normalizeMistralToolCallId(first)).not.toBe(normalizeMistralToolCallId(second))
+		},
+	)
 })
 
 describe("convertToMistralMessages", () => {
@@ -157,17 +160,92 @@ describe("convertToMistralMessages", () => {
 		]
 
 		const mistralMessages = convertToMistralMessages(anthropicMessages)
-		// Mistral doesn't allow user messages after tool messages, so only tool results are converted
-		// User content (text/images) is intentionally skipped when there are tool results
+		// Preserve mixed content on the tool response without an invalid tool -> user transition.
 		expect(mistralMessages).toHaveLength(1)
 
-		// Only the tool result should be present
 		expect(mistralMessages[0].role).toBe("tool")
 		expect((mistralMessages[0] as { toolCallId?: string }).toolCallId).toBe(
 			normalizeMistralToolCallId("weather-123"),
 		)
-		expect(mistralMessages[0].content).toBe("Current temperature in London: 20°C")
+		expect(mistralMessages[0].content).toEqual([
+			{ type: "text", text: "Current temperature in London: 20°C" },
+			{ type: "text", text: "Additional user content:" },
+			{ type: "text", text: "Here's the weather data and an image:" },
+			{ type: "image_url", imageUrl: { url: "data:image/png;base64,imagedata123" } },
+		])
 	})
+
+	it.each([
+		["empty string", { content: "" }],
+		["omitted", {}],
+		["empty array", { content: [] }],
+	] satisfies [string, Partial<Anthropic.ToolResultBlockParam>][])(
+		"should serialize complete parallel pairs with %s results and mixed user content",
+		(_label, resultContent) => {
+			const ids = ["call_12345_first", "call_12345_second", "AbC012xY9"]
+			const messages: Anthropic.Messages.MessageParam[] = [
+				{ role: "user", content: "Check all three files." },
+				{
+					role: "assistant",
+					content: ids.map((id, index) => ({
+						type: "tool_use",
+						id,
+						name: "read_file",
+						input: { path: `file-${index}.txt` },
+					})),
+				},
+				{
+					role: "user",
+					content: [
+						{ type: "tool_result", tool_use_id: ids[0], ...resultContent },
+						{ type: "text", text: "Keep this instruction." },
+						{ type: "tool_result", tool_use_id: ids[1], content: "second result" },
+						{ type: "tool_result", tool_use_id: ids[2], ...resultContent },
+						{ type: "text", text: "And this instruction." },
+						{
+							type: "image",
+							source: { type: "base64", media_type: "image/png", data: "image-data" },
+						},
+					],
+				},
+			]
+			const converted = convertToMistralMessages(messages)
+			const payload = converted.map((message) => {
+				if (message.role === "assistant") return JSON.parse(assistantMessageToJSON(message))
+				if (message.role === "tool") return JSON.parse(toolMessageToJSON(message))
+				return message
+			})
+			const normalizedIds = ["i578cc36f", "vvd2afdww", "AbC012xY9"]
+
+			expect(payload).toEqual([
+				{ role: "user", content: "Check all three files." },
+				{
+					role: "assistant",
+					prefix: false,
+					tool_calls: normalizedIds.map((id, index) => ({
+						id,
+						index: 0,
+						type: "function",
+						function: { name: "read_file", arguments: JSON.stringify({ path: `file-${index}.txt` }) },
+					})),
+				},
+				{ role: "tool", tool_call_id: normalizedIds[0], content: "" },
+				{ role: "tool", tool_call_id: normalizedIds[1], content: "second result" },
+				{
+					role: "tool",
+					tool_call_id: normalizedIds[2],
+					content: [
+						{ type: "text", text: "" },
+						{ type: "text", text: "Additional user content:" },
+						{ type: "text", text: "Keep this instruction." },
+						{ type: "text", text: "And this instruction." },
+						{ type: "image_url", image_url: { url: "data:image/png;base64,image-data" } },
+					],
+				},
+			])
+			expect(convertToMistralMessages(messages)).toEqual(converted)
+		},
+	)
 
 	it("should handle assistant messages with text content", () => {
 		const anthropicMessages: Anthropic.Messages.MessageParam[] = [

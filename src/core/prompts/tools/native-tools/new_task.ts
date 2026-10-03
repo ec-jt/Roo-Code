@@ -2,7 +2,9 @@ import type OpenAI from "openai"
 
 const NEW_TASK_DESCRIPTION = `Create a new task instance in the chosen mode using your provided message and initial todo list (if required).
 
-Use this tool to delegate work to a fresh context, which is the primary way to keep a long-horizon task manageable. Delegate when a piece of work is context heavy or self-contained:
+At the root (depth 0), you may delegate substantial, separable work to a child (depth 1). Execute small tasks directly. Children execute their assignment directly, without further delegation by default. An exceptional deeper request requires a concrete reason and explicit per-action human approval, which no auto-approval setting can bypass. Each additional level needs its own approval. Never delegate to evade restrictions or gain wider tool/file capabilities. If blocked or denied, finish in the current task or report the limitation to the parent.
+
+Root delegation can be useful for:
 - Investigation that will touch many files or produce large intermediate output, such as log analysis, stack traces, or dependency tracing.
 - Trial-and-error debugging where most attempts are noise you would not want to keep.
 - An independent chunk of a larger plan that can be completed and reported back.
@@ -39,8 +41,13 @@ export default {
 					type: ["string", "null"],
 					description: TODOS_PARAMETER_DESCRIPTION,
 				},
+				reason: {
+					type: ["string", "null"],
+					description:
+						"Concrete justification for exceptional deeper delegation from a child. Required for depth 2 or deeper; omit or use null for ordinary root delegation. Human approval is still required for each deeper action.",
+				},
 			},
-			required: ["mode", "message", "todos"],
+			required: ["mode", "message", "todos", "reason"],
 			additionalProperties: false,
 		},
 	},

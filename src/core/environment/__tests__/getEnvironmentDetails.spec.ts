@@ -148,7 +148,9 @@ describe("getEnvironmentDetails", () => {
 		// Visible Files and Open Tabs headers only appear when there's content
 		expect(result).toContain("# Current Time")
 		expect(result).not.toContain("# Git Status") // Git status is disabled by default (maxGitStatusFiles = 0)
-		expect(result).toContain("# Current Cost")
+		expect(result).not.toContain("# Current Cost") // Cost display defaults to off.
+		expect(result).toContain("# Task Delegation")
+		expect(result).toContain("Task ancestry could not be verified")
 		expect(result).toContain("# Current Mode")
 		expect(result).toContain("<model>test-model</model>")
 
@@ -160,7 +162,18 @@ describe("getEnvironmentDetails", () => {
 			language: "en",
 		})
 
-		expect(getApiMetrics).toHaveBeenCalledWith(mockCline.clineMessages)
+		expect(getApiMetrics).not.toHaveBeenCalled()
+	})
+
+	it.each([0, 1, 2])("includes durable depth %i guidance after restore", async (depth) => {
+		mockCline = { ...mockCline, taskId: `task-${depth}` }
+		mockProvider.getTaskWithId = vi.fn().mockImplementation(async (id: string) => {
+			const level = Number(id.split("-")[1])
+			return { historyItem: { id, parentTaskId: level ? `task-${level - 1}` : undefined } }
+		})
+		const result = await getEnvironmentDetails(mockCline as Task)
+		expect(result).toContain(depth === 0 ? "root task (depth 0)" : `child task (depth ${depth})`)
+		if (depth) expect(result).toContain("Execute the assigned work directly")
 	})
 
 	it("should include file details when includeFileDetails is true", async () => {

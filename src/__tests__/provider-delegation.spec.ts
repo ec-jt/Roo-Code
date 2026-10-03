@@ -7,7 +7,7 @@ import { ClineProvider } from "../core/webview/ClineProvider"
 describe("ClineProvider.delegateParentAndOpenChild()", () => {
 	it("persists parent delegation metadata and emits TaskDelegated", async () => {
 		const providerEmit = vi.fn()
-		const parentTask = { taskId: "parent-1", emit: vi.fn() } as any
+		const parentTask = { taskId: "parent-1", emit: vi.fn(), assertCanDelegate: vi.fn() } as any
 
 		const childStart = vi.fn()
 		const updateTaskHistory = vi.fn()
@@ -48,7 +48,9 @@ describe("ClineProvider.delegateParentAndOpenChild()", () => {
 			updateTaskHistory,
 			handleModeSwitch,
 			log: vi.fn(),
+			getState: vi.fn().mockResolvedValue({ mode: "orchestrator" }),
 		} as unknown as ClineProvider
+		Object.setPrototypeOf(provider, ClineProvider.prototype)
 
 		const params = {
 			parentTaskId: "parent-1",
@@ -98,7 +100,7 @@ describe("ClineProvider.delegateParentAndOpenChild()", () => {
 	it("calls child.start() only after parent metadata is persisted (no race condition)", async () => {
 		const callOrder: string[] = []
 
-		const parentTask = { taskId: "parent-1", emit: vi.fn() } as any
+		const parentTask = { taskId: "parent-1", emit: vi.fn(), assertCanDelegate: vi.fn() } as any
 		const childStart = vi.fn(() => callOrder.push("child.start"))
 
 		const updateTaskHistory = vi.fn(async () => {
@@ -130,7 +132,9 @@ describe("ClineProvider.delegateParentAndOpenChild()", () => {
 			updateTaskHistory,
 			handleModeSwitch,
 			log: vi.fn(),
+			getState: vi.fn().mockResolvedValue({ mode: "code" }),
 		} as unknown as ClineProvider
+		Object.setPrototypeOf(provider, ClineProvider.prototype)
 
 		await (ClineProvider.prototype as any).delegateParentAndOpenChild.call(provider, {
 			parentTaskId: "parent-1",

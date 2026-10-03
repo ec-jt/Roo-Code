@@ -4,13 +4,17 @@ import { describe, it, expect, beforeEach, vi } from "vitest"
 import { Anthropic } from "@anthropic-ai/sdk"
 import { presentAssistantMessage } from "../presentAssistantMessage"
 import { Task } from "../../task/Task"
+import { writeToFileTool } from "../../tools/WriteToFileTool"
+import { attemptCompletionTool } from "../../tools/AttemptCompletionTool"
 
 // Mock dependencies
+vi.mock("../../tools/WriteToFileTool", () => ({ writeToFileTool: { handle: vi.fn() } }))
 
 describe("presentAssistantMessage - Image Handling in Native Tool Calling", () => {
 	let mockTask: any
 
 	beforeEach(() => {
+		vi.clearAllMocks()
 		// Create a mock Task with minimal properties needed for testing
 		mockTask = {
 			taskId: "test-task-id",
@@ -20,7 +24,10 @@ describe("presentAssistantMessage - Image Handling in Native Tool Calling", () =
 			presentAssistantMessageHasPendingUpdates: false,
 			currentStreamingContentIndex: 0,
 			assistantMessageContent: [],
+			assistantMessageSavedToHistory: true,
+			admitModelOperationTool: vi.fn().mockResolvedValue(true),
 			userMessageContent: [],
+			userMessageContentReady: false,
 			didCompleteReadingStream: false,
 			didRejectTool: false,
 			didAlreadyUseTool: false,
@@ -29,6 +36,7 @@ describe("presentAssistantMessage - Image Handling in Native Tool Calling", () =
 				getModel: () => ({ id: "test-model", info: {} }),
 			},
 			recordToolUsage: vi.fn(),
+			checkpointSave: vi.fn().mockResolvedValue(undefined),
 			toolRepetitionDetector: {
 				check: vi.fn().mockReturnValue({ allowExecution: true }),
 			},
@@ -160,6 +168,9 @@ describe("presentAssistantMessage - Image Handling in Native Tool Calling", () =
 
 		await presentAssistantMessage(mockTask)
 
+		expect(mockTask.admitModelOperationTool).not.toHaveBeenCalled()
+		expect(mockTask.ask).not.toHaveBeenCalled()
+		expect(mockTask.recordToolUsage).not.toHaveBeenCalled()
 		const textBlocks = mockTask.userMessageContent.filter((item: any) => item.type === "text")
 		expect(textBlocks.length).toBeGreaterThan(0)
 		expect(textBlocks.some((b: any) => String(b.text).includes("XML tool calls are no longer supported"))).toBe(
@@ -177,17 +188,20 @@ describe("presentAssistantMessage - Image Handling in Native Tool Calling", () =
 				id: toolCallId,
 				name: "attempt_completion",
 				params: { result: "Task completed" },
+				nativeArgs: { result: "Task completed" },
 			},
 		]
 
-		// Empty response
-		mockTask.ask = vi.fn().mockResolvedValue({
-			response: "yesButtonClicked",
-			text: undefined,
-			images: undefined,
-		})
+		// Exercise the presenter's empty-result fallback, not a malformed-call error.
+		const handle = vi
+			.spyOn(attemptCompletionTool, "handle")
+			.mockImplementationOnce(async (_task, _block, callbacks) => {
+				callbacks.pushToolResult("")
+			})
 
 		await presentAssistantMessage(mockTask)
+		expect(handle).toHaveBeenCalledOnce()
+		handle.mockRestore()
 
 		const toolResult = mockTask.userMessageContent.find(
 			(item: any) => item.type === "tool_result" && item.tool_use_id === toolCallId,
@@ -195,7 +209,72 @@ describe("presentAssistantMessage - Image Handling in Native Tool Calling", () =
 
 		expect(toolResult).toBeDefined()
 		// Should have fallback text
-		expect(toolResult.content).toBeTruthy()
+		expect(toolResult.content).toBe("(tool did not return anything)")
+	})
+
+	it.each([
+		{ partial: true, savedToHistory: true },
+		{ partial: false, savedToHistory: false },
+	])(
+		"should defer tool execution with partial=$partial and savedToHistory=$savedToHistory",
+		async ({ partial, savedToHistory }) => {
+			mockTask.assistantMessageSavedToHistory = savedToHistory
+			mockTask.assistantMessageContent = [
+				{
+					type: "tool_use",
+					id: "tool_call_deferred",
+					name: "write_to_file",
+					params: { path: "output.txt", content: "test" },
+					nativeArgs: { path: "output.txt", content: "test" },
+					partial,
+				},
+			]
+
+			await presentAssistantMessage(mockTask)
+
+			expect(mockTask.admitModelOperationTool).not.toHaveBeenCalled()
+			expect(writeToFileTool.handle).not.toHaveBeenCalled()
+			expect(mockTask.checkpointSave).not.toHaveBeenCalled()
+			expect(mockTask.ask).not.toHaveBeenCalled()
+			expect(mockTask.recordToolUsage).not.toHaveBeenCalled()
+			expect(mockTask.pushToolResultToUserContent).not.toHaveBeenCalled()
+			expect(mockTask.userMessageContent).toEqual([])
+			expect(mockTask.currentStreamingContentIndex).toBe(0)
+			expect(mockTask.userMessageContentReady).toBe(false)
+			expect(mockTask.presentAssistantMessageLocked).toBe(false)
+		},
+	)
+
+	it("should not execute or checkpoint a tool denied by model-operation admission", async () => {
+		mockTask.admitModelOperationTool.mockResolvedValue(false)
+		mockTask.assistantMessageContent = [
+			{
+				type: "tool_use",
+				id: "tool_call_denied",
+				name: "write_to_file",
+				params: { path: "output.txt", content: "test" },
+				nativeArgs: { path: "output.txt", content: "test" },
+				partial: false,
+			},
+		]
+
+		await presentAssistantMessage(mockTask)
+
+		expect(mockTask.admitModelOperationTool).toHaveBeenCalledExactlyOnceWith("write_to_file", "tool_call_denied")
+		expect(writeToFileTool.handle).not.toHaveBeenCalled()
+		expect(mockTask.checkpointSave).not.toHaveBeenCalled()
+		expect(mockTask.ask).not.toHaveBeenCalled()
+		expect(mockTask.recordToolUsage).not.toHaveBeenCalled()
+		expect(mockTask.pushToolResultToUserContent).toHaveBeenCalledOnce()
+		expect(mockTask.userMessageContent).toEqual([
+			{
+				type: "tool_result",
+				tool_use_id: "tool_call_denied",
+				is_error: true,
+				content: expect.stringContaining("Tool execution was not approved"),
+			},
+		])
+		expect(mockTask.didRejectTool).toBe(true)
 	})
 
 	describe("Multiple tool calls handling", () => {
@@ -273,7 +352,7 @@ describe("presentAssistantMessage - Image Handling in Native Tool Calling", () =
 			expect(mockTask.userMessageContent.some((item: any) => item.type === "tool_result")).toBe(false)
 		})
 
-		it("should handle partial tool blocks when didRejectTool is true in native tool calling", async () => {
+		it("should defer rejected partial tools without execution and emit an error only after completion", async () => {
 			const toolCallId = "tool_call_005"
 
 			mockTask.assistantMessageContent = [
@@ -290,15 +369,36 @@ describe("presentAssistantMessage - Image Handling in Native Tool Calling", () =
 
 			await presentAssistantMessage(mockTask)
 
+			// Partial handlers must not run or produce a premature result, even after rejection.
+			expect(mockTask.admitModelOperationTool).not.toHaveBeenCalled()
+			expect(writeToFileTool.handle).not.toHaveBeenCalled()
+			expect(mockTask.checkpointSave).not.toHaveBeenCalled()
+			expect(mockTask.ask).not.toHaveBeenCalled()
+			expect(mockTask.recordToolUsage).not.toHaveBeenCalled()
+			expect(mockTask.pushToolResultToUserContent).not.toHaveBeenCalled()
+			expect(mockTask.userMessageContent).toEqual([])
+			expect(mockTask.currentStreamingContentIndex).toBe(0)
+			expect(mockTask.userMessageContentReady).toBe(false)
+			expect(mockTask.presentAssistantMessageLocked).toBe(false)
+
+			mockTask.assistantMessageContent[0].partial = false
+			await presentAssistantMessage(mockTask)
+
 			// Find the tool_result
 			const toolResult = mockTask.userMessageContent.find(
 				(item: any) => item.type === "tool_result" && item.tool_use_id === toolCallId,
 			)
 
-			// Verify tool_result was created for partial block
+			// A completed rejected tool still needs exactly one matching error result.
 			expect(toolResult).toBeDefined()
 			expect(toolResult.is_error).toBe(true)
-			expect(toolResult.content).toContain("was interrupted and not executed")
+			expect(toolResult.content).toContain("due to user rejecting a previous tool")
+			expect(mockTask.pushToolResultToUserContent).toHaveBeenCalledOnce()
+			expect(mockTask.admitModelOperationTool).not.toHaveBeenCalled()
+			expect(writeToFileTool.handle).not.toHaveBeenCalled()
+			expect(mockTask.checkpointSave).not.toHaveBeenCalled()
+			expect(mockTask.ask).not.toHaveBeenCalled()
+			expect(mockTask.recordToolUsage).not.toHaveBeenCalled()
 		})
 	})
 })

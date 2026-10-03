@@ -23,6 +23,8 @@ describe("presentAssistantMessage - Unknown Tool Handling", () => {
 			presentAssistantMessageHasPendingUpdates: false,
 			currentStreamingContentIndex: 0,
 			assistantMessageContent: [],
+			assistantMessageSavedToHistory: true,
+			admitModelOperationTool: vi.fn().mockResolvedValue(true),
 			userMessageContent: [],
 			didCompleteReadingStream: false,
 			didRejectTool: false,
@@ -118,6 +120,9 @@ describe("presentAssistantMessage - Unknown Tool Handling", () => {
 		await presentAssistantMessage(mockTask)
 
 		// Should not execute tool; should surface a clear error message.
+		expect(mockTask.admitModelOperationTool).not.toHaveBeenCalled()
+		expect(mockTask.ask).not.toHaveBeenCalled()
+		expect(mockTask.recordToolUsage).not.toHaveBeenCalled()
 		const textBlocks = mockTask.userMessageContent.filter((item: any) => item.type === "text")
 		expect(textBlocks.length).toBeGreaterThan(0)
 		expect(textBlocks.some((b: any) => String(b.text).includes("XML tool calls are no longer supported"))).toBe(

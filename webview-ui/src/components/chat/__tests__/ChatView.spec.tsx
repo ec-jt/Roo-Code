@@ -301,6 +301,67 @@ const renderChatView = (props: Partial<ChatViewProps> = {}) => {
 	)
 }
 
+it("preserves the composer draft across model-operation branch state and renders mandatory approval", async () => {
+	const view = renderChatView()
+	const source = {
+		taskId: "source",
+		instanceId: "source-instance",
+		revision: 1,
+		readiness: "ready",
+		requiresToolApproval: false,
+	}
+	act(() =>
+		window.dispatchEvent(
+			new MessageEvent("message", {
+				data: {
+					type: "state",
+					state: {
+						currentTaskId: "source",
+						modelOperation: source,
+						clineMessages: [{ type: "say", say: "text", ts: 1, text: "Original task" }],
+					},
+				},
+			}),
+		),
+	)
+	const input = view.getByTestId("chat-textarea").querySelector("input")!
+	fireEvent.change(input, { target: { value: "Unsent draft survives branching" } })
+	act(() =>
+		window.dispatchEvent(
+			new MessageEvent("message", {
+				data: {
+					type: "state",
+					state: {
+						currentTaskId: "branch",
+						modelOperation: {
+							...source,
+							taskId: "branch",
+							instanceId: "branch-instance",
+							requiresToolApproval: true,
+							approval: { approvalId: "tool-approval", toolName: "write_file" },
+						},
+						clineMessages: [{ type: "say", say: "text", ts: 2, text: "Branched task" }],
+					},
+				},
+			}),
+		),
+	)
+	await waitFor(() => expect(input).toHaveValue("Unsent draft survives branching"))
+	expect(view.getByRole("region", { name: "chat:modelOperation.approvalTitle" })).toBeInTheDocument()
+	fireEvent.click(view.getByRole("button", { name: "chat:reject.title" }))
+	expect(vscode.postMessage).toHaveBeenCalledWith({
+		type: "modelOperationApproval",
+		modelOperationApproval: {
+			taskId: "branch",
+			instanceId: "branch-instance",
+			revision: 1,
+			approvalId: "tool-approval",
+			approved: false,
+		},
+	})
+	expect(input).toHaveValue("Unsent draft survives branching")
+})
+
 describe("ChatView - Sound Playing Tests", () => {
 	beforeEach(() => vi.clearAllMocks())
 

@@ -2,6 +2,8 @@
  * Settings passed to system prompt generation functions
  */
 export interface SystemPromptSettings {
+	/** Durable ancestry depth; undefined means ancestry is not verified. */
+	delegationDepth?: number
 	browserToolEnabled?: boolean
 	todoListEnabled: boolean
 	useAgentRules: boolean

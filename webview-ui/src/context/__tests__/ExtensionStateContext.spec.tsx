@@ -10,6 +10,50 @@ import {
 
 import { ExtensionStateContextProvider, useExtensionState, mergeExtensionState } from "../ExtensionStateContext"
 
+describe("model operation state merging", () => {
+	const operation = {
+		taskId: "task",
+		instanceId: "instance",
+		revision: 4,
+		readiness: "ready" as const,
+		requiresToolApproval: true,
+		approval: { approvalId: "new", toolName: "read_file" },
+	}
+	const previous = {
+		modelOperation: operation,
+		currentTaskId: "task",
+		clineMessagesSeq: 10,
+		clineMessages: [],
+	} as unknown as ExtensionState
+
+	it("ignores lower revisions including stale pending approvals", () => {
+		expect(
+			mergeExtensionState(previous, {
+				modelOperation: { ...operation, revision: 3, approval: { approvalId: "old", toolName: "write_file" } },
+			}).modelOperation,
+		).toEqual(operation)
+	})
+	it("ignores an old task state with an older sequence even without messages", () => {
+		const merged = mergeExtensionState(previous, {
+			clineMessagesSeq: 9,
+			modelOperation: { ...operation, taskId: "old-task", instanceId: "old-instance" },
+		})
+		expect(merged.modelOperation).toEqual(operation)
+		expect(merged.clineMessagesSeq).toBe(10)
+	})
+	it("accepts a newer branch and preserves state on unrelated partial updates", () => {
+		const branch = { ...operation, taskId: "branch", instanceId: "branch-instance", revision: 1 }
+		expect(mergeExtensionState(previous, { clineMessagesSeq: 11, modelOperation: branch }).modelOperation).toEqual(
+			branch,
+		)
+		expect(mergeExtensionState(previous, { version: "new" }).modelOperation).toEqual(operation)
+	})
+	it("clears model operation state when the task is cleared", () => {
+		expect(mergeExtensionState(previous, { modelOperation: undefined }).modelOperation).toBeUndefined()
+		expect(mergeExtensionState(previous, { currentTaskId: undefined }).modelOperation).toBeUndefined()
+	})
+})
+
 const TestComponent = () => {
 	const { allowedCommands, setAllowedCommands, soundEnabled, showRooIgnoredFiles, setShowRooIgnoredFiles } =
 		useExtensionState()

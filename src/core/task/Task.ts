@@ -93,6 +93,7 @@ import { getTaskDirectoryPath } from "../../utils/storage"
 // prompts
 import { formatResponse } from "../prompts/responses"
 import { SYSTEM_PROMPT } from "../prompts/system"
+import { DelegationPolicyError, resolveDelegationAncestry } from "./delegation-policy"
 import { buildNativeToolsArrayWithRestrictions } from "./build-tools"
 
 // core modules
@@ -131,6 +132,19 @@ import { AutoApprovalHandler, checkAutoApproval } from "../auto-approval"
 import { MessageManager } from "../message-manager"
 import { validateAndFixToolResultIds } from "./validateToolResultIds"
 import { mergeConsecutiveApiMessages } from "./mergeConsecutiveApiMessages"
+import type { ModelOperationState } from "@roo-code/types"
+import { ModelOperationAdmission } from "./model-operation/admission"
+import {
+	type RequestSnapshot,
+	type BranchProvenance,
+	saveRequestSnapshot,
+	saveBranchReplay,
+	readBranchReplaySnapshot,
+	readBranchProvenance,
+} from "./model-operation/storage"
+import { normalizeSnapshotMessages, assertContextFits } from "./model-operation/normalization"
+import { getStorageBasePath } from "../../utils/storage"
+import { ProfileValidator } from "../../shared/ProfileValidator"
 
 const MAX_EXPONENTIAL_BACKOFF_SECONDS = 600 // 10 minutes
 const DEFAULT_USAGE_COLLECTION_TIMEOUT_MS = 5000 // 5 seconds
@@ -141,9 +155,7 @@ const DEBUG_LOG = "/tmp/roo-cli-debug.log"
 
 function debugTrace(message: string, data?: unknown) {
 	const timestamp = new Date().toISOString()
-	const entry = data
-		? `[${timestamp}] ${message}: ${JSON.stringify(data, null, 2)}\n`
-		: `[${timestamp}] ${message}\n`
+	const entry = data ? `[${timestamp}] ${message}: ${JSON.stringify(data, null, 2)}\n` : `[${timestamp}] ${message}\n`
 
 	try {
 		fs.appendFileSync(DEBUG_LOG, entry)
@@ -178,11 +190,7 @@ function summarizeApiMessages(messages: ApiMessage[]) {
 			textChars: parts.reduce(
 				(sum: number, part: any) =>
 					sum +
-					(typeof part === "string"
-						? part.length
-						: typeof part?.text === "string"
-							? part.text.length
-							: 0),
+					(typeof part === "string" ? part.length : typeof part?.text === "string" ? part.text.length : 0),
 				0,
 			),
 		}
@@ -469,6 +477,347 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	// MessageManager for high-level message operations (lazy initialized)
 	private _messageManager?: MessageManager
 
+	private modelOperationRevision = 0
+	private modelOperationRequestId?: string
+	private modelOperationSnapshot?: RequestSnapshot
+	private modelOperationFailure?: string
+	private modelOperationClosed = false
+	private modelOperationPrepared = false
+	private modelOperationPreparing = false
+	private modelOperationSystemPrompt?: string
+	private modelOperationProfileId?: string
+	private modelOperationToolsAdmitted = 0
+	private modelOperationToolsExecuted = 0
+	private modelOperationToolIds = new Set<string>()
+	private modelOperationAdmissionsPending = 0
+	private modelOperationBoundary?: { settled: boolean; admitted: number; executed: number }
+	private modelOperationLoops = 0
+	private modelOperationRequests = 0
+	private modelOperationUsageCollectors = 0
+	private modelOperationRequestPinned = false
+	private modelOperationRequestPreparing = false
+	private deferredApiConfiguration?: ProviderSettings
+	private modelOperationProvenanceReady?: Promise<void>
+	private readonly modelOperationAdmission = new ModelOperationAdmission(
+		() => ({ taskId: this.taskId, instanceId: this.instanceId, revision: this.modelOperationRevision }),
+		() => {
+			void this.providerRef.deref()?.postStateToWebviewWithoutTaskHistory()
+		},
+	)
+
+	public get modelOperationDispatchClosed(): boolean {
+		return this.modelOperationClosed
+	}
+
+	public get modelOperationState(): ModelOperationState {
+		const reason = this.modelOperationBlockReason()
+		return {
+			taskId: this.taskId,
+			instanceId: this.instanceId,
+			revision: this.modelOperationRevision,
+			requestId: this.modelOperationSnapshot?.requestId,
+			profileId: this.modelOperationProfileId,
+			readiness: reason ? "blocked" : "ready",
+			reason,
+			requiresToolApproval: this.modelOperationAdmission.requiresApproval,
+			approval: this.modelOperationAdmission.pending,
+		}
+	}
+
+	private modelOperationBlockReason(): string | undefined {
+		if (this.modelOperationFailure) return this.modelOperationFailure
+		if (this.modelOperationClosed || this.abort || this.abandoned) return "Task dispatch is closed."
+		if (this.modelOperationPreparing) return "Preparing the model-operation prefix."
+		if (
+			this.modelOperationToolsAdmitted ||
+			this.modelOperationToolsExecuted ||
+			this.didAlreadyUseTool ||
+			this.modelOperationAdmissionsPending ||
+			this.modelOperationAdmission.pending
+		) {
+			return "The current response has admitted or executed tools. Wait for settlement and retry at the next request."
+		}
+		if (
+			this.rootTaskId ||
+			this.parentTaskId ||
+			this.childTaskId ||
+			this.pendingNewTaskToolCallId ||
+			this.isPaused
+		) {
+			return "Delegated tasks cannot be switched."
+		}
+		if (this.terminalProcess || TerminalRegistry.getTerminals(true).length)
+			return "Stop active terminals before switching models."
+		if (
+			this.presentAssistantMessageLocked ||
+			this.presentAssistantMessageHasPendingUpdates ||
+			this.diffViewProvider.isEditing
+		)
+			return "Wait for the active presenter or edit to finish."
+		if (this.idleAsk || this.resumableAsk || this.interactiveAsk || this.autoApprovalTimeoutRef)
+			return "Wait for the pending approval or response to settle."
+		if (!this.modelOperationSnapshot) return "No durable request snapshot is available."
+		return undefined
+	}
+
+	/** Capture BEFORE resetting presenter state. Counters alone do not prove that effects settled. */
+	private captureModelOperationBoundary() {
+		return {
+			admitted: this.modelOperationToolsAdmitted,
+			executed: this.modelOperationToolsExecuted,
+			settled:
+				!this.modelOperationAdmissionsPending &&
+				!this.modelOperationAdmission.pending &&
+				!this.presentAssistantMessageLocked &&
+				!this.presentAssistantMessageHasPendingUpdates &&
+				!this.diffViewProvider.isEditing &&
+				!this.terminalProcess &&
+				!TerminalRegistry.getTerminals(true).length &&
+				!this.idleAsk &&
+				!this.resumableAsk &&
+				!this.interactiveAsk &&
+				!this.autoApprovalTimeoutRef &&
+				!this.modelOperationUsageCollectors &&
+				(!this.modelOperationToolsAdmitted ||
+					(this.didCompleteReadingStream &&
+						this.userMessageContentReady &&
+						this.assistantMessageSavedToHistory)),
+		}
+	}
+
+	/** Detached evidence for the coordinator; never infer request identity from timestamps. */
+	public getModelOperationEvidence() {
+		return {
+			state: this.modelOperationState,
+			snapshot: this.modelOperationSnapshot ? structuredClone(this.modelOperationSnapshot) : undefined,
+			toolsAdmitted: this.modelOperationToolsAdmitted,
+			toolsExecuted: this.modelOperationToolsExecuted,
+			executedContinuationSupported: false as const,
+		}
+	}
+
+	public respondToModelOperationApproval(payload: unknown): boolean {
+		return !this.abort && !this.modelOperationClosed && this.modelOperationAdmission.respond(payload)
+	}
+
+	/** Central presenter admission. Partial tools must never reach their handlers. */
+	public async admitModelOperationTool(toolName: string, toolId: string): Promise<boolean> {
+		if (this.abort || this.modelOperationClosed) return false
+		// Reserve synchronously, including while provenance is being restored. A request
+		// boundary must never erase admission that raced its asynchronous durable write.
+		this.modelOperationToolsAdmitted++
+		this.modelOperationToolIds.add(sanitizeToolUseId(toolId))
+		this.modelOperationAdmissionsPending++
+		const revision = this.modelOperationRevision
+		try {
+			await this.ensureModelOperationProvenance()
+			if (this.abort || this.modelOperationClosed || revision !== this.modelOperationRevision) return false
+			// No response may start effects while its outgoing boundary is unpublished.
+			if (this.modelOperationRequestPreparing) return false
+			const approved = await this.modelOperationAdmission.request(toolName, toolId)
+			if (!approved || this.abort || this.modelOperationClosed || revision !== this.modelOperationRevision)
+				return false
+			this.modelOperationToolsExecuted++
+			return true
+		} finally {
+			this.modelOperationAdmissionsPending--
+		}
+	}
+
+	private async pinModelOperationProfile(profileId: string): Promise<void> {
+		const provider = this.providerRef.deref()
+		if (!provider) throw new Error("Provider unavailable while loading the saved profile")
+		this.modelOperationProfileId = profileId
+		const profile = await provider.providerSettingsManager.getProfile({ id: profileId })
+		const state = await provider.getState()
+		if (!state.organizationAllowList || !ProfileValidator.isProfileAllowed(profile, state.organizationAllowList))
+			throw new Error("The saved model-operation profile is blocked by organization policy")
+		await this.taskApiConfigReady
+		this._taskApiConfigName = profile.name
+		this.apiConfiguration = { ...profile }
+		this.api = buildApiHandler(this.apiConfiguration)
+		this.deferredApiConfiguration = undefined
+	}
+
+	private ensureModelOperationProvenance(): Promise<void> {
+		return (this.modelOperationProvenanceReady ??= (async () => {
+			try {
+				const root = await getStorageBasePath(this.globalStoragePath)
+				const provenance = await readBranchProvenance(root, this.taskId)
+				if (!provenance) return
+				this.modelOperationAdmission.requiresApproval = true
+				if (provenance.workspacePath !== this.cwd)
+					throw new Error("Model-operation workspace does not match saved provenance")
+				const source = await readBranchReplaySnapshot(root, this.taskId, provenance)
+				if (!source) throw new Error("Model-operation source snapshot is unavailable")
+				this.modelOperationSystemPrompt = source.systemPrompt
+				this.modelOperationPrepared = true
+				this.enableCheckpoints = false
+				await this.pinModelOperationProfile(provenance.targetProfileId)
+			} catch (error) {
+				this.modelOperationFailure = "Model-operation provenance could not be restored safely."
+				this.modelOperationClosed = true
+				throw error
+			}
+		})())
+	}
+
+	public async prepareModelOperationPrefix(
+		snapshot: RequestSnapshot,
+		profileId: string,
+		provenance: BranchProvenance,
+	): Promise<void> {
+		if (
+			this._started ||
+			this.modelOperationPreparing ||
+			this.modelOperationPrepared ||
+			this.modelOperationLoops ||
+			this.modelOperationRequests
+		) {
+			throw new Error("Prepare requires a new Task with startTask:false")
+		}
+		this.modelOperationPreparing = true
+		this.modelOperationRevision++
+		this.modelOperationAdmission.requiresApproval = true
+		try {
+			const copy = structuredClone(snapshot)
+			const origin = structuredClone(provenance)
+			if (this.parentTaskId || this.childTaskId || this.rootTaskId)
+				throw new Error("Model-operation prefixes must be standalone tasks")
+			if (
+				origin.targetProfileId !== profileId ||
+				origin.sourceTaskId !== copy.taskId ||
+				origin.sourceRequestId !== copy.requestId ||
+				origin.workspacePath !== this.cwd
+			) {
+				throw new Error("Model-operation provenance does not match the requested prefix")
+			}
+			const messages = normalizeSnapshotMessages(copy.apiMessages) as ApiMessage[]
+			if (messages.at(-1)?.role !== "user") throw new Error("Prepared prefix must end with user input")
+			if (
+				copy.clineMessages.some(
+					(message) => message.requestId === copy.requestId && message.say !== "api_req_started",
+				)
+			) {
+				throw new Error("Prepared UI prefix contains the selected response")
+			}
+			await this.pinModelOperationProfile(profileId)
+			await this.taskModeReady
+			this.modelOperationSystemPrompt = copy.systemPrompt
+			this.enableCheckpoints = false
+			const root = await getStorageBasePath(this.globalStoragePath)
+			// Publish branch-owned replay data, command artifacts and mandatory approval
+			// provenance before histories. Never rewrite or depend on the source at reload.
+			await saveBranchReplay(root, this.taskId, copy, origin)
+			this.apiConversationHistory = messages
+			this.clineMessages = copy.clineMessages.filter((message) => message.say !== "api_req_started")
+			await saveApiMessages({ messages, taskId: this.taskId, globalStoragePath: this.globalStoragePath })
+			await this.saveClineMessages(true)
+			this.modelOperationProvenanceReady = Promise.resolve()
+			this.modelOperationPrepared = true
+			this.skipPrevResponseIdOnce = true
+		} catch (error) {
+			this.modelOperationClosed = true
+			this.modelOperationFailure = "Model-operation prefix preparation failed."
+			throw error
+		} finally {
+			this.modelOperationPreparing = false
+		}
+	}
+
+	public startModelOperationPrefix(): void {
+		if (
+			!this.modelOperationPrepared ||
+			this.modelOperationPreparing ||
+			this._started ||
+			this.modelOperationClosed
+		) {
+			throw new Error("No startable model-operation prefix")
+		}
+		this._started = true
+		this.isInitialized = true
+		void this.initiateTaskLoop([]).catch((error) => {
+			if (!this.modelOperationClosed) this.modelOperationFailure = String(error)
+		})
+	}
+
+	public async stopForModelOperation(expectedRevision: number): Promise<void> {
+		// No await before validation and the dispatch fence. Failed preconditions preserve the old task.
+		if (expectedRevision !== this.modelOperationRevision) throw new Error("Stale model-operation revision")
+		const reason = this.modelOperationBlockReason()
+		if (reason) throw new Error(reason)
+		this.modelOperationClosed = true
+		this.modelOperationRevision++
+		this.modelOperationAdmission.cancel()
+		this.cancelAutoApprovalTimeout()
+		this.debouncedEmitTokenUsage.cancel()
+		this.abort = true
+		this.userMessageContentReady = true
+		this.cancelCurrentRequest()
+		// A timeout leaves this instance fenced, never authorizes a replacement to share its parser.
+		await pWaitFor(
+			() =>
+				this.modelOperationLoops === 0 &&
+				this.modelOperationRequests === 0 &&
+				this.modelOperationUsageCollectors === 0 &&
+				!this.presentAssistantMessageLocked,
+			{ timeout: 5000, interval: 10 },
+		)
+		this.didFinishAbortingStream = true
+	}
+
+	/** Historical input is independent of completed effects, but detachment requires quiescence. */
+	public getHistoricalModelOperationBlockReason(): string | undefined {
+		if (this.modelOperationClosed || this.abandoned) return "Task dispatch is closed. Reload the source task."
+		if (!this.isInitialized || this.modelOperationPreparing) return "Wait for task initialization to finish."
+		if (this.rootTaskId || this.parentTaskId || this.childTaskId || this.pendingNewTaskToolCallId || this.isPaused)
+			return "Task graph operations are on HOLD. Select a standalone task."
+		if (this.terminalProcess || TerminalRegistry.getTerminals(true).length)
+			return "Stop active terminals and wait for their actual results before regenerating."
+		if (
+			this.modelOperationLoops ||
+			this.modelOperationRequests ||
+			this.modelOperationUsageCollectors ||
+			this.isStreaming ||
+			this.isWaitingForFirstChunk ||
+			this.presentAssistantMessageLocked ||
+			this.diffViewProvider.isEditing ||
+			this.modelOperationAdmission.pending
+		)
+			return "Execution is still active. Finish or stop it safely, then reopen this task from history without resuming."
+		return undefined
+	}
+
+	public async stopForHistoricalModelOperation(expectedRevision: number): Promise<void> {
+		// Synchronous check-and-fence: historical effects are never rerun or interrupted here.
+		if (expectedRevision !== this.modelOperationRevision) throw new Error("Stale model-operation revision")
+		const reason = this.getHistoricalModelOperationBlockReason()
+		if (reason) throw new Error(reason)
+		this.modelOperationClosed = true
+		this.modelOperationRevision++
+		this.modelOperationAdmission.cancel()
+		this.cancelAutoApprovalTimeout()
+		this.debouncedEmitTokenUsage.cancel()
+		this.abort = true
+		this.userMessageContentReady = true
+		this.didFinishAbortingStream = true
+	}
+
+	/** Release runtime resources only, preserving source files and history after a proven fence. */
+	public disposeForModelOperation(): void {
+		if (
+			!this.modelOperationClosed ||
+			!this.didFinishAbortingStream ||
+			this.modelOperationLoops ||
+			this.modelOperationRequests ||
+			this.modelOperationUsageCollectors ||
+			this.presentAssistantMessageLocked ||
+			this.diffViewProvider.isEditing
+		)
+			throw new Error("Model-operation source has not settled")
+		this.dispose({ preserveArtifacts: true })
+	}
+
 	constructor({
 		provider,
 		apiConfiguration,
@@ -510,7 +859,11 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		}
 
 		this.taskId = historyItem ? historyItem.id : (taskId ?? uuidv7())
-		this.rootTaskId = historyItem ? historyItem.rootTaskId : rootTask?.taskId
+		this.rootTaskId = historyItem
+			? historyItem.rootTaskId
+			: (parentTask?.rootTaskId ??
+				rootTask?.taskId ??
+				(parentTask?.parentTaskId ? undefined : parentTask?.taskId))
 		this.parentTaskId = historyItem ? historyItem.parentTaskId : parentTask?.taskId
 		this.childTaskId = undefined
 
@@ -904,6 +1257,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	 * @internal
 	 */
 	public setTaskApiConfigName(apiConfigName: string | undefined): void {
+		if (this.modelOperationProfileId || this.modelOperationRequestPinned || this.modelOperationRequests) return
 		this._taskApiConfigName = apiConfigName
 	}
 
@@ -930,6 +1284,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	}
 
 	private async addToApiConversationHistory(message: Anthropic.MessageParam, reasoning?: string) {
+		if (this.modelOperationClosed) return
 		// Capture the encrypted_content / thought signatures from the provider (e.g., OpenAI Responses API, Google GenAI) if present.
 		// We only persist data reported by the current response body.
 		const handler = this.api as ApiHandler & {
@@ -961,6 +1316,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			// Start from the original assistant message
 			const messageWithTs: any = {
 				...message,
+				requestId: this.modelOperationRequestId,
 				...(responseId ? { id: responseId } : {}),
 				ts: Date.now(),
 			}
@@ -1120,7 +1476,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				previousAssistantWasBrowserAction =
 					Array.isArray(message.content) &&
 					message.content.some(
-						(block) => block.type === "tool_use" && (block as Anthropic.ToolUseBlock).name === "browser_action",
+						(block) =>
+							block.type === "tool_use" && (block as Anthropic.ToolUseBlock).name === "browser_action",
 					)
 				continue
 			}
@@ -1278,6 +1635,13 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	}
 
 	private async addToClineMessages(message: ClineMessage) {
+		if (this.modelOperationClosed) return
+		if (
+			this.modelOperationRequestId &&
+			(message.type === "ask" || ["text", "reasoning", "completion_result", "tool"].includes(message.say ?? ""))
+		) {
+			message.requestId = this.modelOperationRequestId
+		}
 		this.clineMessages.push(message)
 		const provider = this.providerRef.deref()
 		// Avoid resending large, mostly-static fields (notably taskHistory) on every chat message update.
@@ -1299,7 +1663,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		this.emit(RooCodeEventName.Message, { action: "updated", message })
 	}
 
-	private async saveClineMessages(): Promise<boolean> {
+	private async saveClineMessages(strict = false): Promise<boolean> {
 		try {
 			await saveTaskMessages({
 				messages: structuredClone(this.clineMessages),
@@ -1331,9 +1695,12 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			// - Final state is emitted when updates stop (trailing: true)
 			this.debouncedEmitTokenUsage(tokenUsage, this.toolUsage)
 
-			await this.providerRef.deref()?.updateTaskHistory(historyItem)
+			const provider = this.providerRef.deref()
+			if (strict && !provider) throw new Error("Provider unavailable while persisting task history")
+			await provider?.updateTaskHistory(historyItem)
 			return true
 		} catch (error) {
+			if (strict) throw error
 			console.error("Failed to save Roo messages:", error)
 			return false
 		}
@@ -1454,7 +1821,13 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		// Automatically approve if the ask according to the user's settings.
 		const provider = this.providerRef.deref()
 		const state = provider ? await provider.getState() : undefined
-		const approval = await checkAutoApproval({ state, ask: type, text, isProtected })
+		const approval = await checkAutoApproval({
+			state,
+			ask: type,
+			text,
+			isProtected,
+			requiresToolApproval: this.modelOperationAdmission.requiresApproval,
+		})
 
 		if (approval.decision === "approve") {
 			this.approveAsk()
@@ -1476,7 +1849,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		const isMessageQueued = !this.messageQueueService.isEmpty()
 		// Keep queued user messages intact during command_output asks. Those asks
 		// are terminal flow-control, not conversational turns.
-		const shouldDrainQueuedMessageForAsk = type !== "command_output"
+		const shouldDrainQueuedMessageForAsk =
+			type !== "command_output" && !this.modelOperationAdmission.requiresApproval
 		const isStatusMutable = !partial && isBlocking && !isMessageQueued && approval.decision === "ask"
 
 		if (isStatusMutable) {
@@ -1537,6 +1911,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		// Wait for askResponse to be set
 		await pWaitFor(
 			() => {
+				if (this.modelOperationClosed) throw new Error("Task dispatch is closed")
 				if (this.askResponse !== undefined || this.lastMessageTs !== askTs) {
 					return true
 				}
@@ -1590,6 +1965,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	}
 
 	handleWebviewAskResponse(askResponse: ClineAskResponse, text?: string, images?: string[]) {
+		if (this.modelOperationClosed) return
 		// Clear any pending auto-approval timeout when user responds
 		this.cancelAutoApprovalTimeout()
 
@@ -1668,6 +2044,11 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	 * @param newApiConfiguration - The new API configuration to use
 	 */
 	public updateApiConfiguration(newApiConfiguration: ProviderSettings): void {
+		if (this.modelOperationProfileId || this.modelOperationPreparing || this.modelOperationClosed) return
+		if (this.modelOperationRequestPinned || this.modelOperationRequests || this.isStreaming) {
+			this.deferredApiConfiguration = { ...newApiConfiguration }
+			return
+		}
 		// Update the configuration and rebuild the API handler
 		this.apiConfiguration = newApiConfiguration
 		this.api = buildApiHandler(this.apiConfiguration)
@@ -1737,6 +2118,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	}
 
 	public async condenseContext(): Promise<void> {
+		if (this.modelOperationPrepared || this.modelOperationRequestPinned)
+			throw new Error("Context compaction is disabled for a prepared or active request")
 		// CRITICAL: Flush any pending tool results before condensing
 		// to ensure tool_use/tool_result pairs are complete in history
 		await this.flushPendingToolResultsToHistory()
@@ -2092,6 +2475,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 	private async resumeTaskFromHistory() {
 		try {
+			await this.ensureModelOperationProvenance()
 			const modifiedClineMessages = await this.getSavedClineMessages()
 
 			// Remove any resume messages that may have been added before.
@@ -2347,6 +2731,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	}
 
 	public async abortTask(isAbandoned = false) {
+		this.modelOperationAdmission.cancel()
 		// Aborting task
 
 		// Will stop any autonomously running promises.
@@ -2380,7 +2765,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		}
 	}
 
-	public dispose(): void {
+	public dispose(options?: { preserveArtifacts?: boolean }): void {
+		this.modelOperationAdmission.cancel()
 		console.log(`[Task#dispose] disposing task ${this.taskId}.${this.instanceId}`)
 
 		// Cancel any in-progress HTTP request
@@ -2430,15 +2816,28 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			console.error("Error releasing terminals:", error)
 		}
 
-		// Cleanup command output artifacts
-		getTaskDirectoryPath(this.globalStoragePath, this.taskId)
-			.then((taskDir) => {
-				const outputDir = path.join(taskDir, "command-output")
-				return OutputInterceptor.cleanup(outputDir)
-			})
-			.catch((error) => {
-				console.error("Error cleaning up command output artifacts:", error)
-			})
+		// Branch artifacts are durable replay evidence, including on ordinary unload.
+		// Inspect disk as well: navigation can dispose a restored branch before its
+		// asynchronous provenance initialization completes. Unreadable policy fails
+		// closed by retaining artifacts; explicit task deletion removes the directory.
+		if (
+			!options?.preserveArtifacts &&
+			!this.modelOperationPrepared &&
+			!this.modelOperationAdmission.requiresApproval
+		)
+			getStorageBasePath(this.globalStoragePath)
+				.then(async (root) => {
+					if (await readBranchProvenance(root, this.taskId)) return undefined
+					return getTaskDirectoryPath(this.globalStoragePath, this.taskId)
+				})
+				.then((taskDir) => {
+					if (!taskDir) return
+					const outputDir = path.join(taskDir, "command-output")
+					return OutputInterceptor.cleanup(outputDir)
+				})
+				.catch((error) => {
+					console.error("Error cleaning up command output artifacts:", error)
+				})
 
 		try {
 			if (this.rooIgnoreController) {
@@ -2469,18 +2868,34 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	// Subtasks
 	// Spawn / Wait / Complete
 
-	public async startSubtask(message: string, initialTodos: TodoItem[], mode: string) {
+	/** Preserve the model-operation branch's no-delegation policy for direct provider calls too. */
+	public async assertCanDelegate(): Promise<void> {
+		await this.ensureModelOperationProvenance()
+		if (
+			this.modelOperationAdmission.requiresApproval ||
+			this.modelOperationClosed ||
+			this.abort ||
+			this.abandoned
+		) {
+			throw new DelegationPolicyError("Delegation is not allowed from a model-operation branch or closed task.")
+		}
+	}
+
+	public async startSubtask(message: string, initialTodos: TodoItem[], mode: string, reason?: string) {
 		const provider = this.providerRef.deref()
 
 		if (!provider) {
 			throw new Error("Provider not available")
 		}
 
-		const child = await (provider as any).delegateParentAndOpenChild({
+		const child = await provider.delegateParentAndOpenChild({
 			parentTaskId: this.taskId,
+			parentInstanceId: this.instanceId,
+			expectedRevision: provider.delegationRevision,
 			message,
 			initialTodos,
 			mode,
+			reason,
 		})
 		return child
 	}
@@ -2563,7 +2978,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 	private async initiateTaskLoop(userContent: Anthropic.Messages.ContentBlockParam[]): Promise<void> {
 		// Kicks off the checkpoints initialization process in the background.
-		getCheckpointService(this)
+		if (!this.modelOperationPrepared) getCheckpointService(this)
 
 		let nextUserContent = userContent
 		let includeFileDetails = true
@@ -2599,6 +3014,21 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		userContent: Anthropic.Messages.ContentBlockParam[],
 		includeFileDetails: boolean = false,
 	): Promise<boolean> {
+		if (this.modelOperationLoops || this.modelOperationRequests) throw new Error("A request is already active")
+		this.modelOperationLoops++
+		try {
+			await this.ensureModelOperationProvenance()
+			return await this.makeClineRequests(userContent, includeFileDetails)
+		} finally {
+			this.modelOperationLoops--
+			this.modelOperationRequestPinned = false
+		}
+	}
+
+	private async makeClineRequests(
+		userContent: Anthropic.Messages.ContentBlockParam[],
+		includeFileDetails: boolean,
+	): Promise<boolean> {
 		interface StackItem {
 			userContent: Anthropic.Messages.ContentBlockParam[]
 			includeFileDetails: boolean
@@ -2609,6 +3039,23 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		const stack: StackItem[] = [{ userContent, includeFileDetails, retryAttempt: 0 }]
 
 		while (stack.length > 0) {
+			if (this.modelOperationClosed) return true
+			if (
+				this.presentAssistantMessageLocked ||
+				this.modelOperationAdmissionsPending ||
+				this.modelOperationAdmission.pending
+			)
+				throw new Error("Wait for tool admission and presenter settlement before the next request")
+			this.modelOperationBoundary = this.captureModelOperationBoundary()
+			this.modelOperationRevision++
+			this.modelOperationSnapshot = undefined
+			this.modelOperationRequestId = undefined
+			this.modelOperationRequestPinned = false
+			if (this.deferredApiConfiguration && !this.modelOperationProfileId && !this.modelOperationRequests) {
+				this.updateApiConfiguration(this.deferredApiConfiguration)
+				this.deferredApiConfiguration = undefined
+			}
+			this.modelOperationRequestPinned = true
 			const currentItem = stack.pop()!
 			const currentUserContent = currentItem.userContent
 			const currentIncludeFileDetails = currentItem.includeFileDetails
@@ -2676,17 +3123,19 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			const maxDiagnosticMessages = state?.maxDiagnosticMessages ?? 50
 			const currentMode = state?.mode ?? defaultModeSlug
 
-			const { content: parsedUserContent, mode: slashCommandMode } = await processUserContentMentions({
-				userContent: currentUserContent,
-				cwd: this.cwd,
-				fileContextTracker: this.fileContextTracker,
-				rooIgnoreController: this.rooIgnoreController,
-				showRooIgnoredFiles,
-				includeDiagnosticMessages,
-				maxDiagnosticMessages,
-				skillsManager: provider?.getSkillsManager(),
-				currentMode,
-			})
+			const { content: parsedUserContent, mode: slashCommandMode } = this.modelOperationPrepared
+				? { content: currentUserContent, mode: undefined }
+				: await processUserContentMentions({
+						userContent: currentUserContent,
+						cwd: this.cwd,
+						fileContextTracker: this.fileContextTracker,
+						rooIgnoreController: this.rooIgnoreController,
+						showRooIgnoredFiles,
+						includeDiagnosticMessages,
+						maxDiagnosticMessages,
+						skillsManager: provider?.getSkillsManager(),
+						currentMode,
+					})
 
 			// Switch mode if specified in a slash command's frontmatter
 			if (slashCommandMode) {
@@ -2700,7 +3149,9 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				}
 			}
 
-			const environmentDetails = await getEnvironmentDetails(this, currentIncludeFileDetails)
+			const environmentDetails = this.modelOperationPrepared
+				? ""
+				: await getEnvironmentDetails(this, currentIncludeFileDetails)
 
 			// Remove any existing environment_details blocks before adding fresh ones.
 			// This prevents duplicate environment details when resuming tasks,
@@ -2721,7 +3172,9 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 			// Add environment details as its own text block, separate from tool
 			// results.
-			let finalUserContent = [...contentWithoutEnvDetails, { type: "text" as const, text: environmentDetails }]
+			let finalUserContent = this.modelOperationPrepared
+				? parsedUserContent
+				: [...contentWithoutEnvDetails, { type: "text" as const, text: environmentDetails }]
 			// Only add user message to conversation history if:
 			// 1. This is the first attempt (retryAttempt === 0), AND
 			// 2. The original userContent was not empty (empty signals delegation resume where
@@ -2749,6 +3202,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			await this.providerRef.deref()?.postStateToWebviewWithoutTaskHistory()
 
 			try {
+				if (this.modelOperationClosed) return true
+				const streamEpoch = this.modelOperationRevision
 				let cacheWriteTokens = 0
 				let cacheReadTokens = 0
 				let inputTokens = 0
@@ -2763,6 +3218,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				// of prices in tasks from history (it's worth removing a few months
 				// from now).
 				const updateApiReqMsg = (cancelReason?: ClineApiReqCancelReason, streamingFailedMessage?: string) => {
+					if (this.modelOperationClosed) return
 					if (lastApiReqIndex < 0 || !this.clineMessages[lastApiReqIndex]) {
 						return
 					}
@@ -2807,6 +3263,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				}
 
 				const abortStream = async (cancelReason: ClineApiReqCancelReason, streamingFailedMessage?: string) => {
+					if (this.modelOperationClosed) return
 					if (this.diffViewProvider.isEditing) {
 						await this.diffViewProvider.revertChanges() // closes diff view
 					}
@@ -2853,6 +3310,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				NativeToolCallParser.clearRawChunkState()
 
 				await this.diffViewProvider.reset()
+				if (this.modelOperationClosed) return true
 
 				// Cache model info once per API request to avoid repeated calls during streaming
 				// This is especially important for tools and background usage collection
@@ -2903,6 +3361,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 					while (!item.done) {
 						const chunk = item.value
 						item = await nextChunkWithAbort()
+						if (this.modelOperationClosed) return true
 						if (!chunk) {
 							// Sometimes chunk is undefined, no idea that can cause
 							// it, but this workaround seems to fix it.
@@ -2949,21 +3408,21 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 							case "tool_call_partial": {
 								// Process raw tool call chunk through NativeToolCallParser
 								// which handles tracking, buffering, and emits events
-							const events = NativeToolCallParser.processRawChunk({
-								index: chunk.index,
-								id: chunk.id,
-								name: chunk.name,
-								arguments: chunk.arguments,
-							})
+								const events = NativeToolCallParser.processRawChunk({
+									index: chunk.index,
+									id: chunk.id,
+									name: chunk.name,
+									arguments: chunk.arguments,
+								})
 
-							debugTrace(`[FLOW][Task ${this.taskId}.${this.instanceId}] tool_call_partial chunk`, {
-								provider: this.apiConfiguration.apiProvider,
-								modelId: getModelId(this.apiConfiguration),
-								chunk,
-								events,
-							})
+								debugTrace(`[FLOW][Task ${this.taskId}.${this.instanceId}] tool_call_partial chunk`, {
+									provider: this.apiConfiguration.apiProvider,
+									modelId: getModelId(this.apiConfiguration),
+									chunk,
+									events,
+								})
 
-							for (const event of events) {
+								for (const event of events) {
 									if (event.type === "tool_call_start") {
 										// Guard against duplicate tool_call_start events for the same tool ID.
 										// This can occur due to stream retry, reconnection, or API quirks.
@@ -3191,6 +3650,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 							},
 							messageIndex: number = apiReqIndex,
 						) => {
+							if (this.modelOperationClosed || this.modelOperationRevision > streamEpoch + 1) return
 							if (
 								tokens.input > 0 ||
 								tokens.output > 0 ||
@@ -3220,6 +3680,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 							// Use the same iterator that the main loop was using
 							while (!item.done) {
+								if (this.modelOperationClosed || this.modelOperationRevision > streamEpoch + 1) return
 								// Check for timeout
 								if (performance.now() - startTime > timeoutMs) {
 									console.warn(
@@ -3293,10 +3754,16 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 					}
 
 					// Start the background task and handle any errors
-					drainStreamInBackgroundToFindAllUsage(lastApiReqIndex).catch((error) => {
-						console.error("Background usage collection failed:", error)
-					})
+					this.modelOperationUsageCollectors++
+					void drainStreamInBackgroundToFindAllUsage(lastApiReqIndex)
+						.catch((error) => {
+							console.error("Background usage collection failed:", error)
+						})
+						.finally(() => {
+							this.modelOperationUsageCollectors--
+						})
 				} catch (error) {
+					if (this.modelOperationClosed) return true
 					// Abandoned happens when extension is no longer waiting for the
 					// Cline instance to finish aborting (error is thrown here when
 					// any function in the for loop throws due to this.abort).
@@ -3566,7 +4033,13 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 									continue
 								}
 								seenToolUseIds.add(sanitizedId)
-								const input = toolUse.nativeArgs || toolUse.params
+								// Native parsers add absent optional fields as undefined. Omit
+								// those fields here, matching their persisted JSON representation.
+								const input = Object.fromEntries(
+									Object.entries(toolUse.nativeArgs || toolUse.params).filter(
+										([, value]) => value !== undefined,
+									),
+								)
 
 								// Use originalName (alias) if present for API history consistency.
 								// When tool aliases are used (e.g., "edit_file" -> "search_and_replace" -> "edit" (current canonical name)),
@@ -3621,6 +4094,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 						reasoningMessage || undefined,
 					)
 					this.assistantMessageSavedToHistory = true
+					// Complete tools were intentionally held at the central admission gate until persistence.
+					void presentAssistantMessage(this)
 				}
 
 				// Present any partial blocks that were just completed.
@@ -3653,7 +4128,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 					// 	this.userMessageContentReady = true
 					// }
 
-					await pWaitFor(() => this.userMessageContentReady)
+					await pWaitFor(() => this.userMessageContentReady || this.modelOperationClosed)
+					if (this.modelOperationClosed) return true
 
 					// If the model did not tool use, then we need to tell it to
 					// either use a tool or attempt_completion.
@@ -3662,6 +4138,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 					)
 
 					if (!didToolUse) {
+						if (this.modelOperationPrepared) return true
 						// Increment consecutive no-tool-use counter
 						this.consecutiveNoToolUseCount++
 
@@ -3717,6 +4194,13 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 					// Increment consecutive no-assistant-messages counter
 					this.consecutiveNoAssistantMessagesCount++
+					// Never pop or replace the saved prepared input on an empty response.
+					if (this.modelOperationPrepared) {
+						this.modelOperationFailure =
+							"The model returned an empty response. Regenerate from the saved request to retry."
+						await this.say("error", this.modelOperationFailure)
+						return true
+					}
 
 					// Only show error and count toward mistake limit after 2 consecutive failures
 					// This provides a "grace retry" - first failure retries silently
@@ -3828,6 +4312,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	}
 
 	private async getSystemPrompt(): Promise<string> {
+		if (this.modelOperationSystemPrompt !== undefined) return this.modelOperationSystemPrompt
 		const { mcpEnabled } = (await this.providerRef.deref()?.getState()) ?? {}
 		let mcpHub: McpHub | undefined
 		if (mcpEnabled ?? true) {
@@ -3874,6 +4359,18 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			}
 
 			const modelInfo = this.api.getModel().info
+			let delegationDepth: number | undefined
+			try {
+				delegationDepth =
+					(
+						await resolveDelegationAncestry(
+							this,
+							async (id) => (await provider.getTaskWithId(id)).historyItem,
+						)
+					).length - 1
+			} catch {
+				// Unknown ancestry must not advertise root delegation privileges.
+			}
 
 			return SYSTEM_PROMPT(
 				provider.context,
@@ -3898,6 +4395,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 						.getConfiguration(Package.name)
 						.get<boolean>("newTaskRequireTodos", false),
 					isStealthModel: modelInfo?.isStealthModel,
+					delegationDepth,
 				},
 				undefined, // todoList
 				this.api.getModel().id,
@@ -4077,10 +4575,51 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		retryAttempt: number = 0,
 		options: { skipProviderRateLimit?: boolean } = {},
 	): ApiStream {
+		if (this.modelOperationClosed || this.abort) throw new Error("Task dispatch is closed")
+		if (this.modelOperationRequests) throw new Error("A request is already active")
+		this.modelOperationRequests++
+		try {
+			await this.ensureModelOperationProvenance()
+			yield* this.attemptApiRequestPinned(retryAttempt, options)
+		} finally {
+			this.modelOperationRequests--
+			this.modelOperationRequestPreparing = false
+			if (
+				!this.modelOperationRequests &&
+				!this.modelOperationLoops &&
+				!this.modelOperationProfileId &&
+				!this.modelOperationClosed &&
+				this.deferredApiConfiguration
+			) {
+				const configuration = this.deferredApiConfiguration
+				this.deferredApiConfiguration = undefined
+				this.updateApiConfiguration(configuration)
+			}
+		}
+	}
+
+	private async *attemptApiRequestPinned(
+		retryAttempt: number,
+		options: { skipProviderRateLimit?: boolean },
+	): ApiStream {
+		if (this.modelOperationClosed || this.abort) throw new Error("Task dispatch is closed")
+		if (
+			this.presentAssistantMessageLocked ||
+			this.modelOperationAdmissionsPending ||
+			this.modelOperationAdmission.pending
+		)
+			throw new Error("Wait for tool admission and presenter settlement before the next request")
+		const boundary = this.modelOperationBoundary ?? this.captureModelOperationBoundary()
+		this.modelOperationBoundary = undefined
+		this.modelOperationRequestPreparing = true
+		this.modelOperationRevision++
+		this.modelOperationSnapshot = undefined
+		this.modelOperationRequestId = crypto.randomUUID()
+		const requestRevision = this.modelOperationRevision
+		const requestHandler = this.api
 		const state = await this.providerRef.deref()?.getState()
 
 		const {
-			apiConfiguration,
 			autoApprovalEnabled,
 			requestDelaySeconds,
 			mode,
@@ -4088,6 +4627,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			autoCondenseContextPercent = 100,
 			profileThresholds = {},
 		} = state ?? {}
+		const apiConfiguration = this.apiConfiguration
 
 		// Get condensing configuration for automatic triggers.
 		const customCondensingPrompt = state?.customSupportPrompts?.CONDENSE
@@ -4133,7 +4673,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		const systemPrompt = await this.getSystemPrompt()
 		const { contextTokens } = this.getTokenUsage()
 
-		if (contextTokens) {
+		if (contextTokens && !this.modelOperationPrepared) {
 			const modelInfo = this.api.getModel().info
 
 			const maxTokens = getModelMaxOutputTokens({
@@ -4329,6 +4869,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		// mergeConsecutiveApiMessages implementation) without mutating stored history.
 		const mergedForApi = mergeConsecutiveApiMessages(messagesSinceLastSummary, { roles: ["user"] })
 		const messagesWithoutImages = maybeRemoveImageBlocks(mergedForApi, this.api)
+		// Imported prefixes were normalized once in prepare. Preserve fresh target
+		// reasoning/signatures via the normal provider adapter on subsequent requests.
 		const cleanConversationHistory = this.buildCleanConversationHistory(messagesWithoutImages as ApiMessage[])
 
 		// Check auto-approval limits
@@ -4418,6 +4960,120 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			})
 		}
 
+		if (this.modelOperationClosed || this.abort) throw new Error("Task dispatch is closed")
+		try {
+			const persistedHistory = structuredClone(this.apiConversationHistory)
+			const historyIdentity = JSON.stringify(persistedHistory)
+			let replayValidated = false
+			try {
+				// Validation is separate from the wire payload. Validate persisted pairs
+				// before filtering/merging, then the exact outgoing replay prefix as well.
+				normalizeSnapshotMessages(persistedHistory)
+				const normalized = normalizeSnapshotMessages(messagesWithoutImages)
+				if (normalized.at(-1)?.role !== "user") throw new Error("Request prefix must end with user input")
+				const results = new Set(
+					normalized.flatMap((message) =>
+						Array.isArray(message.content)
+							? message.content
+									.filter((block) => block.type === "tool_result")
+									.map((block) => block.tool_use_id)
+							: [],
+					),
+				)
+				replayValidated = [...this.modelOperationToolIds].every((id) => results.has(id))
+			} catch (error) {
+				// Unsupported ordinary histories may still use their provider, but never
+				// advertise switch readiness. Prepared branches must fail closed entirely.
+				if (this.modelOperationPrepared) throw error
+			}
+			if (this.modelOperationPrepared) {
+				assertContextFits(
+					messagesWithoutImages,
+					systemPrompt,
+					{
+						contextWindow: resolvedModel.info.contextWindow,
+						maxTokens: Math.max(
+							resolvedModel.info.maxTokens ?? 0,
+							"maxTokens" in resolvedModel && typeof resolvedModel.maxTokens === "number"
+								? resolvedModel.maxTokens
+								: 0,
+							apiConfiguration.modelMaxTokens ?? 0,
+							getModelMaxOutputTokens({
+								modelId: resolvedModel.id,
+								model: resolvedModel.info,
+								settings: apiConfiguration,
+							}) ?? 0,
+						),
+					},
+					Buffer.byteLength(JSON.stringify(metadata), "utf8"),
+				)
+			}
+			const snapshot: RequestSnapshot = {
+				version: 1,
+				taskId: this.taskId,
+				requestId: this.modelOperationRequestId!,
+				createdAt: Date.now(),
+				apiMessages: structuredClone(messagesWithoutImages) as ApiMessage[],
+				clineMessages: structuredClone(
+					this.clineMessages.filter(
+						(message) =>
+							message.say !== "api_req_started" && message.requestId !== this.modelOperationRequestId,
+					),
+				),
+				systemPrompt,
+				sourceProvider: apiConfiguration.apiProvider,
+				sourceModelId: resolvedModel.id,
+			}
+			// Existing history saves are best-effort. A live-switch boundary requires
+			// explicit successful persistence of this exact prior exchange.
+			await saveApiMessages({
+				messages: persistedHistory,
+				taskId: this.taskId,
+				globalStoragePath: this.globalStoragePath,
+			})
+			await saveRequestSnapshot(await getStorageBasePath(this.globalStoragePath), snapshot)
+			if (this.modelOperationClosed || this.abort || requestRevision !== this.modelOperationRevision)
+				throw new Error("Stale request dispatch")
+			const unchanged =
+				historyIdentity === JSON.stringify(this.apiConversationHistory) &&
+				boundary.admitted === this.modelOperationToolsAdmitted &&
+				boundary.executed === this.modelOperationToolsExecuted
+			// No await between final settlement verification, counter reset and publication.
+			// Presenter response flags were reset by the loop; the captured proof covers them.
+			if (
+				replayValidated &&
+				boundary.settled &&
+				unchanged &&
+				!this.modelOperationAdmissionsPending &&
+				!this.modelOperationAdmission.pending &&
+				!this.presentAssistantMessageLocked &&
+				!this.presentAssistantMessageHasPendingUpdates &&
+				!this.diffViewProvider.isEditing &&
+				!this.terminalProcess &&
+				!TerminalRegistry.getTerminals(true).length &&
+				!this.idleAsk &&
+				!this.resumableAsk &&
+				!this.interactiveAsk &&
+				!this.autoApprovalTimeoutRef &&
+				!this.modelOperationUsageCollectors
+			) {
+				this.modelOperationToolsAdmitted = 0
+				this.modelOperationToolsExecuted = 0
+				this.modelOperationToolIds.clear()
+				this.didAlreadyUseTool = false
+				this.modelOperationSnapshot = snapshot
+			}
+			void this.providerRef.deref()?.postStateToWebviewWithoutTaskHistory()
+		} catch (error) {
+			this.modelOperationFailure = "Request snapshot or prepared context validation failed; dispatch is blocked."
+			this.modelOperationClosed = true
+			throw error
+		}
+		// Publishing state may synchronously fence this task. Never install a fresh
+		// controller after cancellation, or dispatch after that fence.
+		if (this.modelOperationClosed || this.abort || requestRevision !== this.modelOperationRevision)
+			throw new Error("Stale request dispatch")
+		this.modelOperationRequestPreparing = false
 		// Create an AbortController to allow cancelling the request mid-stream
 		this.currentRequestAbortController = new AbortController()
 		const abortSignal = this.currentRequestAbortController.signal
@@ -4432,7 +5088,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		this.skipPrevResponseIdOnce = false
 
 		// The provider accepts reasoning items alongside standard messages; cast to the expected parameter type.
-		const stream = this.api.createMessage(
+		const stream = requestHandler.createMessage(
 			systemPrompt,
 			cleanConversationHistory as unknown as Anthropic.Messages.MessageParam[],
 			metadata,
@@ -4462,11 +5118,20 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			})
 
 			const firstChunk = await Promise.race([firstChunkPromise, abortPromise])
+			this.isWaitingForFirstChunk = false
+			if (this.modelOperationClosed || this.abort || requestRevision !== this.modelOperationRevision) return
 			yield firstChunk.value
 			this.isWaitingForFirstChunk = false
 		} catch (error) {
 			this.isWaitingForFirstChunk = false
 			this.currentRequestAbortController = undefined
+			void iterator.return?.(undefined).catch(() => {})
+			if (this.modelOperationClosed || this.abort) throw error
+			if (this.modelOperationPrepared) {
+				this.modelOperationFailure = "Prepared request failed; automatic compaction and retry are disabled."
+				this.modelOperationClosed = true
+				throw error
+			}
 			const isContextWindowExceededError = checkContextWindowExceededError(error)
 
 			if (shouldDebugAnthropicRequest) {
@@ -4492,7 +5157,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				)
 				await this.handleContextWindowExceededError()
 				// Retry the request after handling the context window error
-				yield* this.attemptApiRequest(retryAttempt + 1)
+				yield* this.attemptApiRequestPinned(retryAttempt + 1, {})
 				return
 			}
 
@@ -4512,7 +5177,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 				// Delegate generator output from the recursive call with
 				// incremented retry count.
-				yield* this.attemptApiRequest(retryAttempt + 1)
+				yield* this.attemptApiRequestPinned(retryAttempt + 1, {})
 
 				return
 			} else {
@@ -4530,7 +5195,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				await this.say("api_req_retried")
 
 				// Delegate generator output from the recursive call.
-				yield* this.attemptApiRequest()
+				yield* this.attemptApiRequestPinned(0, {})
 				return
 			}
 		}
@@ -4543,7 +5208,34 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		// it's saying "yield all remaining values from this iterator". This
 		// effectively passes along all subsequent chunks from the original
 		// stream.
-		yield* iterator
+		try {
+			while (!this.modelOperationClosed && !this.abort && requestRevision === this.modelOperationRevision) {
+				const next = await new Promise<IteratorResult<import("../../api/transform/stream").ApiStreamChunk>>(
+					(resolve, reject) => {
+						const onAbort = () => reject(new Error("Request dispatch fenced"))
+						if (abortSignal.aborted) {
+							onAbort()
+							return
+						}
+						abortSignal.addEventListener("abort", onAbort, { once: true })
+						iterator
+							.next()
+							.then(resolve, reject)
+							.finally(() => abortSignal.removeEventListener("abort", onAbort))
+					},
+				)
+				if (
+					this.modelOperationClosed ||
+					this.abort ||
+					requestRevision !== this.modelOperationRevision ||
+					next.done
+				)
+					return
+				yield next.value
+			}
+		} finally {
+			if (this.modelOperationClosed || this.abort) void iterator.return?.(undefined).catch(() => {})
+		}
 	}
 
 	// Shared exponential backoff for retries (first-chunk and mid-stream)
@@ -4623,6 +5315,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	// Checkpoints
 
 	public async checkpointSave(force: boolean = false, suppressMessage: boolean = false) {
+		if (this.modelOperationPrepared || this.modelOperationClosed) return
 		return checkpointSave(this, force, suppressMessage)
 	}
 

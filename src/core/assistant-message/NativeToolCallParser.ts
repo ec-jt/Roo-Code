@@ -714,6 +714,7 @@ export class NativeToolCallParser {
 						mode: partialArgs.mode,
 						message: partialArgs.message,
 						todos: partialArgs.todos,
+						reason: partialArgs.reason,
 					}
 				}
 				break
@@ -1153,6 +1154,7 @@ export class NativeToolCallParser {
 							mode: args.mode,
 							message: args.message,
 							todos: args.todos,
+							reason: args.reason ?? undefined,
 						} as NativeArgsFor<TName>
 					}
 					break

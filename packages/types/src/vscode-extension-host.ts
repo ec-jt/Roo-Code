@@ -18,6 +18,12 @@ import type { SerializedCustomToolDefinition } from "./custom-tool.js"
 import type { GitCommit } from "./git.js"
 import type { McpServer } from "./mcp.js"
 import type { ModelRecord, RouterModels } from "./model.js"
+import type {
+	ModelOperation,
+	ModelOperationApproval,
+	ModelOperationStatus,
+	ModelOperationState,
+} from "./model-operation.js"
 import type { OpenAiCodexRateLimitInfo } from "./providers/openai-codex-rate-limits.js"
 import type { SkillMetadata } from "./skills.js"
 import type { WorktreeIncludeStatus } from "./worktree.js"
@@ -30,6 +36,7 @@ export interface ExtensionMessage {
 	type:
 		| "action"
 		| "state"
+		| "modelOperationStatus"
 		| "taskHistoryUpdated"
 		| "taskHistoryItemUpdated"
 		| "selectedImages"
@@ -133,6 +140,7 @@ export interface ExtensionMessage {
 	 * The webview is responsible for merging.
 	 */
 	state?: Partial<ExtensionState>
+	modelOperationStatus?: ModelOperationStatus
 	images?: string[]
 	filePaths?: string[]
 	openedTabs?: Array<{
@@ -334,6 +342,7 @@ export type ExtensionState = Pick<
 	version: string
 	clineMessages: ClineMessage[]
 	currentTaskId?: string
+	modelOperation?: ModelOperationState
 	currentTaskItem?: HistoryItem
 	currentTaskTodos?: TodoItem[] // Initial todos for the current task
 	apiConfiguration: ProviderSettings
@@ -434,6 +443,8 @@ export type EditQueuedMessagePayload = Pick<QueuedMessage, "id" | "text" | "imag
 export interface WebviewMessage {
 	type:
 		| "updateTodoList"
+		| "modelOperation"
+		| "modelOperationApproval"
 		| "deleteMultipleTasksWithIds"
 		| "currentApiConfigName"
 		| "saveApiConfiguration"
@@ -600,6 +611,8 @@ export interface WebviewMessage {
 		| "openSkillFile"
 	text?: string
 	taskId?: string
+	modelOperation?: ModelOperation
+	modelOperationApproval?: ModelOperationApproval
 	editedMessageContent?: string
 	tab?: "settings" | "history" | "mcp" | "modes" | "chat" | "marketplace" | "cloud"
 	disabled?: boolean

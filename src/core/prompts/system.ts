@@ -12,6 +12,7 @@ import { CodeIndexManager } from "../../services/code-index/manager"
 import { SkillsManager } from "../../services/skills/SkillsManager"
 
 import type { SystemPromptSettings } from "./types"
+import { delegationContext } from "../task/delegation-policy"
 import {
 	getRulesSection,
 	getSystemInfoSection,
@@ -90,6 +91,8 @@ ${getSharedToolUseSection()}${toolsCatalog}
 
 	${getToolUseGuidelinesSection()}
 
+${delegationContext(settings?.delegationDepth)}
+
 ${getCapabilitiesSection(cwd, shouldIncludeMcp ? mcpHub : undefined)}
 
 ${modesSection}
@@ -104,7 +107,9 @@ ${await addCustomInstructions(baseInstructions, globalCustomInstructions || "", 
 	language: language ?? formatLanguage(vscode.env.language),
 	rooIgnoreInstructions,
 	settings,
-})}`
+})}
+
+Task delegation policy takes precedence over mode instructions encouraging delegation: ${delegationContext(settings?.delegationDepth)}`
 
 	return basePrompt
 }

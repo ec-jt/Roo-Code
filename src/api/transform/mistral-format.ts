@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto"
+
 import { Anthropic } from "@anthropic-ai/sdk"
 import { AssistantMessage } from "@mistralai/mistralai/models/components/assistantmessage"
 import { SystemMessage } from "@mistralai/mistralai/models/components/systemmessage"
@@ -10,23 +12,20 @@ import { UserMessage } from "@mistralai/mistralai/models/components/usermessage"
  * - Only alphanumeric characters (a-z, A-Z, 0-9)
  * - Exactly 9 characters in length
  *
- * This function extracts alphanumeric characters from the original ID and
- * pads/truncates to exactly 9 characters, ensuring deterministic output.
+ * Valid IDs are preserved. Invalid IDs are hashed in full so shared prefixes,
+ * punctuation removal, and padding do not systematically create collisions.
+ * A finite 9-character ID space cannot guarantee collision-free output.
  *
  * @param id - The original tool call ID (e.g., "call_5019f900a247472bacde0b82" or "toolu_123")
  * @returns A normalized 9-character alphanumeric ID compatible with Mistral
  */
 export function normalizeMistralToolCallId(id: string): string {
-	// Extract only alphanumeric characters
-	const alphanumeric = id.replace(/[^a-zA-Z0-9]/g, "")
-
-	// Take first 9 characters, or pad with zeros if shorter
-	if (alphanumeric.length >= 9) {
-		return alphanumeric.slice(0, 9)
+	if (/^[a-zA-Z0-9]{9}$/.test(id)) {
+		return id
 	}
 
-	// Pad with zeros to reach 9 characters
-	return alphanumeric.padEnd(9, "0")
+	const hash = createHash("sha256").update(id).digest("hex")
+	return (BigInt(`0x${hash}`) % 36n ** 9n).toString(36).padStart(9, "0")
 }
 
 export type MistralMessage =
@@ -71,6 +70,18 @@ export function convertToMistralMessages(anthropicMessages: Anthropic.Messages.M
 					{ nonToolMessages: [], toolMessages: [] },
 				)
 
+				const userContent = nonToolMessages.map((part) => {
+					if (part.type === "image") {
+						return {
+							type: "image_url" as const,
+							imageUrl: {
+								url: `data:${part.source.media_type};base64,${part.source.data}`,
+							},
+						}
+					}
+					return { type: "text" as const, text: part.text }
+				})
+
 				// If there are tool results, handle them
 				// Mistral's message order is strict: user → assistant → tool → assistant
 				// We CANNOT put user messages after tool messages
@@ -93,26 +104,22 @@ export function convertToMistralMessages(anthropicMessages: Anthropic.Messages.M
 						mistralMessages.push({
 							role: "tool",
 							toolCallId: normalizeMistralToolCallId(toolResult.tool_use_id),
-							content: resultContent,
+							// Preserve accompanying user content once, after all results, without
+							// introducing an invalid tool -> user role transition.
+							content:
+								toolResult === toolMessages[toolMessages.length - 1] && userContent.length > 0
+									? [
+											{ type: "text", text: resultContent },
+											{ type: "text", text: "Additional user content:" },
+											...userContent,
+										]
+									: resultContent,
 						} as ToolMessage & { role: "tool" })
 					}
-					// Note: We intentionally skip any non-tool user content when there are tool results
-					// because Mistral doesn't allow user messages after tool messages
 				} else if (nonToolMessages.length > 0) {
-					// Only add user content if there are NO tool results
 					mistralMessages.push({
 						role: "user",
-						content: nonToolMessages.map((part) => {
-							if (part.type === "image") {
-								return {
-									type: "image_url",
-									imageUrl: {
-										url: `data:${part.source.media_type};base64,${part.source.data}`,
-									},
-								}
-							}
-							return { type: "text", text: part.text }
-						}),
+						content: userContent,
 					})
 				}
 			} else if (anthropicMessage.role === "assistant") {

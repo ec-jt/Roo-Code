@@ -3,9 +3,13 @@
 import { describe, it, expect, beforeEach, vi } from "vitest"
 import { presentAssistantMessage } from "../presentAssistantMessage"
 import { validateToolUse } from "../../tools/validateToolUse"
+import { readFileTool } from "../../tools/ReadFileTool"
+import { useMcpToolTool } from "../../tools/UseMcpToolTool"
 
 // Mock dependencies
 vi.mock("../../task/Task")
+vi.mock("../../tools/ReadFileTool", () => ({ readFileTool: { handle: vi.fn() } }))
+vi.mock("../../tools/UseMcpToolTool", () => ({ useMcpToolTool: { handle: vi.fn() } }))
 vi.mock("../../tools/validateToolUse", () => ({
 	validateToolUse: vi.fn(),
 	isValidToolName: vi.fn((toolName: string) =>
@@ -31,6 +35,8 @@ describe("presentAssistantMessage - Custom Tool Recording", () => {
 	beforeEach(() => {
 		// Reset all mocks
 		vi.clearAllMocks()
+		vi.mocked(customToolRegistry.has).mockReturnValue(false)
+		vi.mocked(customToolRegistry.get).mockReturnValue(undefined)
 
 		// Create a mock Task with minimal properties needed for testing
 		mockTask = {
@@ -41,6 +47,8 @@ describe("presentAssistantMessage - Custom Tool Recording", () => {
 			presentAssistantMessageHasPendingUpdates: false,
 			currentStreamingContentIndex: 0,
 			assistantMessageContent: [],
+			assistantMessageSavedToHistory: true,
+			admitModelOperationTool: vi.fn().mockResolvedValue(true),
 			userMessageContent: [],
 			didCompleteReadingStream: false,
 			didRejectTool: false,
@@ -149,6 +157,7 @@ describe("presentAssistantMessage - Custom Tool Recording", () => {
 					id: toolCallId,
 					name: "read_file",
 					params: { path: "test.txt" },
+					nativeArgs: { path: "test.txt" },
 					partial: false,
 				},
 			]
@@ -160,6 +169,7 @@ describe("presentAssistantMessage - Custom Tool Recording", () => {
 
 			// Should record as "read_file", not "custom_tool"
 			expect(mockTask.recordToolUsage).toHaveBeenCalledWith("read_file")
+			expect(readFileTool.handle).toHaveBeenCalledOnce()
 		})
 
 		it("should record MCP tool usage as 'use_mcp_tool' (not custom_tool)", async () => {
@@ -174,6 +184,7 @@ describe("presentAssistantMessage - Custom Tool Recording", () => {
 						tool_name: "test-tool",
 						arguments: "{}",
 					},
+					nativeArgs: { server_name: "test-server", tool_name: "test-tool", arguments: {} },
 					partial: false,
 				},
 			]
@@ -201,6 +212,7 @@ describe("presentAssistantMessage - Custom Tool Recording", () => {
 
 			// Should record as "use_mcp_tool", not "custom_tool"
 			expect(mockTask.recordToolUsage).toHaveBeenCalledWith("use_mcp_tool")
+			expect(useMcpToolTool.handle).toHaveBeenCalledOnce()
 		})
 	})
 
@@ -231,11 +243,12 @@ describe("presentAssistantMessage - Custom Tool Recording", () => {
 			}
 
 			// Even if registry recognizes it, experiment gate should prevent execution
+			const execute = vi.fn().mockResolvedValue("Should not execute")
 			vi.mocked(customToolRegistry.has).mockReturnValue(true)
 			vi.mocked(customToolRegistry.get).mockReturnValue({
 				name: "my_custom_tool",
 				description: "A custom tool",
-				execute: vi.fn().mockResolvedValue("Should not execute"),
+				execute,
 			})
 
 			await presentAssistantMessage(mockTask)
@@ -245,13 +258,8 @@ describe("presentAssistantMessage - Custom Tool Recording", () => {
 			expect(mockTask.consecutiveMistakeCount).toBe(1)
 
 			// Custom tool should NOT have been executed
-			const getMock = vi.mocked(customToolRegistry.get)
-			if (getMock.mock.results.length > 0) {
-				const customTool = getMock.mock.results[0].value
-				if (customTool) {
-					expect(customTool.execute).not.toHaveBeenCalled()
-				}
-			}
+			expect(execute).not.toHaveBeenCalled()
+			expect(customToolRegistry.get).not.toHaveBeenCalled()
 		})
 
 		it("should not call customToolRegistry.has() when experiment is disabled", async () => {
@@ -337,11 +345,26 @@ describe("presentAssistantMessage - Custom Tool Recording", () => {
 			]
 
 			vi.mocked(customToolRegistry.has).mockReturnValue(true)
+			const execute = vi.fn().mockResolvedValue("Should not execute")
+			vi.mocked(customToolRegistry.get).mockReturnValue({
+				name: "my_custom_tool",
+				description: "A custom tool",
+				execute,
+			})
 
 			await presentAssistantMessage(mockTask)
 
 			// Should not record usage for partial blocks
 			expect(mockTask.recordToolUsage).not.toHaveBeenCalled()
+			expect(mockTask.admitModelOperationTool).not.toHaveBeenCalled()
+			expect(customToolRegistry.get).not.toHaveBeenCalled()
+			expect(execute).not.toHaveBeenCalled()
+			expect(validateToolUse).not.toHaveBeenCalled()
+			expect(mockTask.ask).not.toHaveBeenCalled()
+			expect(mockTask.pushToolResultToUserContent).not.toHaveBeenCalled()
+			expect(mockTask.userMessageContent).toEqual([])
+			expect(mockTask.currentStreamingContentIndex).toBe(0)
+			expect(mockTask.presentAssistantMessageLocked).toBe(false)
 		})
 	})
 })

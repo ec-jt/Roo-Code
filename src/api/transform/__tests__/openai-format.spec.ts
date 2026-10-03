@@ -10,6 +10,7 @@ import {
 	ReasoningDetail,
 } from "../openai-format"
 import { normalizeMistralToolCallId } from "../mistral-format"
+import { normalizeSnapshotMessages } from "../../../core/task/model-operation/normalization"
 
 describe("convertToOpenAiMessages", () => {
 	it("should convert simple text messages", () => {
@@ -1128,6 +1129,158 @@ describe("consolidateReasoningDetails", () => {
 })
 
 describe("sanitizeGeminiMessages", () => {
+	it.each(["google/gemini-3-flash-preview", "openai/gpt-4o"])(
+		"preserves complete normalized batches in the %s transform payload",
+		(modelId) => {
+			const history = normalizeSnapshotMessages([
+				{ role: "user", content: "Inspect and test." },
+				{
+					role: "assistant",
+					reasoning_details: [{ type: "reasoning.encrypted", data: "source-only" }],
+					content: [
+						{ type: "thinking", thinking: "source-only", signature: "source-signature" },
+						{ type: "text", text: "Reading files." },
+						{
+							type: "tool_use",
+							id: "toolu_read",
+							name: "read_file",
+							input: { path: "a.ts", lines: [1, 20] },
+						},
+						{ type: "tool_use", id: "call_missing", name: "read_file", input: { path: "missing.ts" } },
+					],
+				},
+				{
+					role: "user",
+					content: [
+						{ type: "text", text: "Continue despite the missing file." },
+						{
+							type: "tool_result",
+							tool_use_id: "call_missing",
+							content: [
+								{ type: "text", text: "ENOENT" },
+								{ type: "text", text: "missing.ts" },
+							],
+							is_error: true,
+						},
+						{
+							type: "tool_result",
+							tool_use_id: "toolu_read",
+							content: "const value = 42\n",
+							is_error: false,
+						},
+					],
+				},
+				{
+					role: "assistant",
+					content: [
+						{
+							type: "tool_use",
+							id: "call_test",
+							name: "execute_command",
+							input: { command: "npx vitest run", cwd: "src" },
+						},
+					],
+				},
+				{ role: "user", content: [{ type: "tool_result", tool_use_id: "call_test", content: "Tests passed" }] },
+			])
+			const before = structuredClone(history)
+			const converted = convertToOpenAiMessages(history)
+			const convertedBefore = structuredClone(converted)
+			expect(sanitizeGeminiMessages(converted, modelId)).toEqual([
+				{ role: "user", content: "Inspect and test." },
+				{
+					role: "assistant",
+					content: "Reading files.",
+					tool_calls: [
+						{
+							id: "toolu_read",
+							type: "function",
+							function: { name: "read_file", arguments: '{"path":"a.ts","lines":[1,20]}' },
+						},
+						{
+							id: "call_missing",
+							type: "function",
+							function: { name: "read_file", arguments: '{"path":"missing.ts"}' },
+						},
+					],
+				},
+				{ role: "tool", tool_call_id: "call_missing", content: "ENOENT\nmissing.ts" },
+				{ role: "tool", tool_call_id: "toolu_read", content: "const value = 42\n" },
+				{ role: "user", content: [{ type: "text", text: "Continue despite the missing file." }] },
+				{
+					role: "assistant",
+					content: "",
+					tool_calls: [
+						{
+							id: "call_test",
+							type: "function",
+							function: {
+								name: "execute_command",
+								arguments: '{"command":"npx vitest run","cwd":"src"}',
+							},
+						},
+					],
+				},
+				{ role: "tool", tool_call_id: "call_test", content: "Tests passed" },
+			])
+			expect(history).toEqual(before)
+			expect(converted).toEqual(convertedBefore)
+		},
+	)
+
+	it("retains native signatures with shared indices and filters foreign, corrupt, and mismatched details without mutation", () => {
+		const nativeDetails: ReasoningDetail[] = [
+			{ type: "reasoning.text", text: "Native reasoning", format: "google-gemini-v1", index: 0 },
+			{ type: "reasoning.encrypted", id: "a", data: "signature-a", format: "google-gemini-v1", index: 0 },
+			{ type: "reasoning.encrypted", id: "b", data: "signature-b", format: "google-gemini-v1", index: 0 },
+		]
+		const messages = [
+			{
+				role: "assistant" as const,
+				content: "Native answer",
+				tool_calls: ["a", "b"].map((id) => ({
+					id,
+					type: "function" as const,
+					function: { name: "read_file", arguments: "{}" },
+				})),
+				reasoning_details: [
+					...nativeDetails,
+					{ type: "reasoning.encrypted", id: "a", data: "foreign", format: "anthropic-claude-v1" },
+					{ type: "reasoning.encrypted", id: "old-call", data: "stale", format: "google-gemini-v1" },
+					{ type: "reasoning.encrypted", id: "b", format: "google-gemini-v1" },
+				],
+			},
+		]
+		const before = structuredClone(messages)
+		const output = sanitizeGeminiMessages(messages, "google/gemini-3-flash-preview")
+		expect(output).toEqual([{ ...messages[0], reasoning_details: nativeDetails }])
+		expect(messages).toEqual(before)
+		expect(sanitizeGeminiMessages(output, "google/gemini-3-flash-preview")).toEqual(output)
+	})
+
+	it.each([
+		{ details: [] },
+		{ details: [{ type: "reasoning.encrypted", id: "call", data: "" }] },
+		{ details: [{ type: "reasoning.encrypted", id: "old", data: "stale" }] },
+	])("keeps unsigned calls/results when no usable reasoning remains: %j", ({ details }) => {
+		const assistant: OpenAI.Chat.ChatCompletionAssistantMessageParam = {
+			role: "assistant",
+			content: null,
+			tool_calls: [{ id: "call", type: "function", function: { name: "read_file", arguments: "{}" } }],
+		}
+		const result: OpenAI.Chat.ChatCompletionToolMessageParam = {
+			role: "tool",
+			tool_call_id: "call",
+			content: "result",
+		}
+		expect(
+			sanitizeGeminiMessages(
+				[{ ...assistant, reasoning_details: details } as typeof assistant, result],
+				"google/gemini-3-flash-preview",
+			),
+		).toEqual([assistant, result])
+	})
+
 	it("should return messages unchanged for non-Gemini models", () => {
 		const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
 			{ role: "system", content: "You are helpful" },
@@ -1139,7 +1292,7 @@ describe("sanitizeGeminiMessages", () => {
 		expect(result).toEqual(messages)
 	})
 
-	it("should drop tool calls without reasoning_details for Gemini models", () => {
+	it("should preserve tool calls and results without inventing reasoning_details for Gemini models", () => {
 		const messages = [
 			{ role: "system", content: "You are helpful" },
 			{
@@ -1159,12 +1312,8 @@ describe("sanitizeGeminiMessages", () => {
 
 		const result = sanitizeGeminiMessages(messages, "google/gemini-3-flash-preview")
 
-		// Should have 2 messages: system and assistant (with content but no tool_calls)
-		// Tool message should be dropped
-		expect(result).toHaveLength(2)
-		expect(result[0].role).toBe("system")
-		expect(result[1].role).toBe("assistant")
-		expect((result[1] as any).tool_calls).toBeUndefined()
+		expect(result).toEqual(messages)
+		expect((result[1] as any).reasoning_details).toBeUndefined()
 	})
 
 	it("should filter reasoning_details to only include entries matching tool call IDs", () => {
@@ -1207,7 +1356,7 @@ describe("sanitizeGeminiMessages", () => {
 		expect(assistantMsg.reasoning_details[0].id).toBe("call_abc")
 	})
 
-	it("should drop tool calls without matching reasoning_details", () => {
+	it("should preserve the entire parallel batch when only its first call has a signature", () => {
 		const messages = [
 			{
 				role: "assistant",
@@ -1240,16 +1389,7 @@ describe("sanitizeGeminiMessages", () => {
 
 		const result = sanitizeGeminiMessages(messages, "google/gemini-3-flash-preview")
 
-		// Should have: assistant with 1 tool_call, 1 tool message
-		expect(result).toHaveLength(2)
-
-		const assistantMsg = result[0] as any
-		expect(assistantMsg.tool_calls).toHaveLength(1)
-		expect(assistantMsg.tool_calls[0].id).toBe("call_abc")
-
-		// Only the tool result for call_abc should remain
-		expect(result[1].role).toBe("tool")
-		expect((result[1] as any).tool_call_id).toBe("call_abc")
+		expect(result).toEqual(messages)
 	})
 
 	it("should include reasoning_details without id (legacy format)", () => {

@@ -82,9 +82,16 @@ import { ContextProxy } from "../config/ContextProxy"
 import { ProviderSettingsManager } from "../config/ProviderSettingsManager"
 import { CustomModesManager } from "../config/CustomModesManager"
 import { Task } from "../task/Task"
+import { ModelOperationCoordinator, ModelOperationBlocked } from "../task/model-operation/coordinator"
+import { authorizeDelegation, DelegationPolicyError, type DelegationRequest } from "../task/delegation-policy"
+import type { RequestSnapshot } from "../task/model-operation/storage"
+import { assertContextFits } from "../task/model-operation/normalization"
+import { buildNativeToolsArrayWithRestrictions } from "../task/build-tools"
+import { getModelMaxOutputTokens } from "../../shared/api"
+import { getStorageBasePath } from "../../utils/storage"
 
 import { webviewMessageHandler } from "./webviewMessageHandler"
-import type { ClineMessage, TodoItem } from "@roo-code/types"
+import type { ClineMessage } from "@roo-code/types"
 import { readApiMessages, saveApiMessages, saveTaskMessages, TaskHistoryStore } from "../task-persistence"
 import { readTaskMessages } from "../task-persistence/taskMessages"
 import { getNonce } from "./getNonce"
@@ -222,7 +229,7 @@ export class ClineProvider
 				try {
 					// Only rehydrate on genuine streaming failures.
 					// User-initiated cancels are handled by cancelTask().
-					if (instance.abortReason === "streaming_failed") {
+					if (instance.abortReason === "streaming_failed" && !instance.modelOperationDispatchClosed) {
 						// Defensive safeguard: if another path already replaced this instance, skip
 						const current = this.getCurrentTask()
 						if (current && current.instanceId !== instance.instanceId) {
@@ -376,6 +383,7 @@ export class ClineProvider
 	// When the task is completed, the top instance is removed, reactivating the
 	// previous task.
 	async addClineToStack(task: Task) {
+		this.delegationRevision++
 		// Add this cline instance into the stack that represents the order of
 		// all the called tasks.
 		this.clineStack.push(task)
@@ -390,6 +398,137 @@ export class ClineProvider
 		if (!state || typeof state.mode !== "string") {
 			throw new Error(t("common:errors.retrieve_current_mode"))
 		}
+	}
+
+	private modelOperationCoordinator?: ModelOperationCoordinator<Task>
+	/** Invalidates pending one-action delegation approvals, including switch-away-and-back. */
+	public delegationRevision = 0
+	private delegationInProgress = false
+
+	private getModelOperationCoordinator(): ModelOperationCoordinator<Task> {
+		return (this.modelOperationCoordinator ??= new ModelOperationCoordinator<Task>({
+			getCurrentTask: () => this.getCurrentTask(),
+			getStorageRoot: () => getStorageBasePath(this.context.globalStorageUri.fsPath),
+			getWorkspacePath: () => getWorkspacePath(),
+			validateStandalone: async (task) => {
+				if (this._disposed || this.clineStack.length !== 1 || this.getCurrentTask() !== task) {
+					throw new ModelOperationBlocked("Only the current loaded standalone task can be branched.")
+				}
+				await this.taskHistoryStoreInitialized
+				const history = this.taskHistoryStore.get(task.taskId)
+				if (!history)
+					throw new ModelOperationBlocked(
+						"Task history is unavailable. Wait for the task to finish initializing.",
+					)
+				if (
+					history.rootTaskId ||
+					history.parentTaskId ||
+					history.childIds?.length ||
+					history.delegatedToId ||
+					history.awaitingChildId ||
+					history.completedByChildId ||
+					history.status === "delegated"
+				)
+					throw new ModelOperationBlocked(
+						"Task graph operations are on HOLD. Delegation and waiting-parent replay are unsupported.",
+					)
+			},
+			createBranch: (source, snapshot, profileId) => this.createModelOperationBranch(source, snapshot, profileId),
+			activateBranch: (source, branch) => {
+				if (
+					this._disposed ||
+					this.clineStack.length !== 1 ||
+					this.getCurrentTask() !== source ||
+					!source.modelOperationDispatchClosed
+				) {
+					throw new ModelOperationBlocked(
+						"Source task changed or was not fenced. Branch activation is blocked.",
+					)
+				}
+				// No await or normal abort/disposal: preserve source history and command artifacts.
+				source.disposeForModelOperation()
+				for (const cleanup of this.taskEventListeners.get(source) ?? []) cleanup()
+				this.taskEventListeners.delete(source)
+				this.clineStack[0] = branch
+				this.taskCreationCallback?.(branch)
+				this.emit(RooCodeEventName.TaskUnfocused, source.taskId)
+				branch.emit(RooCodeEventName.TaskFocused)
+			},
+			discardBranch: (branch) => branch.dispose(),
+			postStatus: (modelOperationStatus) =>
+				this.postMessageToWebview({ type: "modelOperationStatus", modelOperationStatus }),
+			postState: () => this.postStateToWebview(),
+		}))
+	}
+
+	public handleModelOperation(payload: unknown) {
+		return this.getModelOperationCoordinator().run(payload)
+	}
+
+	public handleModelOperationApproval(payload: unknown) {
+		return this.getModelOperationCoordinator().respondToApproval(payload)
+	}
+
+	/** Construct an inert standalone branch using only the explicitly selected saved profile. */
+	private async createModelOperationBranch(
+		source: Task,
+		snapshot: RequestSnapshot,
+		profileId: string,
+	): Promise<Task> {
+		let profile: Awaited<ReturnType<ProviderSettingsManager["getProfile"]>>
+		try {
+			profile = await this.providerSettingsManager.getProfile({ id: profileId })
+		} catch {
+			throw new ModelOperationBlocked(
+				"The saved profile is unavailable. Save a valid profile and select it explicitly.",
+			)
+		}
+		const state = await this.getState()
+		if (!ProfileValidator.isProfileAllowed(profile, state.organizationAllowList)) {
+			throw new ModelOperationBlocked("The selected saved profile is blocked by organization policy.")
+		}
+		const api = buildApiHandler(profile)
+		const model = api.getModel()
+		const tools = await buildNativeToolsArrayWithRestrictions({
+			provider: this,
+			cwd: source.cwd,
+			mode: state.mode,
+			customModes: state.customModes,
+			experiments: state.experiments,
+			apiConfiguration: profile,
+			browserToolEnabled: state.browserToolEnabled ?? true,
+			disabledTools: state.disabledTools,
+			modelInfo: model.info,
+			includeAllToolsWithRestrictions: profile.apiProvider === "gemini",
+		})
+		try {
+			assertContextFits(
+				snapshot.apiMessages,
+				snapshot.systemPrompt,
+				{
+					contextWindow: model.info.contextWindow,
+					maxTokens: Math.max(
+						model.info.maxTokens ?? 0,
+						"maxTokens" in model && typeof model.maxTokens === "number" ? model.maxTokens : 0,
+						profile.modelMaxTokens ?? 0,
+						getModelMaxOutputTokens({ modelId: model.id, model: model.info, settings: profile }) ?? 0,
+					),
+				},
+				Buffer.byteLength(JSON.stringify(tools.tools), "utf8"),
+			)
+		} catch {
+			throw new ModelOperationBlocked(
+				"The saved prefix is unsupported or exceeds this model's conservative context budget. Select a compatible profile.",
+			)
+		}
+		return new Task({
+			provider: this,
+			apiConfiguration: profile,
+			enableCheckpoints: false,
+			experiments: state.experiments,
+			workspacePath: source.cwd,
+			startTask: false,
+		})
 	}
 
 	async performPreparationTasks(cline: Task) {
@@ -413,6 +552,7 @@ export class ClineProvider
 	// Removes and destroys the top Cline instance (the current finished task),
 	// activating the previous one (resuming the parent task).
 	async removeClineFromStack(options?: { skipDelegationRepair?: boolean }) {
+		this.delegationRevision++
 		if (this.clineStack.length === 0) {
 			return
 		}
@@ -1307,6 +1447,7 @@ export class ClineProvider
 	 * @param newMode The mode to switch to
 	 */
 	public async handleModeSwitch(newMode: Mode) {
+		this.delegationRevision++
 		const task = this.getCurrentTask()
 
 		if (task) {
@@ -1448,6 +1589,7 @@ export class ClineProvider
 		providerSettings: ProviderSettings,
 		activate: boolean = true,
 	): Promise<string | undefined> {
+		this.delegationRevision++
 		try {
 			// TODO: Do we need to be calling `activateProfile`? It's not
 			// clear to me what the source of truth should be; in some cases
@@ -1553,6 +1695,7 @@ export class ClineProvider
 		args: { name: string } | { id: string },
 		options?: { persistModeConfig?: boolean; persistTaskHistory?: boolean },
 	) {
+		this.delegationRevision++
 		const { name, id, ...providerSettings } = await this.providerSettingsManager.activateProfile(args)
 
 		const persistModeConfig = options?.persistModeConfig ?? true
@@ -2172,6 +2315,7 @@ export class ClineProvider
 			autoCondenseContextPercent: autoCondenseContextPercent ?? 100,
 			uriScheme: vscode.env.uriScheme,
 			currentTaskId: currentTask?.taskId,
+			modelOperation: currentTask?.modelOperationState,
 			currentTaskItem: currentTask?.taskId ? this.taskHistoryStore.get(currentTask.taskId) : undefined,
 			clineMessages: currentTask?.clineMessages || [],
 			currentTaskTodos: currentTask?.todoList || [],
@@ -2465,9 +2609,7 @@ export class ClineProvider
 	 * Enable with "roo-cline.taskHistoryGlobalStateWriteThrough": true
 	 */
 	private static globalStateWriteThroughEnabled(): boolean {
-		return vscode.workspace
-			.getConfiguration("roo-cline")
-			.get<boolean>("taskHistoryGlobalStateWriteThrough", false)
+		return vscode.workspace.getConfiguration("roo-cline").get<boolean>("taskHistoryGlobalStateWriteThrough", false)
 	}
 
 	private scheduleGlobalStateWriteThrough(): void {
@@ -2547,6 +2689,7 @@ export class ClineProvider
 	}
 
 	public async setValue<K extends keyof RooCodeSettings>(key: K, value: RooCodeSettings[K]) {
+		this.delegationRevision++
 		await this.contextProxy.setValue(key, value)
 	}
 
@@ -2559,6 +2702,7 @@ export class ClineProvider
 	}
 
 	public async setValues(values: RooCodeSettings) {
+		this.delegationRevision++
 		await this.contextProxy.setValues(values)
 	}
 
@@ -2977,12 +3121,17 @@ export class ClineProvider
 	 * - Emit TaskDelegated (task-level; API forwards to provider/bridge)
 	 * - Create child as sole active and switch mode to child's mode
 	 */
-	public async delegateParentAndOpenChild(params: {
-		parentTaskId: string
-		message: string
-		initialTodos: TodoItem[]
-		mode: string
-	}): Promise<Task> {
+	public async delegateParentAndOpenChild(params: DelegationRequest): Promise<Task> {
+		if (this.delegationInProgress) throw new DelegationPolicyError("Another delegation is already pending.")
+		this.delegationInProgress = true
+		try {
+			return await this.performDelegation(structuredClone(params))
+		} finally {
+			this.delegationInProgress = false
+		}
+	}
+
+	private async performDelegation(params: DelegationRequest): Promise<Task> {
 		const { parentTaskId, message, initialTodos, mode } = params
 
 		// Metadata-driven delegation is always enabled
@@ -2997,6 +3146,16 @@ export class ClineProvider
 				`[delegateParentAndOpenChild] Parent mismatch: expected ${parentTaskId}, current ${parent.taskId}`,
 			)
 		}
+		const { revalidate, assertCurrent } = await authorizeDelegation(this, parent, params, async (detail) => {
+			const approve = "Approve this delegation only"
+			return (
+				(await vscode.window.showWarningMessage(
+					"Allow an exceptional deeper subtask?",
+					{ modal: true, detail },
+					approve,
+				)) === approve
+			)
+		})
 		// 2) Flush pending tool results to API history BEFORE disposing the parent.
 		//    This is critical: when tools are called before new_task,
 		//    their tool_result blocks are in userMessageContent but not yet saved to API history.
@@ -3030,6 +3189,9 @@ export class ClineProvider
 				}`,
 			)
 		}
+
+		await revalidate()
+		assertCurrent()
 
 		// 3) Enforce single-open invariant by closing/disposing the parent first
 		//    This ensures we never have >1 tasks open at any time during delegation.

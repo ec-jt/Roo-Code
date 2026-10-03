@@ -120,6 +120,7 @@ const withNativeArgs = (block: ToolUse<"new_task">): ToolUse<"new_task"> => ({
 		mode: block.params.mode,
 		message: block.params.message,
 		todos: block.params.todos,
+		reason: block.params.reason,
 	} as unknown as NativeToolArgs["new_task"],
 })
 
@@ -642,6 +643,7 @@ describe("newTaskTool delegation flow", () => {
 			params: {
 				mode: "code",
 				message: "Do something",
+				reason: "An isolated trace requires its own context",
 				// no todos -> should default to []
 			},
 			partial: false,
@@ -660,6 +662,7 @@ describe("newTaskTool delegation flow", () => {
 			message: "Do something",
 			initialTodos: [],
 			mode: "code",
+			reason: "An isolated trace requires its own context",
 		})
 
 		// Assert: legacy path not used

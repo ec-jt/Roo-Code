@@ -146,15 +146,17 @@ export function consolidateReasoningDetails(reasoningDetails: ReasoningDetail[])
 }
 
 /**
- * Sanitizes OpenAI messages for Gemini models by filtering reasoning_details
- * to only include entries that match the tool call IDs.
+ * Filters incompatible reasoning_details on Gemini tool-call messages without
+ * discarding historical tool calls or their results.
  *
  * Gemini models require thought signatures for tool calls. When switching providers
  * mid-conversation, historical tool calls may not include Gemini reasoning details,
- * which can poison the next request. This function:
- * 1. Filters reasoning_details to only include entries matching tool call IDs
- * 2. Drops tool_calls that lack any matching reasoning_details
- * 3. Removes corresponding tool result messages for dropped tool calls
+ * which must not erase otherwise complete tool history. OpenRouter supplies its
+ * supported historical signature sentinel after this step when no encrypted
+ * reasoning remains. A signature on the first call can cover an entire parallel
+ * batch, so absence of a per-call signature is not grounds for dropping a call.
+ * Valid native details retain their order and shape, including separate call IDs
+ * that share an index. No reasoning is fabricated here and the input is not mutated.
  *
  * @param messages - Array of OpenAI chat completion messages
  * @param modelId - The model ID to check if sanitization is needed
@@ -170,87 +172,34 @@ export function sanitizeGeminiMessages(
 		return messages
 	}
 
-	const droppedToolCallIds = new Set<string>()
-	const sanitized: OpenAI.Chat.ChatCompletionMessageParam[] = []
-
-	for (const msg of messages) {
-		if (msg.role === "assistant") {
-			const anyMsg = msg as any
-			const toolCalls = anyMsg.tool_calls as OpenAI.Chat.ChatCompletionMessageToolCall[] | undefined
-			const reasoningDetails = anyMsg.reasoning_details as ReasoningDetail[] | undefined
-
-			if (Array.isArray(toolCalls) && toolCalls.length > 0) {
-				const hasReasoningDetails = Array.isArray(reasoningDetails) && reasoningDetails.length > 0
-
-				if (!hasReasoningDetails) {
-					// No reasoning_details at all - drop all tool calls
-					for (const tc of toolCalls) {
-						if (tc?.id) {
-							droppedToolCallIds.add(tc.id)
-						}
-					}
-					// Keep any textual content, but drop the tool_calls themselves
-					if (anyMsg.content) {
-						sanitized.push({ role: "assistant", content: anyMsg.content } as any)
-					}
-					continue
-				}
-
-				// Filter reasoning_details to only include entries matching tool call IDs
-				// This prevents mismatched reasoning details from poisoning the request
-				const validToolCalls: OpenAI.Chat.ChatCompletionMessageToolCall[] = []
-				const validReasoningDetails: ReasoningDetail[] = []
-
-				for (const tc of toolCalls) {
-					// Check if there's a reasoning_detail with matching id
-					const matchingDetails = reasoningDetails.filter((d) => d.id === tc.id)
-
-					if (matchingDetails.length > 0) {
-						validToolCalls.push(tc)
-						validReasoningDetails.push(...matchingDetails)
-					} else {
-						// No matching reasoning_detail - drop this tool call
-						if (tc?.id) {
-							droppedToolCallIds.add(tc.id)
-						}
-					}
-				}
-
-				// Also include reasoning_details that don't have an id (legacy format)
-				const detailsWithoutId = reasoningDetails.filter((d) => !d.id)
-				validReasoningDetails.push(...detailsWithoutId)
-
-				// Build the sanitized message
-				const sanitizedMsg: any = {
-					role: "assistant",
-					content: anyMsg.content ?? "",
-				}
-
-				if (validReasoningDetails.length > 0) {
-					sanitizedMsg.reasoning_details = consolidateReasoningDetails(validReasoningDetails)
-				}
-
-				if (validToolCalls.length > 0) {
-					sanitizedMsg.tool_calls = validToolCalls
-				}
-
-				sanitized.push(sanitizedMsg)
-				continue
-			}
+	return messages.map((msg) => {
+		if (msg.role !== "assistant" || !msg.tool_calls?.length) {
+			return msg
 		}
 
-		if (msg.role === "tool") {
-			const anyMsg = msg as any
-			if (anyMsg.tool_call_id && droppedToolCallIds.has(anyMsg.tool_call_id)) {
-				// Skip tool result for dropped tool call
-				continue
-			}
+		const {
+			reasoning_details: details,
+			tool_calls,
+			...rest
+		} = msg as typeof msg & {
+			reasoning_details?: ReasoningDetail[]
+		}
+		if (!Array.isArray(details)) {
+			return { ...rest, tool_calls }
 		}
 
-		sanitized.push(msg)
-	}
-
-	return sanitized
+		const callIds = new Set(msg.tool_calls.map((call) => call.id))
+		const compatibleDetails = details.filter(
+			(detail) =>
+				(!detail.id || callIds.has(detail.id)) &&
+				(!detail.format || detail.format === "unknown" || detail.format === "google-gemini-v1") &&
+				(detail.type !== "reasoning.encrypted" || (typeof detail.data === "string" && detail.data.length > 0)),
+		)
+		// Keep reasoning before tool_calls, as in convertToOpenAiMessages.
+		return compatibleDetails.length > 0
+			? { ...rest, reasoning_details: compatibleDetails, tool_calls }
+			: { ...rest, tool_calls }
+	})
 }
 
 /**

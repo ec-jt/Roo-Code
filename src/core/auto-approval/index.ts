@@ -53,12 +53,19 @@ export async function checkAutoApproval({
 	ask,
 	text,
 	isProtected,
+	requiresToolApproval,
 }: {
 	state?: Pick<ExtensionState, AutoApprovalState | AutoApprovalStateOptions>
 	ask: ClineAsk
 	text?: string
 	isProtected?: boolean
+	requiresToolApproval?: boolean
 }): Promise<CheckAutoApprovalResult> {
+	// Task-local mandatory approval takes precedence over every automatic path.
+	if (requiresToolApproval) {
+		return { decision: "ask" }
+	}
+
 	if (isNonBlockingAsk(ask)) {
 		return { decision: "approve" }
 	}

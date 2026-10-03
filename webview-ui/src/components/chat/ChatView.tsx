@@ -35,6 +35,7 @@ import Announcement from "./Announcement"
 import BrowserActionRow from "./BrowserActionRow"
 import BrowserSessionStatusRow from "./BrowserSessionStatusRow"
 import ChatRow from "./ChatRow"
+import { ModelOperationPanel, ModelOperationProvider } from "./ModelOperationContext"
 import WarningRow from "./WarningRow"
 import { ChatTextArea } from "./ChatTextArea"
 import TaskHeader from "./TaskHeader"
@@ -1800,6 +1801,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 					/>
 				</div>
 			)}
+			<ModelOperationPanel />
 			<ChatTextArea
 				ref={textAreaRef}
 				inputValue={inputValue}
@@ -1836,6 +1838,12 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 	)
 }
 
-const ChatView = forwardRef(ChatViewComponent)
+const ChatView = forwardRef<ChatViewRef, ChatViewProps>((props, ref) => (
+	<ModelOperationProvider>
+		<ChatViewWithRef {...props} ref={ref} />
+	</ModelOperationProvider>
+))
+
+const ChatViewWithRef = forwardRef(ChatViewComponent)
 
 export default ChatView

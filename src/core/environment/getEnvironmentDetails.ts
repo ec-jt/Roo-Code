@@ -19,6 +19,7 @@ import { getGitStatus } from "../../utils/git"
 
 import { Task } from "../task/Task"
 import { formatReminderSection } from "./reminder"
+import { delegationContext, resolveDelegationAncestry } from "../task/delegation-policy"
 
 export async function getEnvironmentDetails(cline: Task, includeFileDetails: boolean = false) {
 	let details = ""
@@ -26,6 +27,21 @@ export async function getEnvironmentDetails(cline: Task, includeFileDetails: boo
 	const clineProvider = cline.providerRef.deref()
 	const state = await clineProvider?.getState()
 	const { maxWorkspaceFiles = 200 } = state ?? {}
+	let delegationDepth: number | undefined
+	try {
+		if (clineProvider) {
+			delegationDepth =
+				(
+					await resolveDelegationAncestry(
+						cline,
+						async (id) => (await clineProvider.getTaskWithId(id)).historyItem,
+					)
+				).length - 1
+		}
+	} catch {
+		// Fail closed in runtime guidance as well as in the backend guard.
+	}
+	details += `\n\n# Task Delegation\n${delegationContext(delegationDepth)}`
 
 	// It could be useful for cline to know if the user went from one or no
 	// file to another between messages, so we always include this context.

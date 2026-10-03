@@ -75,6 +75,7 @@ import {
 import { cn } from "@/lib/utils"
 import { PathTooltip } from "../ui/PathTooltip"
 import { OpenMarkdownPreviewButton } from "./OpenMarkdownPreviewButton"
+import { RegenerateWithModel } from "./ModelOperationContext"
 
 // Helper function to get previous todos before a specific message
 function getPreviousTodos(messages: ClineMessage[], currentMessageTs: number): any[] {
@@ -1207,6 +1208,7 @@ export const ChatRowContent = ({
 							</div>
 							<div className="pl-6">
 								<Markdown markdown={message.text} partial={message.partial} />
+								<RegenerateWithModel message={message} />
 								{message.images && message.images.length > 0 && (
 									<div style={{ marginTop: "10px" }}>
 										{message.images.map((image, index) => (

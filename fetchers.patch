@@ -1,0 +1,206 @@
+diff --git a/src/api/providers/fetchers/fetch-timeout.ts b/src/api/providers/fetchers/fetch-timeout.ts
+new file mode 100644
+index 0000000..f64676e
+--- /dev/null
++++ b/src/api/providers/fetchers/fetch-timeout.ts
+@@ -0,0 +1,3 @@
++// Timeout for model-list fetches. Prevents a hung provider endpoint from
++// blocking extension/webview initialization indefinitely.
++export const MODEL_FETCH_TIMEOUT_MS = 10_000
+diff --git a/src/api/providers/fetchers/lmstudio.ts b/src/api/providers/fetchers/lmstudio.ts
+index 73cb60e..20c733a 100644
+--- a/src/api/providers/fetchers/lmstudio.ts
++++ b/src/api/providers/fetchers/lmstudio.ts
+@@ -4,6 +4,7 @@ import { LLM, LLMInfo, LLMInstanceInfo, LMStudioClient } from "@lmstudio/sdk"
+ import { type ModelInfo, lMStudioDefaultModelInfo } from "@roo-code/types"
+ 
+ import { flushModels, getModels } from "./modelCache"
++import { MODEL_FETCH_TIMEOUT_MS } from "./fetch-timeout"
+ 
+ const modelsWithLoadedDetails = new Set<string>()
+ 
+@@ -13,7 +14,7 @@ export const forceFullModelDetailsLoad = async (baseUrl: string, modelId: string
+ 	try {
+ 		// Test the connection to LM Studio first
+ 		// Crrors will be caught further down.
+-		await axios.get(`${baseUrl}/v1/models`)
++		await axios.get(`${baseUrl}/v1/models`, { timeout: MODEL_FETCH_TIMEOUT_MS })
+ 		const lmsUrl = baseUrl.replace(/^http:\/\//, "ws://").replace(/^https:\/\//, "wss://")
+ 
+ 		const client = new LMStudioClient({ baseUrl: lmsUrl })
+@@ -66,7 +67,7 @@ export async function getLMStudioModels(baseUrl = "http://localhost:1234"): Prom
+ 
+ 		// test the connection to LM Studio first
+ 		// errors will be caught further down
+-		await axios.get(`${baseUrl}/v1/models`)
++		await axios.get(`${baseUrl}/v1/models`, { timeout: MODEL_FETCH_TIMEOUT_MS })
+ 
+ 		const client = new LMStudioClient({ baseUrl: lmsUrl })
+ 
+diff --git a/src/api/providers/fetchers/modelCache.ts b/src/api/providers/fetchers/modelCache.ts
+index 2f0b23c..2866473 100644
+--- a/src/api/providers/fetchers/modelCache.ts
++++ b/src/api/providers/fetchers/modelCache.ts
+@@ -27,6 +27,21 @@ import { getPoeModels } from "./poe"
+ 
+ const memoryCache = new NodeCache({ stdTTL: 5 * 60, checkperiod: 5 * 60 })
+ 
++// Hard deadline for any provider model-list fetch, regardless of transport
++// (axios, SDK libraries, etc.). Prevents a single hung endpoint from blocking
++// webview initialization or the requestRouterModels aggregation forever.
++const MODEL_FETCH_DEADLINE_MS = 15_000
++
++function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
++	let timer: NodeJS.Timeout | undefined
++	const timeout = new Promise<never>((_, reject) => {
++		timer = setTimeout(() => reject(new Error(`Timed out after ${ms}ms fetching models for ${label}`)), ms)
++	})
++	return Promise.race([promise, timeout]).finally(() => {
++		if (timer) clearTimeout(timer)
++	}) as Promise<T>
++}
++
+ // Zod schema for validating ModelRecord structure from disk cache
+ const modelRecordSchema = z.record(z.string(), modelInfoSchema)
+ 
+@@ -118,7 +133,7 @@ export const getModels = async (options: GetModelsOptions): Promise<ModelRecord>
+ 	}
+ 
+ 	try {
+-		models = await fetchModelsFromProvider(options)
++		models = await withTimeout(fetchModelsFromProvider(options), MODEL_FETCH_DEADLINE_MS, provider)
+ 		const modelCount = Object.keys(models).length
+ 
+ 		// Only cache non-empty results to prevent persisting failed API responses.
+@@ -164,7 +179,7 @@ export const refreshModels = async (options: GetModelsOptions): Promise<ModelRec
+ 	const refreshPromise = (async (): Promise<ModelRecord> => {
+ 		try {
+ 			// Force fresh API fetch - skip getModelsFromCache() check
+-			const models = await fetchModelsFromProvider(options)
++			const models = await withTimeout(fetchModelsFromProvider(options), MODEL_FETCH_DEADLINE_MS, provider)
+ 			const modelCount = Object.keys(models).length
+ 
+ 			// Get existing cached data for comparison
+diff --git a/src/api/providers/fetchers/ollama.ts b/src/api/providers/fetchers/ollama.ts
+index ba5b1c1..701b39e 100644
+--- a/src/api/providers/fetchers/ollama.ts
++++ b/src/api/providers/fetchers/ollama.ts
+@@ -1,6 +1,7 @@
+ import axios from "axios"
+ import { ModelInfo, ollamaDefaultModelInfo } from "@roo-code/types"
+ import { z } from "zod"
++import { MODEL_FETCH_TIMEOUT_MS } from "./fetch-timeout"
+ 
+ const OllamaModelDetailsSchema = z.object({
+ 	family: z.string(),
+@@ -79,7 +80,7 @@ export async function getOllamaModels(
+ 			headers["Authorization"] = `Bearer ${apiKey}`
+ 		}
+ 
+-		const response = await axios.get<OllamaModelsResponse>(`${baseUrl}/api/tags`, { headers })
++		const response = await axios.get<OllamaModelsResponse>(`${baseUrl}/api/tags`, { headers, timeout: MODEL_FETCH_TIMEOUT_MS })
+ 		const parsedResponse = OllamaModelsResponseSchema.safeParse(response.data)
+ 		let modelInfoPromises = []
+ 
+@@ -92,7 +93,7 @@ export async function getOllamaModels(
+ 							{
+ 								model: ollamaModel.model,
+ 							},
+-							{ headers },
++							{ headers, timeout: MODEL_FETCH_TIMEOUT_MS },
+ 						)
+ 						.then((ollamaModelInfo) => {
+ 							const modelInfo = parseOllamaModel(ollamaModelInfo.data)
+diff --git a/src/api/providers/fetchers/openrouter.ts b/src/api/providers/fetchers/openrouter.ts
+index 0cf65fb..d6f4456 100644
+--- a/src/api/providers/fetchers/openrouter.ts
++++ b/src/api/providers/fetchers/openrouter.ts
+@@ -11,6 +11,7 @@ import {
+ 
+ import type { ApiHandlerOptions } from "../../../shared/api"
+ import { parseApiPrice } from "../../../shared/cost"
++import { MODEL_FETCH_TIMEOUT_MS } from "./fetch-timeout"
+ 
+ /**
+  * OpenRouterBaseModel
+@@ -99,7 +100,7 @@ export async function getOpenRouterModels(options?: ApiHandlerOptions): Promise<
+ 	const baseURL = options?.openRouterBaseUrl || "https://openrouter.ai/api/v1"
+ 
+ 	try {
+-		const response = await axios.get<OpenRouterModelsResponse>(`${baseURL}/models`)
++		const response = await axios.get<OpenRouterModelsResponse>(`${baseURL}/models`, { timeout: MODEL_FETCH_TIMEOUT_MS })
+ 		const result = openRouterModelsResponseSchema.safeParse(response.data)
+ 		const data = result.success ? result.data.data : response.data.data
+ 
+@@ -147,7 +148,7 @@ export async function getOpenRouterModelEndpoints(
+ 	const baseURL = options?.openRouterBaseUrl || "https://openrouter.ai/api/v1"
+ 
+ 	try {
+-		const response = await axios.get<OpenRouterModelEndpointsResponse>(`${baseURL}/models/${modelId}/endpoints`)
++		const response = await axios.get<OpenRouterModelEndpointsResponse>(`${baseURL}/models/${modelId}/endpoints`, { timeout: MODEL_FETCH_TIMEOUT_MS })
+ 		const result = openRouterModelEndpointsResponseSchema.safeParse(response.data)
+ 		const data = result.success ? result.data.data : response.data.data
+ 
+diff --git a/src/api/providers/fetchers/requesty.ts b/src/api/providers/fetchers/requesty.ts
+index 64c7de6..21dce84 100644
+--- a/src/api/providers/fetchers/requesty.ts
++++ b/src/api/providers/fetchers/requesty.ts
+@@ -4,6 +4,7 @@ import type { ModelInfo } from "@roo-code/types"
+ 
+ import { parseApiPrice } from "../../../shared/cost"
+ import { toRequestyServiceUrl } from "../../../shared/utils/requesty"
++import { MODEL_FETCH_TIMEOUT_MS } from "./fetch-timeout"
+ 
+ export async function getRequestyModels(baseUrl?: string, apiKey?: string): Promise<Record<string, ModelInfo>> {
+ 	const models: Record<string, ModelInfo> = {}
+@@ -18,7 +19,7 @@ export async function getRequestyModels(baseUrl?: string, apiKey?: string): Prom
+ 		const resolvedBaseUrl = toRequestyServiceUrl(baseUrl)
+ 		const modelsUrl = new URL("v1/models", resolvedBaseUrl)
+ 
+-		const response = await axios.get(modelsUrl.toString(), { headers })
++		const response = await axios.get(modelsUrl.toString(), { headers, timeout: MODEL_FETCH_TIMEOUT_MS })
+ 		const rawModels = response.data.data
+ 
+ 		for (const rawModel of rawModels) {
+diff --git a/src/api/providers/fetchers/unbound.ts b/src/api/providers/fetchers/unbound.ts
+index 3841011..04119e1 100644
+--- a/src/api/providers/fetchers/unbound.ts
++++ b/src/api/providers/fetchers/unbound.ts
+@@ -3,6 +3,7 @@ import axios from "axios"
+ import type { ModelInfo } from "@roo-code/types"
+ 
+ import { parseApiPrice } from "../../../shared/cost"
++import { MODEL_FETCH_TIMEOUT_MS } from "./fetch-timeout"
+ 
+ export async function getUnboundModels(apiKey?: string | null): Promise<Record<string, ModelInfo>> {
+ 	const models: Record<string, ModelInfo> = {}
+@@ -14,7 +15,7 @@ export async function getUnboundModels(apiKey?: string | null): Promise<Record<s
+ 			headers["Authorization"] = `Bearer ${apiKey}`
+ 		}
+ 
+-		const response = await axios.get("https://api.getunbound.ai/models", { headers })
++		const response = await axios.get("https://api.getunbound.ai/models", { headers, timeout: MODEL_FETCH_TIMEOUT_MS })
+ 		const rawModels = response.data?.data ?? response.data
+ 
+ 		for (const rawModel of rawModels) {
+diff --git a/src/api/providers/fetchers/vercel-ai-gateway.ts b/src/api/providers/fetchers/vercel-ai-gateway.ts
+index a708d10..f62195d 100644
+--- a/src/api/providers/fetchers/vercel-ai-gateway.ts
++++ b/src/api/providers/fetchers/vercel-ai-gateway.ts
+@@ -6,6 +6,7 @@ import { VERCEL_AI_GATEWAY_VISION_ONLY_MODELS, VERCEL_AI_GATEWAY_VISION_AND_TOOL
+ 
+ import type { ApiHandlerOptions } from "../../../shared/api"
+ import { parseApiPrice } from "../../../shared/cost"
++import { MODEL_FETCH_TIMEOUT_MS } from "./fetch-timeout"
+ 
+ /**
+  * VercelAiGatewayPricing
+@@ -58,7 +59,7 @@ export async function getVercelAiGatewayModels(options?: ApiHandlerOptions): Pro
+ 	const baseURL = "https://ai-gateway.vercel.sh/v1"
+ 
+ 	try {
+-		const response = await axios.get<VercelAiGatewayModelsResponse>(`${baseURL}/models`)
++		const response = await axios.get<VercelAiGatewayModelsResponse>(`${baseURL}/models`, { timeout: MODEL_FETCH_TIMEOUT_MS })
+ 		const result = vercelAiGatewayModelsResponseSchema.safeParse(response.data)
+ 		const data = result.success ? result.data.data : response.data.data
+ 

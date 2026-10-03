@@ -15,6 +15,11 @@ import { ContextProxy } from "../../config/ContextProxy"
 import { processUserContentMentions } from "../../mentions/processUserContentMentions"
 import { MultiSearchReplaceDiffStrategy } from "../../diff/strategies/multi-search-replace"
 
+vi.mock("../../task-persistence", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../../task-persistence")>()),
+	saveApiMessages: vi.fn().mockResolvedValue(undefined),
+}))
+
 // Mock delay before any imports that might use it
 vi.mock("delay", () => ({
 	__esModule: true,
@@ -169,12 +174,19 @@ vi.mock("../../condense", async (importOriginal) => {
 })
 // Mock storagePathManager to prevent dynamic import issues.
 vi.mock("../../../utils/storage", () => ({
+	getStorageBasePath: vi.fn().mockImplementation((globalStoragePath) => Promise.resolve(globalStoragePath)),
 	getTaskDirectoryPath: vi
 		.fn()
 		.mockImplementation((globalStoragePath, taskId) => Promise.resolve(`${globalStoragePath}/tasks/${taskId}`)),
 	getSettingsDirectoryPath: vi
 		.fn()
 		.mockImplementation((globalStoragePath) => Promise.resolve(`${globalStoragePath}/settings`)),
+}))
+
+// Request dispatch in these unit tests must not read provenance or write real snapshots.
+vi.mock("../model-operation/storage", () => ({
+	saveRequestSnapshot: vi.fn().mockResolvedValue(undefined),
+	readBranchProvenance: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock("../../../utils/fs", () => ({
@@ -308,6 +320,81 @@ describe("Cline", () => {
 	})
 
 	describe("constructor", () => {
+		it("preserves durable lineage without relying on a live root or stack", () => {
+			const root = new Task({
+				provider: mockProvider,
+				apiConfiguration: mockApiConfig,
+				task: "Root",
+				taskId: "root",
+				startTask: false,
+			})
+			const child = new Task({
+				provider: mockProvider,
+				apiConfiguration: mockApiConfig,
+				task: "Child",
+				taskId: "child",
+				parentTask: root,
+				startTask: false,
+			})
+			const grandchild = new Task({
+				provider: mockProvider,
+				apiConfiguration: mockApiConfig,
+				task: "Grandchild",
+				taskId: "grandchild",
+				parentTask: child,
+				startTask: false,
+			})
+			expect(root.parentTaskId).toBeUndefined()
+			expect(child.parentTaskId).toBe("root")
+			expect(child.rootTaskId).toBe("root")
+			expect(grandchild.parentTaskId).toBe("child")
+			expect(grandchild.rootTaskId).toBe("root")
+			const restored = new Task({
+				provider: mockProvider,
+				apiConfiguration: mockApiConfig,
+				historyItem: {
+					id: "grandchild",
+					parentTaskId: "child",
+					rootTaskId: "root",
+					task: "Restored",
+					ts: 1,
+					number: 1,
+					tokensIn: 0,
+					tokensOut: 0,
+					totalCost: 0,
+				},
+				startTask: false,
+			})
+			expect(restored.parentTask).toBeUndefined()
+			expect(restored.parentTaskId).toBe("child")
+			expect(restored.rootTaskId).toBe("root")
+			const legacyChild = new Task({
+				provider: mockProvider,
+				apiConfiguration: mockApiConfig,
+				historyItem: {
+					id: "legacy-child",
+					parentTaskId: "root",
+					task: "Legacy",
+					ts: 1,
+					number: 1,
+					tokensIn: 0,
+					tokensOut: 0,
+					totalCost: 0,
+				},
+				startTask: false,
+			})
+			const legacyGrandchild = new Task({
+				provider: mockProvider,
+				apiConfiguration: mockApiConfig,
+				task: "Grandchild",
+				parentTask: legacyChild,
+				startTask: false,
+			})
+			expect(legacyGrandchild.parentTaskId).toBe("legacy-child")
+			// The durable parent chain remains authoritative when older histories lack a root ID.
+			expect(legacyGrandchild.rootTaskId).toBeUndefined()
+		})
+
 		it("should always have diff strategy defined", async () => {
 			const cline = new Task({
 				provider: mockProvider,

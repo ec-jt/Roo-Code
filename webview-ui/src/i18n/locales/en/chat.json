@@ -1,4 +1,25 @@
 {
+	"modelOperation": {
+		"regenerate": "Regenerate with model…",
+		"switch": "Stop and restart with this model",
+		"profile": "Saved model profile",
+		"warning": "This uses the current workspace files. No checkpoint is restored and previous filesystem changes are not undone. A new standalone branch is created and the original task is preserved. Tools in the new branch require fresh, explicit approval, even when auto-approval is enabled.",
+		"confirmWorkspace": "I understand: use the current workspace without restoring a checkpoint.",
+		"cancel": "Cancel",
+		"legacy": "Regeneration is unavailable: this legacy message has no saved request metadata.",
+		"unavailable": "Model operation state is unavailable. Refresh the task before trying again.",
+		"stale": "The task instance or request revision changed. Close this dialog and try again.",
+		"noProfiles": "Save a model profile in settings before continuing.",
+		"approvalTitle": "Model operation tool approval",
+		"approvalRequired": "This branch requires explicit approval for each tool. Normal auto-approval does not apply.",
+		"approvalTool": "Allow this tool to run in the current workspace: {{tool}}?",
+		"status": {
+			"running": "Model operation in progress",
+			"completed": "Model operation accepted",
+			"blocked": "Model operation blocked",
+			"failed": "Model operation failed"
+		}
+	},
 	"greeting": "Welcome to Roo Code!",
 	"task": {
 		"title": "Task",

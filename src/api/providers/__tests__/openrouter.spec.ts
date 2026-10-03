@@ -1,6 +1,10 @@
 // pnpm --filter roo-cline test api/providers/__tests__/openrouter.spec.ts
 
-vitest.mock("vscode", () => ({}))
+vitest.mock("vscode", () => ({
+	workspace: {
+		getConfiguration: vitest.fn(() => ({ get: vitest.fn(() => undefined) })),
+	},
+}))
 
 import { Anthropic } from "@anthropic-ai/sdk"
 import OpenAI from "openai"
@@ -8,6 +12,7 @@ import OpenAI from "openai"
 import { OpenRouterHandler } from "../openrouter"
 import { ApiHandlerOptions } from "../../../shared/api"
 import { Package } from "../../../shared/package"
+import { normalizeSnapshotMessages } from "../../../core/task/model-operation/normalization"
 
 vitest.mock("openai")
 vitest.mock("delay", () => ({ default: vitest.fn(() => Promise.resolve()) }))
@@ -194,6 +199,175 @@ describe("OpenRouterHandler", () => {
 	})
 
 	describe("createMessage", () => {
+		it("sends complete imported Gemini batches with sentinel signatures and preserves subsequent native signatures", async () => {
+			const handler = new OpenRouterHandler(mockOptions)
+			vitest.spyOn(handler, "fetchModel").mockResolvedValue({
+				...(await handler.fetchModel()),
+				id: "google/gemini-3-flash-preview",
+			})
+			const mockCreate = vitest.fn().mockResolvedValue({
+				async *[Symbol.asyncIterator]() {
+					yield { choices: [{ delta: { content: "Continuing" } }] }
+				},
+			})
+			;(OpenAI as any).prototype.chat = { completions: { create: mockCreate } }
+			const imported = normalizeSnapshotMessages([
+				{ role: "user", content: "Inspect the files." },
+				{
+					role: "assistant",
+					reasoning_details: [{ type: "reasoning.encrypted", data: "foreign-reasoning" }],
+					content: [
+						{ type: "text", text: "Reading both files." },
+						{
+							type: "tool_use",
+							id: "toolu_source",
+							name: "read_file",
+							input: { path: "src/main.ts", lines: { start: 1, end: 10 } },
+						},
+						{ type: "tool_use", id: "call_missing", name: "read_file", input: { path: "missing.ts" } },
+					],
+				},
+				{
+					role: "user",
+					content: [
+						{
+							type: "tool_result",
+							tool_use_id: "call_missing",
+							content: [
+								{ type: "text", text: "ENOENT" },
+								{ type: "text", text: "missing.ts" },
+							],
+							is_error: true,
+						},
+						{ type: "tool_result", tool_use_id: "toolu_source", content: "const value = 42\n" },
+						{ type: "text", text: "Continue with the source." },
+					],
+				},
+				{
+					role: "assistant",
+					content: [
+						{ type: "tool_use", id: "call_empty", name: "execute_command", input: { command: "true" } },
+					],
+				},
+				{ role: "user", content: [{ type: "tool_result", tool_use_id: "call_empty", content: "" }] },
+			])
+			const nativeDetails = [
+				{
+					type: "reasoning.encrypted",
+					data: "native-signature-a",
+					id: "native_a",
+					format: "google-gemini-v1",
+					index: 0,
+				},
+				{
+					type: "reasoning.encrypted",
+					data: "native-signature-b",
+					id: "native_b",
+					format: "google-gemini-v1",
+					index: 0,
+				},
+			]
+			// Only the imported prefix is normalized. Later target-native metadata is retained.
+			const messages: Anthropic.Messages.MessageParam[] = [
+				...imported,
+				{
+					role: "assistant",
+					reasoning_details: nativeDetails,
+					content: [
+						{ type: "tool_use", id: "native_a", name: "read_file", input: { path: "a.ts" } },
+						{ type: "tool_use", id: "native_b", name: "read_file", input: { path: "b.ts" } },
+					],
+				} as Anthropic.Messages.MessageParam,
+				{
+					role: "user",
+					content: [
+						{ type: "tool_result", tool_use_id: "native_b", content: "B" },
+						{ type: "tool_result", tool_use_id: "native_a", content: "A" },
+					],
+				},
+			]
+			const before = structuredClone(messages)
+			await handler.createMessage("System", messages).next()
+
+			expect(mockCreate).toHaveBeenCalledOnce()
+			expect(mockCreate.mock.calls[0][0].messages).toEqual([
+				{ role: "system", content: "System" },
+				{ role: "user", content: "Inspect the files." },
+				{
+					role: "assistant",
+					content: "Reading both files.",
+					tool_calls: [
+						{
+							id: "toolu_source",
+							type: "function",
+							function: {
+								name: "read_file",
+								arguments: '{"path":"src/main.ts","lines":{"start":1,"end":10}}',
+							},
+						},
+						{
+							id: "call_missing",
+							type: "function",
+							function: { name: "read_file", arguments: '{"path":"missing.ts"}' },
+						},
+					],
+					reasoning_details: [
+						{
+							type: "reasoning.encrypted",
+							data: "skip_thought_signature_validator",
+							id: "toolu_source",
+							format: "google-gemini-v1",
+							index: 0,
+						},
+					],
+				},
+				{ role: "tool", tool_call_id: "call_missing", content: "ENOENT\nmissing.ts" },
+				{ role: "tool", tool_call_id: "toolu_source", content: "const value = 42\n" },
+				{ role: "user", content: [{ type: "text", text: "Continue with the source." }] },
+				{
+					role: "assistant",
+					content: "",
+					tool_calls: [
+						{
+							id: "call_empty",
+							type: "function",
+							function: { name: "execute_command", arguments: '{"command":"true"}' },
+						},
+					],
+					reasoning_details: [
+						{
+							type: "reasoning.encrypted",
+							data: "skip_thought_signature_validator",
+							id: "call_empty",
+							format: "google-gemini-v1",
+							index: 0,
+						},
+					],
+				},
+				{ role: "tool", tool_call_id: "call_empty", content: "(empty)" },
+				{
+					role: "assistant",
+					content: "",
+					tool_calls: [
+						{
+							id: "native_a",
+							type: "function",
+							function: { name: "read_file", arguments: '{"path":"a.ts"}' },
+						},
+						{
+							id: "native_b",
+							type: "function",
+							function: { name: "read_file", arguments: '{"path":"b.ts"}' },
+						},
+					],
+					reasoning_details: nativeDetails,
+				},
+				{ role: "tool", tool_call_id: "native_b", content: "B" },
+				{ role: "tool", tool_call_id: "native_a", content: "A" },
+			])
+			expect(messages).toEqual(before)
+		})
+
 		it("generates correct stream chunks", async () => {
 			const handler = new OpenRouterHandler(mockOptions)
 

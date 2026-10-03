@@ -11,6 +11,8 @@ import { getTaskDirectoryPath } from "../../utils/storage"
 
 export type ApiMessage = Anthropic.MessageParam & {
 	ts?: number
+	/** Stable dispatch identity, unrelated to provider response IDs or UI timestamps. */
+	requestId?: string
 	isSummary?: boolean
 	id?: string
 	// For reasoning items stored in API history
