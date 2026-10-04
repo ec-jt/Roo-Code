@@ -22,6 +22,7 @@ import { safeWriteJson } from "../../../utils/safeWriteJson"
 
 import { ClineProvider } from "../ClineProvider"
 import { MessageManager } from "../../message-manager"
+import { ModelDispatchControl } from "../../../api/dispatch-admission"
 
 // Mock setup must come before imports.
 vi.mock("../../prompts/sections/custom-instructions")
@@ -329,6 +330,29 @@ describe("ClineProvider", () => {
 	let mockWebviewView: vscode.WebviewView
 	let mockPostMessage: any
 	let updateGlobalStateSpy: any
+
+	it.each(["budget-denied", "cancelled", "dispatch-failed", "ordinary", "missing"])(
+		"clears condensation busy state and reports %s without an unhandled rejection",
+		async (failure) => {
+			const error =
+				failure === "ordinary"
+					? new Error("condensation failed")
+					: new ModelDispatchControl(
+							failure === "missing"
+								? "stale"
+								: (failure as "budget-denied" | "cancelled" | "dispatch-failed"),
+						)
+			const condenseContext = vi.fn().mockRejectedValue(error)
+			;(provider as any).clineStack = failure === "missing" ? [] : [{ taskId: "target", condenseContext }]
+			const post = vi.spyOn(provider, "postMessageToWebview").mockResolvedValue(undefined)
+			await expect(provider.condenseTaskContext("target")).resolves.toBeUndefined()
+			expect(post).toHaveBeenCalledExactlyOnceWith({ type: "condenseTaskContextResponse", text: "target" })
+			expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+				expect.stringContaining(failure === "missing" ? "not found" : error.message),
+			)
+			expect(condenseContext).toHaveBeenCalledTimes(failure === "missing" ? 0 : 1)
+		},
+	)
 
 	beforeEach(() => {
 		vi.clearAllMocks()
@@ -676,9 +700,7 @@ describe("ClineProvider", () => {
 			}),
 		} as unknown as vscode.WebviewView
 
-		const statePost = vi
-			.spyOn(provider, "postStateToWebviewWithoutClineMessages")
-			.mockResolvedValue(undefined)
+		const statePost = vi.spyOn(provider, "postStateToWebviewWithoutClineMessages").mockResolvedValue(undefined)
 
 		await provider.resolveWebviewView(webviewView)
 

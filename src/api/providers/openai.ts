@@ -23,6 +23,7 @@ import { DEFAULT_HEADERS } from "./constants"
 import { BaseProvider } from "./base-provider"
 import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata } from "../index"
 import { getApiRequestTimeout } from "./utils/timeout-config"
+import { configureApiRequestTimeout } from "./utils/sdk-timeout"
 import { handleOpenAIError } from "./utils/openai-error-handler"
 
 // TODO: Rename this to OpenAICompatibleHandler. Also, I think the
@@ -52,30 +53,36 @@ export class OpenAiHandler extends BaseProvider implements SingleCompletionHandl
 
 		if (isAzureAiInference) {
 			// Azure AI Inference Service (e.g., for DeepSeek) uses a different path structure
-			this.client = new OpenAI({
-				baseURL,
-				apiKey,
-				defaultHeaders: headers,
-				defaultQuery: { "api-version": this.options.azureApiVersion || "2024-05-01-preview" },
-				timeout,
-			})
+			this.client = configureApiRequestTimeout(
+				new OpenAI({
+					baseURL,
+					apiKey,
+					defaultHeaders: headers,
+					defaultQuery: { "api-version": this.options.azureApiVersion || "2024-05-01-preview" },
+					timeout,
+				}),
+			)
 		} else if (isAzureOpenAi) {
 			// Azure API shape slightly differs from the core API shape:
 			// https://github.com/openai/openai-node?tab=readme-ov-file#microsoft-azure-openai
-			this.client = new AzureOpenAI({
-				baseURL,
-				apiKey,
-				apiVersion: this.options.azureApiVersion || azureOpenAiDefaultApiVersion,
-				defaultHeaders: headers,
-				timeout,
-			})
+			this.client = configureApiRequestTimeout(
+				new AzureOpenAI({
+					baseURL,
+					apiKey,
+					apiVersion: this.options.azureApiVersion || azureOpenAiDefaultApiVersion,
+					defaultHeaders: headers,
+					timeout,
+				}),
+			)
 		} else {
-			this.client = new OpenAI({
-				baseURL,
-				apiKey,
-				defaultHeaders: headers,
-				timeout,
-			})
+			this.client = configureApiRequestTimeout(
+				new OpenAI({
+					baseURL,
+					apiKey,
+					defaultHeaders: headers,
+					timeout,
+				}),
+			)
 		}
 	}
 

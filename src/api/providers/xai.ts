@@ -16,6 +16,7 @@ import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata } from ".
 import { handleOpenAIError } from "./utils/openai-error-handler"
 import { isMcpTool } from "../../utils/mcp-name"
 import { getApiRequestTimeout } from "./utils/timeout-config"
+import { configureApiRequestTimeout } from "./utils/sdk-timeout"
 
 const XAI_DEFAULT_TEMPERATURE = 0
 
@@ -30,12 +31,14 @@ export class XAIHandler extends BaseProvider implements SingleCompletionHandler 
 
 		const apiKey = this.options.xaiApiKey ?? "not-provided"
 
-		this.client = new OpenAI({
-			timeout: getApiRequestTimeout(),
-			baseURL: "https://api.x.ai/v1",
-			apiKey: apiKey,
-			defaultHeaders: DEFAULT_HEADERS,
-		})
+		this.client = configureApiRequestTimeout(
+			new OpenAI({
+				timeout: getApiRequestTimeout(),
+				baseURL: "https://api.x.ai/v1",
+				apiKey: apiKey,
+				defaultHeaders: DEFAULT_HEADERS,
+			}),
+		)
 	}
 
 	override getModel() {

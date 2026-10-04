@@ -165,6 +165,26 @@ vi.mock("../../mentions/resolveImageMentions", () => ({
 
 import { resolveImageMentions } from "../../mentions/resolveImageMentions"
 
+describe("webviewMessageHandler - condensation", () => {
+	it("awaits provider recovery before completing the message handler", async () => {
+		let finish!: () => void
+		const condenseTaskContext = vi.fn(() => new Promise<void>((resolve) => (finish = resolve)))
+		const provider = { ...mockClineProvider, condenseTaskContext } as unknown as ClineProvider
+		let completed = false
+		const request = webviewMessageHandler(provider, {
+			type: "condenseTaskContextRequest",
+			text: "target",
+		}).then(() => {
+			completed = true
+		})
+		await vi.waitFor(() => expect(condenseTaskContext).toHaveBeenCalledWith("target"))
+		expect(completed).toBe(false)
+		finish()
+		await request
+		expect(completed).toBe(true)
+	})
+})
+
 describe("webviewMessageHandler - persistent Read approval", () => {
 	it("routes the correlated action to persistence and the selected pending ask", async () => {
 		vi.clearAllMocks()

@@ -187,7 +187,7 @@ describe("automatic delegation return", () => {
 			completedByChildId: "child",
 			awaitingChildId: undefined,
 		})
-		expect(f.provider.removeClineFromStack).toHaveBeenCalledWith({ skipDelegationRepair: true })
+		expect(f.provider.removeClineFromStack).toHaveBeenCalledWith()
 		const events = f.provider.emit.mock.calls.map((c: any[]) => c[0])
 		expect(events).toEqual([
 			RooCodeEventName.TaskCompleted,

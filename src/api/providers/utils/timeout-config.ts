@@ -2,29 +2,19 @@ import * as vscode from "vscode"
 import { Package } from "../../../shared/package"
 
 /**
- * Gets the API request timeout from VSCode configuration with validation.
- *
- * @returns The timeout in milliseconds. Returns undefined to disable timeout
- *          (letting the SDK use its default), or a positive number for explicit timeout.
+ * Milliseconds until response headers arrive, per attempt. Zero disables the
+ * client deadline. SDK clients must also use configureApiRequestTimeout:
+ * passing zero directly to these SDKs schedules an immediate abort, while
+ * undefined restores their ten-minute default.
  */
-export function getApiRequestTimeout(): number | undefined {
-	// Default to no client-side timeout (0) so long agentic tasks keep running even
-	// when the webview tab is hidden or backgrounded. Users can set an explicit
-	// positive value (seconds) to cap requests; the SDK default is never used as a
-	// silent abort for unattended runs.
-	const configTimeout = vscode.workspace.getConfiguration(Package.name).get<number>("apiRequestTimeout", 0)
-
-	// Validate that it's actually a number and not NaN
-	if (typeof configTimeout !== "number" || isNaN(configTimeout)) {
-		return undefined // No timeout
+export function getApiRequestTimeout(): number {
+	const seconds = vscode.workspace.getConfiguration(Package.name).get<number>("apiRequestTimeout", 0)
+	if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds <= 0) {
+		return 0
 	}
 
-	// 0 or negative means "no timeout" - return undefined to let the request run
-	// until the server closes it (OpenAI SDK interprets 0 as "abort immediately",
-	// so we return undefined instead).
-	if (configTimeout <= 0) {
-		return undefined
-	}
-
-	return configTimeout * 1000 // Convert to milliseconds
+	// Keep integer SDK validation and timer arithmetic safe, even for manually
+	// edited settings outside the contributed UI range. The transport chunks
+	// long deadlines instead of passing an overflowing delay to Node's timers.
+	return Math.min(Number.MAX_SAFE_INTEGER, Math.max(1, Math.ceil(seconds * 1000)))
 }

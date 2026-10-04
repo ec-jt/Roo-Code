@@ -33,8 +33,8 @@ describe("LmStudioHandler timeout configuration", () => {
 		vitest.clearAllMocks()
 	})
 
-	it("should use default timeout of 600 seconds when no configuration is set", () => {
-		;(getApiRequestTimeout as any).mockReturnValue(600000)
+	it("should use the unlimited default for the adapted client", () => {
+		;(getApiRequestTimeout as any).mockReturnValue(0)
 
 		const options: ApiHandlerOptions = {
 			apiModelId: "llama2",
@@ -49,7 +49,7 @@ describe("LmStudioHandler timeout configuration", () => {
 			expect.objectContaining({
 				baseURL: "http://localhost:1234/v1",
 				apiKey: "noop",
-				timeout: 600000, // 600 seconds in milliseconds
+				timeout: 0,
 			}),
 		)
 	})

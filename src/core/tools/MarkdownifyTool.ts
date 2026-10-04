@@ -7,6 +7,7 @@ import { formatResponse } from "../prompts/responses"
 import { extractTextFromFile } from "../../integrations/misc/extract-text"
 import { getReadablePath } from "../../utils/path"
 import { isPathOutsideWorkspace } from "../../utils/pathUtils"
+import { validateWebUrl } from "../../services/browser/validateWebUrl"
 import type { ToolUse } from "../../shared/tools"
 import { BaseTool, ToolCallbacks } from "./BaseTool"
 
@@ -25,6 +26,18 @@ export class MarkdownifyTool extends BaseTool<"markdownify"> {
 			task.didToolFailInCurrentTurn = true
 			pushToolResult(formatResponse.toolError(error))
 			return
+		}
+
+		if (url) {
+			try {
+				validateWebUrl(url)
+			} catch (error) {
+				const message = (error as Error).message
+				await task.say("error", message)
+				task.didToolFailInCurrentTurn = true
+				pushToolResult(formatResponse.toolError(message))
+				return
+			}
 		}
 
 		const absolutePath = relPath ? path.resolve(task.cwd, relPath) : undefined

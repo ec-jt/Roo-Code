@@ -9,6 +9,7 @@ import { getModels, getModelsFromCache } from "./fetchers/modelCache"
 
 import { DEFAULT_HEADERS } from "./constants"
 import { getApiRequestTimeout } from "./utils/timeout-config"
+import { configureApiRequestTimeout } from "./utils/sdk-timeout"
 
 type RouterProviderOptions = {
 	name: RouterName
@@ -46,15 +47,17 @@ export abstract class RouterProvider extends BaseProvider {
 		this.defaultModelId = defaultModelId
 		this.defaultModelInfo = defaultModelInfo
 
-		this.client = new OpenAI({
-			timeout: getApiRequestTimeout(),
-			baseURL,
-			apiKey,
-			defaultHeaders: {
-				...DEFAULT_HEADERS,
-				...(options.openAiHeaders || {}),
-			},
-		})
+		this.client = configureApiRequestTimeout(
+			new OpenAI({
+				timeout: getApiRequestTimeout(),
+				baseURL,
+				apiKey,
+				defaultHeaders: {
+					...DEFAULT_HEADERS,
+					...(options.openAiHeaders || {}),
+				},
+			}),
+		)
 	}
 
 	public async fetchModel() {

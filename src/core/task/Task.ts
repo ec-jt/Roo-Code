@@ -2060,7 +2060,10 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		// Wait for askResponse to be set
 		await pWaitFor(
 			() => {
-				if (this.modelOperationClosed) throw new Error("Task dispatch is closed")
+				if (this.modelOperationClosed || this.abort || this.abandoned) {
+					timeouts.forEach((timeout) => clearTimeout(timeout))
+					throw new Error("Task dispatch is closed")
+				}
 				if (this.askResponse !== undefined || this.lastMessageTs !== askTs) {
 					return true
 				}
@@ -3257,11 +3260,45 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		if (this.modelOperationLoops || this.modelOperationRequests) throw new Error("A request is already active")
 		this.modelOperationLoops++
 		try {
-			await this.ensureModelOperationProvenance()
-			return await this.makeClineRequests(userContent, includeFileDetails)
+			while (true) {
+				try {
+					await this.ensureModelOperationProvenance()
+					return await this.makeClineRequests(userContent, includeFileDetails)
+				} catch (error) {
+					if (!(error instanceof ModelDispatchControl) || this.modelOperationPrepared) throw error
+					this.modelDispatchOutcome = error
+					if (this.abort || this.abandoned || this.modelOperationClosed) return true
+					await this.say(
+						"error",
+						`${error.message}. No automatic retry was made.${this.previewDispatchDisabled ? " Reopen the task to use the current preview setting." : " Send a message or resume to continue."}`,
+					)
+					const feedback = await this.waitForPreviewInput()
+					if (!feedback) return true
+					userContent = feedback
+					includeFileDetails = false
+				}
+			}
 		} finally {
 			this.modelOperationLoops--
 			this.modelOperationRequestPinned = false
+		}
+	}
+
+	/** Interactive preview turns stop here until the user explicitly continues. */
+	private async waitForPreviewInput(): Promise<Anthropic.Messages.ContentBlockParam[] | undefined> {
+		try {
+			const { response, text, images } = await this.ask("resume_task")
+			if (this.abort || this.abandoned || this.modelOperationClosed || response === "noButtonClicked")
+				return undefined
+			if (response === "messageResponse") {
+				await this.say("user_feedback", text, images)
+				return [...(text ? [{ type: "text" as const, text }] : []), ...formatResponse.imageBlocks(images)]
+			}
+			return [{ type: "text", text: "Continue." }]
+		} catch (error) {
+			if (this.abort || this.abandoned || this.modelOperationClosed || error instanceof AskIgnoredError)
+				return undefined
+			throw error
 		}
 	}
 
@@ -4003,7 +4040,12 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 							this.modelOperationUsageCollectors--
 						})
 				} catch (error) {
-					if (error instanceof ModelDispatchControl) throw error
+					if (error instanceof ModelDispatchControl) {
+						if (!this.abandoned && !this.modelOperationClosed) {
+							await abortStream(this.abort ? "user_cancelled" : "streaming_failed", error.message)
+						}
+						throw error
+					}
 					if (this.modelOperationClosed) return true
 					// Abandoned happens when extension is no longer waiting for the
 					// Cline instance to finish aborting (error is thrown here when
@@ -4379,8 +4421,13 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 					)
 
 					if (!didToolUse) {
-						if (this.modelDispatchRuntime) return true
 						if (this.modelOperationPrepared) return true
+						if (this.modelDispatchRuntime) {
+							const feedback = await this.waitForPreviewInput()
+							if (!feedback) return true
+							stack.push({ userContent: feedback, includeFileDetails: false })
+							continue
+						}
 						// Increment consecutive no-tool-use counter
 						this.consecutiveNoToolUseCount++
 

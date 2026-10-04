@@ -8,6 +8,7 @@ import TurndownService from "turndown"
 import PCR from "puppeteer-chromium-resolver"
 import { fileExistsAtPath } from "../../utils/fs"
 import { serializeError } from "serialize-error"
+import { validateWebUrl } from "./validateWebUrl"
 
 // Timeout constants
 const URL_FETCH_TIMEOUT = 30_000 // 30 seconds
@@ -86,6 +87,7 @@ export class UrlContentFetcher {
 
 	// must make sure to call launchBrowser before and closeBrowser after using this
 	async urlToMarkdown(url: string): Promise<string> {
+		validateWebUrl(url)
 		if (!this.browser || !this.page) {
 			throw new Error("Browser not initialized")
 		}

@@ -1218,7 +1218,7 @@ describe("ChatView - Context Condensing Indicator Tests", () => {
 		vi.clearAllMocks()
 	})
 
-	it("should add a condensing message to groupedMessages when isCondensing is true", async () => {
+	it("shows condensation progress and clears it when the provider responds after success or failure", async () => {
 		// This test verifies that when the condenseTaskContextStarted message is received,
 		// the isCondensing state is set to true and a synthetic condensing message is added
 		// to the grouped messages list
@@ -1280,5 +1280,23 @@ describe("ChatView - Context Condensing Indicator Tests", () => {
 			},
 			{ timeout: 2000 },
 		)
+
+		await act(async () => {
+			window.dispatchEvent(
+				new MessageEvent("message", {
+					data: { type: "condenseTaskContextResponse", text: "test-task-id" },
+				}),
+			)
+		})
+		await waitFor(() => {
+			const rows = Array.from(container.querySelectorAll('[data-testid="chat-row"]'))
+			expect(
+				rows.some(
+					(row) =>
+						row.textContent?.includes('"say":"condense_context"') &&
+						row.textContent?.includes('"partial":true'),
+				),
+			).toBe(false)
+		})
 	})
 })

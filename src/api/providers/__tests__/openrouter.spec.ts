@@ -93,6 +93,7 @@ describe("OpenRouterHandler", () => {
 
 		expect(OpenAI).toHaveBeenCalledWith({
 			baseURL: "https://openrouter.ai/api/v1",
+			timeout: 0,
 			apiKey: mockOptions.openRouterApiKey,
 			defaultHeaders: {
 				"HTTP-Referer": "https://github.com/RooVetGit/Roo-Cline",

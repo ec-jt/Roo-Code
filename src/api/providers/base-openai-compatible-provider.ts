@@ -14,6 +14,7 @@ import { BaseProvider } from "./base-provider"
 import { handleOpenAIError } from "./utils/openai-error-handler"
 import { calculateApiCostOpenAI } from "../../shared/cost"
 import { getApiRequestTimeout } from "./utils/timeout-config"
+import { configureApiRequestTimeout } from "./utils/sdk-timeout"
 
 type BaseOpenAiCompatibleProviderOptions<ModelName extends string> = ApiHandlerOptions & {
 	providerName: string
@@ -59,12 +60,14 @@ export abstract class BaseOpenAiCompatibleProvider<ModelName extends string>
 			throw new Error("API key is required")
 		}
 
-		this.client = new OpenAI({
-			baseURL,
-			apiKey: this.options.apiKey,
-			defaultHeaders: DEFAULT_HEADERS,
-			timeout: getApiRequestTimeout(),
-		})
+		this.client = configureApiRequestTimeout(
+			new OpenAI({
+				baseURL,
+				apiKey: this.options.apiKey,
+				defaultHeaders: DEFAULT_HEADERS,
+				timeout: getApiRequestTimeout(),
+			}),
+		)
 	}
 
 	protected createStream(

@@ -550,9 +550,9 @@ export class ClineProvider
 		}
 	}
 
-	// Removes and destroys the top Cline instance (the current finished task),
-	// activating the previous one (resuming the parent task).
-	async removeClineFromStack(options?: { skipDelegationRepair?: boolean }) {
+	// Dispose the current instance, but preserve durable delegation for history resume.
+	// Only destructive removal abandons a child's pending return to its parent.
+	async removeClineFromStack(options?: { abandonDelegation?: boolean }) {
 		this.delegationRevision++
 		if (this.clineStack.length === 0) {
 			return
@@ -591,14 +591,9 @@ export class ClineProvider
 			// garbage collected.
 			task = undefined
 
-			// Delegation-aware parent metadata repair:
-			// If the popped task was a delegated child, repair the parent's metadata
-			// so it transitions from "delegated" back to "active" and becomes resumable
-			// from the task history list.
-			// Skip when called from delegateParentAndOpenChild() during nested delegation
-			// transitions (A→B→C), where the caller intentionally replaces the active
-			// child and will update the parent to point at the new child.
-			if (parentTaskId && childTaskId && !options?.skipDelegationRepair) {
+			// Closing, switching history, or shutting down suspends the child, rather
+			// than cancelling its delegation. Deletion explicitly abandons the return.
+			if (parentTaskId && childTaskId && options?.abandonDelegation) {
 				try {
 					const { historyItem: parentHistory } = await this.getTaskWithId(parentTaskId)
 
@@ -1133,6 +1128,20 @@ export class ClineProvider
 		const { apiConfiguration, enableCheckpoints, checkpointTimeout, experiments } = await this.getState()
 
 		options?.assertCurrent?.()
+		// Opening a waiting parent directly resumes it independently of its child.
+		// Revoke the pending return before constructing a task that can write or run.
+		// Opening the child (or unrelated history) must never recreate this linkage:
+		// an older child cannot return after its parent advances or delegates again.
+		if (historyItem.status === "delegated" || historyItem.awaitingChildId) {
+			const { historyItem: latestHistory } = await this.getTaskWithId(historyItem.id)
+			options?.assertCurrent?.()
+			historyItem = { ...historyItem, ...latestHistory }
+			if (historyItem.status === "delegated" || historyItem.awaitingChildId) {
+				historyItem = { ...historyItem, status: "active", awaitingChildId: undefined }
+				await this.updateTaskHistory(historyItem)
+				options?.assertCurrent?.()
+			}
+		}
 		const task = new Task({
 			provider: this,
 			apiConfiguration,
@@ -1918,18 +1927,25 @@ export class ClineProvider
 
 	/* Condenses a task's message history to use fewer tokens. */
 	async condenseTaskContext(taskId: string) {
-		let task: Task | undefined
-		for (let i = this.clineStack.length - 1; i >= 0; i--) {
-			if (this.clineStack[i].taskId === taskId) {
-				task = this.clineStack[i]
-				break
+		try {
+			let task: Task | undefined
+			for (let i = this.clineStack.length - 1; i >= 0; i--) {
+				if (this.clineStack[i].taskId === taskId) {
+					task = this.clineStack[i]
+					break
+				}
 			}
+			if (!task) {
+				throw new Error(`Task with id ${taskId} not found in stack`)
+			}
+			await task.condenseContext()
+		} catch (error) {
+			// Dispatch controls are deliberate stops, not retryable provider errors.
+			const message = error instanceof Error ? error.message : String(error)
+			void vscode.window.showErrorMessage(`Context condensation stopped: ${message}`)
+		} finally {
+			await this.postMessageToWebview({ type: "condenseTaskContextResponse", text: taskId })
 		}
-		if (!task) {
-			throw new Error(`Task with id ${taskId} not found in stack`)
-		}
-		await task.condenseContext()
-		await this.postMessageToWebview({ type: "condenseTaskContextResponse", text: taskId })
 	}
 
 	// this function deletes a task from task history, and deletes its checkpoints and delete the task folder
@@ -1965,8 +1981,8 @@ export class ClineProvider
 			// Remove from stack if any of the tasks to delete are in the current task stack
 			for (const taskId of allIdsToDelete) {
 				if (taskId === this.getCurrentTask()?.taskId) {
-					// Close the current task instance; delegation flows will be handled via metadata if applicable.
-					await this.removeClineFromStack()
+					// Deletion abandons the child, unlike ordinary close or history navigation.
+					await this.removeClineFromStack({ abandonDelegation: true })
 					break
 				}
 			}
@@ -3058,8 +3074,7 @@ export class ClineProvider
 		await this.createTaskWithHistoryItem({ ...historyItem, rootTask, parentTask })
 	}
 
-	// Clear the current task without treating it as a subtask.
-	// This is used when the user cancels a task that is not a subtask.
+	// Close the current instance while preserving any pending delegation for resume.
 	public async clearTask(): Promise<void> {
 		if (this.clineStack.length > 0) {
 			const task = this.clineStack[this.clineStack.length - 1]
@@ -3200,7 +3215,7 @@ export class ClineProvider
 		//    This ensures we never have >1 tasks open at any time during delegation.
 		//    Await abort completion to ensure clean disposal and prevent unhandled rejections.
 		try {
-			await this.removeClineFromStack({ skipDelegationRepair: true })
+			await this.removeClineFromStack()
 		} catch (error) {
 			this.log(
 				`[delegateParentAndOpenChild] Error during parent disposal (non-fatal): ${
@@ -3436,10 +3451,10 @@ export class ClineProvider
 			await saveApiMessages({ messages: parentApiMessages as any, taskId: parentTaskId, globalStoragePath })
 
 			assertCurrent()
-			// Closing the child saves its final history. Do not repair the parent's
-			// delegation metadata as though the user had cancelled this child.
+			// Closing the child saves its final history and preserves the parent's
+			// delegation metadata until the completion transition below.
 			const closeRevision = this.delegationRevision + 1
-			await this.removeClineFromStack({ skipDelegationRepair: true })
+			await this.removeClineFromStack()
 			const assertNoReplacement = () => {
 				if (this.getCurrentTask() || this.delegationRevision !== closeRevision) {
 					throw new Error("Subtask return interrupted by another task. Resume the parent from history.")

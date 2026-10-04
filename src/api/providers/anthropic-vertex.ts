@@ -24,6 +24,8 @@ import {
 } from "../../core/prompts/tools/native-tools/converters"
 
 import { BaseProvider } from "./base-provider"
+import { getApiRequestTimeout } from "./utils/timeout-config"
+import { configureApiRequestTimeout } from "./utils/sdk-timeout"
 import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata } from "../index"
 
 // https://docs.anthropic.com/en/api/claude-on-vertex-ai
@@ -42,6 +44,7 @@ export class AnthropicVertexHandler extends BaseProvider implements SingleComple
 
 		if (this.options.vertexJsonCredentials) {
 			this.client = new AnthropicVertex({
+				timeout: getApiRequestTimeout(),
 				projectId,
 				region,
 				googleAuth: new GoogleAuth({
@@ -51,6 +54,7 @@ export class AnthropicVertexHandler extends BaseProvider implements SingleComple
 			})
 		} else if (this.options.vertexKeyFile) {
 			this.client = new AnthropicVertex({
+				timeout: getApiRequestTimeout(),
 				projectId,
 				region,
 				googleAuth: new GoogleAuth({
@@ -59,8 +63,9 @@ export class AnthropicVertexHandler extends BaseProvider implements SingleComple
 				}),
 			})
 		} else {
-			this.client = new AnthropicVertex({ projectId, region })
+			this.client = new AnthropicVertex({ projectId, region, timeout: getApiRequestTimeout() })
 		}
+		configureApiRequestTimeout(this.client)
 	}
 
 	override async *createMessage(

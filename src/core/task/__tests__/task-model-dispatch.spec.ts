@@ -38,6 +38,9 @@ vi.mock("../../../api", () => ({ buildApiHandler: vi.fn() }))
 vi.mock("../build-tools", () => ({ buildNativeToolsArrayWithRestrictions: vi.fn(async () => ({ tools: [] })) }))
 vi.mock("../../checkpoints", () => ({ getCheckpointService: vi.fn(), checkpointSave: vi.fn() }))
 vi.mock("../../environment/getEnvironmentDetails", () => ({ getEnvironmentDetails: vi.fn(async () => "environment") }))
+vi.mock("../../mentions/processUserContentMentions", () => ({
+	processUserContentMentions: vi.fn(async ({ userContent }) => ({ content: userContent })),
+}))
 
 describe("Task opt-in model dispatch", () => {
 	let task: Task
@@ -69,6 +72,7 @@ describe("Task opt-in model dispatch", () => {
 			postMessageToWebview: vi.fn(async () => {}),
 			updateTaskHistory: vi.fn(async () => {}),
 			log: vi.fn(),
+			getSkillsManager: vi.fn(),
 			on: vi.fn(),
 			off: vi.fn(),
 		}
@@ -530,4 +534,114 @@ describe("Task opt-in model dispatch", () => {
 		expect(create).toHaveBeenCalledOnce()
 		expect(settle).toHaveBeenCalledExactlyOnceWith("completed")
 	})
+
+	function answerStream() {
+		return (async function* () {
+			yield { type: "content_block_start", index: 0, content_block: { type: "text", text: "answer" } }
+			yield { type: "message_stop" }
+		})()
+	}
+
+	async function waitForResume(count: number) {
+		await vi.waitFor(() => {
+			expect(task.clineMessages.filter((message) => message.ask === "resume_task")).toHaveLength(count)
+			expect(task.isStreaming).toBe(false)
+		})
+	}
+
+	it("keeps an ordinary text-only preview turn resumable for the next user message", async () => {
+		vi.mocked(task.say).mockRestore()
+		admit.mockResolvedValue({ outcome: "granted", settle })
+		create.mockImplementation(answerStream)
+		const loop = (task as any).initiateTaskLoop([{ type: "text", text: "first question" }])
+		await waitForResume(1)
+		expect(create).toHaveBeenCalledOnce()
+		task.handleWebviewAskResponse("messageResponse", "second question")
+		await waitForResume(2)
+		expect(create).toHaveBeenCalledTimes(2)
+		expect(JSON.stringify(create.mock.calls[1][0].messages)).toContain("second question")
+		expect(JSON.stringify(create.mock.calls[1][0].messages)).not.toContain("You did not use a tool")
+		task.handleWebviewAskResponse("noButtonClicked")
+		await expect(loop).resolves.toBeUndefined()
+	})
+
+	it("settles the interactive loop when cancelled while waiting at a preview stop", async () => {
+		vi.mocked(task.say).mockRestore()
+		const loop = (task as any).initiateTaskLoop([{ type: "text", text: "question" }])
+		await waitForResume(1)
+		await task.abortTask()
+		await expect(loop).resolves.toBeUndefined()
+		expect(admit).toHaveBeenCalledOnce()
+		expect(create).not.toHaveBeenCalled()
+	})
+
+	it("clears provider condensation busy state after a real denied admission", async () => {
+		const { ClineProvider } =
+			await vi.importActual<typeof import("../../webview/ClineProvider")>("../../webview/ClineProvider")
+		provider.clineStack = [task]
+		const before = structuredClone(task.apiConversationHistory)
+		await expect(ClineProvider.prototype.condenseTaskContext.call(provider, task.taskId)).resolves.toBeUndefined()
+		expect(admit).toHaveBeenCalledOnce()
+		expect(create).not.toHaveBeenCalled()
+		expect(task.modelDispatchOutcome?.code).toBe("budget-denied")
+		expect(task.apiConversationHistory).toEqual(before)
+		expect(provider.postMessageToWebview).toHaveBeenCalledWith({
+			type: "condenseTaskContextResponse",
+			text: task.taskId,
+		})
+	})
+
+	it.each(["budget-denied", "429", "partial", "disabled"])(
+		"finalizes an interactive %s stop and waits for explicit input without retrying",
+		async (failure) => {
+			vi.mocked(task.say).mockRestore()
+			const backoff = vi.spyOn(task as any, "backoffAndAnnounce")
+			if (failure !== "budget-denied") admit.mockResolvedValue({ outcome: "granted", settle })
+			if (failure === "429") create.mockRejectedValue(Object.assign(new Error("rate limited"), { status: 429 }))
+			if (failure === "partial") {
+				create.mockImplementation(() =>
+					(async function* () {
+						yield {
+							type: "content_block_start",
+							index: 0,
+							content_block: { type: "text", text: "partial" },
+						}
+						throw new Error("disconnected")
+					})(),
+				)
+			}
+			if (failure === "disabled") create.mockImplementation(() => new Promise(() => {}))
+			const loop = (task as any).initiateTaskLoop([{ type: "text", text: "first question" }])
+			if (failure === "disabled") {
+				await vi.waitFor(() => expect(create).toHaveBeenCalledOnce())
+				await provider.contextProxy.setValue("experiments", { cordisRuntimePreview: false })
+			}
+			await waitForResume(1)
+			expect(task.modelDispatchOutcome?.code).toBe(
+				failure === "budget-denied"
+					? "budget-denied"
+					: failure === "disabled"
+						? "cancelled"
+						: "dispatch-failed",
+			)
+			expect(task.didFinishAbortingStream).toBe(true)
+			expect(task.clineMessages.some((message) => message.partial)).toBe(false)
+			const request = [...task.clineMessages].reverse().find((message) => message.say === "api_req_started")!
+			expect(JSON.parse(request.text!).cancelReason).toBe("streaming_failed")
+			expect(task.clineMessages.some((message) => message.say === "error")).toBe(true)
+			expect(admit).toHaveBeenCalledOnce()
+			expect(backoff).not.toHaveBeenCalled()
+			admit.mockResolvedValue({ outcome: "granted", settle })
+			create.mockImplementation(answerStream)
+			task.handleWebviewAskResponse("messageResponse", "continue after stop")
+			await waitForResume(2)
+			// A disabled instance stays fenced, even when the user explicitly continues.
+			expect(admit).toHaveBeenCalledTimes(failure === "disabled" ? 1 : 2)
+			if (failure !== "disabled") {
+				expect(JSON.stringify(create.mock.calls.at(-1)![0].messages)).toContain("continue after stop")
+			}
+			task.handleWebviewAskResponse("noButtonClicked")
+			await expect(loop).resolves.toBeUndefined()
+		},
+	)
 })

@@ -28,6 +28,7 @@ import { filterNonAnthropicBlocks } from "../transform/anthropic-filter"
 import { isAdaptiveThinkingModel } from "../transform/reasoning"
 import { handleProviderError } from "./utils/error-handler"
 import { getApiRequestTimeout } from "./utils/timeout-config"
+import { configureApiRequestTimeout } from "./utils/sdk-timeout"
 
 import { BaseProvider } from "./base-provider"
 import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata } from "../index"
@@ -97,14 +98,16 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 		const apiKeyFieldName =
 			this.options.anthropicBaseUrl && this.options.anthropicUseAuthToken ? "authToken" : "apiKey"
 
-		this.client = new Anthropic({
-			baseURL: this.options.anthropicBaseUrl || undefined,
-			[apiKeyFieldName]: this.options.apiKey,
-			// Long-running agentic streams (which may continue while the webview tab is
-			// hidden) must not be cut off by the SDK's default client timeout. Respect the
-			// user's apiRequestTimeout setting (0 = no timeout) like the other providers.
-			timeout: getApiRequestTimeout(),
-		})
+		this.client = configureApiRequestTimeout(
+			new Anthropic({
+				baseURL: this.options.anthropicBaseUrl || undefined,
+				[apiKeyFieldName]: this.options.apiKey,
+				// Long-running agentic streams (which may continue while the webview tab is
+				// hidden) must not be cut off by the SDK's default client timeout. Respect the
+				// user's apiRequestTimeout setting (0 = no timeout) like the other providers.
+				timeout: getApiRequestTimeout(),
+			}),
+		)
 	}
 
 	/** Pin configuration, SDK client and resolved model before any admission wait.

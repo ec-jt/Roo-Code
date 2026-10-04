@@ -56,6 +56,7 @@ describe("RequestyHandler", () => {
 
 		expect(OpenAI).toHaveBeenCalledWith({
 			baseURL: "https://router.requesty.ai/v1",
+			timeout: 0,
 			apiKey: mockOptions.requestyApiKey,
 			defaultHeaders: {
 				"HTTP-Referer": "https://github.com/RooVetGit/Roo-Cline",
@@ -71,6 +72,7 @@ describe("RequestyHandler", () => {
 
 		expect(OpenAI).toHaveBeenCalledWith({
 			baseURL: "https://custom.requesty.ai/v1",
+			timeout: 0,
 			apiKey: mockOptions.requestyApiKey,
 			defaultHeaders: {
 				"HTTP-Referer": "https://github.com/RooVetGit/Roo-Cline",

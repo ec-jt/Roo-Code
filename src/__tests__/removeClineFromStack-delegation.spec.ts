@@ -1,6 +1,5 @@
 // npx vitest run __tests__/removeClineFromStack-delegation.spec.ts
 
-import { describe, it, expect, vi } from "vitest"
 import { ClineProvider } from "../core/webview/ClineProvider"
 
 describe("ClineProvider.removeClineFromStack() delegation awareness", () => {
@@ -33,6 +32,7 @@ describe("ClineProvider.removeClineFromStack() delegation awareness", () => {
 				})
 
 		const provider = {
+			delegationRevision: 0,
 			clineStack: [childTask] as any[],
 			taskEventListeners: new Map(),
 			log: vi.fn(),
@@ -43,7 +43,7 @@ describe("ClineProvider.removeClineFromStack() delegation awareness", () => {
 		return { provider, childTask, updateTaskHistory, getTaskWithId }
 	}
 
-	it("repairs parent metadata (delegated → active) when a delegated child is removed", async () => {
+	it("repairs parent metadata when a delegated child is explicitly abandoned", async () => {
 		const { provider, updateTaskHistory, getTaskWithId } = buildMockProvider({
 			childTaskId: "child-1",
 			parentTaskId: "parent-1",
@@ -62,7 +62,7 @@ describe("ClineProvider.removeClineFromStack() delegation awareness", () => {
 			},
 		})
 
-		await (ClineProvider.prototype as any).removeClineFromStack.call(provider)
+		await (ClineProvider.prototype as any).removeClineFromStack.call(provider, { abandonDelegation: true })
 
 		// Stack should be empty after pop
 		expect(provider.clineStack).toHaveLength(0)
@@ -91,7 +91,7 @@ describe("ClineProvider.removeClineFromStack() delegation awareness", () => {
 			// No parentTaskId — this is a top-level task
 		})
 
-		await (ClineProvider.prototype as any).removeClineFromStack.call(provider)
+		await (ClineProvider.prototype as any).removeClineFromStack.call(provider, { abandonDelegation: true })
 
 		// Stack should be empty
 		expect(provider.clineStack).toHaveLength(0)
@@ -120,7 +120,7 @@ describe("ClineProvider.removeClineFromStack() delegation awareness", () => {
 			},
 		})
 
-		await (ClineProvider.prototype as any).removeClineFromStack.call(provider)
+		await (ClineProvider.prototype as any).removeClineFromStack.call(provider, { abandonDelegation: true })
 
 		// Parent was looked up but should NOT be updated
 		expect(getTaskWithId).toHaveBeenCalledWith("parent-1")
@@ -145,7 +145,7 @@ describe("ClineProvider.removeClineFromStack() delegation awareness", () => {
 			},
 		})
 
-		await (ClineProvider.prototype as any).removeClineFromStack.call(provider)
+		await (ClineProvider.prototype as any).removeClineFromStack.call(provider, { abandonDelegation: true })
 
 		expect(getTaskWithId).toHaveBeenCalledWith("parent-1")
 		expect(updateTaskHistory).not.toHaveBeenCalled()
@@ -159,7 +159,7 @@ describe("ClineProvider.removeClineFromStack() delegation awareness", () => {
 		})
 
 		// Should NOT throw
-		await (ClineProvider.prototype as any).removeClineFromStack.call(provider)
+		await (ClineProvider.prototype as any).removeClineFromStack.call(provider, { abandonDelegation: true })
 
 		// Stack should still be empty (pop was not blocked)
 		expect(provider.clineStack).toHaveLength(0)
@@ -186,14 +186,14 @@ describe("ClineProvider.removeClineFromStack() delegation awareness", () => {
 		}
 
 		// Should not throw
-		await (ClineProvider.prototype as any).removeClineFromStack.call(provider)
+		await (ClineProvider.prototype as any).removeClineFromStack.call(provider, { abandonDelegation: true })
 
 		expect(provider.clineStack).toHaveLength(0)
 		expect(provider.getTaskWithId).not.toHaveBeenCalled()
 		expect(provider.updateTaskHistory).not.toHaveBeenCalled()
 	})
 
-	it("skips delegation repair when skipDelegationRepair option is true", async () => {
+	it("preserves delegation when an unfinished child is closed normally", async () => {
 		const { provider, updateTaskHistory, getTaskWithId } = buildMockProvider({
 			childTaskId: "child-1",
 			parentTaskId: "parent-1",
@@ -212,8 +212,8 @@ describe("ClineProvider.removeClineFromStack() delegation awareness", () => {
 			},
 		})
 
-		// Call with skipDelegationRepair: true (as delegateParentAndOpenChild would)
-		await (ClineProvider.prototype as any).removeClineFromStack.call(provider, { skipDelegationRepair: true })
+		// Ordinary close suspends the child without revoking its return.
+		await (ClineProvider.prototype as any).removeClineFromStack.call(provider)
 
 		// Stack should be empty after pop
 		expect(provider.clineStack).toHaveLength(0)
@@ -225,7 +225,7 @@ describe("ClineProvider.removeClineFromStack() delegation awareness", () => {
 
 	it("does NOT reset grandparent during A→B→C nested delegation transition", async () => {
 		// Scenario: A delegated to B, B is now delegating to C.
-		// delegateParentAndOpenChild() pops B via removeClineFromStack({ skipDelegationRepair: true }).
+		// delegateParentAndOpenChild() suspends B via removeClineFromStack().
 		// Grandparent A should remain "delegated" — its metadata must not be repaired.
 		const grandparentHistory = {
 			id: "task-A",
@@ -265,8 +265,8 @@ describe("ClineProvider.removeClineFromStack() delegation awareness", () => {
 			updateTaskHistory,
 		}
 
-		// Simulate what delegateParentAndOpenChild does: pop B with skipDelegationRepair
-		await (ClineProvider.prototype as any).removeClineFromStack.call(provider, { skipDelegationRepair: true })
+		// Simulate what delegateParentAndOpenChild does: suspend B.
+		await (ClineProvider.prototype as any).removeClineFromStack.call(provider)
 
 		// B was popped
 		expect(provider.clineStack).toHaveLength(0)
@@ -276,6 +276,6 @@ describe("ClineProvider.removeClineFromStack() delegation awareness", () => {
 		expect(updateTaskHistory).not.toHaveBeenCalled()
 
 		// Grandparent A's metadata remains intact (delegated, awaitingChildId: task-B)
-		// The caller (delegateParentAndOpenChild) will update A to point to C separately.
+		// The caller updates B to await C; A continues waiting for B.
 	})
 })

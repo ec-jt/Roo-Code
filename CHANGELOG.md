@@ -1,5 +1,15 @@
 # Roo Code Changelog
 
+## 4.2.5 - Cordis preview 3
+
+- Reject non-HTTP(S) Markdown conversion URLs before approval and at the shared URL fetcher boundary. Local files retain workspace approval and ignore-rule checks.
+- Preserve unfinished subtask delegation when closing or navigating away. Explicit parent resumption revokes the pending child return; stale or legacy-cleared relationships remain rejected.
+- Finalize failed preview requests and wait for explicit user continuation. Keep text-only preview responses interactive and clear manual-condensation busy state on failure.
+- Default API request deadlines to zero and implement unlimited inference waiting for the integrated OpenAI/Anthropic SDK transports while preserving cancellation. Positive limits apply per attempt until response headers, not to total streaming time. Connection, server, and proxy limits remain applicable.
+- Correct the English timeout setting description. Other translations remain unchanged for this preview.
+
+GitHub prerelease tag: **v4.2.5-cordis-preview.3**. Cordis runtime preview remains off by default.
+
 ## 4.2.4 - Cordis preview 2
 
 - Return valid completed subtasks to their parent automatically, without a separate finish approval. Persist the summary and start parent continuation; reject stale or mismatched returns and report delivery failures instead of standalone success.

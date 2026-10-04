@@ -38,6 +38,7 @@ import { handleOpenAIError } from "./utils/openai-error-handler"
 import { generateImageWithProvider, ImageGenerationResult } from "./utils/image-generation"
 import { applyRouterToolPreferences } from "./utils/router-tool-preferences"
 import { getApiRequestTimeout } from "./utils/timeout-config"
+import { configureApiRequestTimeout } from "./utils/sdk-timeout"
 
 // Add custom interface for OpenRouter params.
 type OpenRouterChatCompletionParams = OpenAI.Chat.ChatCompletionCreateParams & {
@@ -152,7 +153,9 @@ export class OpenRouterHandler extends BaseProvider implements SingleCompletionH
 		const baseURL = this.options.openRouterBaseUrl || "https://openrouter.ai/api/v1"
 		const apiKey = this.options.openRouterApiKey ?? "not-provided"
 
-		this.client = new OpenAI({ baseURL, apiKey, defaultHeaders: DEFAULT_HEADERS, timeout: getApiRequestTimeout() })
+		this.client = configureApiRequestTimeout(
+			new OpenAI({ baseURL, apiKey, defaultHeaders: DEFAULT_HEADERS, timeout: getApiRequestTimeout() }),
+		)
 
 		// Load models asynchronously to populate cache before getModel() is called
 		this.loadDynamicModels().catch((error) => {

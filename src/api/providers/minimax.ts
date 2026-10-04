@@ -12,6 +12,8 @@ import { getModelParams } from "../transform/model-params"
 import { mergeEnvironmentDetailsForMiniMax } from "../transform/minimax-format"
 
 import { BaseProvider } from "./base-provider"
+import { getApiRequestTimeout } from "./utils/timeout-config"
+import { configureApiRequestTimeout } from "./utils/sdk-timeout"
 import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata } from "../index"
 import { calculateApiCostAnthropic } from "../../shared/cost"
 import { convertOpenAIToolsToAnthropic } from "../../core/prompts/tools/native-tools/converters"
@@ -70,10 +72,13 @@ export class MiniMaxHandler extends BaseProvider implements SingleCompletionHand
 			baseURL = `${baseURL.replace(/\/$/, "")}/anthropic`
 		}
 
-		this.client = new Anthropic({
-			baseURL,
-			apiKey: options.minimaxApiKey,
-		})
+		this.client = configureApiRequestTimeout(
+			new Anthropic({
+				timeout: getApiRequestTimeout(),
+				baseURL,
+				apiKey: options.minimaxApiKey,
+			}),
+		)
 	}
 
 	async *createMessage(

@@ -45,8 +45,8 @@ describe("OpenAiHandler timeout configuration", () => {
 		vitest.clearAllMocks()
 	})
 
-	it("should use default timeout for standard OpenAI", () => {
-		;(getApiRequestTimeout as any).mockReturnValue(600000)
+	it("should use the unlimited default for adapted standard OpenAI", () => {
+		;(getApiRequestTimeout as any).mockReturnValue(0)
 
 		const options: ApiHandlerOptions = {
 			apiModelId: "gpt-4",
@@ -61,7 +61,7 @@ describe("OpenAiHandler timeout configuration", () => {
 			expect.objectContaining({
 				baseURL: "https://api.openai.com/v1",
 				apiKey: "test-key",
-				timeout: 600000, // 600 seconds in milliseconds
+				timeout: 0,
 			}),
 		)
 	})

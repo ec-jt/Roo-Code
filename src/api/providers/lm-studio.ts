@@ -16,6 +16,7 @@ import { BaseProvider } from "./base-provider"
 import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata } from "../index"
 import { getModelsFromCache } from "./fetchers/modelCache"
 import { getApiRequestTimeout } from "./utils/timeout-config"
+import { configureApiRequestTimeout } from "./utils/sdk-timeout"
 import { handleOpenAIError } from "./utils/openai-error-handler"
 
 export class LmStudioHandler extends BaseProvider implements SingleCompletionHandler {
@@ -30,11 +31,13 @@ export class LmStudioHandler extends BaseProvider implements SingleCompletionHan
 		// LM Studio uses "noop" as a placeholder API key
 		const apiKey = "noop"
 
-		this.client = new OpenAI({
-			baseURL: (this.options.lmStudioBaseUrl || "http://localhost:1234") + "/v1",
-			apiKey: apiKey,
-			timeout: getApiRequestTimeout(),
-		})
+		this.client = configureApiRequestTimeout(
+			new OpenAI({
+				baseURL: (this.options.lmStudioBaseUrl || "http://localhost:1234") + "/v1",
+				apiKey: apiKey,
+				timeout: getApiRequestTimeout(),
+			}),
+		)
 	}
 
 	override async *createMessage(

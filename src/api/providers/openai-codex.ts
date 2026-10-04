@@ -25,6 +25,7 @@ import { sanitizeOpenAiCallId } from "../../utils/tool-id"
 import { openAiCodexOAuthManager } from "../../integrations/openai-codex/oauth"
 import { t } from "../../i18n"
 import { getApiRequestTimeout } from "./utils/timeout-config"
+import { configureApiRequestTimeout } from "./utils/sdk-timeout"
 
 export type OpenAiCodexModel = ReturnType<OpenAiCodexHandler["getModel"]>
 
@@ -370,12 +371,14 @@ export class OpenAiCodexHandler extends BaseProvider implements SingleCompletion
 				// Allow tests to inject a client. If none is injected, create one for this request.
 				const client =
 					this.client ??
-					new OpenAI({
-						timeout: getApiRequestTimeout(),
-						apiKey: accessToken,
-						baseURL: CODEX_API_BASE_URL,
-						defaultHeaders: codexHeaders,
-					})
+					configureApiRequestTimeout(
+						new OpenAI({
+							timeout: getApiRequestTimeout(),
+							apiKey: accessToken,
+							baseURL: CODEX_API_BASE_URL,
+							defaultHeaders: codexHeaders,
+						}),
+					)
 
 				const stream = (await (client as any).responses.create(requestBody, {
 					signal: this.abortController.signal,

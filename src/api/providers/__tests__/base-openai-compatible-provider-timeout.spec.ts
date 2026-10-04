@@ -67,8 +67,8 @@ describe("BaseOpenAiCompatibleProvider Timeout Configuration", () => {
 		expect(getApiRequestTimeout).toHaveBeenCalled()
 	})
 
-	it("should pass the default timeout to the OpenAI client constructor", () => {
-		;(getApiRequestTimeout as any).mockReturnValue(600000) // 600 seconds in ms
+	it("should pass the unlimited default to the adapted OpenAI client", () => {
+		;(getApiRequestTimeout as any).mockReturnValue(0)
 
 		new TestOpenAiCompatibleProvider("test-api-key")
 
@@ -76,7 +76,7 @@ describe("BaseOpenAiCompatibleProvider Timeout Configuration", () => {
 			expect.objectContaining({
 				baseURL: "https://test.example.com/v1",
 				apiKey: "test-api-key",
-				timeout: 600000,
+				timeout: 0,
 			}),
 		)
 	})
