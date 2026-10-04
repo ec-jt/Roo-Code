@@ -57,6 +57,24 @@ describe("ContextProxy", () => {
 		await proxy.initialize()
 	})
 
+	it("roundtrips persistent Read and All actions settings through extension storage", async () => {
+		const stored = new Map<string, unknown>()
+		mockGlobalState.update.mockImplementation(async (key: string, value: unknown) => {
+			stored.set(key, value)
+		})
+		mockGlobalState.get.mockImplementation((key: string) => stored.get(key))
+		await proxy.setValues({ autoApprovalEnabled: true, alwaysAllowReadOnly: true, alwaysAllowAll: false })
+		const reloaded = new ContextProxy(mockContext)
+		await reloaded.initialize()
+		expect(reloaded.getValue("autoApprovalEnabled")).toBe(true)
+		expect(reloaded.getValue("alwaysAllowReadOnly")).toBe(true)
+		expect(reloaded.getValue("alwaysAllowAll")).toBe(false)
+		await reloaded.setValue("alwaysAllowAll", true)
+		const allActions = new ContextProxy(mockContext)
+		await allActions.initialize()
+		expect(allActions.getValue("alwaysAllowAll")).toBe(true)
+	})
+
 	describe("read-only pass-through properties", () => {
 		it("should return extension properties from the original context", () => {
 			expect(proxy.extensionUri).toBe(mockContext.extensionUri)

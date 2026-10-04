@@ -165,6 +165,39 @@ vi.mock("../../mentions/resolveImageMentions", () => ({
 
 import { resolveImageMentions } from "../../mentions/resolveImageMentions"
 
+describe("webviewMessageHandler - persistent Read approval", () => {
+	it("routes the correlated action to persistence and the selected pending ask", async () => {
+		vi.clearAllMocks()
+		const task = {
+			taskId: "read-task",
+			instanceId: "read-instance",
+			modelOperationState: { revision: 1, requiresToolApproval: false },
+			isPendingToolAsk: vi.fn(() => true),
+			clineMessages: [
+				{
+					ts: 12,
+					type: "ask",
+					ask: "tool",
+					text: JSON.stringify({ tool: "markdownify", url: "https://openvdn.github.io" }),
+				},
+			],
+			handleWebviewAskResponse: vi.fn(),
+		}
+		const setValues = vi.fn()
+		const provider = {
+			...mockClineProvider,
+			getCurrentTask: () => task,
+			contextProxy: { ...mockClineProvider.contextProxy, getValue: vi.fn(), setValues },
+		} as unknown as ClineProvider
+		await webviewMessageHandler(provider, {
+			type: "alwaysAllowReadOnlyAsk",
+			alwaysAllowReadOnlyAsk: { taskId: "read-task", instanceId: "read-instance", revision: 1, askTs: 12 },
+		})
+		expect(setValues).toHaveBeenCalledWith({ autoApprovalEnabled: true, alwaysAllowReadOnly: true })
+		expect(task.handleWebviewAskResponse).toHaveBeenCalledExactlyOnceWith("yesButtonClicked")
+	})
+})
+
 describe("webviewMessageHandler - requestLmStudioModels", () => {
 	beforeEach(() => {
 		vi.clearAllMocks()

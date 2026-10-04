@@ -284,7 +284,8 @@
 		},
 		"readOnly": {
 			"label": "Read",
-			"description": "When enabled, Roo will automatically view directory contents and read files without requiring you to click the Approve button.",
+			"alwaysAllow": "Always allow read-only actions",
+			"description": "Automatically read files, list and search workspace contents, inspect Git history, convert documents or URLs to Markdown, and retrieve web search and documentation results. URL and search requests send data to external services. Files outside the workspace still require the separate permission below.",
 			"outsideWorkspace": {
 				"label": "Include files outside workspace",
 				"description": "Allow Roo to read files outside the current workspace without requiring approval."

@@ -15,6 +15,7 @@ import { t } from "../../i18n"
 
 import { CheckpointDiff, CheckpointResult, CheckpointEventMap } from "./types"
 import { getExcludePatterns } from "./excludes"
+import { CheckpointStorageProtection, MAX_CHECKPOINT_FILE_BYTES, pathBatches } from "./storageProtection"
 
 /**
  * Creates a SimpleGit instance with sanitized environment variables to prevent
@@ -88,6 +89,7 @@ export abstract class ShadowCheckpointService extends EventEmitter {
 	protected git?: SimpleGit
 	protected readonly log: (message: string) => void
 	protected shadowGitConfigWorktree?: string
+	private storageProtection?: CheckpointStorageProtection
 
 	public get baseHash() {
 		return this._baseHash
@@ -215,16 +217,12 @@ export abstract class ShadowCheckpointService extends EventEmitter {
 		await fs.mkdir(path.join(this.dotGitDir, "info"), { recursive: true })
 		const patterns = await getExcludePatterns(this.workspaceDir)
 		await fs.writeFile(path.join(this.dotGitDir, "info", "exclude"), patterns.join("\n"))
+		this.storageProtection = new CheckpointStorageProtection(this.workspaceDir, patterns)
 	}
 
 	private async stageAll(git: SimpleGit) {
-		try {
-			await git.add([".", "--ignore-errors"])
-		} catch (error) {
-			this.log(
-				`[${this.constructor.name}#stageAll] failed to add files to git: ${error instanceof Error ? error.message : String(error)}`,
-			)
-		}
+		await this.writeExcludeFile()
+		await this.storageProtection!.stage(git)
 	}
 
 	private async getNestedGitRepository(): Promise<string | null> {
@@ -350,8 +348,19 @@ export abstract class ShadowCheckpointService extends EventEmitter {
 			}
 
 			const start = Date.now()
-			await this.git.clean("f", ["-d", "-f"])
-			await this.git.reset(["--hard", commitHash])
+			await this.writeExcludeFile()
+			const { target, clean } = await this.storageProtection!.prepareRestore(this.git, commitHash)
+			for (const batch of pathBatches(clean)) {
+				for (const file of batch) {
+					if ((await this.storageProtection!.inspect(file)) !== "safe") {
+						throw new Error("Checkpoint file changed during restore; retry after workspace writes finish")
+					}
+				}
+				await this.git.raw(["--literal-pathspecs", "clean", "-f", "--", ...batch])
+			}
+			// Like Git itself, restoration requires a quiescent worktree. External
+			// writes between validation and reset cannot be made atomic with Git.
+			await this.git.reset(["--hard", target])
 
 			// Remove all checkpoints after the specified commitHash.
 			const checkpointIndex = this._checkpoints.indexOf(commitHash)
@@ -389,9 +398,23 @@ export abstract class ShadowCheckpointService extends EventEmitter {
 		const { files } = to ? await this.git.diffSummary([`${from}..${to}`]) : await this.git.diffSummary([from])
 
 		const cwdPath = (await this.getShadowGitConfigWorktree(this.git)) || this.workspaceDir || ""
+		// Old objects are deliberately not pruned. Do not load excluded or oversized
+		// historical blobs into a diff preview after removing them from the index.
+		const historicalEntries = [
+			...(await this.storageProtection!.tree(this.git, from)),
+			...(to ? await this.storageProtection!.tree(this.git, to) : []),
+		]
+		const protectedPaths = new Set(
+			historicalEntries
+				.filter((entry) => entry.size > MAX_CHECKPOINT_FILE_BYTES || !entry.mode.startsWith("100"))
+				.map((entry) => entry.file),
+		)
 
 		for (const file of files) {
 			const relPath = file.file
+			if (protectedPaths.has(relPath) || (await this.storageProtection!.inspect(relPath)) === "protected") {
+				continue
+			}
 			const absPath = path.join(cwdPath, relPath)
 			const before = await this.git.show([`${from}:${relPath}`]).catch(() => "")
 

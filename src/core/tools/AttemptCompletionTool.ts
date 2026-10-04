@@ -16,7 +16,6 @@ interface AttemptCompletionParams {
 }
 
 export interface AttemptCompletionCallbacks extends ToolCallbacks {
-	askFinishSubTaskApproval: () => Promise<boolean>
 	toolDescription: () => string
 }
 
@@ -24,20 +23,25 @@ export interface AttemptCompletionCallbacks extends ToolCallbacks {
  * Interface for provider methods needed by AttemptCompletionTool for delegation handling.
  */
 interface DelegationProvider {
+	getCurrentTask(): Task | undefined
 	getTaskWithId(id: string): Promise<{ historyItem: HistoryItem }>
 	reopenParentFromDelegation(params: {
 		parentTaskId: string
 		childTaskId: string
+		childInstanceId: string
 		completionResultSummary: string
 	}): Promise<void>
 }
 
 export class AttemptCompletionTool extends BaseTool<"attempt_completion"> {
 	readonly name = "attempt_completion" as const
+	private readonly returningChildren = new WeakSet<Task>()
+	private readonly returnedChildren = new WeakSet<Task>()
 
 	async execute(params: AttemptCompletionParams, task: Task, callbacks: AttemptCompletionCallbacks): Promise<void> {
 		const { result } = params
-		const { handleError, pushToolResult, askFinishSubTaskApproval } = callbacks
+		const { handleError, pushToolResult } = callbacks
+		if (this.returningChildren.has(task) || this.returnedChildren.has(task)) return
 
 		// Prevent attempt_completion if any tool failed in the current turn
 		if (task.didToolFailInCurrentTurn) {
@@ -79,52 +83,39 @@ export class AttemptCompletionTool extends BaseTool<"attempt_completion"> {
 
 			await task.say("completion_result", result, undefined, false)
 
-			// Check for subtask using parentTaskId (metadata-driven delegation)
+			// Completed children reopened for inspection retain ordinary completion behavior.
+			// All other children must return through the validated provider path, never
+			// silently report standalone success after an unreadable or invalid history.
 			if (task.parentTaskId) {
-				// Check if this subtask has already completed and returned to parent
-				// to prevent duplicate tool_results when user revisits from history
 				const provider = task.providerRef.deref() as DelegationProvider | undefined
-				if (provider) {
+				if (!provider)
+					throw new Error("Cannot return subtask: provider unavailable. Reopen the child and retry.")
+				const { historyItem } = await provider.getTaskWithId(task.taskId)
+				if (this.returningChildren.has(task) || this.returnedChildren.has(task)) return
+				if (
+					provider.getCurrentTask() !== task ||
+					task.abort ||
+					task.abandoned ||
+					task.modelOperationDispatchClosed
+				)
+					throw new Error("Cannot return subtask: task instance changed or dispatch closed.")
+				if (historyItem.status !== "completed") {
+					await task.assertCanDelegate()
+					if (this.returningChildren.has(task) || this.returnedChildren.has(task)) return
+					this.returningChildren.add(task)
 					try {
-						const { historyItem } = await provider.getTaskWithId(task.taskId)
-						const status = historyItem?.status
-
-						if (status === "completed") {
-							// Subtask already completed - skip delegation flow entirely
-							// Fall through to normal completion ask flow below (outside this if block)
-							// This shows the user the completion result and waits for acceptance
-							// without injecting another tool_result to the parent
-						} else if (status === "active") {
-							// Normal subtask completion - do delegation
-							const delegation = await this.delegateToParent(
-								task,
-								result,
-								provider,
-								askFinishSubTaskApproval,
-								pushToolResult,
-							)
-							if (delegation === "delegated") {
-								this.emitTaskCompleted(task)
-							}
-							if (delegation !== "continue") return
-						} else {
-							// Unexpected status (undefined or "delegated") - log error and skip delegation
-							// undefined indicates a bug in status persistence during child creation
-							// "delegated" would mean this child has its own grandchild pending (shouldn't reach attempt_completion)
-							console.error(
-								`[AttemptCompletionTool] Unexpected child task status "${status}" for task ${task.taskId}. ` +
-									`Expected "active" or "completed". Skipping delegation to prevent data corruption.`,
-							)
-							// Fall through to normal completion ask flow
-						}
-					} catch (err) {
-						// If we can't get the history, log error and skip delegation
-						console.error(
-							`[AttemptCompletionTool] Failed to get history for task ${task.taskId}: ${(err as Error)?.message ?? String(err)}. ` +
-								`Skipping delegation.`,
-						)
-						// Fall through to normal completion ask flow
+						await provider.reopenParentFromDelegation({
+							parentTaskId: task.parentTaskId,
+							childTaskId: task.taskId,
+							childInstanceId: task.instanceId,
+							completionResultSummary: result,
+						})
+						this.returnedChildren.add(task)
+						pushToolResult("")
+					} finally {
+						this.returningChildren.delete(task)
 					}
+					return
 				}
 			}
 
@@ -141,40 +132,11 @@ export class AttemptCompletionTool extends BaseTool<"attempt_completion"> {
 			const feedbackText = `<user_message>\n${text}\n</user_message>`
 			pushToolResult(formatResponse.toolResult(feedbackText, images))
 		} catch (error) {
-			await handleError("inspecting site", error as Error)
+			await handleError(
+				"completing task or returning subtask (reopen the child and retry if interrupted)",
+				error as Error,
+			)
 		}
-	}
-
-	/**
-	 * Handles the common delegation flow when a subtask completes.
-	 * Returns:
-	 * - "delegated" when completion was approved and parent resumed
-	 * - "denied" when user denied finishing the subtask
-	 * - "continue" when caller should fall through to normal completion ask flow
-	 */
-	private async delegateToParent(
-		task: Task,
-		result: string,
-		provider: DelegationProvider,
-		askFinishSubTaskApproval: () => Promise<boolean>,
-		pushToolResult: (result: string) => void,
-	): Promise<"delegated" | "denied" | "continue"> {
-		const didApprove = await askFinishSubTaskApproval()
-
-		if (!didApprove) {
-			pushToolResult(formatResponse.toolDenied())
-			return "denied"
-		}
-
-		pushToolResult("")
-
-		await provider.reopenParentFromDelegation({
-			parentTaskId: task.parentTaskId!,
-			childTaskId: task.taskId,
-			completionResultSummary: result,
-		})
-
-		return "delegated"
 	}
 
 	override async handlePartial(task: Task, block: ToolUse<"attempt_completion">): Promise<void> {

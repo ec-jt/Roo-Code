@@ -37,7 +37,6 @@ describe("attemptCompletionTool", () => {
 	let mockAskApproval: ReturnType<typeof vi.fn>
 	let mockHandleError: ReturnType<typeof vi.fn>
 	let mockToolDescription: ReturnType<typeof vi.fn>
-	let mockAskFinishSubTaskApproval: ReturnType<typeof vi.fn>
 	let mockGetConfiguration: ReturnType<typeof vi.fn>
 
 	beforeEach(() => {
@@ -45,7 +44,6 @@ describe("attemptCompletionTool", () => {
 		mockAskApproval = vi.fn()
 		mockHandleError = vi.fn()
 		mockToolDescription = vi.fn()
-		mockAskFinishSubTaskApproval = vi.fn()
 		mockGetConfiguration = vi.fn(() => ({
 			get: vi.fn((key: string, defaultValue: any) => {
 				if (key === "preventCompletionWithOpenTodos") {
@@ -74,6 +72,24 @@ describe("attemptCompletionTool", () => {
 		}
 	})
 
+	it("does not report standalone success when delegated child history cannot be read", async () => {
+		Object.assign(mockTask, {
+			parentTaskId: "parent",
+			providerRef: {
+				deref: () => ({ getTaskWithId: vi.fn().mockRejectedValue(new Error("History unavailable")) }),
+			},
+		})
+		await attemptCompletionTool.execute({ result: "Child summary" }, mockTask as Task, {
+			askApproval: mockAskApproval,
+			handleError: mockHandleError,
+			pushToolResult: mockPushToolResult,
+			toolDescription: mockToolDescription,
+		})
+		expect(mockTask.ask).not.toHaveBeenCalled()
+		expect(mockTask.emit).not.toHaveBeenCalled()
+		expect(mockHandleError).toHaveBeenCalled()
+	})
+
 	describe("todo list validation", () => {
 		it("should allow completion when there is no todo list", async () => {
 			const block: AttemptCompletionToolUse = {
@@ -90,7 +106,6 @@ describe("attemptCompletionTool", () => {
 				askApproval: mockAskApproval,
 				handleError: mockHandleError,
 				pushToolResult: mockPushToolResult,
-				askFinishSubTaskApproval: mockAskFinishSubTaskApproval,
 				toolDescription: mockToolDescription,
 			}
 			await attemptCompletionTool.handle(mockTask as Task, block, callbacks)
@@ -115,7 +130,6 @@ describe("attemptCompletionTool", () => {
 				askApproval: mockAskApproval,
 				handleError: mockHandleError,
 				pushToolResult: mockPushToolResult,
-				askFinishSubTaskApproval: mockAskFinishSubTaskApproval,
 				toolDescription: mockToolDescription,
 			}
 			await attemptCompletionTool.handle(mockTask as Task, block, callbacks)
@@ -144,7 +158,6 @@ describe("attemptCompletionTool", () => {
 				askApproval: mockAskApproval,
 				handleError: mockHandleError,
 				pushToolResult: mockPushToolResult,
-				askFinishSubTaskApproval: mockAskFinishSubTaskApproval,
 				toolDescription: mockToolDescription,
 			}
 			await attemptCompletionTool.handle(mockTask as Task, block, callbacks)
@@ -183,7 +196,6 @@ describe("attemptCompletionTool", () => {
 				askApproval: mockAskApproval,
 				handleError: mockHandleError,
 				pushToolResult: mockPushToolResult,
-				askFinishSubTaskApproval: mockAskFinishSubTaskApproval,
 				toolDescription: mockToolDescription,
 			}
 			await attemptCompletionTool.handle(mockTask as Task, block, callbacks)
@@ -225,7 +237,6 @@ describe("attemptCompletionTool", () => {
 				askApproval: mockAskApproval,
 				handleError: mockHandleError,
 				pushToolResult: mockPushToolResult,
-				askFinishSubTaskApproval: mockAskFinishSubTaskApproval,
 				toolDescription: mockToolDescription,
 			}
 			await attemptCompletionTool.handle(mockTask as Task, block, callbacks)
@@ -268,7 +279,6 @@ describe("attemptCompletionTool", () => {
 				askApproval: mockAskApproval,
 				handleError: mockHandleError,
 				pushToolResult: mockPushToolResult,
-				askFinishSubTaskApproval: mockAskFinishSubTaskApproval,
 				toolDescription: mockToolDescription,
 			}
 			await attemptCompletionTool.handle(mockTask as Task, block, callbacks)
@@ -310,7 +320,6 @@ describe("attemptCompletionTool", () => {
 				askApproval: mockAskApproval,
 				handleError: mockHandleError,
 				pushToolResult: mockPushToolResult,
-				askFinishSubTaskApproval: mockAskFinishSubTaskApproval,
 				toolDescription: mockToolDescription,
 			}
 			await attemptCompletionTool.handle(mockTask as Task, block, callbacks)
@@ -353,7 +362,6 @@ describe("attemptCompletionTool", () => {
 				askApproval: mockAskApproval,
 				handleError: mockHandleError,
 				pushToolResult: mockPushToolResult,
-				askFinishSubTaskApproval: mockAskFinishSubTaskApproval,
 				toolDescription: mockToolDescription,
 			}
 			await attemptCompletionTool.handle(mockTask as Task, block, callbacks)
@@ -396,7 +404,6 @@ describe("attemptCompletionTool", () => {
 				askApproval: mockAskApproval,
 				handleError: mockHandleError,
 				pushToolResult: mockPushToolResult,
-				askFinishSubTaskApproval: mockAskFinishSubTaskApproval,
 				toolDescription: mockToolDescription,
 			}
 			await attemptCompletionTool.handle(mockTask as Task, block, callbacks)
@@ -426,7 +433,6 @@ describe("attemptCompletionTool", () => {
 					askApproval: mockAskApproval,
 					handleError: mockHandleError,
 					pushToolResult: mockPushToolResult,
-					askFinishSubTaskApproval: mockAskFinishSubTaskApproval,
 					toolDescription: mockToolDescription,
 				}
 
@@ -460,7 +466,6 @@ describe("attemptCompletionTool", () => {
 					askApproval: mockAskApproval,
 					handleError: mockHandleError,
 					pushToolResult: mockPushToolResult,
-					askFinishSubTaskApproval: mockAskFinishSubTaskApproval,
 					toolDescription: mockToolDescription,
 				}
 
@@ -487,7 +492,6 @@ describe("attemptCompletionTool", () => {
 					askApproval: mockAskApproval,
 					handleError: mockHandleError,
 					pushToolResult: mockPushToolResult,
-					askFinishSubTaskApproval: mockAskFinishSubTaskApproval,
 					toolDescription: mockToolDescription,
 				}
 
@@ -521,7 +525,6 @@ describe("attemptCompletionTool", () => {
 					askApproval: mockAskApproval,
 					handleError: mockHandleError,
 					pushToolResult: mockPushToolResult,
-					askFinishSubTaskApproval: mockAskFinishSubTaskApproval,
 					toolDescription: mockToolDescription,
 				}
 

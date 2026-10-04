@@ -14,6 +14,22 @@ const baseState = {
 } as const
 
 describe("alwaysAllowAll", () => {
+	it.each(["markdownify", "fileSystem", "braveWebSearch", "context7QueryDocs", "gitTools", "futureNativeTool"])(
+		"approves ordinary %s payloads independently of category mapping, only with the master enabled",
+		async (tool) => {
+			const text = JSON.stringify({ tool, url: "https://openvdn.github.io", isOutsideWorkspace: false })
+			for (const autoApprovalEnabled of [true, false]) {
+				expect(
+					await checkAutoApproval({
+						state: { ...baseState, alwaysAllowAll: true, autoApprovalEnabled },
+						ask: "tool",
+						text,
+					}),
+				).toEqual({ decision: autoApprovalEnabled ? "approve" : "ask" })
+			}
+		},
+	)
+
 	it("approves any ask when alwaysAllowAll is true and auto-approval is enabled", async () => {
 		const state = { ...baseState, alwaysAllowAll: true as const }
 

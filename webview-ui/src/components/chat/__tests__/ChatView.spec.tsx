@@ -301,6 +301,45 @@ const renderChatView = (props: Partial<ChatViewProps> = {}) => {
 	)
 }
 
+it("renders scoped persistent approval in the chat strip for the current native Read ask", async () => {
+	const view = renderChatView()
+	act(() =>
+		window.dispatchEvent(
+			new MessageEvent("message", {
+				data: {
+					type: "state",
+					state: {
+						currentTaskId: "task",
+						modelOperation: {
+							taskId: "task",
+							instanceId: "instance",
+							revision: 2,
+							readiness: "ready",
+							requiresToolApproval: false,
+						},
+						clineMessages: [
+							{ type: "say", say: "text", ts: 1, text: "Convert a URL" },
+							{
+								type: "ask",
+								ask: "tool",
+								ts: 10,
+								partial: false,
+								text: JSON.stringify({ tool: "markdownify", url: "https://openvdn.github.io" }),
+							},
+						],
+					},
+				},
+			}),
+		),
+	)
+	const button = await view.findByRole("button", { name: "settings:autoApprove.readOnly.alwaysAllow" })
+	fireEvent.click(button)
+	expect(vscode.postMessage).toHaveBeenCalledWith({
+		type: "alwaysAllowReadOnlyAsk",
+		alwaysAllowReadOnlyAsk: { taskId: "task", instanceId: "instance", revision: 2, askTs: 10 },
+	})
+})
+
 it("preserves the composer draft across model-operation branch state and renders mandatory approval", async () => {
 	const view = renderChatView()
 	const source = {

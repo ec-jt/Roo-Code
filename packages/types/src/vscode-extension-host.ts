@@ -458,6 +458,7 @@ export interface WebviewMessage {
 		| "webviewDidLaunch"
 		| "newTask"
 		| "askResponse"
+		| "alwaysAllowReadOnlyAsk"
 		| "terminalOperation"
 		| "clearTask"
 		| "didShowAnnouncement"
@@ -619,6 +620,7 @@ export interface WebviewMessage {
 	context?: string
 	dataUri?: string
 	askResponse?: ClineAskResponse
+	alwaysAllowReadOnlyAsk?: { taskId: string; instanceId: string; revision: number; askTs: number }
 	apiConfiguration?: ProviderSettings
 	images?: string[]
 	bool?: boolean

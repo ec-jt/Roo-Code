@@ -404,6 +404,7 @@ export class ClineProvider
 	/** Invalidates pending one-action delegation approvals, including switch-away-and-back. */
 	public delegationRevision = 0
 	private delegationInProgress = false
+	private delegationReturnInProgress = false
 
 	private getModelOperationCoordinator(): ModelOperationCoordinator<Task> {
 		return (this.modelOperationCoordinator ??= new ModelOperationCoordinator<Task>({
@@ -1017,8 +1018,9 @@ export class ClineProvider
 
 	public async createTaskWithHistoryItem(
 		historyItem: HistoryItem & { rootTask?: Task; parentTask?: Task },
-		options?: { startTask?: boolean },
+		options?: { startTask?: boolean; assertCurrent?: () => void },
 	) {
+		options?.assertCurrent?.()
 		const isCliRuntime = process.env.ROO_CLI_RUNTIME === "1"
 		// CLI injects runtime provider settings from command flags/env at startup.
 		// Restoring provider profiles from task history can overwrite those
@@ -1130,6 +1132,7 @@ export class ClineProvider
 
 		const { apiConfiguration, enableCheckpoints, checkpointTimeout, experiments } = await this.getState()
 
+		options?.assertCurrent?.()
 		const task = new Task({
 			provider: this,
 			apiConfiguration,
@@ -3277,196 +3280,207 @@ export class ClineProvider
 	public async reopenParentFromDelegation(params: {
 		parentTaskId: string
 		childTaskId: string
+		childInstanceId: string
 		completionResultSummary: string
 	}): Promise<void> {
-		const { parentTaskId, childTaskId, completionResultSummary } = params
-		const globalStoragePath = this.contextProxy.globalStorageUri.fsPath
-
-		// 1) Load parent from history and current persisted messages
-		const { historyItem } = await this.getTaskWithId(parentTaskId)
-
-		let parentClineMessages: ClineMessage[] = []
+		if (this.delegationReturnInProgress) throw new Error("A subtask return is already in progress.")
+		this.delegationReturnInProgress = true
 		try {
-			parentClineMessages = await readTaskMessages({
-				taskId: parentTaskId,
-				globalStoragePath,
-			})
-		} catch {
-			parentClineMessages = []
-		}
-
-		let parentApiMessages: any[] = []
-		try {
-			parentApiMessages = (await readApiMessages({
-				taskId: parentTaskId,
-				globalStoragePath,
-			})) as any[]
-		} catch {
-			parentApiMessages = []
-		}
-
-		// 2) Inject synthetic records: UI subtask_result and update API tool_result
-		const ts = Date.now()
-
-		// Defensive: ensure arrays
-		if (!Array.isArray(parentClineMessages)) parentClineMessages = []
-		if (!Array.isArray(parentApiMessages)) parentApiMessages = []
-
-		const subtaskUiMessage: ClineMessage = {
-			type: "say",
-			say: "subtask_result",
-			text: completionResultSummary,
-			ts,
-		}
-		parentClineMessages.push(subtaskUiMessage)
-		await saveTaskMessages({ messages: parentClineMessages, taskId: parentTaskId, globalStoragePath })
-
-		// Find the tool_use_id from the last assistant message's new_task tool_use
-		let toolUseId: string | undefined
-		for (let i = parentApiMessages.length - 1; i >= 0; i--) {
-			const msg = parentApiMessages[i]
-			if (msg.role === "assistant" && Array.isArray(msg.content)) {
-				for (const block of msg.content) {
-					if (block.type === "tool_use" && block.name === "new_task") {
-						toolUseId = block.id
-						break
-					}
-				}
-				if (toolUseId) break
-			}
-		}
-
-		// Preferred: if the parent history contains the native tool_use for new_task,
-		// inject a matching tool_result for the Anthropic message contract:
-		// user → assistant (tool_use) → user (tool_result)
-		if (toolUseId) {
-			// Check if the last message is already a user message with a tool_result for this tool_use_id
-			// (in case this is a retry or the history was already updated)
-			const lastMsg = parentApiMessages[parentApiMessages.length - 1]
-			let alreadyHasToolResult = false
-			if (lastMsg?.role === "user" && Array.isArray(lastMsg.content)) {
-				for (const block of lastMsg.content) {
-					if (block.type === "tool_result" && block.tool_use_id === toolUseId) {
-						// Update the existing tool_result content
-						block.content = `Subtask ${childTaskId} completed.\n\nResult:\n${completionResultSummary}`
-						alreadyHasToolResult = true
-						break
-					}
+			const { parentTaskId, childTaskId, childInstanceId, completionResultSummary } = params
+			const child = this.getCurrentTask()
+			const revision = this.delegationRevision
+			const assertCurrent = () => {
+				if (
+					!child ||
+					this.getCurrentTask() !== child ||
+					child.taskId !== childTaskId ||
+					child.instanceId !== childInstanceId ||
+					child.parentTaskId !== parentTaskId ||
+					child.abort ||
+					child.abandoned ||
+					child.modelOperationDispatchClosed ||
+					this.delegationRevision !== revision
+				) {
+					throw new Error(
+						"Subtask return interrupted: current task changed or dispatch closed. Reopen the child and retry.",
+					)
 				}
 			}
+			assertCurrent()
+			await child!.assertCanDelegate()
+			assertCurrent()
+			const { historyItem } = await this.getTaskWithId(parentTaskId)
+			const { historyItem: childHistory } = await this.getTaskWithId(childTaskId)
+			assertCurrent()
+			if (
+				parentTaskId === childTaskId ||
+				childHistory.id !== childTaskId ||
+				childHistory.parentTaskId !== parentTaskId ||
+				historyItem.id !== parentTaskId ||
+				historyItem.status !== "delegated" ||
+				historyItem.awaitingChildId !== childTaskId ||
+				(historyItem.delegatedToId && historyItem.delegatedToId !== childTaskId) ||
+				!historyItem.childIds?.includes(childTaskId) ||
+				childHistory.awaitingChildId ||
+				(childHistory.status !== undefined && childHistory.status !== "active")
+			) {
+				throw new Error(
+					"Cannot return subtask: persisted parent/child linkage is missing, mismatched, or has an outstanding child. Reopen the correct task before retrying.",
+				)
+			}
+			const globalStoragePath = this.contextProxy.globalStorageUri.fsPath
+			// Readers tolerate missing/corrupt histories for ordinary history inspection.
+			// Return must not overwrite those histories with a summary-only conversation.
+			const parentClineMessages = await readTaskMessages({ taskId: parentTaskId, globalStoragePath })
+			const parentApiMessages = await readApiMessages({ taskId: parentTaskId, globalStoragePath })
+			assertCurrent()
+			if (
+				!Array.isArray(parentClineMessages) ||
+				!parentClineMessages.length ||
+				!Array.isArray(parentApiMessages) ||
+				!parentApiMessages.length
+			) {
+				throw new Error(
+					"Cannot return subtask: parent conversation history is missing or unreadable. Restore its history and retry.",
+				)
+			}
+			const ts = Date.now()
+			// A retry after a partial write may already have appended the UI summary.
+			const lastUi = parentClineMessages.at(-1)
+			if (lastUi?.say !== "subtask_result" || lastUi.text !== completionResultSummary) {
+				parentClineMessages.push({ type: "say", say: "subtask_result", text: completionResultSummary, ts })
+			}
+			await saveTaskMessages({ messages: parentClineMessages, taskId: parentTaskId, globalStoragePath })
+			// Find the tool_use_id from the last assistant message's new_task tool_use
+			let toolUseId: string | undefined
+			for (let i = parentApiMessages.length - 1; i >= 0; i--) {
+				const msg = parentApiMessages[i]
+				if (msg.role === "assistant") {
+					for (const block of Array.isArray(msg.content) ? msg.content : []) {
+						if (block.type === "tool_use" && block.name === "new_task") {
+							toolUseId = block.id
+							break
+						}
+					}
+					// Never attach this child's result to an older, already-settled turn.
+					break
+				}
+			}
 
-			// If no existing tool_result found, create a NEW user message with the tool_result
-			if (!alreadyHasToolResult) {
+			// Preferred: if the parent history contains the native tool_use for new_task,
+			// inject a matching tool_result for the Anthropic message contract:
+			// user → assistant (tool_use) → user (tool_result)
+			if (toolUseId) {
+				// Check if the last message is already a user message with a tool_result for this tool_use_id
+				// (in case this is a retry or the history was already updated)
+				const lastMsg = parentApiMessages[parentApiMessages.length - 1]
+				let alreadyHasToolResult = false
+				if (lastMsg?.role === "user" && Array.isArray(lastMsg.content)) {
+					for (const block of lastMsg.content) {
+						if (block.type === "tool_result" && block.tool_use_id === toolUseId) {
+							// Update the existing tool_result content
+							block.content = `Subtask ${childTaskId} completed.\n\nResult:\n${completionResultSummary}`
+							alreadyHasToolResult = true
+							break
+						}
+					}
+				}
+
+				// If no existing tool_result found, create a NEW user message with the tool_result
+				if (!alreadyHasToolResult) {
+					parentApiMessages.push({
+						role: "user",
+						content: [
+							{
+								type: "tool_result" as const,
+								tool_use_id: toolUseId,
+								content: `Subtask ${childTaskId} completed.\n\nResult:\n${completionResultSummary}`,
+							},
+						],
+						ts,
+					})
+				}
+
+				// Validate the newly injected tool_result against the preceding assistant message.
+				// This ensures the tool_result's tool_use_id matches a tool_use in the immediately
+				// preceding assistant message (Anthropic API requirement).
+				const lastMessage = parentApiMessages[parentApiMessages.length - 1]
+				if (lastMessage?.role === "user") {
+					const validatedMessage = validateAndFixToolResultIds(lastMessage, parentApiMessages.slice(0, -1))
+					parentApiMessages[parentApiMessages.length - 1] = validatedMessage
+				}
+			} else if (
+				!parentApiMessages.at(-1)?.content ||
+				!Array.isArray(parentApiMessages.at(-1)?.content) ||
+				!(parentApiMessages.at(-1)!.content as Anthropic.Messages.ContentBlockParam[]).some(
+					(block) =>
+						block.type === "text" &&
+						block.text === `Subtask ${childTaskId} completed.\n\nResult:\n${completionResultSummary}`,
+				)
+			) {
+				// If there is no corresponding tool_use in the parent API history, we cannot emit a
+				// tool_result. Fall back to a plain user text note so the parent can still resume.
 				parentApiMessages.push({
 					role: "user",
 					content: [
 						{
-							type: "tool_result" as const,
-							tool_use_id: toolUseId,
-							content: `Subtask ${childTaskId} completed.\n\nResult:\n${completionResultSummary}`,
+							type: "text" as const,
+							text: `Subtask ${childTaskId} completed.\n\nResult:\n${completionResultSummary}`,
 						},
 					],
 					ts,
 				})
 			}
 
-			// Validate the newly injected tool_result against the preceding assistant message.
-			// This ensures the tool_result's tool_use_id matches a tool_use in the immediately
-			// preceding assistant message (Anthropic API requirement).
-			const lastMessage = parentApiMessages[parentApiMessages.length - 1]
-			if (lastMessage?.role === "user") {
-				const validatedMessage = validateAndFixToolResultIds(lastMessage, parentApiMessages.slice(0, -1))
-				parentApiMessages[parentApiMessages.length - 1] = validatedMessage
+			assertCurrent()
+			await saveApiMessages({ messages: parentApiMessages as any, taskId: parentTaskId, globalStoragePath })
+
+			assertCurrent()
+			// Closing the child saves its final history. Do not repair the parent's
+			// delegation metadata as though the user had cancelled this child.
+			const closeRevision = this.delegationRevision + 1
+			await this.removeClineFromStack({ skipDelegationRepair: true })
+			const assertNoReplacement = () => {
+				if (this.getCurrentTask() || this.delegationRevision !== closeRevision) {
+					throw new Error("Subtask return interrupted by another task. Resume the parent from history.")
+				}
 			}
-		} else {
-			// If there is no corresponding tool_use in the parent API history, we cannot emit a
-			// tool_result. Fall back to a plain user text note so the parent can still resume.
-			parentApiMessages.push({
-				role: "user",
-				content: [
-					{
-						type: "text" as const,
-						text: `Subtask ${childTaskId} completed.\n\nResult:\n${completionResultSummary}`,
-					},
-				],
-				ts,
-			})
-		}
-
-		await saveApiMessages({ messages: parentApiMessages as any, taskId: parentTaskId, globalStoragePath })
-
-		// 3) Close child instance if still open (single-open-task invariant).
-		//    This MUST happen BEFORE updating the child's status to "completed" because
-		//    removeClineFromStack() → abortTask(true) → saveClineMessages() writes
-		//    the historyItem with initialStatus (typically "active"), which would
-		//    overwrite a "completed" status set earlier.
-		const current = this.getCurrentTask()
-		if (current?.taskId === childTaskId) {
-			await this.removeClineFromStack()
-		}
-
-		// 4) Update child metadata to "completed" status.
-		//    This runs after the abort so it overwrites the stale "active" status
-		//    that saveClineMessages() may have written during step 3.
-		try {
-			const { historyItem: childHistory } = await this.getTaskWithId(childTaskId)
-			await this.updateTaskHistory({
-				...childHistory,
-				status: "completed",
-			})
-		} catch (err) {
-			this.log(
-				`[reopenParentFromDelegation] Failed to persist child completed status for ${childTaskId}: ${
-					(err as Error)?.message ?? String(err)
-				}`,
-			)
-		}
-
-		// 5) Update parent metadata and persist BEFORE emitting completion event
-		const childIds = Array.from(new Set([...(historyItem.childIds ?? []), childTaskId]))
-		const updatedHistory: typeof historyItem = {
-			...historyItem,
-			status: "active",
-			completedByChildId: childTaskId,
-			completionResultSummary,
-			awaitingChildId: undefined,
-			childIds,
-		}
-		await this.updateTaskHistory(updatedHistory)
-
-		// 6) Emit TaskDelegationCompleted (provider-level)
-		try {
+			assertNoReplacement()
+			const { historyItem: finalChildHistory } = await this.getTaskWithId(childTaskId)
+			assertNoReplacement()
+			await this.updateTaskHistory({ ...finalChildHistory, status: "completed" })
+			assertNoReplacement()
+			const updatedHistory: HistoryItem = {
+				...historyItem,
+				status: "active",
+				completedByChildId: childTaskId,
+				completionResultSummary,
+				awaitingChildId: undefined,
+			}
+			await this.updateTaskHistory(updatedHistory)
+			assertNoReplacement()
+			// The child's listeners have been detached. Emit explicitly for the child,
+			// before starting the parent, never as completion of the now-current parent.
+			this.emit(RooCodeEventName.TaskCompleted, childTaskId, child!.getTokenUsage(), child!.toolUsage)
 			this.emit(RooCodeEventName.TaskDelegationCompleted, parentTaskId, childTaskId, completionResultSummary)
-		} catch {
-			// non-fatal
-		}
-
-		// 7) Reopen the parent from history as the sole active task (restores saved mode)
-		//    IMPORTANT: startTask=false to suppress resume-from-history ask scheduling
-		const parentInstance = await this.createTaskWithHistoryItem(updatedHistory, { startTask: false })
-
-		// 8) Inject restored histories into the in-memory instance before resuming
-		if (parentInstance) {
-			try {
-				await parentInstance.overwriteClineMessages(parentClineMessages)
-			} catch {
-				// non-fatal
+			const parentInstance = await this.createTaskWithHistoryItem(updatedHistory, {
+				startTask: false,
+				assertCurrent: () => {
+					if (this.getCurrentTask()) throw new Error("Subtask return interrupted by another task.")
+				},
+			})
+			if (!parentInstance || this.getCurrentTask() !== parentInstance) {
+				throw new Error("Parent was replaced before resuming. Resume it from history.")
 			}
-			try {
-				await parentInstance.overwriteApiConversationHistory(parentApiMessages as any)
-			} catch {
-				// non-fatal
+			await parentInstance.overwriteClineMessages(parentClineMessages)
+			if (this.getCurrentTask() !== parentInstance || parentInstance.modelOperationDispatchClosed) {
+				throw new Error("Parent was replaced while restoring history. Resume it from history.")
 			}
-
-			// Auto-resume parent without ask("resume_task")
+			await parentInstance.overwriteApiConversationHistory(parentApiMessages)
 			await parentInstance.resumeAfterDelegation()
-		}
-
-		// 9) Emit TaskDelegationResumed (provider-level)
-		try {
 			this.emit(RooCodeEventName.TaskDelegationResumed, parentTaskId, childTaskId)
-		} catch {
-			// non-fatal
+		} finally {
+			this.delegationReturnInProgress = false
 		}
 	}
 

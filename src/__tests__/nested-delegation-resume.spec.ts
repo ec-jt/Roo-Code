@@ -51,6 +51,7 @@ describe("Nested delegation resume (A → B → C)", () => {
 	it("C completes → reopens B; then B completes → reopens A; emits correct events; no resume_task asks", async () => {
 		// Track which task is "current" to satisfy provider.reopenParentFromDelegation() child-close logic
 		let currentActiveId: string | undefined = "C"
+		let currentTask: any
 
 		// History index: A is parent of B, B is parent of C
 		const historyIndex: Record<string, any> = {
@@ -102,6 +103,8 @@ describe("Nested delegation resume (A → B → C)", () => {
 		const removeClineFromStack = vi.fn().mockImplementation(async () => {
 			// Simulate closing current child
 			currentActiveId = undefined
+			currentTask = undefined
+			provider.delegationRevision++
 		})
 		const createTaskWithHistoryItem = vi
 			.fn()
@@ -111,12 +114,13 @@ describe("Nested delegation resume (A → B → C)", () => {
 				// Reopen the parent
 				currentActiveId = historyItem.id
 				// Return minimal parent instance with resumeAfterDelegation
-				return {
+				currentTask = {
 					taskId: historyItem.id,
 					resumeAfterDelegation: vi.fn().mockResolvedValue(undefined),
 					overwriteClineMessages: vi.fn().mockResolvedValue(undefined),
 					overwriteApiConversationHistory: vi.fn().mockResolvedValue(undefined),
 				}
+				return currentTask
 			})
 
 		const getTaskWithId = vi.fn(async (id: string) => {
@@ -137,10 +141,11 @@ describe("Nested delegation resume (A → B → C)", () => {
 		})
 
 		const provider = {
+			delegationRevision: 0,
 			contextProxy: { globalStorageUri: { fsPath: "/tmp" } },
 			getTaskWithId,
 			emit: emitSpy,
-			getCurrentTask: vi.fn(() => (currentActiveId ? ({ taskId: currentActiveId } as any) : undefined)),
+			getCurrentTask: vi.fn(() => currentTask),
 			removeClineFromStack,
 			createTaskWithHistoryItem,
 			updateTaskHistory,
@@ -151,12 +156,14 @@ describe("Nested delegation resume (A → B → C)", () => {
 		} as unknown as ClineProvider
 
 		// Empty histories for simplicity
-		vi.mocked(readTaskMessages).mockResolvedValue([])
-		vi.mocked(readApiMessages).mockResolvedValue([])
+		vi.mocked(readTaskMessages).mockResolvedValue([{ type: "say", say: "text", text: "Parent", ts: 1 }])
+		vi.mocked(readApiMessages).mockResolvedValue([{ role: "user", content: "Parent task" }])
 
 		// Step 1: C completes -> should reopen B automatically
 		const clineC = {
 			taskId: "C",
+			instanceId: "C-instance",
+			assertCanDelegate: vi.fn(async () => {}),
 			parentTask: undefined, // parent ref may or may not exist; metadata path should still work
 			parentTaskId: "B",
 			historyItem: { parentTaskId: "B" },
@@ -179,17 +186,16 @@ describe("Nested delegation resume (A → B → C)", () => {
 			partial: false,
 		} as any
 
-		const askFinishSubTaskApproval = vi.fn(async () => true)
 		const handleError = vi.fn(async (_action: string, err: Error) => {
 			// Fail fast in this test if the tool hits an error path.
 			throw err
 		})
 
+		currentTask = clineC
 		await attemptCompletionTool.handle(clineC, blockC, {
 			askApproval: vi.fn(),
 			handleError,
 			pushToolResult: vi.fn(),
-			askFinishSubTaskApproval,
 			toolDescription: () => "desc",
 		} as any)
 
@@ -204,6 +210,8 @@ describe("Nested delegation resume (A → B → C)", () => {
 		// Step 2: B completes -> should reopen A automatically (parent reference missing, must use parentTaskId path)
 		const clineB = {
 			taskId: "B",
+			instanceId: "B-instance",
+			assertCanDelegate: vi.fn(async () => {}),
 			parentTask: undefined, // simulate missing live parent reference
 			parentTaskId: "A", // persisted parent id
 			historyItem: { parentTaskId: "A" },
@@ -226,11 +234,11 @@ describe("Nested delegation resume (A → B → C)", () => {
 			partial: false,
 		} as any
 
+		currentTask = clineB
 		await attemptCompletionTool.handle(clineB, blockB, {
 			askApproval: vi.fn(),
 			handleError,
 			pushToolResult: vi.fn(),
-			askFinishSubTaskApproval,
 			toolDescription: () => "desc",
 		} as any)
 

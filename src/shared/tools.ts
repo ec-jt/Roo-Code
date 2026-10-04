@@ -23,8 +23,6 @@ export type HandleError = (action: string, error: Error) => Promise<void>
 
 export type PushToolResult = (content: ToolResponse) => void
 
-export type AskFinishSubTaskApproval = () => Promise<boolean>
-
 export interface TextContent {
 	type: "text"
 	content: string

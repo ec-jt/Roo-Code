@@ -2,6 +2,7 @@ import fs from "fs/promises"
 import { join } from "path"
 
 import { fileExistsAtPath } from "../../utils/fs"
+import { MAX_CHECKPOINT_FILE_BYTES } from "./storageProtection"
 
 const getBuildArtifactPatterns = () => [
 	".gradle/",
@@ -116,6 +117,17 @@ const getLargeDataFilePatterns = () => [
 	"*.dat",
 	"*.dmg",
 	"*.msi",
+	// Serialized model weights, not model directories: keep code, configuration,
+	// tokenizer metadata and shard index JSON eligible for checkpoints.
+	"*.safetensors",
+	"*.gguf",
+	"*.ggml",
+	"*.ckpt",
+	"*.pt",
+	"*.pth",
+	"*.onnx",
+	"*.h5",
+	"*.hdf5",
 ]
 
 const getDatabaseFilePatterns = () => [
@@ -188,6 +200,8 @@ const getLfsPatterns = async (workspacePath: string) => {
 		const attributesPath = join(workspacePath, ".gitattributes")
 
 		if (await fileExistsAtPath(attributesPath)) {
+			const stat = await fs.lstat(attributesPath)
+			if (!stat.isFile() || stat.size > MAX_CHECKPOINT_FILE_BYTES) return []
 			return (await fs.readFile(attributesPath, "utf8"))
 				.split("\n")
 				.filter((line) => line.includes("filter=lfs"))

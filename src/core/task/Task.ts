@@ -2113,6 +2113,23 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		return result
 	}
 
+	/** Correlate persistent approval actions without exposing or overwriting an existing response. */
+	public isPendingToolAsk(askTs: number): boolean {
+		const message = this.clineMessages.at(-1)
+		return (
+			!this.abort &&
+			!this.abandoned &&
+			!this.modelOperationClosed &&
+			this.askResponse === undefined &&
+			this.lastMessageTs === askTs &&
+			message?.ts === askTs &&
+			message.type === "ask" &&
+			message.ask === "tool" &&
+			!message.partial &&
+			!message.isAnswered
+		)
+	}
+
 	handleWebviewAskResponse(askResponse: ClineAskResponse, text?: string, images?: string[]) {
 		if (this.modelOperationClosed) return
 		// Clear any pending auto-approval timeout when user responds
@@ -3114,14 +3131,25 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	 * - Immediately continues task loop without user interaction
 	 */
 	public async resumeAfterDelegation(): Promise<void> {
+		const assertCurrent = () => {
+			if (
+				this.providerRef.deref()?.getCurrentTask() !== this ||
+				this.abort ||
+				this.abandoned ||
+				this.modelOperationClosed
+			) {
+				throw new Error("Parent resumption interrupted: task changed or dispatch closed.")
+			}
+		}
+		assertCurrent()
+		await this.assertCanDelegate()
+		assertCurrent()
 		// Clear any ask states that might have been set during history load
 		this.idleAsk = undefined
 		this.resumableAsk = undefined
 		this.interactiveAsk = undefined
 
 		// Reset abort and streaming state to ensure clean continuation
-		this.abort = false
-		this.abandoned = false
 		this.abortReason = undefined
 		this.didFinishAbortingStream = false
 		this.isStreaming = false
@@ -3142,6 +3170,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		// Add environment details to the existing last user message (which contains the tool_result)
 		// This avoids creating a new user message which would cause consecutive user messages
 		const environmentDetails = await getEnvironmentDetails(this, true)
+		assertCurrent()
 		let lastUserMsgIndex = -1
 		for (let i = this.apiConversationHistory.length - 1; i >= 0; i--) {
 			if (this.apiConversationHistory[i].role === "user") {
@@ -3170,11 +3199,19 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		}
 
 		// Save the updated history
-		await this.saveApiConversationHistory()
+		if (!(await this.saveApiConversationHistory()))
+			throw new Error("Could not save parent history before resuming.")
+		assertCurrent()
 
 		// Continue task loop - pass empty array to signal no new user content needed
 		// The initiateTaskLoop will handle this by skipping user message addition
-		await this.initiateTaskLoop([])
+		// Start continuation without awaiting the entire parent conversation.
+		void this.initiateTaskLoop([]).catch((error) => {
+			if (!this.abort && !this.modelOperationClosed) {
+				this.providerRef.deref()?.log(`Parent continuation failed: ${String(error)}`)
+				void this.say("error", "Parent continuation failed. Resume this task from history.").catch(() => {})
+			}
+		})
 	}
 
 	// Task Loop

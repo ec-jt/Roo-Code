@@ -9,6 +9,7 @@ import { getExcludePatterns } from "../excludes"
 vi.mock("fs/promises", () => ({
 	default: {
 		readFile: vi.fn(),
+		lstat: vi.fn(),
 	},
 }))
 
@@ -22,6 +23,32 @@ describe("getExcludePatterns", () => {
 
 	beforeEach(() => {
 		vi.clearAllMocks()
+		vi.mocked(fs.lstat).mockResolvedValue({ isFile: () => true, size: 100 } as Awaited<ReturnType<typeof fs.lstat>>)
+	})
+
+	it("does not read an oversized or symlinked attributes file", async () => {
+		vi.mocked(fileExistsAtPath).mockResolvedValue(true)
+		vi.mocked(fs.lstat).mockResolvedValue({ isFile: () => true, size: 20 * 1024 * 1024 } as Awaited<
+			ReturnType<typeof fs.lstat>
+		>)
+		await getExcludePatterns(testWorkspacePath)
+		expect(fs.readFile).not.toHaveBeenCalled()
+		vi.mocked(fs.lstat).mockResolvedValue({ isFile: () => false, size: 100 } as Awaited<
+			ReturnType<typeof fs.lstat>
+		>)
+		await getExcludePatterns(testWorkspacePath)
+		expect(fs.readFile).not.toHaveBeenCalled()
+	})
+
+	it("excludes model artifacts without excluding model directories or metadata", async () => {
+		vi.mocked(fileExistsAtPath).mockResolvedValue(false)
+		const patterns = await getExcludePatterns(testWorkspacePath)
+		for (const extension of ["safetensors", "gguf", "ggml", "ckpt", "pt", "pth", "onnx", "h5", "hdf5"]) {
+			expect(patterns).toContain(`*.${extension}`)
+		}
+		for (const pattern of ["models/", "*.json", "*.py", "*.ts"]) {
+			expect(patterns).not.toContain(pattern)
+		}
 	})
 
 	describe("getLfsPatterns", () => {

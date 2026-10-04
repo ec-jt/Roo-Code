@@ -1,5 +1,15 @@
 # Roo Code Changelog
 
+## 4.2.4 - Cordis preview 2
+
+- Return valid completed subtasks to their parent automatically, without a separate finish approval. Persist the summary and start parent continuation; reject stale or mismatched returns and report delivery failures instead of standalone success.
+- Add **Always allow read-only actions** to eligible pending approvals. Persist Read permission without enabling writes or outside-workspace access. Include native Markdown conversion, search, documentation, filesystem reads, and Git inspection in the Read category. New wording uses English fallback for this preview.
+- Exclude common model weights from checkpoints and enforce a 10 MiB per-file ceiling. Preserve small source/configuration files and workspace copies of excluded artifacts. Block unsafe legacy restores. Existing checkpoint history is not pruned or reduced automatically.
+- Make STE-inspired writing rules the default while preserving requested detail, uncertainty, language preferences, and exact code/log/tool content.
+- Keep **Cordis runtime preview** off by default. Graph execution and strict financial budget enforcement remain unavailable.
+
+GitHub prerelease tag: **v4.2.4-cordis-preview.2**.
+
 ## 4.2.3 - Cordis preview 1
 
 - Add **Settings > Experimental > Cordis runtime preview**, default off, translated into all 18 supported languages. Save applies the setting to new Anthropic tasks; other providers retain normal execution.

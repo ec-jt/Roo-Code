@@ -5,6 +5,7 @@ import { AnthropicHandler } from "../../../api/providers/anthropic"
 import { ModelDispatchControl, type DispatchAdmission } from "../../../api/dispatch-admission"
 import { saveApiMessages } from "../../task-persistence"
 import { readBranchProvenance, saveRequestSnapshot } from "../model-operation/storage"
+import { attemptCompletionTool } from "../../tools/AttemptCompletionTool"
 
 const { create } = vi.hoisted(() => ({ create: vi.fn() }))
 vi.mock("@anthropic-ai/sdk", () => ({ Anthropic: vi.fn(() => ({ messages: { create } })) }))
@@ -97,6 +98,64 @@ describe("Task opt-in model dispatch", () => {
 	afterEach(() => {
 		;(task as any).debouncedEmitTokenUsage.cancel()
 		vi.restoreAllMocks()
+	})
+
+	it.each([false, true])(
+		"restores child lineage and automatically returns with Cordis enabled=%s",
+		async (enabled) => {
+			await provider.contextProxy.setValue("experiments", { cordisRuntimePreview: enabled })
+			const historyItem = {
+				id: "restored-child",
+				parentTaskId: "parent",
+				rootTaskId: "parent",
+				status: "active",
+				task: "Child",
+				ts: 1,
+				number: 1,
+				totalCost: 0,
+				tokensIn: 0,
+				tokensOut: 0,
+			} as const
+			const restored = new Task({
+				provider,
+				apiConfiguration: (await provider.getState()).apiConfiguration,
+				startTask: false,
+				workspacePath: "/workspace",
+				historyItem,
+			})
+			provider.getCurrentTask = vi.fn(() => restored)
+			provider.getTaskWithId = vi.fn(async () => ({ historyItem }))
+			provider.reopenParentFromDelegation = vi.fn(async () => {})
+			vi.spyOn(restored, "say").mockResolvedValue(undefined)
+			const ask = vi.spyOn(restored, "ask")
+			const callbacks = {
+				askApproval: vi.fn(),
+				pushToolResult: vi.fn(),
+				handleError: vi.fn(),
+				toolDescription: () => "complete",
+			}
+			await attemptCompletionTool.execute({ result: "Restored summary" }, restored, callbacks)
+			expect(restored.parentTaskId).toBe("parent")
+			expect(Boolean((restored as any).modelDispatchRuntime)).toBe(enabled)
+			expect(callbacks.handleError).not.toHaveBeenCalled()
+			expect(ask).not.toHaveBeenCalled()
+			expect(provider.reopenParentFromDelegation).toHaveBeenCalledExactlyOnceWith({
+				parentTaskId: "parent",
+				childTaskId: "restored-child",
+				childInstanceId: restored.instanceId,
+				completionResultSummary: "Restored summary",
+			})
+			restored.dispose({ preserveArtifacts: true })
+		},
+	)
+
+	it.each(["abort", "modelOperationClosed"])("does not reopen a closed parent during resume: %s", async (flag) => {
+		provider.getCurrentTask = vi.fn(() => task)
+		;(task as any)[flag] = true
+		const loop = vi.spyOn(task as any, "initiateTaskLoop")
+		await expect(task.resumeAfterDelegation()).rejects.toThrow("dispatch closed")
+		expect((task as any)[flag]).toBe(true)
+		expect(loop).not.toHaveBeenCalled()
 	})
 
 	it.each([undefined, false, true])("selects ordinary Anthropic preview only when enabled: %s", async (enabled) => {

@@ -35,6 +35,7 @@ import Announcement from "./Announcement"
 import BrowserActionRow from "./BrowserActionRow"
 import BrowserSessionStatusRow from "./BrowserSessionStatusRow"
 import ChatRow from "./ChatRow"
+import { AlwaysAllowReadOnlyButton } from "./AlwaysAllowReadOnlyButton"
 import { ModelOperationPanel, ModelOperationProvider } from "./ModelOperationContext"
 import WarningRow from "./WarningRow"
 import { ChatTextArea } from "./ChatTextArea"
@@ -1681,6 +1682,9 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 						/>
 					</div>
 					<FileChangesPanel clineMessages={messages} />
+					{!showScrollToBottom && enableButtons && clineAsk === "tool" && (
+						<AlwaysAllowReadOnlyButton message={messages.at(-1)} />
+					)}
 					{areButtonsVisible && (
 						<div
 							className={`flex h-9 items-center mb-1 px-[15px] ${

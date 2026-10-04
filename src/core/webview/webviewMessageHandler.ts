@@ -27,6 +27,7 @@ import { saveTaskMessages } from "../task-persistence"
 import { ClineProvider } from "./ClineProvider"
 import { BrowserSessionPanelManager } from "./BrowserSessionPanelManager"
 import { handleCheckpointRestoreOperation } from "./checkpointRestoreHandler"
+import { handleAlwaysAllowReadOnlyAsk } from "./alwaysAllowReadOnlyHandler"
 import { generateErrorDiagnostics } from "./diagnosticsHandler"
 import {
 	handleRequestSkills,
@@ -681,6 +682,10 @@ export const webviewMessageHandler = async (
 			break
 		case "customInstructions":
 			await provider.updateCustomInstructions(message.text)
+			break
+
+		case "alwaysAllowReadOnlyAsk":
+			await handleAlwaysAllowReadOnlyAsk(provider, message.alwaysAllowReadOnlyAsk)
 			break
 
 		case "askResponse":
