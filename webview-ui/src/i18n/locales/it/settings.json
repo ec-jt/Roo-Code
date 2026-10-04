@@ -761,6 +761,10 @@
 		}
 	},
 	"experimental": {
+		"CORDIS_RUNTIME_PREVIEW": {
+			"name": "Anteprima del runtime Cordis",
+			"description": "Attiva l'ammissione sperimentale delle richieste solo per le nuove attività Anthropic. Gli altri provider usano il flusso normale. L'esecuzione di grafi non è disponibile e questa anteprima non impone limiti di budget finanziario. La chat normale e la delega restano disponibili quando l'anteprima è disattivata. Salva per applicare: la disattivazione interrompe l'invio di nuove richieste tramite l'anteprima e annulla le richieste attive ai modelli tramite l'anteprima, ma non può annullare gli effetti già prodotti. La riattivazione non riprende automaticamente le attività interrotte; riapri o avvia un'attività per usare l'impostazione attuale."
+		},
 		"DIFF_STRATEGY_UNIFIED": {
 			"name": "Usa strategia diff unificata sperimentale",
 			"description": "Abilita la strategia diff unificata sperimentale. Questa strategia potrebbe ridurre il numero di tentativi causati da errori del modello, ma può causare comportamenti imprevisti o modifiche errate. Abilitala solo se comprendi i rischi e sei disposto a rivedere attentamente tutte le modifiche."

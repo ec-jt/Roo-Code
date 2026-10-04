@@ -7,6 +7,15 @@ import { v7 as uuidv7 } from "uuid"
 import EventEmitter from "events"
 
 import { AskIgnoredError } from "./AskIgnoredError"
+import { isAuthorizationAsk, type TaskApprovalPort } from "../tool-execution/approval"
+import {
+	compatibilityToolPolicy,
+	evaluateToolPolicy,
+	identifyToolInvocation,
+	type InvocationDecision,
+	type ToolInvocationPolicy,
+} from "../tool-execution/invocation-policy"
+import { sanitizeMcpName, toolNamesMatch } from "../../utils/mcp-name"
 
 import { Anthropic } from "@anthropic-ai/sdk"
 import OpenAI from "openai"
@@ -56,6 +65,7 @@ import {
 
 // api
 import { ApiHandler, ApiHandlerCreateMessageMetadata, buildApiHandler } from "../../api"
+import { selectPreviewRuntime } from "../../api/preview-runtime"
 import { ApiStream, GroundingSource } from "../../api/transform/stream"
 import { maybeRemoveImageBlocks } from "../../api/transform/image-cleaning"
 
@@ -67,7 +77,7 @@ import { t } from "../../i18n"
 import { getApiMetrics, hasTokenUsageChanged, hasToolUsageChanged } from "../../shared/getApiMetrics"
 import { ClineAskResponse } from "../../shared/WebviewMessage"
 import { defaultModeSlug, getModeBySlug, getGroupName } from "../../shared/modes"
-import { DiffStrategy, type ToolUse, type ToolParamName, toolParamNames } from "../../shared/tools"
+import { DiffStrategy, type ToolUse, type McpToolUse, type ToolParamName, toolParamNames } from "../../shared/tools"
 import { getModelMaxOutputTokens } from "../../shared/api"
 
 // services
@@ -105,6 +115,8 @@ import { RooProtectedController } from "../protect/RooProtectedController"
 import { type AssistantMessageContent, presentAssistantMessage } from "../assistant-message"
 import { NativeToolCallParser } from "../assistant-message/NativeToolCallParser"
 import { manageContext, willManageContext } from "../context-management"
+import { mediateModelHandler } from "../../api/mediated-handler"
+import { ModelDispatchControl, type ModelDispatchRuntime } from "../../api/dispatch-admission"
 import { ClineProvider } from "../webview/ClineProvider"
 import { MultiSearchReplaceDiffStrategy } from "../diff/strategies/multi-search-replace"
 import {
@@ -199,6 +211,12 @@ function summarizeApiMessages(messages: ApiMessage[]) {
 
 export interface TaskOptions extends CreateTaskOptions {
 	provider: ClineProvider
+	/** Runtime-only restrictions for this instance; not persisted or inherited by child tasks. */
+	toolInvocationPolicy?: ToolInvocationPolicy
+	/** Additional veto for authorization asks. Continue still uses the existing approval flow. */
+	approvalPort?: TaskApprovalPort
+	/** Opt-in, instance-local streaming model admission. Not persisted or inherited. */
+	modelDispatchRuntime?: ModelDispatchRuntime
 	apiConfiguration: ProviderSettings
 	enableCheckpoints?: boolean
 	checkpointTimeout?: number
@@ -219,6 +237,18 @@ export interface TaskOptions extends CreateTaskOptions {
 }
 
 export class Task extends EventEmitter<TaskEvents> implements TaskLike {
+	private readonly modelDispatchRuntime?: ModelDispatchRuntime
+	private previewDispatchDisabled = false
+	private unsubscribePreviewSettings?: () => void
+	private modelDispatchAbortController?: AbortController
+	private readonly modelDispatchControllers = new Set<AbortController>()
+	/** Last typed stop for hosts that start the task through a fire-and-forget entry point. */
+	public modelDispatchOutcome?: ModelDispatchControl
+	private readonly toolInvocationPolicy: ToolInvocationPolicy
+	private readonly approvalPort?: TaskApprovalPort
+	private approvalSequence = 0
+	private toolExecutionDisposed = false
+
 	readonly taskId: string
 	readonly rootTaskId?: string
 	readonly parentTaskId?: string
@@ -600,6 +630,60 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		return !this.abort && !this.modelOperationClosed && this.modelOperationAdmission.respond(payload)
 	}
 
+	/** Additional presenter restriction, before branch admission and all handler effects. */
+	public async checkToolInvocation(block: ToolUse | McpToolUse): Promise<InvocationDecision> {
+		const revision = this.modelOperationRevision
+		if (this.abort || this.modelOperationClosed || this.toolExecutionDisposed)
+			return { allow: false, reason: "Task dispatch is closed." }
+		// Preserve ordinary chat exactly, including existing malformed-call diagnostics.
+		if (this.toolInvocationPolicy === compatibilityToolPolicy) return { allow: true }
+		try {
+			let identity = identifyToolInvocation(block)
+			if (identity.kind === "mcp") {
+				const hub = this.providerRef.deref()?.getMcpHub()
+				const catalog = hub?.getAllServers()
+				const requestedServerName = identity.serverName
+				if (block.type === "mcp_tool_use") {
+					const candidates = catalog?.filter((server) =>
+						toolNamesMatch(sanitizeMcpName(server.name), requestedServerName),
+					)
+					if (candidates?.length !== 1)
+						return { allow: false, reason: "MCP server identity cannot be resolved unambiguously." }
+				}
+				const serverName =
+					block.type === "mcp_tool_use"
+						? (hub?.findServerNameBySanitizedName(identity.serverName) ?? identity.serverName)
+						: identity.serverName
+				const servers = catalog?.filter((server) => server.name === serverName)
+				const toolName = identity.toolName
+				const tools =
+					servers?.length === 1
+						? servers[0].tools?.filter((tool) => toolNamesMatch(tool.name, toolName))
+						: undefined
+				// Do not turn lossy aliases or an unavailable catalog into wider grants.
+				if (tools?.length !== 1)
+					return { allow: false, reason: "MCP capability identity cannot be resolved unambiguously." }
+				identity = { kind: "mcp", serverName, toolName: tools[0].name }
+			}
+			const decision = await evaluateToolPolicy(this.toolInvocationPolicy, {
+				taskId: this.taskId,
+				instanceId: this.instanceId,
+				toolCallId: block.id!,
+				identity,
+			})
+			if (
+				this.abort ||
+				this.modelOperationClosed ||
+				this.toolExecutionDisposed ||
+				revision !== this.modelOperationRevision
+			)
+				return { allow: false, reason: "Tool invocation became stale." }
+			return decision
+		} catch {
+			return { allow: false, reason: "Tool invocation policy failed. Execution denied." }
+		}
+	}
+
 	/** Central presenter admission. Partial tools must never reach their handlers. */
 	public async admitModelOperationTool(toolName: string, toolId: string): Promise<boolean> {
 		if (this.abort || this.modelOperationClosed) return false
@@ -820,6 +904,9 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 	constructor({
 		provider,
+		toolInvocationPolicy = compatibilityToolPolicy,
+		approvalPort,
+		modelDispatchRuntime,
 		apiConfiguration,
 		enableCheckpoints = true,
 		checkpointTimeout = DEFAULT_CHECKPOINT_TIMEOUT_SECONDS,
@@ -839,6 +926,14 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		initialStatus,
 	}: TaskOptions) {
 		super()
+		this.modelDispatchRuntime =
+			modelDispatchRuntime ??
+			selectPreviewRuntime(
+				apiConfiguration.apiProvider,
+				provider.contextProxy?.getValue ? provider.contextProxy.getValue("experiments") : experimentsConfig,
+			)
+		this.toolInvocationPolicy = toolInvocationPolicy
+		this.approvalPort = approvalPort
 
 		if (startTask && !task && !images && !historyItem) {
 			throw new Error("Either historyItem or task/images must be provided")
@@ -983,6 +1078,16 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			this._taskApiConfigName = undefined
 			this.taskModeReady = this.initializeTaskMode(provider)
 			this.taskApiConfigReady = this.initializeTaskApiConfigName(provider)
+		}
+
+		if (this.modelDispatchRuntime) {
+			this.unsubscribePreviewSettings = provider.contextProxy?.onExperimentsChanged?.((settings) => {
+				if (settings?.cordisRuntimePreview === true) return
+				// Keep the runtime/policy attached. Never downgrade a restricted task to legacy dispatch.
+				// This latch is intentionally not cleared on enable; only a fresh task can resume.
+				this.previewDispatchDisabled = true
+				for (const controller of this.modelDispatchControllers) controller.abort()
+			})
 		}
 
 		onCreated?.(this)
@@ -1726,6 +1831,50 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		progressStatus?: ToolProgressStatus,
 		isProtected?: boolean,
 	): Promise<{ response: ClineAskResponse; text?: string; images?: string[] }> {
+		// The default path deliberately retains the existing timing, partial rows,
+		// feedback, batching, queue behavior and auto-approval implementation.
+		if (!this.approvalPort) return this.askWithExistingApproval(type, text, partial, progressStatus, isProtected)
+		const sequence = ++this.approvalSequence
+		if (partial || !isAuthorizationAsk(type))
+			return this.askWithExistingApproval(type, text, partial, progressStatus, isProtected)
+		const revision = this.modelOperationRevision
+		const messageTs = this.lastMessageTs
+		const assertLive = () => {
+			if (this.abort || this.modelOperationClosed || this.toolExecutionDisposed)
+				throw new Error("Task dispatch is closed")
+			if (sequence !== this.approvalSequence || revision !== this.modelOperationRevision)
+				throw new AskIgnoredError("superseded approval")
+		}
+		assertLive()
+		let decision
+		try {
+			decision = await this.approvalPort.check({
+				taskId: this.taskId,
+				instanceId: this.instanceId,
+				sequence,
+				type,
+				text,
+				progressStatus,
+				isProtected,
+			})
+		} catch {
+			decision = { decision: "deny" as const, reason: "Task approval policy failed." }
+		}
+		assertLive()
+		if (messageTs !== this.lastMessageTs) throw new AskIgnoredError("superseded approval")
+		if (decision?.decision !== "continue") return { response: "noButtonClicked", text: decision?.reason }
+		const result = await this.askWithExistingApproval(type, text, partial, progressStatus, isProtected)
+		assertLive()
+		return result
+	}
+
+	private async askWithExistingApproval(
+		type: ClineAsk,
+		text?: string,
+		partial?: boolean,
+		progressStatus?: ToolProgressStatus,
+		isProtected?: boolean,
+	): Promise<{ response: ClineAskResponse; text?: string; images?: string[] }> {
 		// If this Cline instance was aborted by the provider, then the only
 		// thing keeping us alive is a promise still running in the background,
 		// in which case we don't want to send its result to the webview as it
@@ -2118,11 +2267,52 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	}
 
 	public async condenseContext(): Promise<void> {
+		if (!this.modelDispatchRuntime) return this.condenseContextWithHandler(this.api)
+		if (this.modelDispatchControllers.size || this.modelOperationLoops)
+			throw new ModelDispatchControl("policy-denied")
+		const controller = new AbortController()
+		this.modelDispatchControllers.add(controller)
+		try {
+			const handler = this.prepareModelDispatch("condensation", controller.signal)
+			await this.condenseContextWithHandler(handler, controller.signal)
+		} catch (error) {
+			if (error instanceof ModelDispatchControl) this.modelDispatchOutcome = error
+			throw error
+		} finally {
+			controller.abort()
+			this.modelDispatchControllers.delete(controller)
+		}
+	}
+
+	private prepareModelDispatch(purpose: "chat" | "condensation", signal: AbortSignal): ApiHandler {
+		if (!this.modelDispatchRuntime) return this.api
+		if (this.previewDispatchDisabled) throw new ModelDispatchControl("cancelled")
+		if (this.abort || this.abandoned || signal.aborted) throw new ModelDispatchControl("cancelled")
+		if (this.modelOperationClosed) throw new ModelDispatchControl("stale")
+		const revision = this.modelOperationRevision
+		return mediateModelHandler(this.api, {
+			runtime: this.modelDispatchRuntime,
+			operationId: purpose === "chat" ? this.modelOperationRequestId! : crypto.randomUUID(),
+			purpose,
+			signal,
+			isCurrent: () =>
+				!this.previewDispatchDisabled &&
+				!this.abort &&
+				!this.abandoned &&
+				!this.modelOperationClosed &&
+				revision === this.modelOperationRevision,
+		})
+	}
+
+	private async condenseContextWithHandler(handler: ApiHandler, signal?: AbortSignal): Promise<void> {
+		const revision = this.modelOperationRevision
 		if (this.modelOperationPrepared || this.modelOperationRequestPinned)
 			throw new Error("Context compaction is disabled for a prepared or active request")
 		// CRITICAL: Flush any pending tool results before condensing
 		// to ensure tool_use/tool_result pairs are complete in history
-		await this.flushPendingToolResultsToHistory()
+		// The summarizer injects missing results into its detached input. Do not mutate
+		// live history before mediated condensation has been authorized and completed.
+		if (!this.modelDispatchRuntime) await this.flushPendingToolResultsToHistory()
 
 		const systemPrompt = await this.getSystemPrompt()
 
@@ -2179,8 +2369,10 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			errorDetails,
 			condenseId,
 		} = await summarizeConversation({
-			messages: this.apiConversationHistory,
-			apiHandler: this.api,
+			messages: this.modelDispatchRuntime
+				? structuredClone(this.apiConversationHistory)
+				: this.apiConversationHistory,
+			apiHandler: handler,
 			systemPrompt,
 			taskId: this.taskId,
 			isAutomaticTrigger: false,
@@ -2191,6 +2383,11 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			cwd: this.cwd,
 			rooIgnoreController: this.rooIgnoreController,
 		})
+		if (this.modelDispatchRuntime) {
+			if (this.abort || this.abandoned || signal?.aborted) throw new ModelDispatchControl("cancelled")
+			if (this.modelOperationClosed || revision !== this.modelOperationRevision)
+				throw new ModelDispatchControl("stale")
+		}
 		if (error) {
 			await this.say(
 				"condense_context_error",
@@ -2712,6 +2909,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	 * This immediately aborts the underlying stream rather than waiting for the next chunk.
 	 */
 	public cancelCurrentRequest(): void {
+		for (const controller of this.modelDispatchControllers) controller.abort()
 		if (this.currentRequestAbortController) {
 			console.log(`[Task#${this.taskId}.${this.instanceId}] Aborting current HTTP request`)
 			this.currentRequestAbortController.abort()
@@ -2731,6 +2929,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	}
 
 	public async abortTask(isAbandoned = false) {
+		for (const controller of this.modelDispatchControllers) controller.abort()
 		this.modelOperationAdmission.cancel()
 		// Aborting task
 
@@ -2766,6 +2965,10 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	}
 
 	public dispose(options?: { preserveArtifacts?: boolean }): void {
+		this.unsubscribePreviewSettings?.()
+		this.unsubscribePreviewSettings = undefined
+		for (const controller of this.modelDispatchControllers) controller.abort()
+		this.toolExecutionDisposed = true
 		this.modelOperationAdmission.cancel()
 		console.log(`[Task#dispose] disposing task ${this.taskId}.${this.instanceId}`)
 
@@ -3763,6 +3966,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 							this.modelOperationUsageCollectors--
 						})
 				} catch (error) {
+					if (error instanceof ModelDispatchControl) throw error
 					if (this.modelOperationClosed) return true
 					// Abandoned happens when extension is no longer waiting for the
 					// Cline instance to finish aborting (error is thrown here when
@@ -4138,6 +4342,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 					)
 
 					if (!didToolUse) {
+						if (this.modelDispatchRuntime) return true
 						if (this.modelOperationPrepared) return true
 						// Increment consecutive no-tool-use counter
 						this.consecutiveNoToolUseCount++
@@ -4193,6 +4398,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 					})
 
 					// Increment consecutive no-assistant-messages counter
+					if (this.modelDispatchRuntime) throw new ModelDispatchControl("dispatch-failed")
 					this.consecutiveNoAssistantMessagesCount++
 					// Never pop or replace the saved prepared input on an empty response.
 					if (this.modelOperationPrepared) {
@@ -4298,6 +4504,10 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				return false
 			} catch (error) {
 				// This should never happen since the only thing that can throw an
+				if (error instanceof ModelDispatchControl) {
+					this.modelDispatchOutcome = error
+					throw error
+				}
 				// error is the attemptApiRequest, which is wrapped in a try catch
 				// that sends an ask where if noButtonClicked, will clear current
 				// task and destroy this instance. However to avoid unhandled
@@ -4412,6 +4622,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	}
 
 	private async handleContextWindowExceededError(): Promise<void> {
+		// The opt-in coordinator owns retries and context repair, never this legacy path.
+		if (this.modelDispatchRuntime) throw new ModelDispatchControl("policy-denied")
 		const state = await this.providerRef.deref()?.getState()
 		const { profileThresholds = {}, mode, apiConfiguration } = state ?? {}
 
@@ -4575,13 +4787,35 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		retryAttempt: number = 0,
 		options: { skipProviderRateLimit?: boolean } = {},
 	): ApiStream {
+		if (this.modelDispatchRuntime && (this.modelOperationClosed || this.abort))
+			throw new ModelDispatchControl(this.abort ? "cancelled" : "stale")
+		if (this.modelDispatchRuntime && this.modelDispatchControllers.size)
+			throw new ModelDispatchControl("policy-denied")
 		if (this.modelOperationClosed || this.abort) throw new Error("Task dispatch is closed")
 		if (this.modelOperationRequests) throw new Error("A request is already active")
 		this.modelOperationRequests++
+		const dispatchController = this.modelDispatchRuntime ? new AbortController() : undefined
+		if (dispatchController) {
+			this.modelDispatchAbortController = dispatchController
+			this.modelDispatchControllers.add(dispatchController)
+		}
 		try {
 			await this.ensureModelOperationProvenance()
 			yield* this.attemptApiRequestPinned(retryAttempt, options)
+		} catch (error) {
+			if (this.modelDispatchRuntime) {
+				const control =
+					error instanceof ModelDispatchControl ? error : new ModelDispatchControl("dispatch-failed")
+				this.modelDispatchOutcome = control
+				throw control
+			}
+			throw error
 		} finally {
+			if (dispatchController) {
+				dispatchController.abort()
+				this.modelDispatchControllers.delete(dispatchController)
+				this.modelDispatchAbortController = undefined
+			}
 			this.modelOperationRequests--
 			this.modelOperationRequestPreparing = false
 			if (
@@ -4616,7 +4850,13 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		this.modelOperationSnapshot = undefined
 		this.modelOperationRequestId = crypto.randomUUID()
 		const requestRevision = this.modelOperationRevision
-		const requestHandler = this.api
+		const requestHandler = this.modelDispatchRuntime
+			? this.prepareModelDispatch("chat", this.modelDispatchAbortController!.signal)
+			: this.api
+		const condensationHandler = this.modelDispatchRuntime
+			? this.prepareModelDispatch("condensation", this.modelDispatchAbortController!.signal)
+			: this.api
+		const pinnedConfiguration = this.modelDispatchRuntime ? structuredClone(this.apiConfiguration) : undefined
 		const state = await this.providerRef.deref()?.getState()
 
 		const {
@@ -4627,11 +4867,11 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			autoCondenseContextPercent = 100,
 			profileThresholds = {},
 		} = state ?? {}
-		const apiConfiguration = this.apiConfiguration
+		const apiConfiguration = pinnedConfiguration ?? this.apiConfiguration
 
 		// Get condensing configuration for automatic triggers.
 		const customCondensingPrompt = state?.customSupportPrompts?.CONDENSE
-		const resolvedModel = this.api.getModel()
+		const resolvedModel = requestHandler.getModel()
 		const shouldDebugAnthropicRequest =
 			apiConfiguration?.apiProvider === "anthropic" || resolvedModel.id.toLowerCase().includes("claude")
 
@@ -4674,12 +4914,12 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		const { contextTokens } = this.getTokenUsage()
 
 		if (contextTokens && !this.modelOperationPrepared) {
-			const modelInfo = this.api.getModel().info
+			const modelInfo = requestHandler.getModel().info
 
 			const maxTokens = getModelMaxOutputTokens({
-				modelId: this.api.getModel().id,
+				modelId: requestHandler.getModel().id,
 				model: modelInfo,
-				settings: this.apiConfiguration,
+				settings: apiConfiguration,
 			})
 
 			const contextWindow = modelInfo.contextWindow
@@ -4694,8 +4934,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			let lastMessageTokens = 0
 			if (lastMessageContent) {
 				lastMessageTokens = Array.isArray(lastMessageContent)
-					? await this.api.countTokens(lastMessageContent)
-					: await this.api.countTokens([{ type: "text", text: lastMessageContent as string }])
+					? await requestHandler.countTokens(lastMessageContent)
+					: await requestHandler.countTokens([{ type: "text", text: lastMessageContent as string }])
 			}
 
 			const contextManagementWillRun = willManageContext({
@@ -4713,7 +4953,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				debugTrace("[ANTHROPIC][Task] attemptApiRequest:context-check", {
 					taskId: this.taskId,
 					currentApiConfigName: state?.currentApiConfigName,
-					resolvedModelId: this.api.getModel().id,
+					resolvedModelId: requestHandler.getModel().id,
 					contextTokens,
 					lastMessageTokens,
 					contextWindow,
@@ -4783,13 +5023,16 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 					? await this.getFilesReadByRooSafely("attemptApiRequest")
 					: undefined
 
+			const contextMessages = this.modelDispatchRuntime
+				? structuredClone(this.apiConversationHistory)
+				: this.apiConversationHistory
 			try {
 				const truncateResult = await manageContext({
-					messages: this.apiConversationHistory,
+					messages: contextMessages,
 					totalTokens: contextTokens,
 					maxTokens,
 					contextWindow,
-					apiHandler: this.api,
+					apiHandler: condensationHandler,
 					autoCondenseContext,
 					autoCondenseContextPercent,
 					systemPrompt,
@@ -4803,7 +5046,13 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 					cwd: this.cwd,
 					rooIgnoreController: this.rooIgnoreController,
 				})
-				if (truncateResult.messages !== this.apiConversationHistory) {
+				if (this.modelDispatchRuntime) {
+					if (this.abort || this.abandoned || this.modelDispatchAbortController?.signal.aborted)
+						throw new ModelDispatchControl("cancelled")
+					if (this.modelOperationClosed || requestRevision !== this.modelOperationRevision)
+						throw new ModelDispatchControl("stale")
+				}
+				if (truncateResult.messages !== contextMessages) {
 					await this.overwriteApiConversationHistory(truncateResult.messages)
 				}
 				if (truncateResult.error) {
@@ -4886,7 +5135,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		}
 
 		// Whether we include tools is determined by whether we have any tools to send.
-		const modelInfo = this.api.getModel().info
+		const modelInfo = requestHandler.getModel().info
 
 		// Build complete tools array: native tools + dynamic MCP tools
 		// When includeAllToolsWithRestrictions is true, returns all tools but provides
@@ -4948,7 +5197,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				taskId: this.taskId,
 				instanceId: this.instanceId,
 				currentApiConfigName: state?.currentApiConfigName,
-				resolvedModelId: this.api.getModel().id,
+				resolvedModelId: requestHandler.getModel().id,
 				contextWindow: modelInfo.contextWindow,
 				cleanConversationHistoryCount: cleanConversationHistory.length,
 				cleanConversationHistorySummary: summarizeApiMessages(cleanConversationHistory as ApiMessage[]),
@@ -5074,6 +5323,15 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		if (this.modelOperationClosed || this.abort || requestRevision !== this.modelOperationRevision)
 			throw new Error("Stale request dispatch")
 		this.modelOperationRequestPreparing = false
+		if (this.modelDispatchRuntime) {
+			// Provider owns cancellation and physical admission; no legacy retry owner.
+			yield* requestHandler.createMessage(
+				systemPrompt,
+				cleanConversationHistory as Anthropic.Messages.MessageParam[],
+				metadata,
+			)
+			return
+		}
 		// Create an AbortController to allow cancelling the request mid-stream
 		this.currentRequestAbortController = new AbortController()
 		const abortSignal = this.currentRequestAbortController.signal
@@ -5140,8 +5398,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 					instanceId: this.instanceId,
 					currentApiConfigName: state?.currentApiConfigName,
 					configuredModelId: getModelId(apiConfiguration ?? this.apiConfiguration),
-					resolvedModelId: this.api.getModel().id,
-					contextWindow: this.api.getModel().info.contextWindow,
+					resolvedModelId: requestHandler.getModel().id,
+					contextWindow: requestHandler.getModel().info.contextWindow,
 					isContextWindowExceededError,
 					retryAttempt,
 					error: serializeError(error),
@@ -5151,7 +5409,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			// If it's a context window error and we haven't exceeded max retries for this error type
 			if (isContextWindowExceededError && retryAttempt < MAX_CONTEXT_WINDOW_RETRIES) {
 				console.warn(
-					`[Task#${this.taskId}] Context window exceeded for model ${this.api.getModel().id}. ` +
+					`[Task#${this.taskId}] Context window exceeded for model ${requestHandler.getModel().id}. ` +
 						`Retry attempt ${retryAttempt + 1}/${MAX_CONTEXT_WINDOW_RETRIES}. ` +
 						`Attempting automatic truncation...`,
 				)

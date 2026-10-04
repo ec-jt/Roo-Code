@@ -761,6 +761,10 @@
 		}
 	},
 	"experimental": {
+		"CORDIS_RUNTIME_PREVIEW": {
+			"name": "Versión preliminar del runtime de Cordis",
+			"description": "Activa la admisión experimental de solicitudes solo para tareas nuevas de Anthropic. Los demás proveedores siguen el flujo normal. La ejecución de grafos no está disponible y esta versión preliminar no aplica límites de presupuesto económico. El chat normal y la delegación siguen disponibles cuando está desactivada. Guarda para aplicar los cambios: desactivarla detiene el envío de nuevas solicitudes de la versión preliminar y cancela las solicitudes activas a los modelos de esta versión, pero no puede deshacer los efectos que ya se han producido. Volver a activarla no reanuda automáticamente las tareas detenidas; vuelve a abrir una tarea o inicia una para usar la configuración actual."
+		},
 		"DIFF_STRATEGY_UNIFIED": {
 			"name": "Usar estrategia de diff unificada experimental",
 			"description": "Habilitar la estrategia de diff unificada experimental. Esta estrategia podría reducir el número de reintentos causados por errores del modelo, pero puede causar comportamientos inesperados o ediciones incorrectas. Habilítela solo si comprende los riesgos y está dispuesto a revisar cuidadosamente todos los cambios."

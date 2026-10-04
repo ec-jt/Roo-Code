@@ -1,7 +1,6 @@
 import fs from "fs"
 
 import { Anthropic } from "@anthropic-ai/sdk"
-import { Stream as AnthropicStream } from "@anthropic-ai/sdk/streaming"
 import { CacheControlEphemeral } from "@anthropic-ai/sdk/resources"
 import OpenAI from "openai"
 
@@ -16,6 +15,14 @@ import {
 import type { ApiHandlerOptions } from "../../shared/api"
 
 import { ApiStream } from "../transform/stream"
+import {
+	abortable,
+	admitDispatch,
+	checkDispatch,
+	ModelDispatchControl,
+	type ModelDispatchContext,
+} from "../dispatch-admission"
+import type { ApiHandler } from "../index"
 import { getModelParams } from "../transform/model-params"
 import { filterNonAnthropicBlocks } from "../transform/anthropic-filter"
 import { isAdaptiveThinkingModel } from "../transform/reasoning"
@@ -34,9 +41,7 @@ const DEBUG_LOG = "/tmp/roo-cli-debug.log"
 
 function debugTrace(message: string, data?: unknown) {
 	const timestamp = new Date().toISOString()
-	const entry = data
-		? `[${timestamp}] ${message}: ${JSON.stringify(data, null, 2)}\n`
-		: `[${timestamp}] ${message}\n`
+	const entry = data ? `[${timestamp}] ${message}: ${JSON.stringify(data, null, 2)}\n` : `[${timestamp}] ${message}\n`
 
 	try {
 		fs.appendFileSync(DEBUG_LOG, entry)
@@ -58,11 +63,7 @@ function summarizeAnthropicMessages(messages: Anthropic.Messages.MessageParam[])
 			textChars: parts.reduce(
 				(sum: number, part: any) =>
 					sum +
-					(typeof part === "string"
-						? part.length
-						: typeof part?.text === "string"
-							? part.text.length
-							: 0),
+					(typeof part === "string" ? part.length : typeof part?.text === "string" ? part.text.length : 0),
 				0,
 			),
 		}
@@ -87,6 +88,7 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 	private options: ApiHandlerOptions
 	private client: Anthropic
 	private readonly providerName = "Anthropic"
+	private dispatchContext?: ModelDispatchContext
 
 	constructor(options: ApiHandlerOptions) {
 		super()
@@ -105,12 +107,83 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 		})
 	}
 
+	/** Pin configuration, SDK client and resolved model before any admission wait.
+	 * Only message streaming and local token counting are exposed, not completePrompt.
+	 */
+	forMediatedOperation(context: ModelDispatchContext): ApiHandler {
+		const pinned = new AnthropicHandler(structuredClone(this.options))
+		pinned.dispatchContext = Object.freeze({ ...context })
+		const model = structuredClone(this.getModel())
+		pinned.getModel = () => structuredClone(model)
+		return {
+			getModel: () => structuredClone(model),
+			countTokens: (content) => pinned.countTokens(content),
+			createMessage: (systemPrompt, messages, metadata) => {
+				const inputs = structuredClone({ messages, metadata })
+				return (async function* () {
+					try {
+						yield* pinned.createMessage(systemPrompt, inputs.messages, inputs.metadata)
+					} catch (error) {
+						throw error instanceof ModelDispatchControl
+							? error
+							: new ModelDispatchControl("dispatch-failed")
+					}
+				})()
+			},
+		}
+	}
+
+	private async dispatchMessage(
+		body: Anthropic.Messages.MessageCreateParamsStreaming,
+		options?: { headers: Record<string, string> },
+	): Promise<AsyncIterable<Anthropic.Messages.RawMessageStreamEvent>> {
+		const context = this.dispatchContext
+		if (!context) return this.client.messages.create(body, options)
+		const { settle, checkLease } = await admitDispatch(context, body.model, body.max_tokens)
+		try {
+			checkDispatch(context)
+			checkLease()
+		} catch (error) {
+			settle("not-dispatched")
+			throw error
+		}
+		try {
+			const stream = await abortable(
+				this.client.messages.create(body, { ...options, maxRetries: 0, signal: context.signal }),
+				context.signal,
+			)
+			return (async function* () {
+				let completed = false
+				const iterator = stream[Symbol.asyncIterator]()
+				try {
+					while (true) {
+						checkDispatch(context)
+						const next = await abortable(iterator.next(), context.signal)
+						checkDispatch(context)
+						if (next.done) break
+						if (next.value.type === "message_stop") completed = true
+						yield next.value
+					}
+					if (!completed) throw new ModelDispatchControl("dispatch-failed")
+				} catch (error) {
+					throw error instanceof ModelDispatchControl ? error : new ModelDispatchControl("dispatch-failed")
+				} finally {
+					settle(completed ? "completed" : "unresolved")
+					void iterator.return?.().catch(() => {})
+				}
+			})()
+		} catch (error) {
+			settle("unresolved")
+			throw error instanceof ModelDispatchControl ? error : new ModelDispatchControl("dispatch-failed")
+		}
+	}
+
 	async *createMessage(
 		systemPrompt: string,
 		messages: Anthropic.Messages.MessageParam[],
 		metadata?: ApiHandlerCreateMessageMetadata,
 	): ApiStream {
-		let stream: AnthropicStream<Anthropic.Messages.RawMessageStreamEvent>
+		let stream: AsyncIterable<Anthropic.Messages.RawMessageStreamEvent>
 		const cacheControl: CacheControlEphemeral = { type: "ephemeral" }
 		const model = this.getModel()
 		let {
@@ -171,7 +244,10 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 			// when adaptive thinking is enabled, so fall back to letting
 			// the model decide in that case.
 			tool_choice:
-				(useAdaptiveThinking && thinking && toolChoice && (toolChoice.type === "any" || toolChoice.type === "tool")) ||
+				(useAdaptiveThinking &&
+					thinking &&
+					toolChoice &&
+					(toolChoice.type === "any" || toolChoice.type === "tool")) ||
 				// Claude Fable 5.1 rejects forced tool use (type "any" or "tool") with a 400
 				(alwaysOnThinking && toolChoice && (toolChoice.type === "any" || toolChoice.type === "tool"))
 					? undefined
@@ -201,9 +277,9 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 			toolChoice:
 				nativeToolParams.tool_choice && typeof nativeToolParams.tool_choice === "object"
 					? {
-						type: (nativeToolParams.tool_choice as any).type,
-						name: (nativeToolParams.tool_choice as any).name,
-					}
+							type: (nativeToolParams.tool_choice as any).type,
+							name: (nativeToolParams.tool_choice as any).name,
+						}
 					: nativeToolParams.tool_choice,
 		})
 
@@ -272,7 +348,7 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 											contentIndex === message.content.length - 1
 												? { ...content, cache_control: cacheControl }
 												: content,
-									  ),
+										),
 						} as Anthropic.Messages.MessageParam
 					}
 					return message
@@ -337,7 +413,7 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 				})
 
 				try {
-					stream = await this.client.messages.create(
+					stream = await this.dispatchMessage(
 						requestBody as Anthropic.Messages.MessageCreateParamsStreaming,
 						requestOptions,
 					)
@@ -378,7 +454,7 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 				})
 
 				try {
-					stream = (await this.client.messages.create(
+					stream = (await this.dispatchMessage(
 						requestBody as Anthropic.Messages.MessageCreateParamsStreaming,
 					)) as any
 				} catch (error) {

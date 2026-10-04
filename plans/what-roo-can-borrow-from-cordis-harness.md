@@ -6,6 +6,47 @@ Roo-Code and DeepSeek Harness (`dsh`) are both coding agents, but they sit at op
 
 This document maps the harness patterns onto Roo-Code, identifies which are worth adopting, and proposes an incremental path. The private-infra work is tracked separately in [`private-infra-dsh-and-roo-code-plan.md`](private-infra-dsh-and-roo-code-plan.md).
 
+## Implementation update: 2026-10-03
+
+Preview release update (2026-10-04): version **4.2.3**, tag **v4.2.3-cordis-preview.1**, adds **Settings > Experimental > Cordis runtime preview** (default off, translated into 18 languages). Save applies the selection to new Anthropic tasks; other providers retain compatibility execution. Disabling cancels active preview model requests and permanently fences further preview dispatch from those task instances without dropping their policies or deleting history. Re-enabling does not resume stopped tasks; reopen or start explicitly. Existing subtask/delegation behavior remains available. See [preview release notes](../releases/v4.2.3-cordis-preview.1.md). Earlier statements below about no user-facing setting describe the first two slices before this integration.
+
+Work started on `feat/cordis-refactor` from checkpoint `a9206b5fd`. The local `stable` branch preserves that checkpoint and the existing packaged VSIX. The first slice follows the architecture review's narrower sequencing, rather than implementing the general kernel described below first. The original roadmap remains a longer-term proposal, not a list of completed phases.
+
+### First slice implemented
+
+- A runtime-only, task-instance-local [tool invocation policy](../src/core/tool-execution/invocation-policy.ts) with a compatibility default and an explicit allowlist. Built-in, custom, and MCP identities are separate namespaces. Restrictive policies resolve MCP identities against the current catalog and reject ambiguity.
+- A shared presenter gate before handler effects and mandatory model-operation approval. Existing handlers, dispatch, tool schemas, and ordinary-chat validation remain in place. Policy errors fail closed; late decisions are checked against cancellation, disposal, closed dispatch, and model-operation revision.
+- A task-wide [approval veto interface](../src/core/tool-execution/approval.ts), reached through the existing task ask method by both callback approvals and direct authorization asks. Continuing through this interface still requires the existing approval flow. It does not grant permission or replace mandatory model-operation approval. Partial asks and non-authorization control questions retain their existing behavior.
+- Regression tests for execution-route identity, capability denial before side effects, compatibility behavior, direct and callback authorization asks, stale replies, cancellation, and existing model-operation admission.
+
+These interfaces are constructor-injected implementation boundaries, not new user-facing settings or a graph execution mode. No Cordis dependency, general plugin kernel, registry migration, or new UI was introduced.
+
+### Explicitly deferred guarantees
+
+- Restrictions are not persisted or automatically inherited by delegated tasks. A restrictive caller must deny delegation or arrange policy injection into children.
+- Custom module initialization and arbitrary in-process code retain their existing host privileges. This gate is not a sandbox and does not make the current bootstrap safe for restricted workers.
+- Approval requests carry existing presentation data, not a complete normalized action, canonical resource binding, or durable one-use action digest. Handler work preceding an existing ask is unchanged.
+- MCP catalog identity is checked at admission but not pinned across subsequent asynchronous work.
+- Cancellation invalidates late policy/approval decisions; a never-settling injected policy is not actively interrupted or timed out by this slice.
+- Frozen worker configuration, packaged worker lifecycle, physical model-dispatch admission, hidden retries, condensation control outcomes, and durable graph execution remain future work.
+
+### Second slice implemented: opt-in model dispatch admission
+
+- Added runtime-only [dispatch admission contracts](../src/api/dispatch-admission.ts) with distinct budget-wait, budget-denied, policy-denied, cancellation, stale-operation, expired-lease, unsupported-provider, and dispatch-failure outcomes. These are controls for an injected runtime, not a budget ledger or a user-facing pause/resume feature.
+- Added an [explicit mediated-handler boundary](../src/api/mediated-handler.ts). Only Anthropic streaming messages are supported initially; unsupported handlers fail before token counting or provider dispatch rather than ignoring admission metadata.
+- Anthropic mediated operations detach provider configuration and resolved model information and create a dedicated SDK client. Messages and tool metadata are detached when the wrapper is called. Admission occurs immediately before the physical request, with SDK retries disabled for that request and cancellation propagated to acquisition and streaming. The ordinary, non-mediated path retains its existing retry behavior.
+- Logical operations and physical dispatches have separate identities. Each granted dispatch reports one transport outcome: not dispatched, completed after the provider terminal event, or unresolved. Late grants after cancellation are released as not dispatched. These observations do not establish actual provider charges; usage still follows the existing stream contract.
+- Optional task constructor injection covers main requests and manual/automatic condensation. Typed controls propagate through condensation without becoming fallback truncation. Mediated calls bypass generic automatic retries, context-window repair, empty-response retries, and text-only tool-use nudges. Successful tool-driven turns continue normally, with each subsequent request independently admitted.
+- Added provider and task regression tests for detached inputs/configuration, unsupported handlers, denial without dispatch, cancellation, stale operations and leases, unique dispatch identity, transport outcomes, and condensation denial without history changes or main-request dispatch.
+
+This second slice resolves the first slice's deferred request-boundary pinning and Anthropic admission work only. Modes, prompt assembly, environment capture, worker bootstrap, and MCP catalogs are not globally frozen. The admission descriptor contains provider/model/output-limit and operation identities, not full request content, input-token exposure, pricing, or account-budget attribution; conservative financial reservation still needs a richer accounting contract. No durable ledger, coordinator retry scheduler, recovery protocol, or strict financial guarantee exists. Existing request snapshot writes and other local preparation may precede network admission.
+
+The mediated wrapper does not expose single-prompt completion. Other providers, independent auxiliary calls, embeddings, and delegated-task policy propagation remain outside this slice. The runtime is instance-local, not persisted or inherited by children, and no production coordinator selects it yet.
+
+Build/install update (2026-10-03): on user request, both slices were packaged as version 4.2.2 and installed into the active code-server host. The working-tree VSIX now contains the refactor; the previous package remains preserved in the `stable` branch at `a9206b5fd`. Reload the editor window to activate the replacement. Normal UI use exercises compatibility defaults, not an enabled graph or admission-runtime mode. Package SHA-256: `40a24ea4184375731aec59479d8e5635bbbc7cda005d35738a36d99635e4aad6`.
+
+Next: define the bounded accounting descriptor and usage-normalization contract, then prove the restricted packaged worker and frozen bootstrap with these interfaces. Extend mediated providers individually behind transport-level tests. Broader kernel and registry work should follow demonstrated consumers, not precede these execution guarantees.
+
 ## Part 1 - How the harness is built
 
 The harness rests on five Cordis ideas ([`cordis-primer.md`](../../deepseek-harness/docs/cordis-primer.md:7)):

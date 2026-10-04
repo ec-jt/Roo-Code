@@ -1,5 +1,15 @@
 # Roo Code Changelog
 
+## 4.2.3 - Cordis preview 1
+
+- Add **Settings > Experimental > Cordis runtime preview**, default off, translated into all 18 supported languages. Save applies the setting to new Anthropic tasks; other providers retain normal execution.
+- Disabling fences further preview dispatch and cancels active preview model requests, including condensation. It cannot undo completed effects; re-enabling does not resume stopped tasks automatically.
+- Add shared tool-policy and approval-veto interfaces, pinned Anthropic requests, explicit physical-request admission, cancellation, and transport outcomes. Ordinary-chat compatibility remains the default.
+- Preserve the checkpoint's existing subtask/delegation policy and model-operation controls. Graph execution is not implemented, and this preview is not a financial budget cap.
+- Exclude local environment files from distributable packages.
+
+GitHub prerelease tag: **v4.2.3-cordis-preview.1**. See the release notes for test scope and rollback instructions.
+
 ## 3.53.0
 
 ### Minor Changes

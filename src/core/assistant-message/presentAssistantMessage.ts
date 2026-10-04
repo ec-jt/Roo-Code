@@ -120,15 +120,22 @@ export async function presentAssistantMessage(cline: Task) {
 				return
 			}
 			if (!cline.didRejectTool && (typeof block.id === "string" || block.type === "mcp_tool_use")) {
-				admitted = typeof block.id === "string" && (await cline.admitModelOperationTool(block.name, block.id))
+				// Capability denial precedes even mandatory model-operation approval.
+				// Keep malformed/no-id calls on their existing diagnostic path.
+				const decision = block.id ? await cline.checkToolInvocation(block) : { allow: true as const }
+				admitted =
+					decision.allow &&
+					typeof block.id === "string" &&
+					(await cline.admitModelOperationTool(block.name, block.id))
 				if (!admitted) {
 					if (block.id)
 						cline.pushToolResultToUserContent({
 							type: "tool_result",
 							tool_use_id: sanitizeToolUseId(block.id),
 							is_error: true,
-							content:
-								"Tool execution was not approved. Delegation is unavailable for model-operation branches.",
+							content: !decision.allow
+								? `Tool execution denied: ${decision.reason}`
+								: "Tool execution was not approved. Delegation is unavailable for model-operation branches.",
 						})
 					cline.didRejectTool = true
 				}

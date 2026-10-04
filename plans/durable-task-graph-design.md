@@ -10,6 +10,14 @@ Initial deployment is a workspace-host coordinator with process-isolated workers
 
 Existing sequential subtasks remain supported and unchanged. This design does not depend on the larger Cordis-inspired refactor.
 
+Review update (2026-10-03): implementation of this graph design remains on hold. A targeted Cordis-inspired tool-policy and approval-interface extraction has started separately; it is not the full plugin-framework refactor and does not authorize or enable graph execution. See the [first-slice implementation status and limitations](what-roo-can-borrow-from-cordis-harness.md#implementation-update-2026-10-03).
+
+Before graph implementation, resolve the review findings: immutable execution definitions for the first release; deterministic source-tree materialization from selected predecessor artifacts; source snapshots before read-only execution; atomic parent inbox acceptance with deduplication; concrete ownership/storage mechanisms; and an early packaged-worker feasibility gate. Physical dispatch accounting and typed condensation admission outcomes remain prerequisites for the graph's budget promises. The roadmap below has not yet been revised to incorporate these decisions.
+
+The separate refactor now includes opt-in Anthropic streaming admission and propagation of typed condensation controls without fallback truncation. This is a runtime interface, not graph budget enforcement: conservative exposure descriptors, normalized usage accounting, durable reservations, supported-provider expansion, and restricted worker bootstrap are still required. Graph execution remains unimplemented and on hold.
+
+Preview update (2026-10-04): **Settings > Experimental > Cordis runtime preview** is now implemented for the Anthropic admission path, default off. Disabling and saving cancels active preview model requests and prevents further preview dispatch from those task instances; normal tasks remain unaffected. This is not the graph-execution setting specified below, and enabling it does not launch graphs. The [4.2.3 preview release notes](../releases/v4.2.3-cordis-preview.1.md) explain scope and rollback.
+
 Graph execution is a user-controlled opt-in setting, off by default. When off, ordinary chat and sequential delegation remain available under their own depth/approval policy, while graph start/resume and new graph-worker admission are disabled. Disabling graphs during a run pauses new admissions and requests safe-boundary suspension; it does not imply that an in-flight request or external command was undone. Existing runs remain inspectable, with cancellation and cleanup controls available. Re-enabling the setting does not automatically resume paused work. This setting is a design requirement, not an implemented control yet.
 
 ### Success criteria

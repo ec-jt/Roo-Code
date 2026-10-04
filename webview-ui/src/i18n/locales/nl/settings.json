@@ -761,6 +761,10 @@
 		}
 	},
 	"experimental": {
+		"CORDIS_RUNTIME_PREVIEW": {
+			"name": "Cordis-runtimepreview",
+			"description": "Schakel de experimentele toelating van verzoeken alleen voor nieuwe Anthropic-taken in. Andere providers gebruiken het normale pad. Graafuitvoering is niet beschikbaar en deze preview dwingt geen financiële budgetlimieten af. Normale chat en delegatie blijven beschikbaar wanneer de preview uitstaat. Sla op om toe te passen: uitschakelen stopt het verzenden van nieuwe previewverzoeken en annuleert actieve modelverzoeken van de preview, maar kan al opgetreden effecten niet ongedaan maken. Opnieuw inschakelen hervat gestopte taken niet automatisch; heropen een taak of start een nieuwe om de huidige instelling te gebruiken."
+		},
 		"DIFF_STRATEGY_UNIFIED": {
 			"name": "Experimentele unified diff-strategie gebruiken",
 			"description": "Schakel de experimentele unified diff-strategie in. Deze strategie kan het aantal herhalingen door model fouten verminderen, maar kan onverwacht gedrag of onjuiste bewerkingen veroorzaken. Alleen inschakelen als je de risico's begrijpt en wijzigingen zorgvuldig wilt controleren."

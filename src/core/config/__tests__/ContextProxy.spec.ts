@@ -95,6 +95,36 @@ describe("ContextProxy", () => {
 		})
 	})
 
+	describe("preview experiment persistence", () => {
+		it("notifies synchronously on save, persists and reloads, and unsubscribes", async () => {
+			const listener = vi.fn()
+			const unsubscribe = proxy.onExperimentsChanged(listener)
+			const pending = proxy.setValue("experiments", { cordisRuntimePreview: true })
+			expect(listener).toHaveBeenCalledWith({ cordisRuntimePreview: true })
+			await pending
+			expect(mockGlobalState.update).toHaveBeenCalledWith("experiments", { cordisRuntimePreview: true })
+			mockGlobalState.get.mockImplementation((key: string) =>
+				key === "experiments" ? { cordisRuntimePreview: true } : undefined,
+			)
+			const reloaded = new ContextProxy(mockContext)
+			await reloaded.initialize()
+			expect(reloaded.getValue("experiments")).toEqual({ cordisRuntimePreview: true })
+			unsubscribe()
+			listener.mockClear()
+			await proxy.setValue("experiments", { cordisRuntimePreview: false })
+			expect(listener).not.toHaveBeenCalled()
+		})
+		it("notifies on settings removal and reset", async () => {
+			const listener = vi.fn()
+			proxy.onExperimentsChanged(listener)
+			await proxy.setValue("experiments", undefined)
+			expect(listener).toHaveBeenLastCalledWith(undefined)
+			listener.mockClear()
+			await proxy.resetAllState()
+			expect(listener).toHaveBeenCalledWith(undefined)
+		})
+	})
+
 	describe("getGlobalState", () => {
 		it("should return value from cache when it exists", async () => {
 			// Manually set a value in the cache

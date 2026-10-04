@@ -130,6 +130,49 @@ describe("Task model-operation runtime", () => {
 		vi.restoreAllMocks()
 	})
 
+	it("accepts constructor-injected capability and approval restrictions without bypassing branch admission", async () => {
+		;(task as any).debouncedEmitTokenUsage.cancel()
+		const evaluate = vi.fn(() => ({ allow: true as const }))
+		const check = vi.fn(() => ({ decision: "deny" as const, reason: "restricted" }))
+		task = new Task({
+			provider: provider as ClineProvider,
+			apiConfiguration: { apiProvider: "anthropic" },
+			startTask: false,
+			workspacePath: "/workspace",
+			taskId: "target",
+			toolInvocationPolicy: { evaluate },
+			approvalPort: { check },
+		})
+		expect(await task.ask("tool", "read request", false)).toEqual({
+			response: "noButtonClicked",
+			text: "restricted",
+		})
+		expect(check).toHaveBeenCalledOnce()
+		await task.prepareModelOperationPrefix(source, "profile", provenance)
+		task.assistantMessageSavedToHistory = true
+		task.assistantMessageContent = [
+			{ type: "tool_use", id: "call", name: "list_files", params: {}, nativeArgs: { path: "." }, partial: false },
+		]
+		const handle = vi.spyOn(listFilesTool, "handle").mockResolvedValue()
+		const pending = presentAssistantMessage(task)
+		await vi.waitFor(() => expect(task.modelOperationState.approval).toBeDefined())
+		expect(evaluate).toHaveBeenCalledOnce()
+		expect(handle).not.toHaveBeenCalled()
+		const state = task.modelOperationState
+		expect(
+			task.respondToModelOperationApproval({
+				taskId: state.taskId,
+				instanceId: state.instanceId,
+				revision: state.revision,
+				approvalId: state.approval!.approvalId,
+				approved: false,
+			}),
+		).toBe(true)
+		await pending
+		expect(handle).not.toHaveBeenCalled()
+		expect(check).toHaveBeenCalledOnce()
+	})
+
 	async function completedExchange() {
 		await task.prepareModelOperationPrefix(source, "profile", provenance)
 		const waiting = task.admitModelOperationTool("list_files", "completed")

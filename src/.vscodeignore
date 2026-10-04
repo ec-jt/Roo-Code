@@ -32,5 +32,8 @@
 !assets/icons/**
 !assets/images/**
 
-# Include .env file for telemetry
-!.env
+# Local environment files must never be shipped in a distributable extension.
+.env
+.env.*
+**/.env
+**/.env.*

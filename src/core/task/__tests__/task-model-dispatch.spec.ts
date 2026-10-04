@@ -1,0 +1,474 @@
+import { Task } from "../Task"
+import { ContextProxy } from "../../config/ContextProxy"
+import { buildApiHandler } from "../../../api"
+import { AnthropicHandler } from "../../../api/providers/anthropic"
+import { ModelDispatchControl, type DispatchAdmission } from "../../../api/dispatch-admission"
+import { saveApiMessages } from "../../task-persistence"
+import { readBranchProvenance, saveRequestSnapshot } from "../model-operation/storage"
+
+const { create } = vi.hoisted(() => ({ create: vi.fn() }))
+vi.mock("@anthropic-ai/sdk", () => ({ Anthropic: vi.fn(() => ({ messages: { create } })) }))
+vi.mock("../../webview/ClineProvider")
+vi.mock("../../ignore/RooIgnoreController")
+vi.mock("../../protect/RooProtectedController")
+vi.mock("../../context-tracking/FileContextTracker")
+vi.mock("../../../integrations/editor/DiffViewProvider")
+vi.mock("../../../integrations/terminal/TerminalRegistry", () => ({
+	TerminalRegistry: { getTerminals: vi.fn(() => []), releaseTerminalsForTask: vi.fn() },
+}))
+vi.mock("../../../utils/storage", () => ({
+	getStorageBasePath: vi.fn(async () => "/storage"),
+	getTaskDirectoryPath: vi.fn(async () => "/storage/tasks/test"),
+}))
+vi.mock("../model-operation/storage", () => ({
+	saveRequestSnapshot: vi.fn(),
+	saveBranchReplay: vi.fn(),
+	readBranchProvenance: vi.fn(),
+	readBranchReplaySnapshot: vi.fn(),
+}))
+vi.mock("../../task-persistence", () => ({
+	saveApiMessages: vi.fn(),
+	saveTaskMessages: vi.fn(),
+	readApiMessages: vi.fn(async () => []),
+	readTaskMessages: vi.fn(async () => []),
+	taskMetadata: vi.fn(async () => ({ historyItem: { id: "test" }, tokenUsage: {} })),
+}))
+vi.mock("../../../api", () => ({ buildApiHandler: vi.fn() }))
+vi.mock("../build-tools", () => ({ buildNativeToolsArrayWithRestrictions: vi.fn(async () => ({ tools: [] })) }))
+vi.mock("../../checkpoints", () => ({ getCheckpointService: vi.fn(), checkpointSave: vi.fn() }))
+vi.mock("../../environment/getEnvironmentDetails", () => ({ getEnvironmentDetails: vi.fn(async () => "environment") }))
+
+describe("Task opt-in model dispatch", () => {
+	let task: Task
+	let provider: any
+	let admit: ReturnType<typeof vi.fn>
+	let settle: ReturnType<typeof vi.fn>
+	beforeEach(() => {
+		vi.clearAllMocks()
+		create.mockReset()
+		vi.mocked(readBranchProvenance).mockResolvedValue(undefined)
+		vi.mocked(saveRequestSnapshot).mockResolvedValue(undefined)
+		vi.mocked(saveApiMessages).mockResolvedValue(undefined)
+		settle = vi.fn()
+		admit = vi.fn(async () => ({ outcome: "budget-denied" }))
+		const configuration = { apiProvider: "anthropic" as const, apiModelId: "claude-sonnet-4-6", apiKey: "secret" }
+		vi.mocked(buildApiHandler).mockImplementation(() => new AnthropicHandler(configuration))
+		provider = {
+			contextProxy: new ContextProxy({ globalState: { update: vi.fn(async () => {}) } } as any),
+			context: { globalStorageUri: { fsPath: "/storage" } },
+			getState: vi.fn(async () => ({
+				mode: "code",
+				organizationAllowList: { allowAll: true, providers: {} },
+				autoApprovalEnabled: true,
+				alwaysAllowAll: true,
+				autoCondenseContext: false,
+				apiConfiguration: configuration,
+			})),
+			postStateToWebviewWithoutTaskHistory: vi.fn(async () => {}),
+			postMessageToWebview: vi.fn(async () => {}),
+			updateTaskHistory: vi.fn(async () => {}),
+			log: vi.fn(),
+			on: vi.fn(),
+			off: vi.fn(),
+		}
+		task = new Task({
+			provider,
+			apiConfiguration: configuration,
+			startTask: false,
+			workspacePath: "/workspace",
+			taskId: "target",
+			modelDispatchRuntime: { admit },
+		})
+		vi.spyOn(task as any, "getSystemPrompt").mockResolvedValue("system")
+		vi.spyOn(task as any, "getFilesReadByRooSafely").mockResolvedValue([])
+		vi.spyOn(task, "say").mockResolvedValue(undefined)
+		vi.spyOn(task, "getTokenUsage").mockReturnValue({ contextTokens: 1000 } as any)
+		vi.spyOn(AnthropicHandler.prototype, "countTokens").mockResolvedValue(10)
+		task.apiConversationHistory = [
+			{ role: "user", content: "first" },
+			{ role: "assistant", content: "answer" },
+			{ role: "user", content: "next" },
+		]
+		task.clineMessages = [
+			{ ts: 1, type: "say", say: "text", text: "task" },
+			{ ts: 2, type: "say", say: "api_req_started" },
+		]
+	})
+	afterEach(() => {
+		;(task as any).debouncedEmitTokenUsage.cancel()
+		vi.restoreAllMocks()
+	})
+
+	it.each([undefined, false, true])("selects ordinary Anthropic preview only when enabled: %s", async (enabled) => {
+		await provider.contextProxy.setValue("experiments", { cordisRuntimePreview: enabled })
+		const ordinary = new Task({
+			provider,
+			apiConfiguration: (await provider.getState()).apiConfiguration,
+			startTask: false,
+			workspacePath: "/workspace",
+		})
+		expect(Boolean((ordinary as any).modelDispatchRuntime)).toBe(enabled === true)
+		await provider.contextProxy.setValue("experiments", { cordisRuntimePreview: false })
+		expect((ordinary as any).previewDispatchDisabled).toBe(enabled === true)
+		if (enabled === true) {
+			await expect(ordinary.condenseContext()).rejects.toMatchObject({ code: "cancelled" })
+			await expect(ordinary.attemptApiRequest().next()).rejects.toMatchObject({ code: "cancelled" })
+		}
+		ordinary.dispose({ preserveArtifacts: true })
+	})
+
+	it.each(["chat", "manual", "automatic"])(
+		"live disable fences pending %s admission, even after re-enable",
+		async (path) => {
+			if (path === "automatic") {
+				provider.getState.mockResolvedValue({
+					...(await provider.getState()),
+					autoCondenseContext: true,
+					autoCondenseContextPercent: 1,
+				})
+				vi.mocked(task.getTokenUsage).mockReturnValue({ contextTokens: 190000 } as any)
+			}
+			let grant!: (value: DispatchAdmission) => void
+			admit.mockImplementation(
+				() =>
+					new Promise((resolve) => {
+						grant = resolve
+					}),
+			)
+			const before = structuredClone(task.apiConversationHistory)
+			const pending = path === "manual" ? task.condenseContext() : task.attemptApiRequest().next()
+			await vi.waitFor(() => expect(admit).toHaveBeenCalledOnce())
+			await provider.contextProxy.setValue("experiments", { cordisRuntimePreview: false })
+			await expect(pending).rejects.toMatchObject({ code: "cancelled" })
+			grant({ outcome: "granted", settle })
+			await vi.waitFor(() => expect(settle).toHaveBeenCalledExactlyOnceWith("not-dispatched"))
+			await provider.contextProxy.setValue("experiments", { cordisRuntimePreview: true })
+			await expect(task.attemptApiRequest().next()).rejects.toMatchObject({ code: "cancelled" })
+			await expect(task.condenseContext()).rejects.toMatchObject({ code: "cancelled" })
+			expect(task.apiConversationHistory).toEqual(before)
+			expect(create).not.toHaveBeenCalled()
+			expect(admit).toHaveBeenCalledOnce()
+		},
+	)
+
+	it.each(["chat", "manual"])("live disable aborts in-flight %s transport without fallback", async (path) => {
+		admit.mockResolvedValue({ outcome: "granted", settle })
+		create.mockImplementation(() => new Promise(() => {}))
+		const pending = path === "manual" ? task.condenseContext() : task.attemptApiRequest().next()
+		await vi.waitFor(() => expect(create).toHaveBeenCalledOnce())
+		const signal = create.mock.calls[0][1].signal as AbortSignal
+		expect(signal.aborted).toBe(false)
+		await provider.contextProxy.setValue("experiments", { cordisRuntimePreview: false })
+		await expect(pending).rejects.toMatchObject({ code: "cancelled" })
+		expect(signal.aborted).toBe(true)
+		expect(settle).toHaveBeenCalledExactlyOnceWith("unresolved")
+		await expect(task.condenseContext()).rejects.toMatchObject({ code: "cancelled" })
+		expect(create).toHaveBeenCalledOnce()
+	})
+
+	it("cancels a stream already delivering model output", async () => {
+		admit.mockResolvedValue({ outcome: "granted", settle })
+		create.mockResolvedValue(
+			(async function* () {
+				yield { type: "content_block_start", index: 0, content_block: { type: "text", text: "partial" } }
+				await new Promise(() => {})
+			})(),
+		)
+		const iterator = task.attemptApiRequest()
+		expect((await iterator.next()).value).toMatchObject({ type: "text", text: "partial" })
+		const pending = iterator.next()
+		await provider.contextProxy.setValue("experiments", { cordisRuntimePreview: false })
+		await expect(pending).rejects.toMatchObject({ code: "cancelled" })
+		expect(create.mock.calls[0][1].signal.aborted).toBe(true)
+		expect(settle).toHaveBeenCalledExactlyOnceWith("unresolved")
+	})
+
+	it("keeps a legacy task and its in-flight request unaffected by enable and disable", async () => {
+		const ordinary = new Task({
+			provider,
+			apiConfiguration: (await provider.getState()).apiConfiguration,
+			startTask: false,
+			workspacePath: "/workspace",
+		})
+		const controller = new AbortController()
+		;(ordinary as any).currentRequestAbortController = controller
+		const handler = ordinary.api
+		await provider.contextProxy.setValue("experiments", { cordisRuntimePreview: true })
+		await provider.contextProxy.setValue("experiments", { cordisRuntimePreview: false })
+		expect(controller.signal.aborted).toBe(false)
+		expect(ordinary.api).toBe(handler)
+		expect((ordinary as any).modelDispatchRuntime).toBeUndefined()
+		expect(
+			await ordinary.checkToolInvocation({
+				type: "tool_use",
+				id: "call",
+				name: "new_task",
+				params: {},
+				partial: false,
+			}),
+		).toEqual({ allow: true })
+		ordinary.dispose({ preserveArtifacts: true })
+	})
+
+	it("preserves an injected restrictive tool policy while disabled", async () => {
+		const evaluate = vi.fn(() => ({ allow: false as const, reason: "Restricted" }))
+		const restricted = new Task({
+			provider,
+			apiConfiguration: (await provider.getState()).apiConfiguration,
+			startTask: false,
+			workspacePath: "/workspace",
+			toolInvocationPolicy: { evaluate },
+		})
+		await provider.contextProxy.setValue("experiments", { cordisRuntimePreview: false })
+		expect(
+			await restricted.checkToolInvocation({
+				type: "tool_use",
+				id: "call",
+				name: "new_task",
+				params: {},
+				partial: false,
+			}),
+		).toEqual({ allow: false, reason: "Restricted" })
+		expect(evaluate).toHaveBeenCalledOnce()
+		restricted.dispose({ preserveArtifacts: true })
+	})
+
+	it("mediates ordinary opted-in Anthropic requests without imposing budget limits", async () => {
+		await provider.contextProxy.setValue("experiments", { cordisRuntimePreview: true })
+		const ordinary = new Task({
+			provider,
+			apiConfiguration: (await provider.getState()).apiConfiguration,
+			startTask: false,
+			workspacePath: "/workspace",
+		})
+		const controller = new AbortController()
+		const handler = (ordinary as any).prepareModelDispatch("condensation", controller.signal)
+		create.mockResolvedValue(
+			(async function* () {
+				yield { type: "content_block_start", index: 0, content_block: { type: "text", text: "answer" } }
+				yield { type: "message_stop" }
+			})(),
+		)
+		const chunks = []
+		for await (const chunk of handler.createMessage("system", [{ role: "user", content: "hello" }]))
+			chunks.push(chunk)
+		expect(chunks).toContainEqual({ type: "text", text: "answer" })
+		expect(create).toHaveBeenCalledOnce()
+		expect(create.mock.calls[0][1].signal).toBe(controller.signal)
+		expect(admit).not.toHaveBeenCalled()
+		ordinary.dispose({ preserveArtifacts: true })
+	})
+
+	it("does not replace explicitly injected admission with the permissive preview runtime", async () => {
+		await provider.contextProxy.setValue("experiments", { cordisRuntimePreview: true })
+		const restricted = new Task({
+			provider,
+			apiConfiguration: (await provider.getState()).apiConfiguration,
+			startTask: false,
+			workspacePath: "/workspace",
+			modelDispatchRuntime: { admit },
+		})
+		const handler = (restricted as any).prepareModelDispatch("condensation", new AbortController().signal)
+		await expect(
+			handler.createMessage("system", [{ role: "user", content: "hello" }]).next(),
+		).rejects.toMatchObject({ code: "budget-denied" })
+		expect(admit).toHaveBeenCalledOnce()
+		expect(create).not.toHaveBeenCalled()
+		restricted.dispose({ preserveArtifacts: true })
+	})
+
+	it("uses the saved setting instead of a stale constructor snapshot", async () => {
+		await provider.contextProxy.setValue("experiments", { cordisRuntimePreview: false })
+		const ordinary = new Task({
+			provider,
+			apiConfiguration: (await provider.getState()).apiConfiguration,
+			startTask: false,
+			workspacePath: "/workspace",
+			experiments: { cordisRuntimePreview: true },
+		})
+		expect((ordinary as any).modelDispatchRuntime).toBeUndefined()
+		ordinary.dispose({ preserveArtifacts: true })
+	})
+
+	it("unsubscribes preview settings at teardown", async () => {
+		task.dispose({ preserveArtifacts: true })
+		await provider.contextProxy.setValue("experiments", { cordisRuntimePreview: false })
+		expect((task as any).previewDispatchDisabled).toBe(false)
+	})
+
+	it.each(["chat", "manual", "automatic"])(
+		"propagates %s denial without dispatch, truncation, history writes or retry",
+		async (path) => {
+			if (path === "automatic") {
+				const state = await provider.getState()
+				provider.getState.mockResolvedValue({
+					...state,
+					autoCondenseContext: true,
+					autoCondenseContextPercent: 1,
+				})
+				vi.mocked(task.getTokenUsage).mockReturnValue({ contextTokens: 190000 } as any)
+			}
+			const before = structuredClone(task.apiConversationHistory)
+			const backoff = vi.spyOn(task as any, "backoffAndAnnounce")
+			const repair = vi.spyOn(task as any, "handleContextWindowExceededError")
+			await expect(
+				path === "manual" ? task.condenseContext() : task.attemptApiRequest().next(),
+			).rejects.toMatchObject({ code: "budget-denied" })
+			expect(admit).toHaveBeenCalledOnce()
+			expect(admit.mock.calls[0][0].purpose).toBe(path === "chat" ? "chat" : "condensation")
+			expect(create).not.toHaveBeenCalled()
+			expect(backoff).not.toHaveBeenCalled()
+			expect(repair).not.toHaveBeenCalled()
+			expect(task.apiConversationHistory).toEqual(before)
+			if (path !== "chat") expect(saveApiMessages).not.toHaveBeenCalled()
+			expect(task.modelDispatchOutcome?.code).toBe("budget-denied")
+		},
+	)
+
+	it("fails unsupported handlers before network or context management", async () => {
+		task.api = { createMessage: vi.fn(), getModel: vi.fn(), countTokens: vi.fn() }
+		await expect(task.attemptApiRequest().next()).rejects.toMatchObject({ code: "unsupported-provider" })
+		expect(task.api.createMessage).not.toHaveBeenCalled()
+		expect(task.api.countTokens).not.toHaveBeenCalled()
+		expect(admit).not.toHaveBeenCalled()
+	})
+
+	it.each(["chat", "manual", "automatic"])(
+		"cancels waiting %s admission and prevents late network work",
+		async (path) => {
+			if (path === "automatic") {
+				provider.getState.mockResolvedValue({
+					...(await provider.getState()),
+					autoCondenseContext: true,
+					autoCondenseContextPercent: 1,
+				})
+				vi.mocked(task.getTokenUsage).mockReturnValue({ contextTokens: 190000 } as any)
+			}
+			let grant!: (value: DispatchAdmission) => void
+			admit.mockImplementation(
+				() =>
+					new Promise((resolve) => {
+						grant = resolve
+					}),
+			)
+			const pending = path === "manual" ? task.condenseContext() : task.attemptApiRequest().next()
+			await vi.waitFor(() => expect(admit).toHaveBeenCalledOnce())
+			task.cancelCurrentRequest()
+			await expect(pending).rejects.toMatchObject({ code: "cancelled" })
+			grant({ outcome: "granted", settle })
+			await vi.waitFor(() => expect(settle).toHaveBeenCalledExactlyOnceWith("not-dispatched"))
+			expect(create).not.toHaveBeenCalled()
+			if (path !== "chat") expect(saveApiMessages).not.toHaveBeenCalled()
+		},
+	)
+
+	it("does not auto-repair or retry an admitted context-window provider failure", async () => {
+		admit.mockResolvedValue({ outcome: "granted", settle })
+		create.mockRejectedValue(new Error("prompt is too long: context length exceeded"))
+		await expect(task.attemptApiRequest().next()).rejects.toMatchObject({ code: "dispatch-failed" })
+		expect(admit).toHaveBeenCalledOnce()
+		expect(create).toHaveBeenCalledOnce()
+		expect(settle).toHaveBeenCalledExactlyOnceWith("unresolved")
+	})
+
+	it("rejects legacy context repair while mediation is enabled", async () => {
+		await expect((task as any).handleContextWindowExceededError()).rejects.toBeInstanceOf(ModelDispatchControl)
+		expect(admit).not.toHaveBeenCalled()
+	})
+
+	it.each(["budget-denied", "stream-failed", "empty"])(
+		"preserves %s through the outer task loop without retry",
+		async (failure) => {
+			// Use the existing prepared-prefix entry path so prompt/environment bootstrap
+			// does not obscure the real stream and outer retry catches under test.
+			;(task as any).modelOperationPrepared = true
+			;(task as any).modelOperationSystemPrompt = "system"
+			if (failure === "stream-failed") {
+				admit.mockResolvedValue({ outcome: "granted", settle })
+				create.mockResolvedValue(
+					(async function* () {
+						yield {
+							type: "content_block_start",
+							index: 0,
+							content_block: { type: "text", text: "partial" },
+						}
+						throw new Error("stream disconnected")
+					})(),
+				)
+			}
+			if (failure === "empty") {
+				admit.mockResolvedValue({ outcome: "granted", settle })
+				create.mockResolvedValue(
+					(async function* () {
+						yield { type: "message_stop" }
+					})(),
+				)
+			}
+			const backoff = vi.spyOn(task as any, "backoffAndAnnounce")
+			await expect(task.recursivelyMakeClineRequests([])).rejects.toMatchObject({
+				code: failure === "budget-denied" ? failure : "dispatch-failed",
+			})
+			expect(admit).toHaveBeenCalledOnce()
+			expect(create).toHaveBeenCalledTimes(failure === "budget-denied" ? 0 : 1)
+			expect(backoff).not.toHaveBeenCalled()
+			expect(task.modelDispatchOutcome).toBeInstanceOf(ModelDispatchControl)
+		},
+	)
+
+	it("rejects overlapping manual and main operations while admission is pending", async () => {
+		admit.mockReturnValue(new Promise(() => {}))
+		const pending = task.condenseContext()
+		await vi.waitFor(() => expect(admit).toHaveBeenCalledOnce())
+		await expect(task.condenseContext()).rejects.toMatchObject({ code: "policy-denied" })
+		await expect(task.attemptApiRequest().next()).rejects.toMatchObject({ code: "policy-denied" })
+		task.cancelCurrentRequest()
+		await expect(pending).rejects.toMatchObject({ code: "cancelled" })
+		expect(admit).toHaveBeenCalledOnce()
+		expect(create).not.toHaveBeenCalled()
+	})
+
+	it("pins the Task request while caller configuration and history change during admission", async () => {
+		let grant!: (value: DispatchAdmission) => void
+		admit.mockImplementation(
+			() =>
+				new Promise((resolve) => {
+					grant = resolve
+				}),
+		)
+		create.mockResolvedValue(
+			(async function* () {
+				yield { type: "content_block_start", index: 0, content_block: { type: "text", text: "answer" } }
+				yield { type: "message_stop" }
+			})(),
+		)
+		const stream = task.attemptApiRequest()
+		const pending = stream.next()
+		await vi.waitFor(() => expect(admit).toHaveBeenCalledOnce())
+		task.apiConfiguration.apiModelId = "claude-3-opus-20240229"
+		task.apiConversationHistory[0].content = "mutated"
+		grant({ outcome: "granted", settle })
+		await pending
+		while (!(await stream.next()).done) {
+			/* drain */
+		}
+		expect(create.mock.calls[0][0].model).toBe("claude-sonnet-4-6")
+		expect(JSON.stringify(create.mock.calls[0][0].messages)).not.toContain("mutated")
+		expect(create).toHaveBeenCalledOnce()
+	})
+
+	it("ends a text-only mediated turn without a generic use-a-tool retry", async () => {
+		;(task as any).modelOperationPrepared = true
+		;(task as any).modelOperationSystemPrompt = "system"
+		admit.mockResolvedValue({ outcome: "granted", settle })
+		create.mockResolvedValue(
+			(async function* () {
+				yield { type: "content_block_start", index: 0, content_block: { type: "text", text: "answer" } }
+				yield { type: "message_stop" }
+			})(),
+		)
+		await expect(task.recursivelyMakeClineRequests([])).resolves.toBe(true)
+		expect(admit).toHaveBeenCalledOnce()
+		expect(create).toHaveBeenCalledOnce()
+		expect(settle).toHaveBeenCalledExactlyOnceWith("completed")
+	})
+})

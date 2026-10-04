@@ -861,6 +861,10 @@
 		}
 	},
 	"experimental": {
+		"CORDIS_RUNTIME_PREVIEW": {
+			"name": "Cordis runtime preview",
+			"description": "Opt in to experimental request admission for new Anthropic tasks only. Other providers use the normal path. Graph execution is not available, and this preview does not enforce financial budget limits. Normal chat and delegation remain available when off. Save to apply: disabling stops new preview dispatch and cancels active preview model requests, but cannot undo effects already performed. Re-enabling does not automatically resume stopped tasks; reopen or start a task to use the current setting."
+		},
 		"DIFF_STRATEGY_UNIFIED": {
 			"name": "Use experimental unified diff strategy",
 			"description": "Enable the experimental unified diff strategy. This strategy might reduce the number of retries caused by model errors but may cause unexpected behavior or incorrect edits. Only enable if you understand the risks and are willing to carefully review all changes."

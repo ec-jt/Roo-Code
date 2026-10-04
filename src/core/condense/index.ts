@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk"
 import crypto from "crypto"
+import { ModelDispatchControl } from "../../api/dispatch-admission"
 
 import { t } from "../../i18n"
 import { ApiHandler, ApiHandlerCreateMessageMetadata } from "../../api"
@@ -337,6 +338,7 @@ export async function summarizeConversation(options: SummarizeConversationOption
 			}
 		}
 	} catch (error) {
+		if (error instanceof ModelDispatchControl) throw error
 		console.error("Error during condensing API call:", error)
 		const errorMessage = error instanceof Error ? error.message : String(error)
 

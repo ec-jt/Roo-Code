@@ -761,6 +761,10 @@
 		}
 	},
 	"experimental": {
+		"CORDIS_RUNTIME_PREVIEW": {
+			"name": "Cordis-Runtime-Vorschau",
+			"description": "Aktiviere die experimentelle Zulassung von Anfragen nur für neue Anthropic-Aufgaben. Andere Anbieter nutzen den normalen Ablauf. Die Ausführung von Graphen ist nicht verfügbar, und diese Vorschau setzt keine finanziellen Budgetgrenzen durch. Normaler Chat und Delegation bleiben auch bei deaktivierter Vorschau verfügbar. Speichere, um die Änderung anzuwenden: Das Deaktivieren stoppt den Versand neuer Vorschau-Anfragen und bricht aktive Modellanfragen der Vorschau ab, kann aber bereits eingetretene Auswirkungen nicht rückgängig machen. Erneutes Aktivieren setzt gestoppte Aufgaben nicht automatisch fort. Öffne eine Aufgabe erneut oder starte eine neue, um die aktuelle Einstellung zu nutzen."
+		},
 		"DIFF_STRATEGY_UNIFIED": {
 			"name": "Experimentelle einheitliche Diff-Strategie verwenden",
 			"description": "Aktiviere die experimentelle einheitliche Diff-Strategie. Diese Strategie könnte die Anzahl der durch Modellfehler verursachten Wiederholungsversuche reduzieren, kann aber zu unerwartetem Verhalten oder falschen Bearbeitungen führen. Aktiviere sie nur, wenn du die Risiken verstehst und bereit bist, alle Änderungen sorgfältig zu überprüfen."

@@ -322,6 +322,36 @@ const renderSettingsView = () => {
 }
 
 describe("SettingsView - Sound Settings", () => {
+	it("renders the preview off by default and saves opt-in and opt-out", () => {
+		const { activateTab, getSettingsContent } = renderSettingsView()
+		activateTab("experimental")
+		const checkbox = within(getSettingsContent()).getByRole("checkbox", {
+			name: "settings:experimental.CORDIS_RUNTIME_PREVIEW.name",
+		})
+		expect(checkbox).not.toBeChecked()
+		fireEvent.click(checkbox)
+		expect(checkbox).toBeChecked()
+		fireEvent.click(screen.getByTestId("save-button"))
+		expect(vscode.postMessage).toHaveBeenCalledWith(
+			expect.objectContaining({
+				type: "updateSettings",
+				updatedSettings: expect.objectContaining({
+					experiments: expect.objectContaining({ cordisRuntimePreview: true }),
+				}),
+			}),
+		)
+		fireEvent.click(checkbox)
+		fireEvent.click(screen.getByTestId("save-button"))
+		expect(vscode.postMessage).toHaveBeenCalledWith(
+			expect.objectContaining({
+				type: "updateSettings",
+				updatedSettings: expect.objectContaining({
+					experiments: expect.objectContaining({ cordisRuntimePreview: false }),
+				}),
+			}),
+		)
+	})
+
 	beforeEach(() => {
 		vi.clearAllMocks()
 	})

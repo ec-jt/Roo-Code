@@ -12,6 +12,7 @@ import {
 	type SecretState,
 	type GlobalState,
 	type RooCodeSettings,
+	type Experiments,
 	providerSettingsSchema,
 	globalSettingsSchema,
 	isSecretStateKey,
@@ -42,6 +43,17 @@ export class ContextProxy {
 	private stateCache: GlobalState
 	private secretCache: SecretState
 	private _isInitialized = false
+	private readonly experimentsListeners = new Set<(experiments: Experiments | undefined) => void>()
+
+	/** Synchronous notification fences dispatch before a settings write yields. */
+	public onExperimentsChanged(listener: (experiments: Experiments | undefined) => void): () => void {
+		this.experimentsListeners.add(listener)
+		return () => this.experimentsListeners.delete(listener)
+	}
+
+	private notifyExperimentsChanged(): void {
+		for (const listener of this.experimentsListeners) listener(this.stateCache.experiments)
+	}
 
 	constructor(context: vscode.ExtensionContext) {
 		this.originalContext = context
@@ -334,6 +346,7 @@ export class ContextProxy {
 		}
 
 		this.stateCache[key] = value
+		if (key === "experiments") this.notifyExperimentsChanged()
 		return this.originalContext.globalState.update(key, value)
 	}
 
@@ -542,6 +555,8 @@ export class ContextProxy {
 		// Clear in-memory caches
 		this.stateCache = {}
 		this.secretCache = {}
+
+		this.notifyExperimentsChanged()
 
 		await Promise.all([
 			...GLOBAL_STATE_KEYS.map((key) => this.originalContext.globalState.update(key, undefined)),

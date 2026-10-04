@@ -48,6 +48,7 @@ describe("presentAssistantMessage - Custom Tool Recording", () => {
 			currentStreamingContentIndex: 0,
 			assistantMessageContent: [],
 			assistantMessageSavedToHistory: true,
+			checkToolInvocation: vi.fn().mockResolvedValue({ allow: true }),
 			admitModelOperationTool: vi.fn().mockResolvedValue(true),
 			userMessageContent: [],
 			didCompleteReadingStream: false,

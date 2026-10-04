@@ -761,6 +761,10 @@
 		}
 	},
 	"experimental": {
+		"CORDIS_RUNTIME_PREVIEW": {
+			"name": "Wersja zapoznawcza runtime Cordis",
+			"description": "Włącz eksperymentalne przyjmowanie żądań tylko dla nowych zadań Anthropic. Pozostali dostawcy korzystają ze standardowej ścieżki. Wykonywanie grafów nie jest dostępne, a ta wersja zapoznawcza nie egzekwuje limitów budżetu finansowego. Zwykły czat i delegowanie pozostają dostępne po jej wyłączeniu. Zapisz, aby zastosować zmiany: wyłączenie zatrzymuje wysyłanie nowych żądań przez wersję zapoznawczą i anuluje jej aktywne żądania do modeli, ale nie może cofnąć skutków już wykonanych działań. Ponowne włączenie nie wznawia automatycznie zatrzymanych zadań; otwórz zadanie ponownie lub rozpocznij nowe, aby użyć bieżącego ustawienia."
+		},
 		"DIFF_STRATEGY_UNIFIED": {
 			"name": "Użyj eksperymentalnej ujednoliconej strategii diff",
 			"description": "Włącz eksperymentalną ujednoliconą strategię diff. Ta strategia może zmniejszyć liczbę ponownych prób spowodowanych błędami modelu, ale może powodować nieoczekiwane zachowanie lub nieprawidłowe edycje. Włącz tylko jeśli rozumiesz ryzyko i jesteś gotów dokładnie przeglądać wszystkie zmiany."

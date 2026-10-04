@@ -1103,3 +1103,21 @@ describe("webviewMessageHandler - downloadErrorDiagnostics", () => {
 		expect(generateErrorDiagnostics).not.toHaveBeenCalled()
 	})
 })
+
+describe("webviewMessageHandler - Cordis preview persistence", () => {
+	it.each([true, false])("saves preview %s while preserving unrelated experiments", async (enabled) => {
+		vi.clearAllMocks()
+		vi.mocked(mockClineProvider.contextProxy.getValue).mockImplementation((key) =>
+			key === "experiments" ? { customTools: true } : undefined,
+		)
+		await webviewMessageHandler(mockClineProvider, {
+			type: "updateSettings",
+			updatedSettings: { experiments: { cordisRuntimePreview: enabled } },
+		})
+		expect(mockClineProvider.contextProxy.setValue).toHaveBeenCalledWith("experiments", {
+			customTools: true,
+			cordisRuntimePreview: enabled,
+		})
+		expect(mockClineProvider.postStateToWebview).toHaveBeenCalledOnce()
+	})
+})

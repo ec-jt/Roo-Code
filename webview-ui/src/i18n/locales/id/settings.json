@@ -761,6 +761,10 @@
 		}
 	},
 	"experimental": {
+		"CORDIS_RUNTIME_PREVIEW": {
+			"name": "Pratinjau runtime Cordis",
+			"description": "Aktifkan penerimaan permintaan eksperimental hanya untuk tugas Anthropic baru. Penyedia lain menggunakan alur normal. Eksekusi graf tidak tersedia, dan pratinjau ini tidak memberlakukan batas anggaran keuangan. Chat normal dan delegasi tetap tersedia saat pratinjau dinonaktifkan. Simpan untuk menerapkan: menonaktifkannya menghentikan pengiriman permintaan pratinjau baru dan membatalkan permintaan model pratinjau yang aktif, tetapi tidak dapat membatalkan efek yang sudah terjadi. Mengaktifkannya kembali tidak otomatis melanjutkan tugas yang dihentikan; buka kembali atau mulai tugas untuk menggunakan pengaturan saat ini."
+		},
 		"DIFF_STRATEGY_UNIFIED": {
 			"name": "Gunakan strategi unified diff eksperimental",
 			"description": "Aktifkan strategi unified diff eksperimental. Strategi ini mungkin mengurangi jumlah retry yang disebabkan oleh error model tetapi dapat menyebabkan perilaku yang tidak terduga atau edit yang salah. Hanya aktifkan jika kamu memahami risikonya dan bersedia meninjau semua perubahan dengan hati-hati."
