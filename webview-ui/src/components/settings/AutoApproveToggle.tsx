@@ -13,6 +13,7 @@ type AutoApproveToggles = Pick<
 	| "alwaysAllowMcp"
 	| "alwaysAllowModeSwitch"
 	| "alwaysAllowSubtasks"
+	| "alwaysAllowNestedSubtasks"
 	| "alwaysAllowExecute"
 	| "alwaysAllowFollowupQuestions"
 >
@@ -76,6 +77,13 @@ export const autoApproveSettingsConfig: Record<AutoApproveSetting, AutoApproveCo
 		descriptionKey: "settings:autoApprove.subtasks.description",
 		icon: "list-tree",
 		testId: "always-allow-subtasks-toggle",
+	},
+	alwaysAllowNestedSubtasks: {
+		key: "alwaysAllowNestedSubtasks",
+		labelKey: "settings:autoApprove.nestedSubtasks.label",
+		descriptionKey: "settings:autoApprove.nestedSubtasks.description",
+		icon: "list-tree",
+		testId: "always-allow-nested-subtasks-toggle",
 	},
 	alwaysAllowExecute: {
 		key: "alwaysAllowExecute",

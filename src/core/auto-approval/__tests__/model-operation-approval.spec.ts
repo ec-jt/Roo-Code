@@ -14,6 +14,7 @@ const permissiveState = {
 	alwaysAllowMcp: true,
 	alwaysAllowModeSwitch: true,
 	alwaysAllowSubtasks: true,
+	alwaysAllowNestedSubtasks: true,
 	alwaysAllowExecute: true,
 	allowedCommands: ["*"],
 	deniedCommands: [],

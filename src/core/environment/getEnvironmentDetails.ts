@@ -19,7 +19,7 @@ import { getGitStatus } from "../../utils/git"
 
 import { Task } from "../task/Task"
 import { formatReminderSection } from "./reminder"
-import { delegationContext, resolveDelegationAncestry } from "../task/delegation-policy"
+import { canAutoApproveNestedSubtasks, delegationContext, resolveDelegationAncestry } from "../task/delegation-policy"
 
 export async function getEnvironmentDetails(cline: Task, includeFileDetails: boolean = false) {
 	let details = ""
@@ -41,7 +41,7 @@ export async function getEnvironmentDetails(cline: Task, includeFileDetails: boo
 	} catch {
 		// Fail closed in runtime guidance as well as in the backend guard.
 	}
-	details += `\n\n# Task Delegation\n${delegationContext(delegationDepth)}`
+	details += `\n\n# Task Delegation\n${delegationContext(delegationDepth, canAutoApproveNestedSubtasks(state, cline.modelOperationState))}`
 
 	// It could be useful for cline to know if the user went from one or no
 	// file to another between messages, so we always include this context.

@@ -213,6 +213,38 @@ describe("SYSTEM_PROMPT", () => {
 		}
 	})
 
+	it.each([false, true])(
+		"reflects effective nested auto approval %s in both delegation policy sections",
+		async (enabled) => {
+			const prompt = await SYSTEM_PROMPT(
+				mockContext,
+				"/test/path",
+				false,
+				undefined,
+				undefined,
+				defaultModeSlug,
+				undefined,
+				undefined,
+				undefined,
+				experiments,
+				undefined,
+				undefined,
+				{
+					delegationDepth: 1,
+					nestedSubtaskAutoApprovalEnabled: enabled,
+					todoListEnabled: true,
+					useAgentRules: true,
+					newTaskRequireTodos: false,
+				},
+			)
+			const guidance = enabled
+				? "Nested-subtask auto approval is explicitly enabled"
+				: "Nested-subtask auto approval is not enabled"
+			expect(prompt.split(guidance)).toHaveLength(3)
+			expect(prompt).toContain("You may implement changes and run tests")
+		},
+	)
+
 	it("should maintain consistent system prompt", async () => {
 		const prompt = await SYSTEM_PROMPT(
 			mockContext,

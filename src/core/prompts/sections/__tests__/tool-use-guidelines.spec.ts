@@ -1,6 +1,17 @@
 import { getToolUseGuidelinesSection } from "../tool-use-guidelines"
 
 describe("getToolUseGuidelinesSection", () => {
+	it("supports implementation children with clear ownership and preserves the nested opt-in boundary", () => {
+		const guidelines = getToolUseGuidelinesSection()
+		expect(guidelines).toContain("bounded implementation and testing in code mode")
+		expect(guidelines).toContain("clear file ownership to avoid conflicting edits")
+		expect(guidelines).toContain("caller constraints")
+		expect(guidelines).toContain("unless nested-subtask auto approval is explicitly enabled")
+		expect(guidelines).toContain(
+			"Ordinary subtask or all-actions auto approval alone does not permit deeper auto approval",
+		)
+	})
+
 	it("should include proper numbered guidelines", () => {
 		const guidelines = getToolUseGuidelinesSection()
 

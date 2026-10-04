@@ -1,4 +1,4 @@
-import type { HistoryItem, ModeConfig, TodoItem } from "@roo-code/types"
+import type { GlobalSettings, HistoryItem, ModelOperationState, ModeConfig, TodoItem } from "@roo-code/types"
 
 import { getModeBySlug } from "../../shared/modes"
 import type { Task } from "./Task"
@@ -66,7 +66,26 @@ export interface DelegationRequest {
 	reason?: string
 }
 
-/** A local, one-call approval. No persisted grant, auto-approval path, or blanket override exists. */
+/** Nested auto-approval is a separate opt-in, never implied by ordinary subtasks or all-actions. */
+export function canAutoApproveNestedSubtasks(
+	state:
+		| Pick<
+				GlobalSettings,
+				"autoApprovalEnabled" | "alwaysAllowNestedSubtasks" | "alwaysAllowSubtasks" | "alwaysAllowAll"
+		  >
+		| undefined,
+	operation: Pick<ModelOperationState, "requiresToolApproval" | "approval"> | undefined,
+): boolean {
+	return (
+		state?.autoApprovalEnabled === true &&
+		state.alwaysAllowNestedSubtasks === true &&
+		(state.alwaysAllowSubtasks === true || state.alwaysAllowAll === true) &&
+		!operation?.requiresToolApproval &&
+		!operation?.approval
+	)
+}
+
+/** Authorize one request, rechecking either explicit human approval or the nested auto-approval opt-in. */
 export async function authorizeDelegation(
 	provider: ClineProvider,
 	parent: Task,
@@ -77,6 +96,15 @@ export async function authorizeDelegation(
 	const instanceId = parent.instanceId
 	const api = parent.api
 	const requestKey = JSON.stringify(request)
+	const operationSnapshot = () => {
+		const operation = parent.modelOperationState
+		return JSON.stringify({
+			revision: operation?.revision,
+			requiresToolApproval: operation?.requiresToolApproval,
+			approval: operation?.approval,
+		})
+	}
+	const operationKey = operationSnapshot()
 	const assertCurrent = () => {
 		if (
 			provider.getCurrentTask() !== parent ||
@@ -88,6 +116,7 @@ export async function authorizeDelegation(
 			provider.delegationRevision !== revision ||
 			(request.expectedRevision !== undefined && request.expectedRevision !== revision) ||
 			parent.api !== api ||
+			operationSnapshot() !== operationKey ||
 			JSON.stringify(request) !== requestKey
 		) {
 			throw new DelegationPolicyError(
@@ -115,6 +144,7 @@ export async function authorizeDelegation(
 		}
 		return {
 			depth: ancestry.length - 1,
+			autoApprove: canAutoApproveNestedSubtasks(state, parent.modelOperationState),
 			key: JSON.stringify({
 				ancestry,
 				source,
@@ -123,6 +153,11 @@ export async function authorizeDelegation(
 				profile: state.currentApiConfigName,
 				configuration: state.apiConfiguration,
 				organization: state.organizationAllowList,
+				autoApprovalEnabled: state.autoApprovalEnabled,
+				alwaysAllowNestedSubtasks: state.alwaysAllowNestedSubtasks,
+				alwaysAllowSubtasks: state.alwaysAllowSubtasks,
+				alwaysAllowAll: state.alwaysAllowAll,
+				operation: operationSnapshot(),
 			}),
 		}
 	}
@@ -130,12 +165,14 @@ export async function authorizeDelegation(
 	if (initial.depth >= 1) {
 		if (typeof request.reason !== "string" || !request.reason.trim()) {
 			throw new DelegationPolicyError(
-				"Delegation blocked: children execute directly (default maximum depth is 1). Exceptional deeper delegation requires a concrete 'reason' and separate human approval for this action.",
+				"Delegation blocked: children execute directly (default maximum depth is 1). Exceptional deeper delegation requires a concrete 'reason' and separate human approval unless nested-subtask auto approval is explicitly enabled.",
 			)
 		}
-		const approved = await confirm(
-			`Task: ${parent.taskId} (${instanceId})\nDepth: ${initial.depth} -> ${initial.depth + 1}\nDestination mode: ${request.mode}\n\nJustification:\n${request.reason}\n\nTask content:\n${request.message}\n\nInitial todos:\n${JSON.stringify(request.initialTodos)}\n\nThis approves only this delegation. It does not approve further nesting or wider permissions.`,
-		)
+		const approved =
+			initial.autoApprove ||
+			(await confirm(
+				`Task: ${parent.taskId} (${instanceId})\nDepth: ${initial.depth} -> ${initial.depth + 1}\nDestination mode: ${request.mode}\n\nJustification:\n${request.reason}\n\nTask content:\n${request.message}\n\nInitial todos:\n${JSON.stringify(request.initialTodos)}\n\nThis approves only this delegation. It does not approve further nesting or wider permissions.`,
+			))
 		assertCurrent()
 		if (!approved) {
 			provider.log(
@@ -144,14 +181,14 @@ export async function authorizeDelegation(
 			throw new DelegationPolicyError("Deeper delegation denied by the user.")
 		}
 		provider.log(
-			`[delegation] Human approved one action at depth ${initial.depth + 1} from ${parent.taskId}.${instanceId} to ${request.mode}`,
+			`[delegation] ${initial.autoApprove ? "Nested auto-approval authorized one action" : "Human approved one action"} at depth ${initial.depth + 1} from ${parent.taskId}.${instanceId} to ${request.mode}`,
 		)
 	}
 	// Revalidate after approval and again after flushing, immediately before disposal.
 	const revalidate = async () => {
 		if ((await snapshot()).key !== initial.key) {
 			throw new DelegationPolicyError(
-				"Delegation cancelled: ancestry, mode, or profile changed while awaiting approval.",
+				"Delegation cancelled: ancestry, mode, profile, or approval settings changed while authorizing delegation.",
 			)
 		}
 		assertCurrent()
@@ -160,10 +197,13 @@ export async function authorizeDelegation(
 	return { revalidate, assertCurrent }
 }
 
-export function delegationContext(depth: number | undefined): string {
+export function delegationContext(depth: number | undefined, nestedAutoApprovalEnabled = false): string {
 	if (depth === undefined)
 		return "Task ancestry could not be verified. Execute directly; delegation is blocked until durable ancestry is available."
 	if (depth === 0)
-		return "You are the root task (depth 0). You may delegate substantial, separable work to a child (depth 1). Execute small or straightforward work directly."
-	return `You are a child task (depth ${depth}). Execute the assigned work directly and report to your parent. Do not create further subtasks by default. Only an exceptional need with a concrete reason and explicit per-action human approval can permit another level. Never delegate to evade tool/file restrictions. If blocked or denied, finish here or report the limitation to your parent.`
+		return "You are the root task (depth 0). You may delegate substantial, separable work to a child (depth 1), including implementation and testing in code mode when permitted by the caller. Children are not inherently read-only. Give each child clear file ownership to avoid conflicting edits. Execute small or straightforward work directly."
+	const approval = nestedAutoApprovalEnabled
+		? "Nested-subtask auto approval is explicitly enabled. An exceptional deeper request may be auto-approved, but still requires a concrete reason, equal or narrower tool/file capabilities, and all task and approval checks."
+		: "Only an exceptional need with a concrete reason and explicit per-action human approval can permit another level. Nested-subtask auto approval is not enabled."
+	return `You are a child task (depth ${depth}). Execute the assigned work directly and report to your parent. You may implement changes and run tests when your assigned mode and caller constraints allow; you are not inherently read-only. Do not create further subtasks by default. ${approval} Never delegate to evade tool/file restrictions or caller constraints. If blocked or denied, finish here or report the limitation to your parent.`
 }

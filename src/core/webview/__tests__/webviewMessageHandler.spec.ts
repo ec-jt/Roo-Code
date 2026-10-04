@@ -1158,6 +1158,17 @@ describe("webviewMessageHandler - downloadErrorDiagnostics", () => {
 })
 
 describe("webviewMessageHandler - Cordis preview persistence", () => {
+	it.each([true, false])("persists nested-subtask opt-in %s independently", async (enabled) => {
+		vi.clearAllMocks()
+		await webviewMessageHandler(mockClineProvider, {
+			type: "updateSettings",
+			updatedSettings: { alwaysAllowNestedSubtasks: enabled },
+		})
+		expect(mockClineProvider.contextProxy.setValue).toHaveBeenCalledWith("alwaysAllowNestedSubtasks", enabled)
+		expect(mockClineProvider.contextProxy.setValue).not.toHaveBeenCalledWith("alwaysAllowAll", true)
+		expect(mockClineProvider.postStateToWebview).toHaveBeenCalledOnce()
+	})
+
 	it.each([true, false])("saves preview %s while preserving unrelated experiments", async (enabled) => {
 		vi.clearAllMocks()
 		vi.mocked(mockClineProvider.contextProxy.getValue).mockImplementation((key) =>

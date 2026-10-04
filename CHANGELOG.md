@@ -1,5 +1,14 @@
 # Roo Code Changelog
 
+## 4.2.6 - Cordis preview 4
+
+- Add a default-off **Nested subtasks** toggle to Settings and the chat auto-approval menu. Nested delegation can auto-approve only with the master switch, this opt-in, and either Subtasks or All actions enabled.
+- Retain required justification, same-or-narrower mode/file permissions, durable ancestry validation, and mandatory model-operation approval fences. Revalidate approval settings before delegation; revocation cancels pending authorization.
+- Clarify that suitably scoped subtasks can implement fixes and run tests in permitted modes, not only perform read-only reviews. Require clear ownership and preserve caller constraints.
+- Use English fallback for the new toggle wording. Cordis runtime preview remains off by default; nested-subtask approval does not require enabling it.
+
+GitHub prerelease tag: **v4.2.6-cordis-preview.4**.
+
 ## 4.2.5 - Cordis preview 3
 
 - Reject non-HTTP(S) Markdown conversion URLs before approval and at the shared URL fetcher boundary. Local files retain workspace approval and ignore-rule checks.

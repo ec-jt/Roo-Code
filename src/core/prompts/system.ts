@@ -91,7 +91,7 @@ ${getSharedToolUseSection()}${toolsCatalog}
 
 	${getToolUseGuidelinesSection()}
 
-${delegationContext(settings?.delegationDepth)}
+${delegationContext(settings?.delegationDepth, settings?.nestedSubtaskAutoApprovalEnabled)}
 
 ${getCapabilitiesSection(cwd, shouldIncludeMcp ? mcpHub : undefined)}
 
@@ -109,7 +109,7 @@ ${await addCustomInstructions(baseInstructions, globalCustomInstructions || "", 
 	settings,
 })}
 
-Task delegation policy takes precedence over mode instructions encouraging delegation: ${delegationContext(settings?.delegationDepth)}`
+Task delegation policy takes precedence over mode instructions encouraging delegation: ${delegationContext(settings?.delegationDepth, settings?.nestedSubtaskAutoApprovalEnabled)}`
 
 	return basePrompt
 }

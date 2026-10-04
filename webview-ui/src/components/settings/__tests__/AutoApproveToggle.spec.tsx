@@ -24,6 +24,7 @@ describe("AutoApproveToggle", () => {
 		alwaysAllowMcp: false,
 		alwaysAllowModeSwitch: true,
 		alwaysAllowSubtasks: false,
+		alwaysAllowNestedSubtasks: false,
 		alwaysAllowExecute: true,
 		alwaysAllowFollowupQuestions: false,
 		onToggle: mockOnToggle,
@@ -65,6 +66,14 @@ describe("AutoApproveToggle", () => {
 		fireEvent.click(readOnlyButton)
 		expect(mockOnToggle).toHaveBeenCalledTimes(2)
 		expect(mockOnToggle).toHaveBeenCalledWith("alwaysAllowReadOnly", false)
+	})
+
+	test("keeps nested approval separate from All actions and emits its own toggle", () => {
+		render(<AutoApproveToggle {...initialProps} alwaysAllowAll />)
+		const nested = screen.getByTestId("always-allow-nested-subtasks-toggle")
+		expect(nested).toHaveAttribute("aria-pressed", "false")
+		fireEvent.click(nested)
+		expect(mockOnToggle).toHaveBeenCalledWith("alwaysAllowNestedSubtasks", true)
 	})
 
 	test("updates aria-pressed attribute after toggle", () => {

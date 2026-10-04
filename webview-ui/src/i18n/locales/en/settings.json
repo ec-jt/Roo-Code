@@ -320,6 +320,10 @@
 			"label": "Subtasks",
 			"description": "Allow creation and completion of subtasks without requiring approval"
 		},
+		"nestedSubtasks": {
+			"label": "Nested subtasks",
+			"description": "Auto-approve justified subtasks created by a child task. Requires auto-approval and Subtasks or All actions. Off by default. Each level can add API cost. Mode and file restrictions and mandatory approvals still apply. Subtasks can implement and test changes when their mode permits it."
+		},
 		"followupQuestions": {
 			"label": "Question",
 			"description": "Automatically select the first suggested answer for follow-up questions after the configured timeout",

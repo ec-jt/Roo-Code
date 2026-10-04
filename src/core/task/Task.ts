@@ -103,7 +103,7 @@ import { getTaskDirectoryPath } from "../../utils/storage"
 // prompts
 import { formatResponse } from "../prompts/responses"
 import { SYSTEM_PROMPT } from "../prompts/system"
-import { DelegationPolicyError, resolveDelegationAncestry } from "./delegation-policy"
+import { canAutoApproveNestedSubtasks, DelegationPolicyError, resolveDelegationAncestry } from "./delegation-policy"
 import { buildNativeToolsArrayWithRestrictions } from "./build-tools"
 
 // core modules
@@ -4690,6 +4690,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 						.get<boolean>("newTaskRequireTodos", false),
 					isStealthModel: modelInfo?.isStealthModel,
 					delegationDepth,
+					nestedSubtaskAutoApprovalEnabled: canAutoApproveNestedSubtasks(state, this.modelOperationState),
 				},
 				undefined, // todoList
 				this.api.getModel().id,

@@ -1,9 +1,14 @@
 import * as vscode from "vscode"
-import type { HistoryItem, ModeConfig } from "@roo-code/types"
+import type { HistoryItem, ModelOperationState, ModeConfig } from "@roo-code/types"
 
 import { ClineProvider } from "../core/webview/ClineProvider"
 import { Task } from "../core/task/Task"
-import { delegationContext, isEqualOrNarrowerMode, resolveDelegationAncestry } from "../core/task/delegation-policy"
+import {
+	canAutoApproveNestedSubtasks,
+	delegationContext,
+	isEqualOrNarrowerMode,
+	resolveDelegationAncestry,
+} from "../core/task/delegation-policy"
 import { NativeToolCallParser } from "../core/assistant-message/NativeToolCallParser"
 import newTaskSchema from "../core/prompts/tools/native-tools/new_task"
 
@@ -19,6 +24,7 @@ function fixture(depth = 1) {
 		instanceId: "instance-1",
 		parentTaskId: depth ? `task-${depth - 1}` : undefined,
 		api: {},
+		modelOperationState: { revision: 0, requiresToolApproval: false } as ModelOperationState,
 		assertCanDelegate: vi.fn().mockResolvedValue(undefined),
 		flushPendingToolResultsToHistory: vi.fn().mockResolvedValue(true),
 		abort: false,
@@ -29,6 +35,8 @@ function fixture(depth = 1) {
 		currentApiConfigName: "default",
 		apiConfiguration: {},
 		customModes: [] as ModeConfig[],
+		autoApprovalEnabled: true,
+		alwaysAllowNestedSubtasks: undefined as boolean | undefined,
 		alwaysAllowAll: true,
 		alwaysAllowSubtasks: true,
 	}
@@ -72,6 +80,7 @@ describe("durable delegation policy", () => {
 
 	it.each([1, 2])("blocks restored depth %i without a reason even with all auto-approval enabled", async (depth) => {
 		const f = fixture(depth)
+		f.state.alwaysAllowNestedSubtasks = true
 		await expect(f.provider.delegateParentAndOpenChild(f.request)).rejects.toThrow("concrete 'reason'")
 		expect(f.provider.removeClineFromStack).not.toHaveBeenCalled()
 		expect(f.provider.createTask).not.toHaveBeenCalled()
@@ -93,6 +102,106 @@ describe("durable delegation policy", () => {
 		expect(f.provider.log).toHaveBeenCalledWith(expect.stringContaining("Human approved one action"))
 	})
 
+	it.each([1, 2])("auto-approves a justified request at depth %i only with the nested opt-in", async (depth) => {
+		const f = fixture(depth)
+		f.state.alwaysAllowNestedSubtasks = true
+		await f.provider.delegateParentAndOpenChild({ ...f.request, reason: "Need isolated implementation context" })
+		expect(vscode.window.showWarningMessage).not.toHaveBeenCalled()
+		expect(f.provider.createTask).toHaveBeenCalledTimes(1)
+		expect(f.provider.log).toHaveBeenCalledWith(
+			expect.stringContaining("Nested auto-approval authorized one action"),
+		)
+	})
+
+	it.each([
+		{ autoApprovalEnabled: false, alwaysAllowNestedSubtasks: true },
+		{ alwaysAllowNestedSubtasks: false },
+		{ alwaysAllowNestedSubtasks: undefined },
+		{ alwaysAllowNestedSubtasks: true, alwaysAllowAll: false, alwaysAllowSubtasks: false },
+	])("retains per-action manual approval when a required gate is missing: %j", async (overrides) => {
+		const f = fixture()
+		Object.assign(f.state, overrides)
+		vi.mocked(vscode.window.showWarningMessage).mockResolvedValue(APPROVE as never)
+		await f.provider.delegateParentAndOpenChild({ ...f.request, reason: "Need isolated context" })
+		expect(vscode.window.showWarningMessage).toHaveBeenCalledTimes(1)
+		expect(f.provider.createTask).toHaveBeenCalledTimes(1)
+	})
+
+	it.each(["alwaysAllowSubtasks", "alwaysAllowAll"] as const)("accepts the %s category gate", async (category) => {
+		const f = fixture()
+		Object.assign(f.state, { alwaysAllowNestedSubtasks: true, alwaysAllowAll: false, alwaysAllowSubtasks: false })
+		f.state[category] = true
+		await f.provider.delegateParentAndOpenChild({ ...f.request, reason: "Need isolated context" })
+		expect(vscode.window.showWarningMessage).not.toHaveBeenCalled()
+		expect(f.provider.createTask).toHaveBeenCalledTimes(1)
+	})
+
+	it.each(["autoApprovalEnabled", "alwaysAllowNestedSubtasks", "alwaysAllowSubtasks", "alwaysAllowAll"] as const)(
+		"cancels if %s is revoked during the history flush",
+		async (setting) => {
+			const f = fixture()
+			f.state.alwaysAllowNestedSubtasks = true
+			f.parent.flushPendingToolResultsToHistory.mockImplementation(async () => {
+				f.state[setting] = false
+				return true
+			})
+			await expect(
+				f.provider.delegateParentAndOpenChild({ ...f.request, reason: "Need isolated context" }),
+			).rejects.toThrow("approval settings changed")
+			expect(f.provider.removeClineFromStack).not.toHaveBeenCalled()
+			expect(f.provider.createTask).not.toHaveBeenCalled()
+		},
+	)
+
+	it.each(["revision", "requiresToolApproval", "approval"] as const)(
+		"cancels if model-operation %s changes during the history flush",
+		async (field) => {
+			const f = fixture()
+			f.state.alwaysAllowNestedSubtasks = true
+			f.parent.flushPendingToolResultsToHistory.mockImplementation(async () => {
+				if (field === "revision") f.parent.modelOperationState.revision++
+				if (field === "requiresToolApproval") f.parent.modelOperationState.requiresToolApproval = true
+				if (field === "approval")
+					f.parent.modelOperationState.approval = { approvalId: "pending" } as ModelOperationState["approval"]
+				return true
+			})
+			await expect(
+				f.provider.delegateParentAndOpenChild({ ...f.request, reason: "Need isolated context" }),
+			).rejects.toThrow("changed")
+			expect(f.provider.removeClineFromStack).not.toHaveBeenCalled()
+			expect(f.provider.createTask).not.toHaveBeenCalled()
+		},
+	)
+
+	it("does not bypass model-operation branch restrictions with the nested opt-in", async () => {
+		const f = fixture()
+		f.state.alwaysAllowNestedSubtasks = true
+		f.parent.modelOperationState.requiresToolApproval = true
+		f.parent.assertCanDelegate.mockRejectedValue(new Error("model-operation branch"))
+		await expect(
+			f.provider.delegateParentAndOpenChild({ ...f.request, reason: "Need isolated context" }),
+		).rejects.toThrow("model-operation branch")
+		expect(f.provider.createTask).not.toHaveBeenCalled()
+		expect(vscode.window.showWarningMessage).not.toHaveBeenCalled()
+	})
+
+	it.each(["requiresToolApproval", "approval"] as const)(
+		"never auto-approves with a model-operation %s fence",
+		async (field) => {
+			const f = fixture()
+			f.state.alwaysAllowNestedSubtasks = true
+			if (field === "requiresToolApproval") f.parent.modelOperationState.requiresToolApproval = true
+			if (field === "approval")
+				f.parent.modelOperationState.approval = { approvalId: "pending" } as ModelOperationState["approval"]
+			expect(canAutoApproveNestedSubtasks(f.state, f.parent.modelOperationState)).toBe(false)
+			await expect(
+				f.provider.delegateParentAndOpenChild({ ...f.request, reason: "Need isolated context" }),
+			).rejects.toThrow("denied")
+			expect(vscode.window.showWarningMessage).toHaveBeenCalledTimes(1)
+			expect(f.provider.createTask).not.toHaveBeenCalled()
+		},
+	)
+
 	it("denial or dismissal stays in the child and does not allow auto-approval to bypass it", async () => {
 		const f = fixture()
 		vi.mocked(vscode.window.showWarningMessage).mockResolvedValue(undefined)
@@ -107,6 +216,7 @@ describe("durable delegation policy", () => {
 		"fails closed on %s ancestry",
 		async (kind) => {
 			const f = fixture()
+			f.state.alwaysAllowNestedSubtasks = true
 			if (kind === "missing parent") f.history.delete("task-0")
 			if (kind === "missing current") f.history.delete("task-1")
 			if (kind === "cycle") f.history.set("task-0", { id: "task-0", parentTaskId: "task-1" })
@@ -141,6 +251,32 @@ describe("durable delegation policy", () => {
 			).rejects.toThrow()
 			expect(f.provider.removeClineFromStack).not.toHaveBeenCalled()
 			expect(f.provider.createTask).not.toHaveBeenCalled()
+		},
+	)
+
+	it.each(["task", "mode", "profile", "revision", "api", "abort", "ancestry", "permissions"])(
+		"invalidates nested auto approval after a %s change during the history flush",
+		async (kind) => {
+			const f = fixture()
+			f.state.alwaysAllowNestedSubtasks = true
+			f.parent.flushPendingToolResultsToHistory.mockImplementation(async () => {
+				if (kind === "task") f.provider.getCurrentTask.mockReturnValue({ ...f.parent })
+				if (kind === "mode") f.state.mode = "debug"
+				if (kind === "profile") f.state.currentApiConfigName = "other"
+				if (kind === "revision") f.provider.delegationRevision++
+				if (kind === "api") f.parent.api = {}
+				if (kind === "abort") f.parent.abort = true
+				if (kind === "ancestry") f.history.delete("task-0")
+				if (kind === "permissions")
+					f.state.customModes = [{ slug: "code", name: "Code", roleDefinition: "Code", groups: ["read"] }]
+				return true
+			})
+			await expect(
+				f.provider.delegateParentAndOpenChild({ ...f.request, reason: "Need isolated context" }),
+			).rejects.toThrow()
+			expect(f.provider.removeClineFromStack).not.toHaveBeenCalled()
+			expect(f.provider.createTask).not.toHaveBeenCalled()
+			expect(vscode.window.showWarningMessage).not.toHaveBeenCalled()
 		},
 	)
 
@@ -238,14 +374,18 @@ describe("durable delegation policy", () => {
 		expect(f.provider.createTask).toHaveBeenCalledWith(f.request.message, undefined, f.parent, expect.anything())
 	})
 
-	it("blocks restricted children from wider modes before prompting", async () => {
-		const f = fixture()
-		f.state.mode = "architect"
-		await expect(
-			f.provider.delegateParentAndOpenChild({ ...f.request, reason: "Need code edits" }),
-		).rejects.toThrow("wider or unproven")
-		expect(vscode.window.showWarningMessage).not.toHaveBeenCalled()
-	})
+	it.each([false, true])(
+		"blocks restricted children from wider modes with nested auto approval %s",
+		async (enabled) => {
+			const f = fixture()
+			f.state.alwaysAllowNestedSubtasks = enabled
+			f.state.mode = "architect"
+			await expect(
+				f.provider.delegateParentAndOpenChild({ ...f.request, reason: "Need code edits" }),
+			).rejects.toThrow("wider or unproven")
+			expect(vscode.window.showWarningMessage).not.toHaveBeenCalled()
+		},
+	)
 
 	it("enforces model-operation branch restrictions even on direct root provider calls", async () => {
 		const f = fixture(0)
@@ -299,6 +439,17 @@ describe("conservative child capability comparison", () => {
 describe("depth guidance and native justification plumbing", () => {
 	it.each([undefined, 0, 1, 2])("provides explicit guidance for depth %s", (depth) => {
 		expect(delegationContext(depth)).toMatchSnapshot()
+	})
+	it.each([1, 2])("explains effective nested auto approval at depth %i without removing safeguards", (depth) => {
+		const guidance = delegationContext(depth, true)
+		expect(guidance).toContain("Nested-subtask auto approval is explicitly enabled")
+		expect(guidance).toContain("concrete reason, equal or narrower tool/file capabilities")
+		expect(guidance).toContain("Do not create further subtasks by default")
+		expect(guidance).toContain("caller constraints")
+		expect(guidance).not.toContain("explicit per-action human approval")
+	})
+	it("does not advertise nested auto approval for unknown ancestry", () => {
+		expect(delegationContext(undefined, true)).toContain("delegation is blocked")
 	})
 	it.each(["Need an isolated trace", null, undefined])("parses optional reason %s", (reason) => {
 		const result = NativeToolCallParser.parseToolCall({

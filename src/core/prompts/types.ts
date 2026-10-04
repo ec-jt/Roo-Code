@@ -4,6 +4,8 @@
 export interface SystemPromptSettings {
 	/** Durable ancestry depth; undefined means ancestry is not verified. */
 	delegationDepth?: number
+	/** Effective opt-in after checking the master/category gates and mandatory approval fence. */
+	nestedSubtaskAutoApprovalEnabled?: boolean
 	browserToolEnabled?: boolean
 	todoListEnabled: boolean
 	useAgentRules: boolean

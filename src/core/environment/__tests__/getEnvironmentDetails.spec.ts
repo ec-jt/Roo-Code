@@ -140,6 +140,34 @@ describe("getEnvironmentDetails", () => {
 		vi.mocked(delay).mockResolvedValue(undefined)
 	})
 
+	it.each([
+		{ enabled: true, master: true, subtasks: true, mandatory: false, expected: true },
+		{ enabled: false, master: true, subtasks: true, mandatory: false, expected: false },
+		{ enabled: true, master: false, subtasks: true, mandatory: false, expected: false },
+		{ enabled: true, master: true, subtasks: false, mandatory: false, expected: false },
+		{ enabled: true, master: true, subtasks: true, mandatory: true, expected: false },
+	])(
+		"advertises only effective nested auto approval: %j",
+		async ({ enabled, master, subtasks, mandatory, expected }) => {
+			Object.assign(mockState, {
+				alwaysAllowNestedSubtasks: enabled,
+				autoApprovalEnabled: master,
+				alwaysAllowSubtasks: subtasks,
+			})
+			mockProvider.getTaskWithId = vi.fn(async (id: string) => ({
+				historyItem: { id, parentTaskId: id === mockTaskId ? "parent" : undefined },
+			}))
+			Object.defineProperty(mockCline, "modelOperationState", { value: { requiresToolApproval: mandatory } })
+			const result = await getEnvironmentDetails(mockCline as Task)
+			expect(result).toContain("You are a child task (depth 1)")
+			expect(result).toContain(
+				expected
+					? "Nested-subtask auto approval is explicitly enabled"
+					: "Nested-subtask auto approval is not enabled",
+			)
+		},
+	)
+
 	it("should return basic environment details", async () => {
 		const result = await getEnvironmentDetails(mockCline as Task)
 

@@ -57,6 +57,21 @@ describe("ContextProxy", () => {
 		await proxy.initialize()
 	})
 
+	it("roundtrips nested-subtask opt-in through extension storage", async () => {
+		const stored = new Map<string, unknown>()
+		mockGlobalState.update.mockImplementation(async (key: string, value: unknown) => {
+			stored.set(key, value)
+		})
+		mockGlobalState.get.mockImplementation((key: string) => stored.get(key))
+		expect(proxy.getValue("alwaysAllowNestedSubtasks")).toBeUndefined()
+		for (const enabled of [true, false]) {
+			await proxy.setValue("alwaysAllowNestedSubtasks", enabled)
+			const reloaded = new ContextProxy(mockContext)
+			await reloaded.initialize()
+			expect(reloaded.getValue("alwaysAllowNestedSubtasks")).toBe(enabled)
+		}
+	})
+
 	it("roundtrips persistent Read and All actions settings through extension storage", async () => {
 		const stored = new Map<string, unknown>()
 		mockGlobalState.update.mockImplementation(async (key: string, value: unknown) => {
