@@ -16,6 +16,33 @@ describe("browser screenshot authorization", () => {
 	const saveScreenshot = vi.fn()
 	const validateAccess = vi.fn()
 	const isWriteProtected = vi.fn()
+	it.each([
+		"file:///private/test",
+		"data:text/html,blocked",
+		"javascript:void(0)",
+		"about:blank",
+		"ftp://example.com",
+	])("rejects launch URL %s before approval and launch", async (url) => {
+		const launchBrowser = vi.fn()
+		const navigateToUrl = vi.fn()
+		task.browserSession = { launchBrowser, navigateToUrl } as any
+		await browserActionTool(
+			task,
+			{
+				type: "tool_use",
+				name: "browser_action",
+				params: { action: "launch", url },
+				partial: false,
+			} as ToolUse,
+			askApproval,
+			handleError,
+			pushToolResult,
+		)
+		expect(handleError).toHaveBeenCalledWith("executing browser action", expect.any(Error))
+		expect(askApproval).not.toHaveBeenCalled()
+		expect(launchBrowser).not.toHaveBeenCalled()
+		expect(navigateToUrl).not.toHaveBeenCalled()
+	})
 	beforeEach(async () => {
 		vi.resetAllMocks()
 		cwd = await fs.mkdtemp(path.join(os.tmpdir(), "roo-browser-tool-test-"))

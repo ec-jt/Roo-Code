@@ -5,7 +5,7 @@ import * as os from "os"
 import PCR from "puppeteer-chromium-resolver"
 import { launch, connect } from "puppeteer-core"
 import { BrowserSession } from "../BrowserSession"
-import { discoverChromeHostUrl } from "../browserDiscovery"
+import { discoverChromeHostUrl, tryChromeHostUrl } from "../browserDiscovery"
 
 vi.mock("puppeteer-core", () => ({ launch: vi.fn(), connect: vi.fn(), TimeoutError: class extends Error {} }))
 vi.mock("puppeteer-chromium-resolver", () => ({ default: vi.fn() }))
@@ -51,6 +51,7 @@ describe("sandboxed browser launch", () => {
 	})
 
 	afterEach(() => {
+		vi.useRealTimers()
 		vi.unstubAllEnvs()
 		vi.unstubAllGlobals()
 	})
@@ -233,5 +234,183 @@ describe("sandboxed browser launch", () => {
 		expect(fs.stat).not.toHaveBeenCalled()
 		expect(fs.rm).not.toHaveBeenCalled()
 		expect(PCR).not.toHaveBeenCalled()
+	})
+
+	it("releases local then remote ownership before each replacement", async () => {
+		await session.launchBrowser()
+		settings.remoteBrowserEnabled = true
+		settings.remoteBrowserHost = "http://host-a:9222"
+		vi.mocked(tryChromeHostUrl).mockResolvedValue(true)
+		vi.mocked(connect).mockImplementation(async () => {
+			expect(close).toHaveBeenCalledOnce()
+			expect(fs.rm).toHaveBeenCalledWith("/tmp/roo-browser-profile-test", { recursive: true, force: true })
+			return { disconnect } as never
+		})
+		await session.launchBrowser()
+		settings.remoteBrowserHost = "http://host-b:9222"
+		await session.launchBrowser()
+		expect(disconnect).toHaveBeenCalledOnce()
+		expect(connect).toHaveBeenLastCalledWith(expect.objectContaining({ browserURL: "http://host-b:9222" }))
+		expect(discoverChromeHostUrl).not.toHaveBeenCalled()
+		await session.closeBrowser()
+		expect(disconnect).toHaveBeenCalledTimes(2)
+		expect(close).toHaveBeenCalledOnce()
+		expect(fs.rm).toHaveBeenCalledOnce()
+	})
+
+	it("ignores legacy and recent discovery caches when an explicit host is selected", async () => {
+		settings.remoteBrowserEnabled = true
+		settings.cachedChromeHostUrl = "http://old-host:9222"
+		vi.mocked(discoverChromeHostUrl).mockResolvedValue("http://discovered:9222")
+		vi.mocked(connect).mockResolvedValue({ disconnect } as never)
+		await session.launchBrowser()
+		settings.remoteBrowserHost = "http://explicit:9222"
+		vi.mocked(tryChromeHostUrl).mockResolvedValue(true)
+		await session.launchBrowser()
+		expect(connect).toHaveBeenLastCalledWith(expect.objectContaining({ browserURL: settings.remoteBrowserHost }))
+		expect(discoverChromeHostUrl).toHaveBeenCalledOnce()
+	})
+
+	it.each(["probe", "connect"])("does not discover or launch locally after explicit %s failure", async (failure) => {
+		settings.remoteBrowserEnabled = true
+		settings.remoteBrowserHost = "http://explicit:9222"
+		settings.cachedChromeHostUrl = "http://stale:9222"
+		vi.mocked(tryChromeHostUrl).mockResolvedValue(failure !== "probe")
+		vi.mocked(connect).mockRejectedValue(new Error("offline"))
+		await expect(session.launchBrowser()).rejects.toThrow("No local fallback")
+		expect(discoverChromeHostUrl).not.toHaveBeenCalled()
+		expect(launch).not.toHaveBeenCalled()
+		expect(connect).toHaveBeenCalledTimes(failure === "probe" ? 0 : 1)
+	})
+
+	it("rediscovers after a discovery cache failure only when no explicit host exists", async () => {
+		settings.remoteBrowserEnabled = true
+		vi.mocked(discoverChromeHostUrl)
+			.mockResolvedValueOnce("http://host-a:9222")
+			.mockResolvedValueOnce("http://host-b:9222")
+		vi.mocked(connect).mockResolvedValue({ disconnect } as never)
+		await session.launchBrowser()
+		vi.mocked(connect).mockRejectedValueOnce(new Error("offline"))
+		await session.launchBrowser()
+		expect(connect).toHaveBeenCalledTimes(3)
+		expect(connect).toHaveBeenLastCalledWith(expect.objectContaining({ browserURL: "http://host-b:9222" }))
+	})
+
+	it("serializes concurrent launches and close without losing a profile", async () => {
+		let finish!: (browser: any) => void
+		vi.mocked(launch).mockImplementationOnce(
+			() =>
+				new Promise((resolve) => {
+					finish = resolve
+				}),
+		)
+		vi.mocked(fs.mkdtemp).mockResolvedValueOnce("/tmp/profile-a").mockResolvedValueOnce("/tmp/profile-b")
+		const first = session.launchBrowser()
+		await vi.waitFor(() => expect(launch).toHaveBeenCalledOnce())
+		const second = session.launchBrowser()
+		const closing = session.closeBrowser()
+		expect(close).not.toHaveBeenCalled()
+		finish({ close, disconnect })
+		await Promise.all([first, second, closing])
+		expect(launch).toHaveBeenCalledTimes(2)
+		expect(close).toHaveBeenCalledTimes(2)
+		expect(fs.rm).toHaveBeenNthCalledWith(1, "/tmp/profile-a", { recursive: true, force: true })
+		expect(fs.rm).toHaveBeenNthCalledWith(2, "/tmp/profile-b", { recursive: true, force: true })
+	})
+
+	it("waits for a pending page action before closing its browser", async () => {
+		await session.launchBrowser()
+		let finish!: (result: object) => void
+		const action = vi.spyOn(session as any, "doActionNow").mockImplementation(
+			() =>
+				new Promise((resolve) => {
+					finish = resolve
+				}),
+		)
+		const acting = session.click("10,10")
+		await vi.waitFor(() => expect(action).toHaveBeenCalledOnce())
+		const closing = session.closeBrowser()
+		expect(close).not.toHaveBeenCalled()
+		finish({})
+		await Promise.all([acting, closing])
+		expect(close).toHaveBeenCalledOnce()
+	})
+
+	it("allows web navigation from a new blank page and removes guards before remote disconnect", async () => {
+		vi.useFakeTimers()
+		const page = {
+			on: vi.fn(),
+			off: vi.fn(),
+			setRequestInterception: vi.fn().mockResolvedValue(undefined),
+			url: () => "about:blank",
+			goto: vi.fn().mockResolvedValue(undefined),
+		}
+		settings.remoteBrowserEnabled = true
+		vi.mocked(discoverChromeHostUrl).mockResolvedValue("http://localhost:9222")
+		vi.mocked(connect).mockResolvedValue({ disconnect, pages: async () => [], newPage: async () => page } as never)
+		vi.spyOn(session as any, "doActionNow").mockImplementation(async (...args: any[]) => {
+			await args[0](page)
+			return {}
+		})
+		await session.launchBrowser()
+		const navigating = session.navigateToUrl("https://example.com")
+		await vi.runAllTimersAsync()
+		await navigating
+		expect(page.goto).toHaveBeenCalledWith("https://example.com", expect.any(Object))
+		await session.closeBrowser()
+		expect(page.setRequestInterception).toHaveBeenLastCalledWith(false)
+		expect(page.setRequestInterception.mock.invocationCallOrder.at(-1)).toBeLessThan(
+			disconnect.mock.invocationCallOrder[0],
+		)
+	})
+
+	it.each([false, true])("disposal fences an in-flight launch (remote=%s)", async (remote) => {
+		settings.remoteBrowserEnabled = remote
+		settings.remoteBrowserHost = "http://explicit:9222"
+		vi.mocked(tryChromeHostUrl).mockResolvedValue(true)
+		let finish!: (browser: any) => void
+		const start = vi.mocked(remote ? connect : launch)
+		start.mockImplementationOnce(
+			() =>
+				new Promise((resolve) => {
+					finish = resolve
+				}),
+		)
+		const launching = session.launchBrowser()
+		const rejected = expect(launching).rejects.toThrow("disposed")
+		await vi.waitFor(() => expect(start).toHaveBeenCalledOnce())
+		const disposing = session.dispose()
+		expect(session.dispose()).toBe(disposing)
+		let completed = false
+		void disposing.then(() => {
+			completed = true
+		})
+		await Promise.resolve()
+		expect(completed).toBe(false)
+		finish({ close, disconnect })
+		await rejected
+		await disposing
+		expect(onStateChange).not.toHaveBeenCalledWith(true)
+		expect(remote ? disconnect : close).toHaveBeenCalledOnce()
+		expect(remote ? close : disconnect).not.toHaveBeenCalled()
+		await expect(session.launchBrowser()).rejects.toThrow("disposed")
+		expect(start).toHaveBeenCalledOnce()
+	})
+
+	it.each([
+		"file:///private/test",
+		"data:text/html,blocked",
+		"javascript:void(0)",
+		"ftp://example.com",
+		"about:blank",
+	])("rejects %s before selecting or creating a page", async (url) => {
+		const browser = { pages: vi.fn(), newPage: vi.fn() }
+		;(session as any).browser = browser
+		await expect(session.navigateToUrl(url)).rejects.toThrow(/HTTP/)
+		expect(browser.pages).not.toHaveBeenCalled()
+		expect(browser.newPage).not.toHaveBeenCalled()
+		const page = { goto: vi.fn() }
+		await expect((session as any).navigatePageToUrl(page, url)).rejects.toThrow(/HTTP/)
+		expect(page.goto).not.toHaveBeenCalled()
 	})
 })

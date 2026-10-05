@@ -43,6 +43,31 @@ describe("ClineProvider.removeClineFromStack() delegation awareness", () => {
 		return { provider, childTask, updateTaskHistory, getTaskWithId }
 	}
 
+	it("awaits asynchronous task cleanup before completing removal", async () => {
+		const { provider, childTask } = buildMockProvider({ childTaskId: "browser-owner" })
+		let finish!: () => void
+		childTask.abortTask.mockImplementation(
+			() =>
+				new Promise<void>((resolve) => {
+					finish = resolve
+				}),
+		)
+		const removeListeners = vi.fn()
+		provider.taskEventListeners.set(childTask, [removeListeners])
+		let completed = false
+		const removing = ClineProvider.prototype.removeClineFromStack.call(provider as any).then(() => {
+			completed = true
+		})
+		await Promise.resolve()
+		expect(childTask.abortTask).toHaveBeenCalledWith(true)
+		expect(completed).toBe(false)
+		expect(removeListeners).not.toHaveBeenCalled()
+		finish()
+		await removing
+		expect(removeListeners).toHaveBeenCalledOnce()
+		expect(provider.taskEventListeners.has(childTask)).toBe(false)
+	})
+
 	it("repairs parent metadata when a delegated child is explicitly abandoned", async () => {
 		const { provider, updateTaskHistory, getTaskWithId } = buildMockProvider({
 			childTaskId: "child-1",

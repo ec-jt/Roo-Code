@@ -1,5 +1,15 @@
 # Roo Code Changelog
 
+## 4.2.8 - Cordis preview 6
+
+- Allow Context7 library search and documentation retrieval without an API key. Keep optional authentication for higher limits, omit empty authorization headers, and preserve tool approval and disable settings.
+- Restrict browser navigation to HTTP(S), guard document requests and capture boundaries, and preserve the sandbox in the independent Markdown fetcher.
+- Make explicit remote hosts authoritative. Serialize browser lifecycle changes, clean up replaced sessions, and await browser disposal during task teardown.
+- Preserve replacement OAuth sign-in when an old credential refresh fails. Keep credential invalidation separate from explicit sign-out cancellation.
+- Report Codex failed/incomplete terminal stream events through both transports without replaying requests or exposing raw provider errors.
+
+GitHub prerelease tag: **v4.2.8-cordis-preview.6**. Cordis runtime preview remains off by default.
+
 ## 4.2.7 - Cordis preview 5
 
 - Keep managed Chromium as the default and add optional installed Google Chrome on macOS and Windows with isolated Roo profiles, explicit missing-installation errors, and no silent fallback.

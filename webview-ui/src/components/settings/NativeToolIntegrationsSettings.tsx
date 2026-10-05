@@ -13,7 +13,7 @@ type ToolInfo = {
 	description: string
 	// Optional credential dependency — when set, the tool is informational-only
 	// unless the linked credential is populated.
-	requiresCredential?: "brave" | "context7" | "github"
+	requiresCredential?: "brave" | "github"
 }
 
 const TOOL_CATALOG: ToolInfo[] = [
@@ -33,13 +33,11 @@ const TOOL_CATALOG: ToolInfo[] = [
 		name: "context7_resolve_library_id",
 		label: "Context7 — Resolve Library ID",
 		description: "Find a Context7 library ID by package or product name (e.g. 'next.js' → '/vercel/next.js').",
-		requiresCredential: "context7",
 	},
 	{
 		name: "context7_query_docs",
 		label: "Context7 — Query Docs",
 		description: "Fetch up-to-date library documentation by Context7 library ID.",
-		requiresCredential: "context7",
 	},
 	{
 		name: "file_system",
@@ -136,7 +134,7 @@ export const NativeToolIntegrationsSettings = ({
 				</div>
 
 				<div>
-					<label className="block font-medium mb-1">Context7 API Key</label>
+					<label className="block font-medium mb-1">Context7 API Key (optional)</label>
 					<VSCodeTextField
 						value={context7ApiKey || ""}
 						onInput={(e: any) => setContext7ApiKey(e.target.value)}
@@ -145,7 +143,8 @@ export const NativeToolIntegrationsSettings = ({
 						type="password"
 					/>
 					<p className="text-vscode-descriptionForeground text-xs mt-1">
-						Required for <code>context7_resolve_library_id</code> and <code>context7_query_docs</code>.
+						Optional for <code>context7_resolve_library_id</code> and <code>context7_query_docs</code>.
+						Without a key, requests use anonymous access with lower rate limits.
 					</p>
 				</div>
 
@@ -177,7 +176,6 @@ export const NativeToolIntegrationsSettings = ({
 					const enabled = isToolEnabled(nativeToolEnabled, tool.name)
 					const credentialMissing =
 						(tool.requiresCredential === "brave" && !braveApiKey) ||
-						(tool.requiresCredential === "context7" && !context7ApiKey) ||
 						(tool.requiresCredential === "github" && !githubToken)
 					return (
 						<div key={tool.name} className="ml-1">

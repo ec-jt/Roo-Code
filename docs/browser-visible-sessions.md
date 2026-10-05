@@ -11,6 +11,14 @@ Save the settings, close any existing browser session, and launch a new session 
 
 Both choices use a fresh, isolated Roo profile. Roo does not use your personal Chrome profile, cookies, or signed-in accounts. Closing a session deletes only that session's temporary profile; launching another session does not delete profiles owned by other VS Code windows. Profiles left by an interrupted extension host are not automatically reclaimed by another launch.
 
+Relaunching first closes the preceding local browser or disconnects the preceding remote connection. Task teardown also waits for browser cleanup. Disposal prevents a pending launch from attaching a new browser to the closed task.
+
+## Navigation and Markdown fetching
+
+Browser launch destinations must use HTTP or HTTPS. Local-file URLs and other non-web schemes are rejected before approval or launch; serve a local preview over HTTP instead. Document-request guards also check redirects and link/form navigation, and committed URLs are checked before content capture. Initial blank pages remain valid browser initialization state, not permitted tool destinations.
+
+The independent web-to-Markdown fetcher also preserves Chromium's sandbox on Linux. If the host cannot provide a usable sandbox, the fetch fails with guidance instead of retrying with the sandbox disabled. These browser-level checks are defense in depth, not an OS security boundary.
+
 ## Show a browser window
 
 Select **Show browser window** and save settings. Existing installations default to headless mode. Close the current session and launch a new one after changing this setting.
@@ -32,6 +40,8 @@ The filesystem checks mitigate path-redirection races but are not a complete san
 ## Remote browsers
 
 Remote mode disables the local browser selection and visibility controls without clearing the saved local preference. It connects to the configured debugging endpoint instead of launching either local browser. A failed remote connection reports an error instead of silently starting a local browser.
+
+An explicit remote host is authoritative. Changing it takes effect on the next launch, and failure does not switch to a cached or discovered host. Discovery is used only when no explicit host is configured; its cache is local to the browser service instance. Disconnect removes Roo's request interception without closing the externally managed browser.
 
 Use a trusted, sandboxed remote browser whose debugging endpoint is reachable only by trusted clients. Roo cannot verify or repair an external browser's sandbox policy. Disconnecting Roo does not close the externally managed browser.
 

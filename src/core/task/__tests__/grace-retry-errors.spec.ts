@@ -229,7 +229,7 @@ describe("Grace Retry Error Handling", () => {
 			task.consecutiveNoAssistantMessagesCount = 5
 
 			// Mock dispose to prevent actual cleanup
-			vi.spyOn(task, "dispose").mockImplementation(() => {})
+			vi.spyOn(task, "dispose").mockResolvedValue(undefined)
 
 			await task.abortTask()
 
@@ -249,7 +249,7 @@ describe("Grace Retry Error Handling", () => {
 			task.consecutiveNoToolUseCount = 4
 
 			// Mock dispose to prevent actual cleanup
-			vi.spyOn(task, "dispose").mockImplementation(() => {})
+			vi.spyOn(task, "dispose").mockResolvedValue(undefined)
 
 			await task.abortTask()
 

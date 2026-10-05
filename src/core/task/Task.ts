@@ -355,6 +355,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 	urlContentFetcher: UrlContentFetcher
 	browserSession: BrowserSession
+	private browserDisposal?: Promise<void>
+	private disposal?: Promise<void>
 
 	providerRef: WeakRef<ClineProvider>
 	private readonly globalStoragePath: string
@@ -849,6 +851,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			{ timeout: 5000, interval: 10 },
 		)
 		this.didFinishAbortingStream = true
+		await this.disposeBrowserResources()
 	}
 
 	/** Historical input is independent of completed effects, but detachment requires quiescence. */
@@ -886,6 +889,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		this.abort = true
 		this.userMessageContentReady = true
 		this.didFinishAbortingStream = true
+		await this.disposeBrowserResources()
 	}
 
 	/** Release runtime resources only, preserving source files and history after a proven fence. */
@@ -994,7 +998,9 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		this.urlContentFetcher = new UrlContentFetcher(provider.context)
 		this.browserSession = new BrowserSession(provider.context, (isActive: boolean) => {
 			// Add a message to indicate browser session status change
-			this.say("browser_session_status", isActive ? "Browser session opened" : "Browser session closed")
+			this.say("browser_session_status", isActive ? "Browser session opened" : "Browser session closed").catch(
+				() => {},
+			)
 			// Broadcast to browser panel
 			this.broadcastBrowserSessionUpdate()
 
@@ -2971,7 +2977,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		this.emit(RooCodeEventName.TaskAborted)
 
 		try {
-			this.dispose() // Call the centralized dispose method
+			await this.dispose() // Wait for browser ownership cleanup before removal/replacement.
 		} catch (error) {
 			console.error(`Error during task ${this.taskId}.${this.instanceId} disposal:`, error)
 			// Don't rethrow - we want abort to always succeed
@@ -2985,7 +2991,22 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		}
 	}
 
-	public dispose(options?: { preserveArtifacts?: boolean }): void {
+	private disposeBrowserResources(): Promise<void> {
+		return (this.browserDisposal ??= Promise.allSettled([
+			this.browserSession.dispose(),
+			this.urlContentFetcher.dispose(),
+		]).then((results) => {
+			const failed = results.find((result) => result.status === "rejected")
+			if (failed?.status === "rejected") throw failed.reason
+		}))
+	}
+
+	public dispose(options?: { preserveArtifacts?: boolean }): Promise<void> {
+		if (this.disposal) return this.disposal
+		// Fence pending launches immediately, while keeping synchronous listener cleanup.
+		this.disposal = this.disposeBrowserResources().catch((error) => {
+			console.error("Error disposing task browser resources:", error)
+		})
 		this.unsubscribePreviewSettings?.()
 		this.unsubscribePreviewSettings = undefined
 		for (const controller of this.modelDispatchControllers) controller.abort()
@@ -3087,6 +3108,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		} catch (error) {
 			console.error("Error reverting diff changes:", error)
 		}
+		return this.disposal
 	}
 
 	// Subtasks

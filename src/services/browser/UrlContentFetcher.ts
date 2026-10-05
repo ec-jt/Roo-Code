@@ -9,6 +9,9 @@ import PCR from "puppeteer-chromium-resolver"
 import { fileExistsAtPath } from "../../utils/fs"
 import { serializeError } from "serialize-error"
 import { validateWebUrl } from "./validateWebUrl"
+import { BrowserLifecycle } from "./BrowserLifecycle"
+import { browserLaunchError } from "./browserLaunchError"
+import { restrictWebNavigation, validatePageUrl } from "./webNavigation"
 
 // Timeout constants
 const URL_FETCH_TIMEOUT = 30_000 // 30 seconds
@@ -23,6 +26,8 @@ export class UrlContentFetcher {
 	private context: vscode.ExtensionContext
 	private browser?: Browser
 	private page?: Page
+	private readonly lifecycle = new BrowserLifecycle()
+	private removeNavigationGuard?: () => Promise<void>
 
 	constructor(context: vscode.ExtensionContext) {
 		this.context = context
@@ -46,7 +51,12 @@ export class UrlContentFetcher {
 		return stats
 	}
 
-	async launchBrowser(): Promise<void> {
+	launchBrowser(): Promise<void> {
+		return this.lifecycle.run(() => this.launchBrowserNow())
+	}
+
+	private async launchBrowserNow(): Promise<void> {
+		this.lifecycle.assertOpen()
 		if (this.browser) {
 			return
 		}
@@ -59,28 +69,41 @@ export class UrlContentFetcher {
 			"--disable-gpu",
 			"--disable-features=VizDisplayCompositor",
 		]
-		if (process.platform === "linux") {
-			// Fixes network errors on Linux hosts (see https://github.com/puppeteer/puppeteer/issues/8246)
-			args.push("--no-sandbox")
-		}
-		this.browser = await stats.puppeteer.launch({
-			args,
-			executablePath: stats.executablePath,
-		})
-		// (latest version of puppeteer does not add headless to user agent)
-		this.page = await this.browser?.newPage()
-
-		// Set additional page configurations to improve loading success
-		if (this.page) {
+		try {
+			this.lifecycle.assertOpen()
+			const browser = await stats.puppeteer.launch({ args, executablePath: stats.executablePath })
+			try {
+				this.lifecycle.assertOpen()
+			} catch (error) {
+				await browser.close().catch(() => {})
+				throw error
+			}
+			this.browser = browser
+			this.page = await browser.newPage()
+			this.removeNavigationGuard = await restrictWebNavigation(this.page)
 			await this.page.setViewport({ width: 1280, height: 720 })
 			await this.page.setExtraHTTPHeaders({
 				"Accept-Language": "en-US,en;q=0.9",
 			})
+			this.lifecycle.assertOpen()
+		} catch (error) {
+			await this.closeBrowserNow()
+			throw browserLaunchError(error, "Chromium for URL content fetching")
 		}
 	}
 
-	async closeBrowser(): Promise<void> {
-		await this.browser?.close()
+	closeBrowser(): Promise<void> {
+		return this.lifecycle.run(() => this.closeBrowserNow())
+	}
+
+	dispose(): Promise<void> {
+		return this.lifecycle.dispose(() => this.closeBrowserNow())
+	}
+
+	private async closeBrowserNow(): Promise<void> {
+		await this.removeNavigationGuard?.().catch(() => {})
+		this.removeNavigationGuard = undefined
+		await this.browser?.close().catch(() => {})
 		this.browser = undefined
 		this.page = undefined
 	}
@@ -88,6 +111,11 @@ export class UrlContentFetcher {
 	// must make sure to call launchBrowser before and closeBrowser after using this
 	async urlToMarkdown(url: string): Promise<string> {
 		validateWebUrl(url)
+		return this.lifecycle.run(() => this.urlToMarkdownNow(url))
+	}
+
+	private async urlToMarkdownNow(url: string): Promise<string> {
+		this.lifecycle.assertOpen()
 		if (!this.browser || !this.page) {
 			throw new Error("Browser not initialized")
 		}
@@ -130,6 +158,7 @@ export class UrlContentFetcher {
 			}
 		}
 
+		validatePageUrl(this.page)
 		const content = await this.page.content()
 
 		// use cheerio to parse and clean up the HTML

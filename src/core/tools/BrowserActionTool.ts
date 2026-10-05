@@ -11,6 +11,7 @@ import { scaleCoordinate } from "../../shared/browserUtils"
 import { defaultModeSlug } from "../../shared/modes"
 import { validateToolUse } from "./validateToolUse"
 import { validateScreenshotPath } from "../../services/browser/screenshotPath"
+import { validateWebUrl } from "../../services/browser/validateWebUrl"
 import { fileExistsAtPath } from "../../utils/fs"
 
 export async function browserActionTool(
@@ -89,6 +90,7 @@ export async function browserActionTool(
 					return
 				}
 
+				validateWebUrl(url)
 				cline.consecutiveMistakeCount = 0
 				const didApprove = await askApproval("browser_action_launch", url)
 

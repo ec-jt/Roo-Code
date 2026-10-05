@@ -77,29 +77,31 @@ async function parseContext7Response(response: Response): Promise<any> {
 	return response.text()
 }
 
-export async function context7ResolveLibraryId(apiKey: string, libraryName: string, query: string): Promise<any> {
+export async function context7ResolveLibraryId(apiKey: string | undefined, libraryName: string, query: string): Promise<any> {
 	const url = new URL(`${CONTEXT7_BASE_URL}/v2/libs/search`)
 	url.searchParams.set("libraryName", libraryName)
 	url.searchParams.set("query", query)
+	const trimmedApiKey = apiKey?.trim()
 
 	const response = await fetch(url, {
 		headers: {
-			Authorization: `Bearer ${apiKey}`,
+			...(trimmedApiKey ? { Authorization: `Bearer ${trimmedApiKey}` } : {}),
 		},
 	})
 
 	return parseContext7Response(response)
 }
 
-export async function context7QueryDocs(apiKey: string, libraryId: string, query: string): Promise<any> {
+export async function context7QueryDocs(apiKey: string | undefined, libraryId: string, query: string): Promise<any> {
 	const url = new URL(`${CONTEXT7_BASE_URL}/v2/context`)
 	url.searchParams.set("libraryId", libraryId)
 	url.searchParams.set("query", query)
 	url.searchParams.set("type", "json")
+	const trimmedApiKey = apiKey?.trim()
 
 	const response = await fetch(url, {
 		headers: {
-			Authorization: `Bearer ${apiKey}`,
+			...(trimmedApiKey ? { Authorization: `Bearer ${trimmedApiKey}` } : {}),
 			Accept: "application/json",
 		},
 	})

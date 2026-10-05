@@ -53,6 +53,76 @@ describe("Task dispose method", () => {
 		})
 	})
 
+	test("disposal is idempotent and waits for both browser resources", async () => {
+		let finishBrowser!: () => void
+		let finishFetcher!: () => void
+		const browserDispose = vi.spyOn(task.browserSession, "dispose").mockImplementation(
+			() =>
+				new Promise((resolve) => {
+					finishBrowser = resolve
+				}),
+		)
+		const fetcherDispose = vi.spyOn(task.urlContentFetcher, "dispose").mockImplementation(
+			() =>
+				new Promise((resolve) => {
+					finishFetcher = resolve
+				}),
+		)
+		const disposing = task.dispose()
+		expect(task.dispose()).toBe(disposing)
+		let completed = false
+		void disposing.then(() => {
+			completed = true
+		})
+		finishBrowser()
+		await Promise.resolve()
+		expect(completed).toBe(false)
+		finishFetcher()
+		await disposing
+		expect(browserDispose).toHaveBeenCalledOnce()
+		expect(fetcherDispose).toHaveBeenCalledOnce()
+	})
+
+	test("abort waits for browser disposal before saving final messages", async () => {
+		let finish!: () => void
+		vi.spyOn(task.browserSession, "dispose").mockImplementation(
+			() =>
+				new Promise((resolve) => {
+					finish = resolve
+				}),
+		)
+		const save = vi.spyOn(task as any, "saveClineMessages").mockResolvedValue(undefined)
+		vi.spyOn(task, "emitFinalTokenUsageUpdate").mockImplementation(() => {})
+		const aborting = task.abortTask(true)
+		expect(save).not.toHaveBeenCalled()
+		finish()
+		await aborting
+		expect(save).toHaveBeenCalled()
+		await expect(task.urlContentFetcher.launchBrowser()).rejects.toThrow("disposed")
+	})
+
+	test("waits for the other browser resource even if one cleanup rejects", async () => {
+		vi.spyOn(task.browserSession, "dispose").mockRejectedValue(new Error("cleanup failed"))
+		let finish!: () => void
+		vi.spyOn(task.urlContentFetcher, "dispose").mockImplementation(
+			() =>
+				new Promise<void>((resolve) => {
+					finish = resolve
+				}),
+		)
+		const log = vi.spyOn(console, "error").mockImplementation(() => {})
+		let completed = false
+		const disposing = task.dispose().then(() => {
+			completed = true
+		})
+		await Promise.resolve()
+		expect(completed).toBe(false)
+		finish()
+		await disposing
+		expect(log).toHaveBeenCalledWith("Error disposing task browser resources:", expect.any(Error))
+		log.mockRestore()
+	})
+
 	afterEach(() => {
 		// Clean up
 		if (task && !task.abort) {

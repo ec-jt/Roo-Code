@@ -32,6 +32,40 @@ export type OpenAiCodexModel = ReturnType<OpenAiCodexHandler["getModel"]>
 // Only local SDK capability checks may trigger a new request through the SSE fallback.
 class CodexSdkCompatibilityError extends Error {}
 
+// A terminal event belongs to an accepted generation, not a rejected auth request.
+// Keep this identity through the manual SSE wrappers so it can never trigger replay.
+class CodexTerminalResponseError extends Error {
+	constructor(status: "failed" | "incomplete", detail: unknown) {
+		// Provider messages and arbitrary codes can contain credentials or request data.
+		// Report only known protocol codes/reasons, never the raw response payload.
+		const safeDetails = new Set([
+			"server_error",
+			"rate_limit_exceeded",
+			"invalid_prompt",
+			"vector_store_timeout",
+			"invalid_image",
+			"invalid_image_format",
+			"invalid_base64_image",
+			"invalid_image_url",
+			"image_too_large",
+			"image_too_small",
+			"image_parse_error",
+			"image_content_policy_violation",
+			"invalid_image_mode",
+			"image_file_too_large",
+			"unsupported_image_media_type",
+			"empty_image_file",
+			"failed_to_download_image",
+			"image_file_not_found",
+			"max_output_tokens",
+			"content_filter",
+			"authentication_error",
+		])
+		const reason = typeof detail === "string" && safeDetails.has(detail) ? ` (${detail})` : ""
+		super(`OpenAI Codex response ${status}${reason}.`)
+	}
+}
+
 interface CodexToolCallState {
 	callId?: string
 	itemId?: string
@@ -97,6 +131,8 @@ export class OpenAiCodexHandler extends BaseProvider implements SingleCompletion
 		"response.output_item.done",
 		"response.done",
 		"response.completed",
+		"response.failed",
+		"response.incomplete",
 		"response.tool_call_arguments.delta",
 		"response.function_call_arguments.delta",
 		"response.tool_call_arguments.done",
@@ -208,7 +244,12 @@ export class OpenAiCodexHandler extends BaseProvider implements SingleCompletion
 				const message = error instanceof Error ? error.message : String(error)
 				const isAuthFailure = /unauthorized|invalid token|not authenticated|authentication|401/i.test(message)
 
-				if (attempt === 0 && isAuthFailure && !hasEmittedOutput) {
+				if (
+					attempt === 0 &&
+					isAuthFailure &&
+					!hasEmittedOutput &&
+					!(error instanceof CodexTerminalResponseError)
+				) {
 					// Force refresh the token for retry
 					const refreshed = await openAiCodexOAuthManager.forceRefreshAccessToken()
 					if (!refreshed) {
@@ -618,6 +659,7 @@ export class OpenAiCodexHandler extends BaseProvider implements SingleCompletion
 
 			yield* this.handleStreamResponse(response.body, model)
 		} catch (error) {
+			if (error instanceof CodexTerminalResponseError) throw error
 			const errorMessage = error instanceof Error ? error.message : String(error)
 
 			if (error instanceof Error) {
@@ -656,10 +698,149 @@ export class OpenAiCodexHandler extends BaseProvider implements SingleCompletion
 							continue
 						}
 
+						let parsed
 						try {
-							const parsed = JSON.parse(data)
+							parsed = JSON.parse(data)
+						} catch {
+							// Ignore malformed JSON, not errors from processing valid events.
+							continue
+						}
 
-							// Capture response metadata
+						// Capture response metadata
+						if (parsed.response?.output && Array.isArray(parsed.response.output)) {
+							this.lastResponseOutput = parsed.response.output
+						}
+						if (parsed.response?.id) {
+							this.lastResponseId = parsed.response.id as string
+						}
+
+						// Delegate standard event types
+						if (parsed?.type && this.coreHandledEventTypes.has(parsed.type)) {
+							// Some Codex streams only return tool calls (no text). Treat tool output as content.
+							if (
+								parsed.type === "response.function_call_arguments.delta" ||
+								parsed.type === "response.tool_call_arguments.delta" ||
+								parsed.type === "response.output_item.added" ||
+								parsed.type === "response.output_item.done"
+							) {
+								hasContent = true
+							}
+
+							for await (const outChunk of this.processEvent(parsed, model)) {
+								if (outChunk.type === "text" || outChunk.type === "reasoning") {
+									hasContent = true
+									if (outChunk.type === "text") {
+										this.sawTextOutputInCurrentResponse = true
+									}
+								}
+								yield outChunk
+							}
+							continue
+						}
+
+						// Handle complete response
+						if (parsed.response && parsed.response.output && Array.isArray(parsed.response.output)) {
+							for (const outputItem of parsed.response.output) {
+								if (outputItem.type === "text" && outputItem.content) {
+									for (const content of outputItem.content) {
+										if (content.type === "text" && content.text) {
+											hasContent = true
+											this.sawTextOutputInCurrentResponse = true
+											yield { type: "text", text: content.text }
+										}
+									}
+								}
+								if (outputItem.type === "reasoning" && Array.isArray(outputItem.summary)) {
+									for (const summary of outputItem.summary) {
+										if (summary?.type === "summary_text" && typeof summary.text === "string") {
+											hasContent = true
+											yield { type: "reasoning", text: summary.text }
+										}
+									}
+								}
+							}
+							if (parsed.response.usage) {
+								const usageData = this.normalizeUsage(parsed.response.usage, model)
+								if (usageData) {
+									yield usageData
+								}
+							}
+						} else if (
+							parsed.type === "response.text.delta" ||
+							parsed.type === "response.output_text.delta"
+						) {
+							if (parsed.delta) {
+								hasContent = true
+								this.sawTextOutputInCurrentResponse = true
+								yield { type: "text", text: parsed.delta }
+							}
+						} else if (
+							(parsed.type === "response.text.done" || parsed.type === "response.output_text.done") &&
+							!hasContent
+						) {
+							const doneText =
+								typeof parsed.text === "string"
+									? parsed.text
+									: typeof parsed.output_text === "string"
+										? parsed.output_text
+										: typeof parsed.delta === "string"
+											? parsed.delta
+											: undefined
+							if (doneText) {
+								hasContent = true
+								this.sawTextOutputInCurrentResponse = true
+								yield { type: "text", text: doneText }
+							}
+						} else if (
+							parsed.type === "response.reasoning.delta" ||
+							parsed.type === "response.reasoning_text.delta"
+						) {
+							if (parsed.delta) {
+								hasContent = true
+								yield { type: "reasoning", text: parsed.delta }
+							}
+						} else if (
+							parsed.type === "response.reasoning_summary.delta" ||
+							parsed.type === "response.reasoning_summary_text.delta"
+						) {
+							if (parsed.delta) {
+								hasContent = true
+								yield { type: "reasoning", text: parsed.delta }
+							}
+						} else if (parsed.type === "response.refusal.delta") {
+							if (parsed.delta) {
+								hasContent = true
+								this.sawTextOutputInCurrentResponse = true
+								yield { type: "text", text: `[Refusal] ${parsed.delta}` }
+							}
+						} else if (parsed.type === "response.output_item.added") {
+							if (parsed.item) {
+								if (parsed.item.type === "text" && parsed.item.text) {
+									hasContent = true
+									this.sawTextOutputInCurrentResponse = true
+									yield { type: "text", text: parsed.item.text }
+								} else if (parsed.item.type === "reasoning" && parsed.item.text) {
+									hasContent = true
+									yield { type: "reasoning", text: parsed.item.text }
+								} else if (parsed.item.type === "message" && parsed.item.content) {
+									for (const content of parsed.item.content) {
+										if (content.type === "text" && content.text) {
+											hasContent = true
+											this.sawTextOutputInCurrentResponse = true
+											yield { type: "text", text: content.text }
+										}
+									}
+								}
+							}
+						} else if (parsed.type === "response.error" || parsed.type === "error") {
+							if (parsed.error || parsed.message) {
+								throw new Error(
+									t("common:errors.openAiCodex.apiError", {
+										message: parsed.error?.message || parsed.message || "Unknown error",
+									}),
+								)
+							}
+						} else if (parsed.type === "response.completed" || parsed.type === "response.done") {
 							if (parsed.response?.output && Array.isArray(parsed.response.output)) {
 								this.lastResponseOutput = parsed.response.output
 							}
@@ -667,36 +848,16 @@ export class OpenAiCodexHandler extends BaseProvider implements SingleCompletion
 								this.lastResponseId = parsed.response.id as string
 							}
 
-							// Delegate standard event types
-							if (parsed?.type && this.coreHandledEventTypes.has(parsed.type)) {
-								// Some Codex streams only return tool calls (no text). Treat tool output as content.
-								if (
-									parsed.type === "response.function_call_arguments.delta" ||
-									parsed.type === "response.tool_call_arguments.delta" ||
-									parsed.type === "response.output_item.added" ||
-									parsed.type === "response.output_item.done"
-								) {
-									hasContent = true
-								}
-
-								for await (const outChunk of this.processEvent(parsed, model)) {
-									if (outChunk.type === "text" || outChunk.type === "reasoning") {
-										hasContent = true
-										if (outChunk.type === "text") {
-											this.sawTextOutputInCurrentResponse = true
-										}
-									}
-									yield outChunk
-								}
-								continue
-							}
-
-							// Handle complete response
-							if (parsed.response && parsed.response.output && Array.isArray(parsed.response.output)) {
+							if (
+								!hasContent &&
+								parsed.response &&
+								parsed.response.output &&
+								Array.isArray(parsed.response.output)
+							) {
 								for (const outputItem of parsed.response.output) {
-									if (outputItem.type === "text" && outputItem.content) {
+									if (outputItem.type === "message" && outputItem.content) {
 										for (const content of outputItem.content) {
-											if (content.type === "text" && content.text) {
+											if (content.type === "output_text" && content.text) {
 												hasContent = true
 												this.sawTextOutputInCurrentResponse = true
 												yield { type: "text", text: content.text }
@@ -712,153 +873,19 @@ export class OpenAiCodexHandler extends BaseProvider implements SingleCompletion
 										}
 									}
 								}
-								if (parsed.response.usage) {
-									const usageData = this.normalizeUsage(parsed.response.usage, model)
-									if (usageData) {
-										yield usageData
-									}
-								}
-							} else if (
-								parsed.type === "response.text.delta" ||
-								parsed.type === "response.output_text.delta"
-							) {
-								if (parsed.delta) {
-									hasContent = true
-									this.sawTextOutputInCurrentResponse = true
-									yield { type: "text", text: parsed.delta }
-								}
-							} else if (
-								(parsed.type === "response.text.done" || parsed.type === "response.output_text.done") &&
-								!hasContent
-							) {
-								const doneText =
-									typeof parsed.text === "string"
-										? parsed.text
-										: typeof parsed.output_text === "string"
-											? parsed.output_text
-											: typeof parsed.delta === "string"
-												? parsed.delta
-												: undefined
-								if (doneText) {
-									hasContent = true
-									this.sawTextOutputInCurrentResponse = true
-									yield { type: "text", text: doneText }
-								}
-							} else if (
-								parsed.type === "response.reasoning.delta" ||
-								parsed.type === "response.reasoning_text.delta"
-							) {
-								if (parsed.delta) {
-									hasContent = true
-									yield { type: "reasoning", text: parsed.delta }
-								}
-							} else if (
-								parsed.type === "response.reasoning_summary.delta" ||
-								parsed.type === "response.reasoning_summary_text.delta"
-							) {
-								if (parsed.delta) {
-									hasContent = true
-									yield { type: "reasoning", text: parsed.delta }
-								}
-							} else if (parsed.type === "response.refusal.delta") {
-								if (parsed.delta) {
-									hasContent = true
-									this.sawTextOutputInCurrentResponse = true
-									yield { type: "text", text: `[Refusal] ${parsed.delta}` }
-								}
-							} else if (parsed.type === "response.output_item.added") {
-								if (parsed.item) {
-									if (parsed.item.type === "text" && parsed.item.text) {
-										hasContent = true
-										this.sawTextOutputInCurrentResponse = true
-										yield { type: "text", text: parsed.item.text }
-									} else if (parsed.item.type === "reasoning" && parsed.item.text) {
-										hasContent = true
-										yield { type: "reasoning", text: parsed.item.text }
-									} else if (parsed.item.type === "message" && parsed.item.content) {
-										for (const content of parsed.item.content) {
-											if (content.type === "text" && content.text) {
-												hasContent = true
-												this.sawTextOutputInCurrentResponse = true
-												yield { type: "text", text: content.text }
-											}
-										}
-									}
-								}
-							} else if (parsed.type === "response.error" || parsed.type === "error") {
-								if (parsed.error || parsed.message) {
-									throw new Error(
-										t("common:errors.openAiCodex.apiError", {
-											message: parsed.error?.message || parsed.message || "Unknown error",
-										}),
-									)
-								}
-							} else if (parsed.type === "response.failed") {
-								if (parsed.error || parsed.message) {
-									throw new Error(
-										t("common:errors.openAiCodex.responseFailed", {
-											message: parsed.error?.message || parsed.message || "Unknown failure",
-										}),
-									)
-								}
-							} else if (parsed.type === "response.completed" || parsed.type === "response.done") {
-								if (parsed.response?.output && Array.isArray(parsed.response.output)) {
-									this.lastResponseOutput = parsed.response.output
-								}
-								if (parsed.response?.id) {
-									this.lastResponseId = parsed.response.id as string
-								}
-
-								if (
-									!hasContent &&
-									parsed.response &&
-									parsed.response.output &&
-									Array.isArray(parsed.response.output)
-								) {
-									for (const outputItem of parsed.response.output) {
-										if (outputItem.type === "message" && outputItem.content) {
-											for (const content of outputItem.content) {
-												if (content.type === "output_text" && content.text) {
-													hasContent = true
-													this.sawTextOutputInCurrentResponse = true
-													yield { type: "text", text: content.text }
-												}
-											}
-										}
-										if (outputItem.type === "reasoning" && Array.isArray(outputItem.summary)) {
-											for (const summary of outputItem.summary) {
-												if (
-													summary?.type === "summary_text" &&
-													typeof summary.text === "string"
-												) {
-													hasContent = true
-													yield { type: "reasoning", text: summary.text }
-												}
-											}
-										}
-									}
-								}
-							} else if (parsed.choices?.[0]?.delta?.content) {
-								hasContent = true
-								this.sawTextOutputInCurrentResponse = true
-								yield { type: "text", text: parsed.choices[0].delta.content }
-							} else if (
-								parsed.item &&
-								typeof parsed.item.text === "string" &&
-								parsed.item.text.length > 0
-							) {
-								hasContent = true
-								this.sawTextOutputInCurrentResponse = true
-								yield { type: "text", text: parsed.item.text }
-							} else if (parsed.usage) {
-								const usageData = this.normalizeUsage(parsed.usage, model)
-								if (usageData) {
-									yield usageData
-								}
 							}
-						} catch (e) {
-							if (!(e instanceof SyntaxError)) {
-								throw e
+						} else if (parsed.choices?.[0]?.delta?.content) {
+							hasContent = true
+							this.sawTextOutputInCurrentResponse = true
+							yield { type: "text", text: parsed.choices[0].delta.content }
+						} else if (parsed.item && typeof parsed.item.text === "string" && parsed.item.text.length > 0) {
+							hasContent = true
+							this.sawTextOutputInCurrentResponse = true
+							yield { type: "text", text: parsed.item.text }
+						} else if (parsed.usage) {
+							const usageData = this.normalizeUsage(parsed.usage, model)
+							if (usageData) {
+								yield usageData
 							}
 						}
 					} else if (line.trim() && !line.startsWith(":")) {
@@ -876,6 +903,7 @@ export class OpenAiCodexHandler extends BaseProvider implements SingleCompletion
 				}
 			}
 		} catch (error) {
+			if (error instanceof CodexTerminalResponseError) throw error
 			const errorMessage = error instanceof Error ? error.message : String(error)
 
 			if (error instanceof Error) {
@@ -961,6 +989,15 @@ export class OpenAiCodexHandler extends BaseProvider implements SingleCompletion
 	}
 
 	private async *processEvent(event: any, model: OpenAiCodexModel): ApiStream {
+		// Check terminal failures before treating response.output as successful output.
+		if (event?.type === "response.failed" || event?.type === "response.incomplete") {
+			const incomplete = event.type === "response.incomplete"
+			throw new CodexTerminalResponseError(
+				incomplete ? "incomplete" : "failed",
+				incomplete ? event.response?.incomplete_details?.reason : event.response?.error?.code,
+			)
+		}
+
 		if (event?.response?.output && Array.isArray(event.response.output)) {
 			this.lastResponseOutput = event.response.output
 		}

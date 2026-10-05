@@ -518,12 +518,37 @@ describe("Task model-operation runtime", () => {
 	})
 
 	it("requires a settled fence for artifact-preserving disposal", async () => {
-		const dispose = vi.spyOn(task, "dispose").mockImplementation(() => {})
+		const dispose = vi.spyOn(task, "dispose").mockResolvedValue(undefined)
 		expect(() => task.disposeForModelOperation()).toThrow("not settled")
 		task.isInitialized = true
 		await task.stopForHistoricalModelOperation(0)
 		task.disposeForModelOperation()
 		expect(dispose).toHaveBeenCalledWith({ preserveArtifacts: true })
+	})
+
+	it.each(["historical", "current"])("awaits browser teardown during the %s replacement fence", async (kind) => {
+		task.isInitialized = true
+		if (kind === "current") {
+			vi.spyOn(task as any, "modelOperationBlockReason").mockReturnValue(undefined)
+		}
+		let finish!: () => void
+		const dispose = vi.spyOn(task.browserSession, "dispose").mockImplementation(
+			() =>
+				new Promise<void>((resolve) => {
+					finish = resolve
+				}),
+		)
+		let completed = false
+		const stopping = (
+			kind === "historical" ? task.stopForHistoricalModelOperation(0) : task.stopForModelOperation(0)
+		).then(() => {
+			completed = true
+		})
+		await vi.waitFor(() => expect(dispose).toHaveBeenCalledOnce())
+		expect(completed).toBe(false)
+		finish()
+		await stopping
+		await expect(task.urlContentFetcher.launchBrowser()).rejects.toThrow("disposed")
 	})
 
 	it.each(["prepared", "uninitialized reload", "corrupt policy", "ordinary"])(
@@ -702,7 +727,7 @@ describe("Task model-operation runtime", () => {
 		expect(await task.admitModelOperationTool("new_task", "delegate")).toBe(false)
 		const waiting = task.admitModelOperationTool("custom_tool", "custom")
 		await vi.waitFor(() => expect(task.modelOperationState.approval).toBeDefined())
-		vi.spyOn(task, "dispose").mockImplementation(() => {})
+		vi.spyOn(task, "dispose").mockResolvedValue(undefined)
 		await task.abortTask()
 		expect(await waiting).toBe(false)
 	})

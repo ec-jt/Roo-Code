@@ -122,7 +122,6 @@ export async function buildNativeToolsArrayWithRestrictions(options: BuildToolsO
 	const state = await provider.getState()
 	const nativeToolEnabled = (state as any)?.nativeToolEnabled as Record<string, boolean> | undefined
 	const braveApiKey = (state as any)?.braveApiKey as string | undefined
-	const context7ApiKey = (state as any)?.context7ApiKey as string | undefined
 	const githubToken = (state as any)?.githubToken as string | undefined
 
 	// Build the set of tool names that should be excluded because the user
@@ -137,8 +136,6 @@ export async function buildNativeToolsArrayWithRestrictions(options: BuildToolsO
 	const CREDENTIAL_REQUIREMENTS: Record<string, string | undefined> = {
 		brave_web_search: braveApiKey,
 		brave_local_search: braveApiKey,
-		context7_resolve_library_id: context7ApiKey,
-		context7_query_docs: context7ApiKey,
 		// git_* tools work without a token on public repos; we only auto-disable
 		// them when the user has explicitly toggled them off.
 	}

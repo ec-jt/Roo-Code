@@ -12,9 +12,9 @@ describe("BrowserSession screenshot writes", () => {
 		vi.resetAllMocks()
 		cwd = await fs.mkdtemp(path.join(os.tmpdir(), "roo-browser-save-test-"))
 		session = new BrowserSession({ globalState: { get: () => undefined } } as unknown as vscode.ExtensionContext)
-		;(session as any).page = { screenshot }
+		;(session as any).page = { screenshot, url: () => "https://example.com" }
 		screenshot.mockResolvedValue(Buffer.from("image data"))
-		vi.spyOn(session, "doAction").mockResolvedValue({ screenshot: "data:image/png;base64,aW1hZ2U=" })
+		vi.spyOn(session as any, "doActionNow").mockResolvedValue({ screenshot: "data:image/png;base64,aW1hZ2U=" })
 	})
 	afterEach(async () => {
 		await fs.rm(cwd, { recursive: true, force: true })
@@ -45,12 +45,12 @@ describe("BrowserSession screenshot writes", () => {
 			return Buffer.from("image")
 		})
 		await expect(session.saveScreenshot("nested/image.png", cwd)).rejects.toThrow("symbolic links")
-		expect(session.doAction).not.toHaveBeenCalled()
+		expect((session as any).doActionNow).not.toHaveBeenCalled()
 	})
 	it("rechecks authorization before making directories after capture", async () => {
 		const authorize = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValue(new Error("ignored"))
 		await expect(session.saveScreenshot("nested/image.png", cwd, authorize)).rejects.toThrow("ignored")
 		expect(await fs.readdir(cwd)).toEqual([])
-		expect(session.doAction).not.toHaveBeenCalled()
+		expect((session as any).doActionNow).not.toHaveBeenCalled()
 	})
 })

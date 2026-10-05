@@ -382,6 +382,8 @@ export class OpenAiCodexOAuthManager {
 	private credentials: OpenAiCodexCredentials | null = null
 	private logFn: ((message: string) => void) | null = null
 	private generation = 0
+	// Credential invalidation must not cancel an independent pending authorization flow.
+	private credentialRevision = 0
 	private storageQueue: Promise<unknown> = Promise.resolve()
 	private refreshPromise: Promise<OpenAiCodexCredentials | null> | null = null
 	private pendingAuth: {
@@ -444,20 +446,23 @@ export class OpenAiCodexOAuthManager {
 			return this.refreshPromise
 		}
 		const generation = this.generation
+		const credentialRevision = this.credentialRevision
 		const credentials = this.credentials
 		if (!credentials) return Promise.resolve(null)
 
 		const refresh = (async () => {
 			try {
 				const refreshed = await refreshAccessToken(credentials)
-				await this.persistCredentials(refreshed, generation)
-				return generation === this.generation ? refreshed : null
+				await this.persistCredentials(refreshed, generation, false, credentialRevision)
+				return generation === this.generation && this.credentialRevision === credentialRevision + 1
+					? refreshed
+					: null
 			} catch (error) {
 				// A stale failure must not clear credentials belonging to a newer sign-in.
-				if (generation === this.generation) {
+				if (generation === this.generation && credentialRevision === this.credentialRevision) {
 					this.logError("[openai-codex-oauth] Failed to refresh token:", error)
 					if (error instanceof OpenAiCodexOAuthTokenError && error.isLikelyInvalidGrant()) {
-						await this.clearCredentials()
+						await this.invalidateCredentials(credentialRevision)
 					}
 				}
 				return null
@@ -466,6 +471,23 @@ export class OpenAiCodexOAuthManager {
 		this.refreshPromise = refresh
 		return refresh.finally(() => {
 			if (this.refreshPromise === refresh) this.refreshPromise = null
+		})
+	}
+
+	private async invalidateCredentials(credentialRevision: number): Promise<void> {
+		if (credentialRevision !== this.credentialRevision) return
+		this.credentials = null
+		const invalidatedRevision = ++this.credentialRevision
+		this.refreshPromise = null
+		const context = this.context
+		if (!context) return
+
+		await this.withStorage(async () => {
+			// A replacement already writing or queued ahead of this deletion can still commit.
+			// Delete only the invalidated identity, never that replacement's credentials.
+			if (invalidatedRevision === this.credentialRevision) {
+				await context.secrets.delete(OPENAI_CODEX_CREDENTIALS_KEY)
+			}
 		})
 	}
 
@@ -482,15 +504,22 @@ export class OpenAiCodexOAuthManager {
 	async loadCredentials(): Promise<OpenAiCodexCredentials | null> {
 		const context = this.context
 		const generation = this.generation
+		const credentialRevision = this.credentialRevision
 		if (!context) {
 			return null
 		}
 
 		try {
 			return await this.withStorage(async () => {
-				if (generation !== this.generation) return null
+				if (generation !== this.generation || credentialRevision !== this.credentialRevision) return null
 				const credentialsJson = await context.secrets.get(OPENAI_CODEX_CREDENTIALS_KEY)
-				if (generation !== this.generation || !credentialsJson) return null
+				if (
+					generation !== this.generation ||
+					credentialRevision !== this.credentialRevision ||
+					!credentialsJson
+				) {
+					return null
+				}
 				this.credentials = openAiCodexCredentialsSchema.parse(JSON.parse(credentialsJson))
 				return this.credentials
 			})
@@ -513,16 +542,21 @@ export class OpenAiCodexOAuthManager {
 		credentials: OpenAiCodexCredentials,
 		generation: number,
 		replace = false,
+		credentialRevision?: number,
 	): Promise<number> {
 		const context = this.context
 		if (!context) {
 			throw new Error("OAuth manager not initialized")
 		}
 
+		const isCurrent = () =>
+			generation === this.generation &&
+			(credentialRevision === undefined || credentialRevision === this.credentialRevision)
+
 		return this.withStorage(async () => {
-			if (generation !== this.generation) throw new Error("Authentication operation cancelled")
+			if (!isCurrent()) throw new Error("Authentication operation cancelled")
 			await context.secrets.store(OPENAI_CODEX_CREDENTIALS_KEY, JSON.stringify(credentials))
-			if (generation !== this.generation) {
+			if (!isCurrent()) {
 				// SecretStorage cannot abort an in-flight write. Restore the last committed state
 				// before allowing any newer save/delete/read to use storage.
 				if (this.credentials) {
@@ -533,6 +567,7 @@ export class OpenAiCodexOAuthManager {
 				throw new Error("Authentication operation cancelled")
 			}
 			this.credentials = credentials
+			this.credentialRevision++
 			if (replace) {
 				// Also discard refreshes started against the old account during this write.
 				// Do this before releasing the queue to any pending refresh persistence.
@@ -549,6 +584,7 @@ export class OpenAiCodexOAuthManager {
 	async clearCredentials(): Promise<void> {
 		this.cancelAuthorizationFlow()
 		this.credentials = null
+		this.credentialRevision++
 		const context = this.context
 		if (!context) {
 			return

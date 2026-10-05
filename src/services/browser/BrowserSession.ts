@@ -15,6 +15,10 @@ import { fileExistsAtPath } from "../../utils/fs"
 import { discoverChromeHostUrl, tryChromeHostUrl } from "./browserDiscovery"
 import { findInstalledChrome } from "./installedChrome"
 import { validateScreenshotPath, writeScreenshot } from "./screenshotPath"
+import { validateWebUrl } from "./validateWebUrl"
+import { BrowserLifecycle } from "./BrowserLifecycle"
+import { browserLaunchError } from "./browserLaunchError"
+import { restrictWebNavigation, validatePageUrl } from "./webNavigation"
 
 // Timeout constants
 const BROWSER_NAVIGATION_TIMEOUT = 10_000 // 10 seconds
@@ -29,7 +33,10 @@ export class BrowserSession {
 	private browser?: Browser
 	private page?: Page
 	private currentMousePosition?: string
+	private cachedDiscoveryHost?: string
 	private lastConnectionAttempt?: number
+	private readonly lifecycle = new BrowserLifecycle()
+	private readonly navigationGuards = new Map<Page, () => Promise<void>>()
 	private isUsingRemoteBrowser: boolean = false
 	private onStateChange?: (isActive: boolean) => void
 
@@ -108,7 +115,8 @@ export class BrowserSession {
 		this.userDataDir = await fs.mkdtemp(path.join(tmpBaseDir, "roo-browser-profile-"))
 		this.browserTempDir = tmpBaseDir
 		try {
-			this.browser = await stats.puppeteer.launch({
+			this.lifecycle.assertOpen()
+			const browser = await stats.puppeteer.launch({
 				headless: !headed,
 				args:
 					headed && process.platform === "linux" && !process.env.DISPLAY && process.env.WAYLAND_DISPLAY
@@ -124,20 +132,17 @@ export class BrowserSession {
 				defaultViewport: { ...viewport, deviceScaleFactor: 1 },
 				userDataDir: this.userDataDir,
 			})
+			try {
+				this.lifecycle.assertOpen()
+			} catch (error) {
+				await browser.close().catch(() => {})
+				throw error
+			}
+			this.browser = browser
 		} catch (error) {
 			await fs.rm(this.userDataDir, { recursive: true, force: true }).catch(() => {})
 			this.resetBrowserState()
-			const detail = error instanceof Error ? error.message : String(error)
-			throw new Error(
-				`Failed to launch ${headed ? "visible" : "headless"} sandboxed ${useChrome ? "Google Chrome" : "Chromium"}. ` +
-					"Run the extension host as a non-root user with a usable Chromium sandbox. " +
-					"On Linux, AppArmor or user-namespace restrictions may require administrator review; Roo does not change host security policy. " +
-					(headed && process.platform === "linux"
-						? "Verify that the extension host can access its X11 or Wayland display. "
-						: "") +
-					"Alternatively, configure a trusted remote browser. No sandbox-disabled fallback was attempted. " +
-					`Original error: ${detail}`,
-			)
+			throw browserLaunchError(error, useChrome ? "Google Chrome" : "Chromium")
 		}
 		this.isUsingRemoteBrowser = false
 	}
@@ -146,144 +151,118 @@ export class BrowserSession {
 	 * Connects to a browser using a WebSocket URL
 	 */
 	private async connectWithChromeHostUrl(chromeHostUrl: string): Promise<boolean> {
+		this.lifecycle.assertOpen()
+		let browser: Browser
 		try {
-			this.browser = await connect({
-				browserURL: chromeHostUrl,
-				defaultViewport: this.getViewport(),
-			})
-
-			// Cache the successful endpoint
-			console.log(`Connected to remote browser at ${chromeHostUrl}`)
-			this.context.globalState.update("cachedChromeHostUrl", chromeHostUrl)
-			this.lastConnectionAttempt = Date.now()
-			this.isUsingRemoteBrowser = true
-
-			return true
-		} catch (error) {
-			console.log(`Failed to connect using WebSocket endpoint: ${error}`)
+			browser = await connect({ browserURL: chromeHostUrl, defaultViewport: this.getViewport() })
+		} catch {
 			return false
 		}
+		try {
+			this.lifecycle.assertOpen()
+		} catch (error) {
+			await browser.disconnect().catch(() => {})
+			throw error
+		}
+		this.browser = browser
+		this.isUsingRemoteBrowser = true
+		return true
 	}
 
-	/**
-	 * Attempts to connect to a remote browser using various methods
-	 * Returns true if connection was successful, false otherwise
-	 */
 	private async connectToRemoteBrowser(): Promise<boolean> {
-		let remoteBrowserHost = this.context.globalState.get("remoteBrowserHost") as string | undefined
-		let reconnectionAttempted = false
-
-		// Try to connect with cached endpoint first if it exists and is recent (less than 1 hour old)
-		const cachedChromeHostUrl = this.context.globalState.get("cachedChromeHostUrl") as string | undefined
-		if (cachedChromeHostUrl && this.lastConnectionAttempt && Date.now() - this.lastConnectionAttempt < 3_600_000) {
-			console.log(`Attempting to connect using cached Chrome Host Url: ${cachedChromeHostUrl}`)
-			if (await this.connectWithChromeHostUrl(cachedChromeHostUrl)) {
-				return true
-			}
-
-			console.log(`Failed to connect using cached Chrome Host Url: ${cachedChromeHostUrl}`)
-			// Clear the cached endpoint since it's no longer valid
-			this.context.globalState.update("cachedChromeHostUrl", undefined)
-
-			// User wants to give up after one reconnection attempt
-			if (remoteBrowserHost) {
-				reconnectionAttempted = true
-			}
-		}
-
-		// If user provided a remote browser host, try to connect to it
-		else if (remoteBrowserHost && !reconnectionAttempted) {
-			console.log(`Attempting to connect to remote browser at ${remoteBrowserHost}`)
+		const explicitHost = this.context.globalState.get<string>("remoteBrowserHost")?.trim()
+		// Persistent legacy caches may belong to another configuration. Discovery is
+		// cached only in this instance, and never survives an explicit host selection.
+		await this.context.globalState.update("cachedChromeHostUrl", undefined)
+		if (explicitHost) {
+			this.cachedDiscoveryHost = undefined
+			this.lastConnectionAttempt = undefined
 			try {
-				const hostIsValid = await tryChromeHostUrl(remoteBrowserHost)
-
-				if (!hostIsValid) {
-					throw new Error("Could not find chromeHostUrl in the response")
-				}
-
-				console.log(`Found WebSocket endpoint: ${remoteBrowserHost}`)
-
-				if (await this.connectWithChromeHostUrl(remoteBrowserHost)) {
-					return true
-				}
-			} catch (error) {
-				console.error(`Failed to connect to remote browser: ${error}`)
-				// Fall back to auto-discovery if remote connection fails
+				validateWebUrl(explicitHost)
+				if (!(await tryChromeHostUrl(explicitHost))) return false
+			} catch {
+				return false
 			}
+			return this.connectWithChromeHostUrl(explicitHost)
 		}
-
+		if (
+			this.cachedDiscoveryHost &&
+			this.lastConnectionAttempt &&
+			Date.now() - this.lastConnectionAttempt < 3_600_000
+		) {
+			if (await this.connectWithChromeHostUrl(this.cachedDiscoveryHost)) return true
+		}
+		this.cachedDiscoveryHost = undefined
+		this.lastConnectionAttempt = undefined
+		let discovered: string | null | undefined
 		try {
-			console.log("Attempting browser auto-discovery...")
-			const chromeHostUrl = await discoverChromeHostUrl()
-
-			if (chromeHostUrl && (await this.connectWithChromeHostUrl(chromeHostUrl))) {
-				return true
-			}
-		} catch (error) {
-			console.error(`Auto-discovery failed: ${error}`)
-			// Report failure to the caller without launching a different browser.
+			discovered = await discoverChromeHostUrl()
+		} catch {
+			return false
 		}
-
+		if (discovered && (await this.connectWithChromeHostUrl(discovered))) {
+			this.cachedDiscoveryHost = discovered
+			this.lastConnectionAttempt = Date.now()
+			return true
+		}
 		return false
 	}
 
-	async launchBrowser(): Promise<void> {
-		console.log("launch browser called")
-
-		// Check if remote browser connection is enabled
-		const remoteBrowserEnabled = this.context.globalState.get("remoteBrowserEnabled") as boolean | undefined
-
-		if (!remoteBrowserEnabled) {
-			console.log("Launching local browser")
-			if (this.browser) {
-				// throw new Error("Browser already launched")
-				await this.closeBrowser() // this may happen when the model launches a browser again after having used it already before
-			} else {
-				// If browser wasn't open, just reset the state
-				this.resetBrowserState()
+	launchBrowser(): Promise<void> {
+		return this.lifecycle.run(async () => {
+			this.lifecycle.assertOpen()
+			await this.closeBrowserNow()
+			this.lifecycle.assertOpen()
+			try {
+				if (this.context.globalState.get<boolean>("remoteBrowserEnabled")) {
+					if (!(await this.connectToRemoteBrowser())) {
+						throw new Error(
+							"Could not connect to the configured remote browser. Check its debugging endpoint and network access, or explicitly disable remote browser connection to use a local sandboxed browser. No local fallback was attempted.",
+						)
+					}
+				} else {
+					await this.launchLocalBrowser()
+				}
+				this.lifecycle.assertOpen()
+				this.onStateChange?.(true)
+			} catch (error) {
+				await this.closeBrowserNow()
+				throw error
 			}
-			await this.launchLocalBrowser()
-		} else {
-			console.log("Connecting to remote browser")
-			// Remote browser connection is enabled
-			const remoteConnected = await this.connectToRemoteBrowser()
-
-			if (!remoteConnected) {
-				throw new Error(
-					"Could not connect to the configured remote browser. Check its debugging endpoint and network access, or explicitly disable remote browser connection to use a local sandboxed browser. No local fallback was attempted.",
-				)
-			}
-		}
-
-		// Notify that browser session is now active
-		if (this.browser && this.onStateChange) {
-			this.onStateChange(true)
-		}
+		})
 	}
 
-	/**
-	 * Closes the browser and resets browser state
-	 */
-	async closeBrowser(): Promise<BrowserActionResult> {
+	closeBrowser(): Promise<BrowserActionResult> {
+		return this.lifecycle.run(() => this.closeBrowserNow())
+	}
+
+	/** Permanent task teardown, unlike a user-requested browser close. */
+	dispose(): Promise<void> {
+		return this.lifecycle.dispose(async () => {
+			await this.closeBrowserNow()
+		})
+	}
+
+	private async closeBrowserNow(): Promise<BrowserActionResult> {
 		const wasActive = !!(this.browser || this.page)
-
-		if (wasActive) {
-			if (this.isUsingRemoteBrowser && this.browser) {
-				await this.browser.disconnect().catch(() => {})
-			} else {
-				await this.browser?.close().catch(() => {})
-				if (this.userDataDir) {
-					await fs.rm(this.userDataDir, { recursive: true, force: true }).catch(() => {})
-				}
-			}
-			this.resetBrowserState()
-
-			// Notify that browser session is now inactive
-			if (this.onStateChange) {
-				this.onStateChange(false)
-			}
+		for (const cleanup of this.navigationGuards.values()) await cleanup().catch(() => {})
+		this.navigationGuards.clear()
+		if (this.isUsingRemoteBrowser) {
+			await this.browser?.disconnect().catch(() => {})
+		} else {
+			await this.browser?.close().catch(() => {})
 		}
+		if (this.userDataDir) await fs.rm(this.userDataDir, { recursive: true, force: true }).catch(() => {})
+		this.resetBrowserState()
+		if (wasActive) this.onStateChange?.(false)
 		return {}
+	}
+
+	private async guardPage(page: Page): Promise<void> {
+		if (!this.navigationGuards.has(page)) {
+			this.navigationGuards.set(page, await restrictWebNavigation(page))
+		}
+		validatePageUrl(page)
 	}
 
 	/**
@@ -333,13 +312,19 @@ export class BrowserSession {
 		})
 	}
 
-	async doAction(action: (page: Page) => Promise<void>): Promise<BrowserActionResult> {
+	doAction(action: (page: Page) => Promise<void>): Promise<BrowserActionResult> {
+		return this.lifecycle.run(() => this.doActionNow(action))
+	}
+
+	private async doActionNow(action: (page: Page) => Promise<void>): Promise<BrowserActionResult> {
+		this.lifecycle.assertOpen()
 		if (!this.page) {
 			throw new Error(
 				"Cannot perform browser action: no active browser session. The browser must be launched first using the 'launch' action before other browser actions can be performed.",
 			)
 		}
 
+		await this.guardPage(this.page)
 		const logs: string[] = []
 		let lastLogTs = Date.now()
 
@@ -369,6 +354,7 @@ export class BrowserSession {
 			}
 		}
 
+		validatePageUrl(this.page)
 		// Wait for console inactivity, with a timeout
 		await pWaitFor(() => Date.now() - lastLogTs >= 500, {
 			timeout: 3_000,
@@ -458,6 +444,8 @@ export class BrowserSession {
 	 * Navigate to a URL with standard loading options
 	 */
 	private async navigatePageToUrl(page: Page, url: string): Promise<void> {
+		validateWebUrl(url)
+		await this.guardPage(page)
 		// Use domcontentloaded instead of networkidle2 for faster navigation
 		// networkidle2 can hang on sites with persistent connections (analytics, websockets, ads)
 		await page.goto(url, { timeout: BROWSER_NAVIGATION_TIMEOUT, waitUntil: "domcontentloaded" })
@@ -476,11 +464,12 @@ export class BrowserSession {
 		// Create a new page
 		const newPage = await this.browser.newPage()
 
+		await this.guardPage(newPage)
 		// Set the new page as the active page
 		this.page = newPage
 
 		// Navigate to the URL
-		const result = await this.doAction(async (page) => {
+		const result = await this.doActionNow(async (page) => {
 			await this.navigatePageToUrl(page, url)
 		})
 
@@ -488,6 +477,12 @@ export class BrowserSession {
 	}
 
 	async navigateToUrl(url: string): Promise<BrowserActionResult> {
+		validateWebUrl(url)
+		return this.lifecycle.run(() => this.navigateToUrlNow(url))
+	}
+
+	private async navigateToUrlNow(url: string): Promise<BrowserActionResult> {
+		this.lifecycle.assertOpen()
 		if (!this.browser) {
 			throw new Error("Browser is not launched")
 		}
@@ -533,7 +528,7 @@ export class BrowserSession {
 				console.log(`Root domain: ${this.getRootDomain(currentUrl)}`)
 				console.log(`New URL: ${normalizedNewUrl}`)
 				// Navigate to the new URL
-				return this.doAction(async (page) => {
+				return this.doActionNow(async (page) => {
 					await this.navigatePageToUrl(page, normalizedNewUrl)
 				})
 			} else {
@@ -543,7 +538,7 @@ export class BrowserSession {
 				console.log(`Current URL: ${currentUrl}`)
 				console.log(`Root domain: ${this.getRootDomain(currentUrl)}`)
 				console.log(`New URL: ${normalizedNewUrl}`)
-				return this.doAction(async (page) => {
+				return this.doActionNow(async (page) => {
 					await page.reload({
 						timeout: BROWSER_NAVIGATION_TIMEOUT,
 						waitUntil: "domcontentloaded",
@@ -609,6 +604,7 @@ export class BrowserSession {
 					window.open = function (url: string | URL, target?: string, features?: string) {
 						try {
 							const href = typeof url === "string" ? url : String(url)
+							if (!["http:", "https:"].includes(new URL(href, location.href).protocol)) return null
 							location.href = href
 						} catch {
 							// fall back to original if something unexpected occurs
@@ -629,9 +625,14 @@ export class BrowserSession {
 						"click",
 						(ev) => {
 							const el = (ev.target as HTMLElement | null)?.closest?.(
-								'a[target="_blank"]',
+								"a[href]",
 							) as HTMLAnchorElement | null
-							if (el && el.href) {
+							if (el && !["http:", "https:"].includes(new URL(el.href, location.href).protocol)) {
+								ev.preventDefault()
+								ev.stopImmediatePropagation()
+								return
+							}
+							if (el && el.href && el.target === "_blank") {
 								ev.preventDefault()
 								try {
 									location.href = el.href
@@ -1017,10 +1018,16 @@ export class BrowserSession {
 	 * @param responsive - If true, also captures at tablet (768x1024) and mobile (360x640) viewports
 	 */
 	async captureFullPage(responsive: boolean = false): Promise<BrowserActionResult> {
+		return this.lifecycle.run(() => this.captureFullPageNow(responsive))
+	}
+
+	private async captureFullPageNow(responsive: boolean): Promise<BrowserActionResult> {
+		this.lifecycle.assertOpen()
 		if (!this.page) {
 			throw new Error("Browser is not launched")
 		}
 
+		await this.guardPage(this.page)
 		const page = this.page
 		const originalViewport = page.viewport()
 		const quality = ((await this.context.globalState.get("screenshotQuality")) as number | undefined) ?? 75
@@ -1098,9 +1105,19 @@ export class BrowserSession {
 		cwd: string,
 		validateAccess?: () => Promise<void>,
 	): Promise<BrowserActionResult> {
+		return this.lifecycle.run(() => this.saveScreenshotNow(filePath, cwd, validateAccess))
+	}
+
+	private async saveScreenshotNow(
+		filePath: string,
+		cwd: string,
+		validateAccess?: () => Promise<void>,
+	): Promise<BrowserActionResult> {
+		this.lifecycle.assertOpen()
 		await validateAccess?.()
 		await validateScreenshotPath(filePath, cwd)
 		if (!this.page) throw new Error("Browser is not launched")
+		validatePageUrl(this.page)
 		const imageType = this.getImageTypeFromPath(filePath)
 		const data = await this.page.screenshot({
 			type: imageType,
@@ -1109,7 +1126,7 @@ export class BrowserSession {
 		})
 		// Keep write errors outside doAction, which deliberately logs browser action errors.
 		await writeScreenshot(filePath, cwd, data, validateAccess)
-		return this.doAction(async () => {})
+		return this.doActionNow(async () => {})
 	}
 
 	/**

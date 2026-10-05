@@ -207,6 +207,156 @@ describe("OAuth lifecycle races", () => {
 		expect(manager.getCredentials()).toEqual(storedCredentials())
 	})
 
+	it("orders a pending sign-in after a deferred invalid-grant deletion", async () => {
+		const { manager, secrets, storedCredentials } = createManager()
+		await manager.saveCredentials(oldCredentials)
+		const state = stateFromAuthUrl(manager.startAuthorizationFlow())
+		const started = deferred<void>()
+		const release = deferred<void>()
+		const originalDelete = secrets.delete.getMockImplementation()!
+		secrets.delete.mockImplementationOnce(async () => {
+			started.resolve()
+			await release.promise
+			await originalDelete()
+		})
+		fetchMock.mockResolvedValueOnce(jsonResponse({ error: "invalid_grant" }, { ok: false }))
+		const refresh = manager.isAuthenticated()
+		await started.promise
+		expect(manager.getCredentials()).toBeNull()
+		fetchMock.mockResolvedValueOnce(jsonResponse(TOKEN_RESPONSE))
+		const exchange = manager.submitCallbackUrl(callbackUrl(state))
+		// Observe failures immediately so the regression does not produce an unhandled rejection.
+		void exchange.catch(() => undefined)
+		await new Promise((resolve) => setImmediate(resolve))
+		expect(secrets.store).toHaveBeenCalledTimes(1)
+		release.resolve()
+		expect(await refresh).toBe(false)
+		await expect(exchange).resolves.toMatchObject({ access_token: "access-token" })
+		expect(storedCredentials()).toEqual(manager.getCredentials())
+		expect(storedCredentials().access_token).toBe("access-token")
+	})
+
+	it("does not reload invalidated credentials from deferred or queued reads", async () => {
+		const { manager, secrets, storedCredentials } = createManager()
+		await manager.saveCredentials(oldCredentials)
+		const state = stateFromAuthUrl(manager.startAuthorizationFlow())
+		const response = deferred<Response>()
+		fetchMock.mockReturnValueOnce(response.promise)
+		const refresh = manager.isAuthenticated()
+		const started = deferred<void>()
+		const release = deferred<string>()
+		secrets.get.mockImplementationOnce(() => {
+			started.resolve()
+			return release.promise
+		})
+		const loading = manager.loadCredentials()
+		await started.promise
+		const queuedLoading = manager.loadCredentials()
+		response.resolve(jsonResponse({ error: "invalid_grant" }, { ok: false }))
+		await new Promise((resolve) => setImmediate(resolve))
+		expect(manager.getCredentials()).toBeNull()
+		release.resolve(JSON.stringify(oldCredentials))
+		expect(await loading).toBeNull()
+		expect(await queuedLoading).toBeNull()
+		expect(await refresh).toBe(false)
+		expect(manager.getCredentials()).toBeNull()
+		expect(storedCredentials()).toBeNull()
+		expect(secrets.get).toHaveBeenCalledTimes(1)
+		fetchMock.mockResolvedValueOnce(jsonResponse(TOKEN_RESPONSE))
+		await expect(manager.submitCallbackUrl(callbackUrl(state))).resolves.toMatchObject({
+			access_token: "access-token",
+		})
+	})
+
+	it("does not restore invalid credentials when an obsolete refresh write finishes", async () => {
+		const { manager, secrets, storedCredentials } = createManager()
+		await manager.saveCredentials(oldCredentials)
+		const started = deferred<void>()
+		const release = deferred<void>()
+		const originalStore = secrets.store.getMockImplementation()!
+		secrets.store.mockImplementationOnce(async (key, value) => {
+			started.resolve()
+			await release.promise
+			await originalStore(key, value)
+		})
+		fetchMock.mockResolvedValueOnce(jsonResponse(TOKEN_RESPONSE))
+		const obsoleteRefresh = manager.getAccessToken()
+		await started.promise
+		const state = stateFromAuthUrl(manager.startAuthorizationFlow())
+		fetchMock.mockResolvedValueOnce(jsonResponse({ error: "invalid_grant" }, { ok: false }))
+		const invalidRefresh = manager.isAuthenticated()
+		await new Promise((resolve) => setImmediate(resolve))
+		expect(manager.getCredentials()).toBeNull()
+		release.resolve()
+		expect(await obsoleteRefresh).toBeNull()
+		expect(await invalidRefresh).toBe(false)
+		expect(manager.getCredentials()).toBeNull()
+		expect(storedCredentials()).toBeNull()
+		fetchMock.mockResolvedValueOnce(jsonResponse(TOKEN_RESPONSE))
+		await manager.submitCallbackUrl(callbackUrl(state))
+		expect(storedCredentials().access_token).toBe("access-token")
+	})
+
+	it("invalidates the refreshed identity even when storage reloads its credential object", async () => {
+		const { manager, storedCredentials } = createManager()
+		await manager.saveCredentials(oldCredentials)
+		const state = stateFromAuthUrl(manager.startAuthorizationFlow())
+		const response = deferred<Response>()
+		fetchMock.mockReturnValueOnce(response.promise)
+		const refresh = manager.getAccessToken()
+		const reloaded = await manager.loadCredentials()
+		expect(reloaded).toEqual(oldCredentials)
+		expect(reloaded).not.toBe(oldCredentials)
+		response.resolve(jsonResponse({ error: "invalid_grant" }, { ok: false }))
+		expect(await refresh).toBeNull()
+		expect(manager.getCredentials()).toBeNull()
+		expect(storedCredentials()).toBeNull()
+		fetchMock.mockResolvedValueOnce(jsonResponse(TOKEN_RESPONSE))
+		await manager.submitCallbackUrl(callbackUrl(state))
+		expect(storedCredentials().access_token).toBe("access-token")
+	})
+
+	for (const action of ["sign-in", "explicit save"] as const) {
+		it.each(["during", "after"] as const)(
+			`preserves a ${action} when an old refresh fails %s its credential write`,
+			async (timing) => {
+				const { manager, secrets, storedCredentials } = createManager()
+				await manager.saveCredentials(oldCredentials)
+				const started = deferred<void>()
+				const release = deferred<void>()
+				const originalStore = secrets.store.getMockImplementation()!
+				secrets.store.mockImplementationOnce(async (key, value) => {
+					started.resolve()
+					await release.promise
+					await originalStore(key, value)
+				})
+				manager.startAuthorizationFlow()
+				fetchMock.mockResolvedValueOnce(jsonResponse(TOKEN_RESPONSE))
+				const replacement =
+					action === "sign-in"
+						? manager.submitCallbackUrl("new-code")
+						: manager.saveCredentials({ ...oldCredentials, access_token: "access-token" })
+				void replacement.catch(() => undefined)
+				await started.promise
+				const response = deferred<Response>()
+				fetchMock.mockReset().mockReturnValueOnce(response.promise)
+				const refresh = manager.forceRefreshAccessToken()
+				if (timing === "after") {
+					release.resolve()
+					await replacement
+				}
+				response.resolve(jsonResponse({ error: "invalid_grant" }, { ok: false }))
+				await new Promise((resolve) => setImmediate(resolve))
+				release.resolve()
+				await replacement
+				expect(await refresh).toBeNull()
+				expect(secrets.delete).not.toHaveBeenCalled()
+				expect(storedCredentials().access_token).toBe("access-token")
+				expect(manager.getCredentials()).toEqual(storedCredentials())
+			},
+		)
+	}
+
 	it.each(["sign-in", "explicit save"] as const)(
 		"discards refreshes started during a %s credential write",
 		async (action) => {
@@ -379,6 +529,31 @@ describe("OAuth loopback listener", () => {
 		const credentials = await manager.submitCallbackUrl(callbackUrl(state))
 		expect(await waiting).toEqual(credentials)
 	})
+
+	it.each(["isAuthenticated", "forceRefreshAccessToken"] as const)(
+		"preserves a pending sign-in and its waiter when %s starts an invalid refresh",
+		async (method) => {
+			const fixture = createManager()
+			manager = fixture.manager
+			await manager.saveCredentials(oldCredentials)
+			const { state, waiting } = await listen()
+			const response = deferred<Response>()
+			fetchMock.mockReturnValueOnce(response.promise)
+			const refresh = manager[method]()
+			const concurrent = manager.getAccessToken()
+			expect(fetchMock).toHaveBeenCalledTimes(1)
+			response.resolve(jsonResponse({ error: "invalid_grant" }, { ok: false }))
+			expect(await refresh).toBe(method === "isAuthenticated" ? false : null)
+			expect(await concurrent).toBeNull()
+			expect(manager.getCredentials()).toBeNull()
+			expect(fixture.storedCredentials()).toBeNull()
+			expect(server!.listening).toBe(true)
+			fetchMock.mockResolvedValueOnce(jsonResponse(TOKEN_RESPONSE))
+			const credentials = await manager.submitCallbackUrl(callbackUrl(state))
+			expect(await waiting).toEqual(credentials)
+			expect(fixture.storedCredentials()).toEqual(credentials)
+		},
+	)
 
 	it("keeps a valid flow available after a callback exchange failure", async () => {
 		const { state, waiting } = await listen()

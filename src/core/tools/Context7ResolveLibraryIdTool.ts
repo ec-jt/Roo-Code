@@ -1,6 +1,5 @@
 import { type ClineSayTool } from "@roo-code/types"
 import { Task } from "../task/Task"
-import { formatResponse } from "../prompts/responses"
 import { BaseTool, ToolCallbacks } from "./BaseTool"
 import { context7ResolveLibraryId, formatContext7SearchResponse } from "../../services/native-tools/context7"
 import type { ToolUse } from "../../shared/tools"
@@ -27,14 +26,6 @@ export class Context7ResolveLibraryIdTool extends BaseTool<"context7_resolve_lib
 			task.consecutiveMistakeCount++
 			task.recordToolError(this.name)
 			pushToolResult(await task.sayAndCreateMissingParamError(this.name, "query"))
-			return
-		}
-
-		if (!apiKey) {
-			const error = "Context7 API key is not configured in Settings → Experimental → Native Tool Integrations."
-			await task.say("error", error)
-			task.didToolFailInCurrentTurn = true
-			pushToolResult(formatResponse.toolError(error))
 			return
 		}
 
