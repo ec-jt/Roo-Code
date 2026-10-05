@@ -1,5 +1,14 @@
 # Roo Code Changelog
 
+## 4.2.9 - Cordis preview 7
+
+- Prioritize direct implementation and concrete deliverables. Use multiple or nested subtasks only for a genuine need, with existing approval and permission boundaries unchanged.
+- Scope validation to required checks or specific correctness, security, and integration risks. Reuse valid results and avoid repeated broad testing or orchestration loops.
+- Request useful child handoffs: outcome, findings and decisions, key files the parent must check, validation limits, remaining work, and completed work not to repeat.
+- Preserve child completion text in parent history and attach a reminder to inspect critical references and pass relevant context into later delegation briefs. Retain legacy retry deduplication.
+
+GitHub prerelease tag: **v4.2.9-cordis-preview.7**. Cordis runtime preview remains off by default.
+
 ## 4.2.8 - Cordis preview 6
 
 - Allow Context7 library search and documentation retrieval without an API key. Keep optional authentication for higher limits, omit empty authorization headers, and preserve tool approval and disable settings.

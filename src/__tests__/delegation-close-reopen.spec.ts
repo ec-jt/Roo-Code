@@ -1,4 +1,5 @@
 import type { HistoryItem } from "@roo-code/types"
+import { formatSubtaskHandoff } from "../core/task/subtask-handoff"
 
 vi.mock("vscode", () => ({
 	window: {
@@ -127,7 +128,7 @@ describe("delegated child suspension and history resume", () => {
 			{
 				type: "tool_result",
 				tool_use_id: "delegation-1",
-				content: "Subtask child completed.\n\nResult:\nChild summary",
+				content: formatSubtaskHandoff("child", "Child summary"),
 			},
 		])
 	})

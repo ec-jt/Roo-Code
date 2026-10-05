@@ -1,6 +1,7 @@
 // npx vitest run __tests__/history-resume-delegation.spec.ts
 
 import { RooCodeEventName } from "@roo-code/types"
+import { formatSubtaskHandoff } from "../core/task/subtask-handoff"
 
 /* vscode mock for Task/Provider imports */
 vi.mock("vscode", () => {
@@ -173,7 +174,7 @@ describe("automatic delegation return", () => {
 			{
 				type: "tool_result",
 				tool_use_id: "new-task-1",
-				content: "Subtask child completed.\n\nResult:\nChild summary",
+				content: formatSubtaskHandoff("child", "Child summary"),
 			},
 		])
 		expect(f.ui().filter((m) => m.say === "subtask_result")).toHaveLength(1)
@@ -300,8 +301,21 @@ describe("automatic delegation return", () => {
 		expect(f.api()).toHaveLength(2)
 		expect(f.api().at(-1).content[0]).toEqual({
 			type: "text",
-			text: "Subtask child completed.\n\nResult:\nChild summary",
+			text: formatSubtaskHandoff("child", "Child summary"),
 		})
+		expect(f.parent.initiateTaskLoop).toHaveBeenCalledOnce()
+	})
+
+	it("recognizes a plain-text result persisted before structured handoff guidance", async () => {
+		const f = fixture()
+		const legacyResult = "Subtask child completed.\n\nResult:\nChild summary"
+		vi.mocked(readApiMessages).mockResolvedValueOnce([
+			{ role: "user", content: [{ type: "text", text: legacyResult }] },
+		])
+		await f.complete()
+		expect(f.callbacks.handleError).not.toHaveBeenCalled()
+		expect(f.api()).toHaveLength(1)
+		expect(f.api()[0].content[0].text).toBe(legacyResult)
 		expect(f.parent.initiateTaskLoop).toHaveBeenCalledOnce()
 	})
 

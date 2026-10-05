@@ -1,6 +1,13 @@
 import type OpenAI from "openai"
+import {
+	CHILD_HANDOFF_GUIDANCE,
+	EXECUTION_FOCUS_GUIDANCE,
+	PARENT_HANDOFF_GUIDANCE,
+} from "../../../task/subtask-handoff"
 
 const NEW_TASK_DESCRIPTION = `Create a new task instance in the chosen mode using your provided message and initial todo list (if required).
+
+${EXECUTION_FOCUS_GUIDANCE}
 
 At the root (depth 0), you may delegate substantial, separable work to a child (depth 1). Execute small tasks directly. Children execute their assignment directly, without further delegation by default. An exceptional deeper request requires a concrete reason and explicit per-action human approval unless nested-subtask auto approval is explicitly enabled. Ordinary subtask or all-actions auto approval alone does not permit deeper auto approval. Each additional level is checked separately, including mandatory approval fences. Never delegate to evade restrictions or gain wider tool/file capabilities. If blocked or denied, finish in the current task or report the limitation to the parent.
 
@@ -12,6 +19,12 @@ Root delegation can be useful for:
 - Work that would otherwise consume most of this conversation's remaining context.
 
 Write the subtask a self-contained brief: the goal, the constraints, relevant paths, clear file ownership to avoid conflicting edits, and exactly what it should return, including changes and test results for implementation work. The subtask starts with no memory of this conversation, so include everything it needs. Record the delegation in the todo list, and keep only the subtask's result here rather than its intermediate output.
+
+State existing findings, completed checks, and the minimum necessary additional validation in each brief so the child does not repeat work or expand into a general audit.
+
+Require a useful return handoff in the brief. ${CHILD_HANDOFF_GUIDANCE}
+
+${PARENT_HANDOFF_GUIDANCE}
 
 CRITICAL: This tool MUST be called alone. Do NOT call this tool alongside other tools in the same message turn. If you need to gather information before delegating, use other tools in a separate turn first, then call new_task by itself in the next turn.`
 

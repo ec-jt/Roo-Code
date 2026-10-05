@@ -82,6 +82,7 @@ import { ContextProxy } from "../config/ContextProxy"
 import { ProviderSettingsManager } from "../config/ProviderSettingsManager"
 import { CustomModesManager } from "../config/CustomModesManager"
 import { Task } from "../task/Task"
+import { formatSubtaskHandoff } from "../task/subtask-handoff"
 import { ModelOperationCoordinator, ModelOperationBlocked } from "../task/model-operation/coordinator"
 import { authorizeDelegation, DelegationPolicyError, type DelegationRequest } from "../task/delegation-policy"
 import type { RequestSnapshot } from "../task/model-operation/storage"
@@ -3308,6 +3309,7 @@ export class ClineProvider
 		this.delegationReturnInProgress = true
 		try {
 			const { parentTaskId, childTaskId, childInstanceId, completionResultSummary } = params
+			const parentHandoff = formatSubtaskHandoff(childTaskId, completionResultSummary)
 			const child = this.getCurrentTask()
 			const revision = this.delegationRevision
 			const assertCurrent = () => {
@@ -3400,7 +3402,7 @@ export class ClineProvider
 					for (const block of lastMsg.content) {
 						if (block.type === "tool_result" && block.tool_use_id === toolUseId) {
 							// Update the existing tool_result content
-							block.content = `Subtask ${childTaskId} completed.\n\nResult:\n${completionResultSummary}`
+							block.content = parentHandoff
 							alreadyHasToolResult = true
 							break
 						}
@@ -3415,7 +3417,7 @@ export class ClineProvider
 							{
 								type: "tool_result" as const,
 								tool_use_id: toolUseId,
-								content: `Subtask ${childTaskId} completed.\n\nResult:\n${completionResultSummary}`,
+								content: parentHandoff,
 							},
 						],
 						ts,
@@ -3436,7 +3438,8 @@ export class ClineProvider
 				!(parentApiMessages.at(-1)!.content as Anthropic.Messages.ContentBlockParam[]).some(
 					(block) =>
 						block.type === "text" &&
-						block.text === `Subtask ${childTaskId} completed.\n\nResult:\n${completionResultSummary}`,
+						(block.text === parentHandoff ||
+							block.text === `Subtask ${childTaskId} completed.\n\nResult:\n${completionResultSummary}`),
 				)
 			) {
 				// If there is no corresponding tool_use in the parent API history, we cannot emit a
@@ -3446,7 +3449,7 @@ export class ClineProvider
 					content: [
 						{
 							type: "text" as const,
-							text: `Subtask ${childTaskId} completed.\n\nResult:\n${completionResultSummary}`,
+							text: parentHandoff,
 						},
 					],
 					ts,
