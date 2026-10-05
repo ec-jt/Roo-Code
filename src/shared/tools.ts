@@ -162,6 +162,8 @@ export interface ToolUse<TName extends ToolName = ToolName> {
 	// params is a partial record, allowing only some or none of the possible parameters to be used
 	params: Partial<Record<ToolParamName, string>>
 	partial: boolean
+	/** Final argument validation failure. This block must never execute, even if nativeArgs is present. */
+	argumentError?: string
 	// nativeArgs is properly typed based on TName if it's in NativeToolArgs, otherwise never
 	nativeArgs?: TName extends keyof NativeToolArgs ? NativeToolArgs[TName] : never
 	/**

@@ -119,7 +119,11 @@ export async function presentAssistantMessage(cline: Task) {
 				cline.presentAssistantMessageLocked = false
 				return
 			}
-			if (!cline.didRejectTool && (typeof block.id === "string" || block.type === "mcp_tool_use")) {
+			if (
+				!cline.didRejectTool &&
+				!(block.type === "tool_use" && block.argumentError !== undefined) &&
+				(typeof block.id === "string" || block.type === "mcp_tool_use")
+			) {
 				// Capability denial precedes even mandatory model-operation approval.
 				// Keep malformed/no-id calls on their existing diagnostic path.
 				const decision = block.id ? await cline.checkToolInvocation(block) : { allow: true as const }
@@ -456,41 +460,66 @@ export async function presentAssistantMessage(cline: Task) {
 					// Track if we've already pushed a tool result for this tool call (native tool calling only)
 					let hasToolResult = false
 
-					// If this is a native tool call but the parser couldn't construct nativeArgs
-					// (e.g., malformed/unfinished JSON in a streaming tool call), we must NOT attempt to
-					// execute the tool. Instead, emit exactly one structured tool_result so the provider
-					// receives a matching tool_result for the tool_use_id.
-					//
-					// This avoids executing an invalid tool_use block and prevents duplicate/fragmented
-					// error reporting.
-					if (!block.partial) {
-						const customTool = stateExperiments?.customTools
-							? customToolRegistry.get(block.name)
+					const customTool = stateExperiments?.customTools ? customToolRegistry.get(block.name) : undefined
+					const isKnownTool = isValidToolName(String(block.name), stateExperiments)
+					const argumentError =
+						block.argumentError !== undefined
+							? block.argumentError
+							: isKnownTool && !block.nativeArgs && !customTool
+								? "Missing nativeArgs: the arguments were invalid or incomplete and could not be finalized."
+								: undefined
+					const malformedMessage =
+						argumentError !== undefined
+							? `Invalid tool call for '${block.name}': ${argumentError} ` +
+								"No tool was executed. Check the tool schema and resend one complete JSON object with the required fields and correct types. Do not repeat the unchanged invalid call."
 							: undefined
-						const isKnownTool = isValidToolName(String(block.name), stateExperiments)
-						if (isKnownTool && !block.nativeArgs && !customTool) {
-							const errorMessage =
-								`Invalid tool call for '${block.name}': missing nativeArgs. ` +
-								`This usually means the model streamed invalid or incomplete arguments and the call could not be finalized.`
-
-							cline.consecutiveMistakeCount++
-							try {
-								cline.recordToolError(block.name as ToolName, errorMessage)
-							} catch {
-								// Best-effort only
-							}
-
-							// Push tool_result directly without setting didAlreadyUseTool so streaming can
-							// continue gracefully.
-							cline.pushToolResultToUserContent({
-								type: "tool_result",
-								tool_use_id: sanitizeToolUseId(toolCallId),
-								content: formatResponse.toolError(errorMessage),
-								is_error: true,
-							})
-
-							break
+					if (malformedMessage) {
+						cline.didToolFailInCurrentTurn = true
+						cline.consecutiveMistakeCount++
+						try {
+							cline.recordToolError(block.name as ToolName, malformedMessage)
+						} catch {
+							// Diagnostics must not prevent the required tool_result.
 						}
+					}
+
+					// Check malformed calls too. The detector owns limit semantics, including 0 meaning unlimited.
+					const repetitionCheck = cline.toolRepetitionDetector.check(block)
+					if (!repetitionCheck.allowExecution) {
+						if (repetitionCheck.askUser) {
+							const { response, text, images } = await cline.ask(
+								repetitionCheck.askUser.messageKey as ClineAsk,
+								repetitionCheck.askUser.messageDetail.replace("{toolName}", block.name),
+							)
+							// Guidance already handled these mistakes. Do not prompt again for the same failures.
+							if (malformedMessage) cline.consecutiveMistakeCount = 0
+							if (response === "messageResponse") {
+								cline.userMessageContent.push(
+									{ type: "text", text: `Tool repetition limit reached. User feedback: ${text}` },
+									...formatResponse.imageBlocks(images),
+								)
+								await cline.say("user_feedback", text, images)
+							}
+						}
+						cline.pushToolResultToUserContent({
+							type: "tool_result",
+							tool_use_id: sanitizeToolUseId(toolCallId),
+							content: formatResponse.toolError(
+								`${malformedMessage ? malformedMessage + " " : ""}Tool call repetition limit reached for ${block.name}. Please try a different approach.`,
+							),
+							is_error: true,
+						})
+						break
+					}
+
+					if (malformedMessage) {
+						cline.pushToolResultToUserContent({
+							type: "tool_result",
+							tool_use_id: sanitizeToolUseId(toolCallId),
+							content: formatResponse.toolError(malformedMessage),
+							is_error: true,
+						})
+						break
 					}
 
 					// Store approval feedback to merge into tool result (GitHub #10465)
@@ -652,44 +681,6 @@ export async function presentAssistantMessage(cline: Task) {
 								is_error: true,
 							})
 
-							break
-						}
-					}
-
-					// Check for identical consecutive tool calls.
-					if (!block.partial) {
-						// Use the detector to check for repetition, passing the ToolUse
-						// block directly.
-						const repetitionCheck = cline.toolRepetitionDetector.check(block)
-
-						// If execution is not allowed, notify user and break.
-						if (!repetitionCheck.allowExecution && repetitionCheck.askUser) {
-							// Handle repetition similar to mistake_limit_reached pattern.
-							const { response, text, images } = await cline.ask(
-								repetitionCheck.askUser.messageKey as ClineAsk,
-								repetitionCheck.askUser.messageDetail.replace("{toolName}", block.name),
-							)
-
-							if (response === "messageResponse") {
-								// Add user feedback to userContent.
-								cline.userMessageContent.push(
-									{
-										type: "text" as const,
-										text: `Tool repetition limit reached. User feedback: ${text}`,
-									},
-									...formatResponse.imageBlocks(images),
-								)
-
-								// Add user feedback to chat.
-								await cline.say("user_feedback", text, images)
-							}
-
-							// Return tool result message about the repetition
-							pushToolResult(
-								formatResponse.toolError(
-									`Tool call repetition limit reached for ${block.name}. Please try a different approach.`,
-								),
-							)
 							break
 						}
 					}

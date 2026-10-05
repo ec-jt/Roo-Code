@@ -114,6 +114,7 @@ import { RooIgnoreController } from "../ignore/RooIgnoreController"
 import { RooProtectedController } from "../protect/RooProtectedController"
 import { type AssistantMessageContent, presentAssistantMessage } from "../assistant-message"
 import { NativeToolCallParser } from "../assistant-message/NativeToolCallParser"
+import { finalizeNativeToolCall } from "./finalizeNativeToolCall"
 import { manageContext, willManageContext } from "../context-management"
 import { mediateModelHandler } from "../../api/mediated-handler"
 import { ModelDispatchControl, type ModelDispatchRuntime } from "../../api/dispatch-admission"
@@ -3683,6 +3684,18 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 								}
 								break
 							case "tool_call_partial": {
+								if (
+									chunk.id &&
+									this.assistantMessageContent.some(
+										(block) =>
+											(block.type === "tool_use" || block.type === "mcp_tool_use") &&
+											block.id === chunk.id &&
+											!block.partial,
+									)
+								) {
+									break
+								}
+
 								// Process raw tool call chunk through NativeToolCallParser
 								// which handles tracking, buffering, and emits events
 								const events = NativeToolCallParser.processRawChunk({
@@ -3765,47 +3778,14 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 											}
 										}
 									} else if (event.type === "tool_call_end") {
-										// Finalize the streaming tool call
-										const finalToolUse = NativeToolCallParser.finalizeStreamingToolCall(event.id)
-
-										// Get the index for this tool call
-										const toolUseIndex = this.streamingToolCallIndices.get(event.id)
-
-										if (finalToolUse) {
-											// Store the tool call ID
-											;(finalToolUse as any).id = event.id
-
-											// Get the index and replace partial with final
-											if (toolUseIndex !== undefined) {
-												this.assistantMessageContent[toolUseIndex] = finalToolUse
-											}
-
-											// Clean up tracking
-											this.streamingToolCallIndices.delete(event.id)
-
-											// Mark that we have new content to process
+										if (
+											finalizeNativeToolCall(
+												this.assistantMessageContent,
+												this.streamingToolCallIndices,
+												event.id,
+											)
+										) {
 											this.userMessageContentReady = false
-
-											// Present the finalized tool call
-											presentAssistantMessage(this)
-										} else if (toolUseIndex !== undefined) {
-											// finalizeStreamingToolCall returned null (malformed JSON or missing args)
-											// Mark the tool as non-partial so it's presented as complete, but execution
-											// will be short-circuited in presentAssistantMessage with a structured tool_result.
-											const existingToolUse = this.assistantMessageContent[toolUseIndex]
-											if (existingToolUse && existingToolUse.type === "tool_use") {
-												existingToolUse.partial = false
-												// Ensure it has the ID for native protocol
-												;(existingToolUse as any).id = event.id
-											}
-
-											// Clean up tracking
-											this.streamingToolCallIndices.delete(event.id)
-
-											// Mark that we have new content to process
-											this.userMessageContentReady = false
-
-											// Present the tool call - validation will handle missing params
 											presentAssistantMessage(this)
 										}
 									}
@@ -3814,32 +3794,17 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 							}
 
 							case "tool_call": {
-								// Legacy: Handle complete tool calls (for backward compatibility)
-								// Convert native tool call to ToolUse format
-								const toolUse = NativeToolCallParser.parseToolCall({
-									id: chunk.id,
-									name: chunk.name as ToolName,
-									arguments: chunk.arguments,
-								})
-
-								if (!toolUse) {
-									console.error(`Failed to parse tool call for task ${this.taskId}:`, chunk)
-									break
+								if (
+									finalizeNativeToolCall(
+										this.assistantMessageContent,
+										this.streamingToolCallIndices,
+										chunk.id,
+										chunk,
+									)
+								) {
+									this.userMessageContentReady = false
+									presentAssistantMessage(this)
 								}
-
-								// Store the tool call ID on the ToolUse object for later reference
-								// This is needed to create tool_result blocks that reference the correct tool_use_id
-								toolUse.id = chunk.id
-
-								// Add the tool use to assistant message content
-								this.assistantMessageContent.push(toolUse)
-
-								// Mark that we have new content to process
-								this.userMessageContentReady = false
-
-								// Present the tool call to user - presentAssistantMessage will execute
-								// tools sequentially and accumulate all results in userMessageContent
-								presentAssistantMessage(this)
 								break
 							}
 							case "text": {
@@ -4134,57 +4099,24 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 					assistantMessageContent: summarizeAssistantBlocks(this.assistantMessageContent),
 				})
 				for (const event of finalizeEvents) {
-					if (event.type === "tool_call_end") {
-						// Finalize the streaming tool call
-						const finalToolUse = NativeToolCallParser.finalizeStreamingToolCall(event.id)
-
-						// Get the index for this tool call
-						const toolUseIndex = this.streamingToolCallIndices.get(event.id)
-
-						if (finalToolUse) {
-							// Store the tool call ID
-							;(finalToolUse as any).id = event.id
-
-							// Get the index and replace partial with final
-							if (toolUseIndex !== undefined) {
-								this.assistantMessageContent[toolUseIndex] = finalToolUse
-							}
-
-							// Clean up tracking
-							this.streamingToolCallIndices.delete(event.id)
-
-							// Mark that we have new content to process
-							this.userMessageContentReady = false
-
-							// Present the finalized tool call
-							presentAssistantMessage(this)
-						} else if (toolUseIndex !== undefined) {
-							// finalizeStreamingToolCall returned null (malformed JSON or missing args)
-							// We still need to mark the tool as non-partial so it gets executed
-							// The tool's validation will catch any missing required parameters
-							const existingToolUse = this.assistantMessageContent[toolUseIndex]
-							if (existingToolUse && existingToolUse.type === "tool_use") {
-								existingToolUse.partial = false
-								// Ensure it has the ID for native protocol
-								;(existingToolUse as any).id = event.id
-							}
-
-							// Clean up tracking
-							this.streamingToolCallIndices.delete(event.id)
-
-							// Mark that we have new content to process
-							this.userMessageContentReady = false
-
-							// Present the tool call - validation will handle missing params
-							presentAssistantMessage(this)
-						}
+					if (
+						event.type === "tool_call_end" &&
+						finalizeNativeToolCall(this.assistantMessageContent, this.streamingToolCallIndices, event.id)
+					) {
+						this.userMessageContentReady = false
+						presentAssistantMessage(this)
 					}
 				}
 
-				// IMPORTANT: Capture partialBlocks AFTER finalizeRawChunks() to avoid double-presentation.
-				// Tools finalized above are already presented, so we only want blocks still partial after finalization.
+				// Remaining tool partials must fail closed, never execute partial nativeArgs.
 				const partialBlocks = this.assistantMessageContent.filter((block) => block.partial)
-				partialBlocks.forEach((block) => (block.partial = false))
+				for (const block of partialBlocks) {
+					if (block.type === "tool_use" && block.id) {
+						finalizeNativeToolCall(this.assistantMessageContent, this.streamingToolCallIndices, block.id)
+					} else {
+						block.partial = false
+					}
+				}
 
 				// Can't just do this b/c a tool could be in the middle of executing.
 				// this.assistantMessageContent.forEach((e) => (e.partial = false))
