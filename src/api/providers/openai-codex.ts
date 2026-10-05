@@ -29,6 +29,9 @@ import { configureApiRequestTimeout } from "./utils/sdk-timeout"
 
 export type OpenAiCodexModel = ReturnType<OpenAiCodexHandler["getModel"]>
 
+// Only local SDK capability checks may trigger a new request through the SSE fallback.
+class CodexSdkCompatibilityError extends Error {}
+
 interface CodexToolCallState {
 	callId?: string
 	itemId?: string
@@ -193,15 +196,19 @@ export class OpenAiCodexHandler extends BaseProvider implements SingleCompletion
 		const requestBody = this.buildRequestBody(model, formattedInput, systemPrompt, reasoningEffort, metadata)
 
 		// Make the request with retry on auth failure
+		let hasEmittedOutput = false
 		for (let attempt = 0; attempt < 2; attempt++) {
 			try {
-				yield* this.executeRequest(requestBody, model, accessToken, metadata?.taskId)
+				for await (const chunk of this.executeRequest(requestBody, model, accessToken, metadata?.taskId)) {
+					hasEmittedOutput = true
+					yield chunk
+				}
 				return
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error)
 				const isAuthFailure = /unauthorized|invalid token|not authenticated|authentication|401/i.test(message)
 
-				if (attempt === 0 && isAuthFailure) {
+				if (attempt === 0 && isAuthFailure && !hasEmittedOutput) {
 					// Force refresh the token for retry
 					const refreshed = await openAiCodexOAuthManager.forceRefreshAccessToken()
 					if (!refreshed) {
@@ -355,6 +362,7 @@ export class OpenAiCodexHandler extends BaseProvider implements SingleCompletion
 	): ApiStream {
 		// Create AbortController for cancellation
 		this.abortController = new AbortController()
+		let hasEmittedOutput = false
 
 		try {
 			// Prefer OpenAI SDK streaming (same approach as openai-native) so event handling
@@ -387,6 +395,10 @@ export class OpenAiCodexHandler extends BaseProvider implements SingleCompletion
 						}),
 					)
 
+				if (typeof client.responses?.create !== "function") {
+					throw new CodexSdkCompatibilityError("OpenAI SDK does not support Responses API streaming.")
+				}
+
 				const stream = (await (client as any).responses.create(requestBody, {
 					signal: this.abortController.signal,
 					// If the SDK supports per-request overrides, ensure headers are present.
@@ -394,7 +406,7 @@ export class OpenAiCodexHandler extends BaseProvider implements SingleCompletion
 				})) as AsyncIterable<any>
 
 				if (typeof (stream as any)?.[Symbol.asyncIterator] !== "function") {
-					throw new Error(
+					throw new CodexSdkCompatibilityError(
 						"OpenAI SDK did not return an AsyncIterable for Responses API streaming. Falling back to SSE.",
 					)
 				}
@@ -405,14 +417,23 @@ export class OpenAiCodexHandler extends BaseProvider implements SingleCompletion
 					}
 
 					for await (const outChunk of this.processEvent(event, model)) {
+						hasEmittedOutput = true
 						if (outChunk.type === "text") {
 							this.sawTextOutputInCurrentResponse = true
 						}
 						yield outChunk
 					}
 				}
-			} catch (_sdkErr) {
-				// Fallback to manual SSE via fetch (Codex backend).
+			} catch (sdkErr) {
+				// Never replay failed requests or combine output from separate generations.
+				if (
+					!(sdkErr instanceof CodexSdkCompatibilityError) ||
+					hasEmittedOutput ||
+					this.abortController.signal.aborted
+				) {
+					throw sdkErr
+				}
+				// Fallback only when the SDK lacks the required streaming interface.
 				yield* this.makeCodexRequest(requestBody, model, accessToken, taskId)
 			}
 		} finally {

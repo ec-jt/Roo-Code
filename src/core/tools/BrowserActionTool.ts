@@ -1,4 +1,5 @@
 import { Anthropic } from "@anthropic-ai/sdk"
+import * as path from "path"
 
 import { BrowserAction, BrowserActionResult, browserActions, ClineSayBrowserAction } from "@roo-code/types"
 
@@ -7,6 +8,10 @@ import { ToolUse, AskApproval, HandleError, PushToolResult } from "../../shared/
 import { formatResponse } from "../prompts/responses"
 
 import { scaleCoordinate } from "../../shared/browserUtils"
+import { defaultModeSlug } from "../../shared/modes"
+import { validateToolUse } from "./validateToolUse"
+import { validateScreenshotPath } from "../../services/browser/screenshotPath"
+import { fileExistsAtPath } from "../../utils/fs"
 
 export async function browserActionTool(
 	cline: Task,
@@ -21,6 +26,22 @@ export async function browserActionTool(
 	const text: string | undefined = block.params.text
 	const size: string | undefined = block.params.size
 	const filePath: string | undefined = block.params.path
+	let approvedProtectedWrite = false
+	const validateScreenshotAccess = async () => {
+		const relativePath = path.relative(cline.cwd, path.resolve(cline.cwd, filePath!))
+		if (!cline.rooIgnoreController?.validateAccess(relativePath)) {
+			throw new Error(formatResponse.rooIgnoreError(relativePath))
+		}
+		const state = await cline.providerRef.deref()?.getState()
+		if (!state) throw new Error("Cannot validate screenshot write permissions: task settings are unavailable.")
+		validateToolUse(
+			"write_to_file",
+			state.mode ?? defaultModeSlug,
+			state.customModes ?? [],
+			Object.fromEntries((state.disabledTools ?? []).map((tool) => [tool, false])),
+			{ path: relativePath, content: "Browser screenshot" },
+		)
+	}
 
 	if (!action || !browserActions.includes(action)) {
 		// checking for action to ensure it is complete and valid
@@ -162,6 +183,27 @@ export async function browserActionTool(
 						// Do not close the browser on parameter validation errors
 						return
 					}
+					await validateScreenshotAccess()
+					const destination = await validateScreenshotPath(filePath, cline.cwd)
+					const relativePath = path.relative(cline.cwd, path.resolve(cline.cwd, filePath))
+					const isProtected = cline.rooProtectedController?.isWriteProtected(relativePath) ?? false
+					if (
+						!(await askApproval(
+							"tool",
+							JSON.stringify({
+								tool: (await fileExistsAtPath(destination)) ? "editedExistingFile" : "newFileCreated",
+								path: relativePath,
+								content: "Save browser screenshot (overwrites an existing file at this path).",
+								isOutsideWorkspace: false,
+								isProtected,
+							}),
+							undefined,
+							isProtected,
+						))
+					)
+						return
+					approvedProtectedWrite = isProtected
+					await validateScreenshotAccess()
 				}
 
 				cline.consecutiveMistakeCount = 0
@@ -208,7 +250,23 @@ export async function browserActionTool(
 						browserActionResult = await cline.browserSession.resize(size!)
 						break
 					case "screenshot":
-						browserActionResult = await cline.browserSession.saveScreenshot(filePath!, cline.cwd)
+						browserActionResult = await cline.browserSession.saveScreenshot(
+							filePath!,
+							cline.cwd,
+							async () => {
+								await validateScreenshotAccess()
+								const relativePath = path.relative(cline.cwd, path.resolve(cline.cwd, filePath!))
+								if (
+									!approvedProtectedWrite &&
+									cline.rooProtectedController?.isWriteProtected(relativePath)
+								) {
+									throw new Error(
+										"Screenshot destination became write-protected. Request approval again.",
+									)
+								}
+							},
+						)
+						cline.didEditFile = true
 						break
 					case "capture_full_page":
 						browserActionResult = await cline.browserSession.captureFullPage(

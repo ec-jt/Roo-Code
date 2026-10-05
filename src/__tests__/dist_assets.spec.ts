@@ -6,6 +6,11 @@ import * as path from "path"
 describe("dist assets", () => {
 	const distPath = path.join(__dirname, "../dist")
 
+	it("does not copy local environment files during the extension build", () => {
+		const buildScript = fs.readFileSync(path.join(__dirname, "../esbuild.mjs"), "utf8")
+		expect(buildScript).not.toMatch(/\[\s*["']\.\.\/\.env/)
+	})
+
 	describe("tiktoken", () => {
 		it("should have tiktoken wasm file", () => {
 			expect(fs.existsSync(path.join(distPath, "tiktoken_bg.wasm"))).toBe(true)

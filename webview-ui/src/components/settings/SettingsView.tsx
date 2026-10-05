@@ -171,6 +171,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 		browserToolEnabled,
 		browserViewportSize,
 		browserHeaded,
+		browserLocalBrowser,
 		enableCheckpoints,
 		checkpointTimeout,
 		experiments,
@@ -485,6 +486,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 					checkpointTimeout: checkpointTimeout ?? DEFAULT_CHECKPOINT_TIMEOUT_SECONDS,
 					browserViewportSize: browserViewportSize ?? "900x600",
 					browserHeaded: browserHeaded ?? false,
+					browserLocalBrowser: browserLocalBrowser ?? "chromium",
 					remoteBrowserHost: remoteBrowserEnabled ? remoteBrowserHost : undefined,
 					remoteBrowserEnabled: remoteBrowserEnabled ?? false,
 					writeDelayMs,
@@ -925,6 +927,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 								browserToolEnabled={browserToolEnabled}
 								browserViewportSize={browserViewportSize}
 								browserHeaded={browserHeaded}
+								browserLocalBrowser={browserLocalBrowser}
 								screenshotQuality={screenshotQuality}
 								remoteBrowserHost={remoteBrowserHost}
 								remoteBrowserEnabled={remoteBrowserEnabled}

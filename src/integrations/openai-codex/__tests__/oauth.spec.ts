@@ -1,6 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
+import * as http from "http"
+import { once } from "events"
+import type { AddressInfo } from "net"
+import nock from "nock"
 
-import { generateCodeVerifier, OpenAiCodexOAuthManager, parseCallbackInput } from "../oauth"
+import { OpenAiCodexOAuthManager, parseCallbackInput, type OpenAiCodexCredentials } from "../oauth"
 
 const TOKEN_RESPONSE = {
 	access_token: "access-token",
@@ -10,21 +13,44 @@ const TOKEN_RESPONSE = {
 	token_type: "Bearer",
 }
 
-const callbackUrl = (state: string, code = "abc123") => `http://localhost:1455/auth/callback?code=${code}&state=${state}`
+const callbackUrl = (state: string, code = "abc123") =>
+	`http://localhost:1455/auth/callback?code=${code}&state=${state}`
 
 const stateFromAuthUrl = (authUrl: string): string => new URL(authUrl).searchParams.get("state") ?? ""
 
+const deferred = <T>() => {
+	let resolve!: (value: T) => void
+	let reject!: (error: unknown) => void
+	const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+		resolve = resolvePromise
+		reject = rejectPromise
+	})
+	return { promise, resolve, reject }
+}
+
+const oldCredentials: OpenAiCodexCredentials = {
+	type: "openai-codex",
+	access_token: "old-access",
+	refresh_token: "old-refresh",
+	expires: 0,
+}
+
 const createManager = () => {
+	let stored: string | undefined
 	const secrets = {
-		get: vi.fn().mockResolvedValue(undefined),
-		store: vi.fn().mockResolvedValue(undefined),
-		delete: vi.fn().mockResolvedValue(undefined),
+		get: vi.fn(async () => stored),
+		store: vi.fn(async (_key: string, value: string) => {
+			stored = value
+		}),
+		delete: vi.fn(async () => {
+			stored = undefined
+		}),
 	}
 
 	const manager = new OpenAiCodexOAuthManager()
 	manager.initialize({ secrets } as never)
 
-	return { manager, secrets }
+	return { manager, secrets, storedCredentials: () => (stored ? JSON.parse(stored) : null) }
 }
 
 const jsonResponse = (body: unknown, init: { ok?: boolean; status?: number } = {}) => {
@@ -40,6 +66,423 @@ const jsonResponse = (body: unknown, init: { ok?: boolean; status?: number } = {
 }
 
 const fetchMock = vi.fn()
+
+describe("OAuth lifecycle races", () => {
+	beforeEach(() => {
+		fetchMock.mockReset()
+		vi.stubGlobal("fetch", fetchMock)
+	})
+
+	afterEach(() => vi.unstubAllGlobals())
+
+	for (const method of ["getAccessToken", "forceRefreshAccessToken"] as const) {
+		it.each(["signout", "cancel", "replacement"] as const)(`discards ${method} after %s`, async (action) => {
+			const { manager, secrets, storedCredentials } = createManager()
+			await manager.saveCredentials(oldCredentials)
+			secrets.store.mockClear()
+			const response = deferred<Response>()
+			fetchMock.mockReturnValueOnce(response.promise)
+			const refresh = manager[method]()
+			if (action === "signout") await manager.clearCredentials()
+			else if (action === "cancel") manager.cancelAuthorizationFlow()
+			else manager.startAuthorizationFlow()
+			response.resolve(jsonResponse(TOKEN_RESPONSE))
+			expect(await refresh).toBeNull()
+			expect(secrets.store).not.toHaveBeenCalled()
+			expect(storedCredentials()).toEqual(action === "signout" ? null : oldCredentials)
+			expect(manager.getCredentials()).toEqual(action === "signout" ? null : oldCredentials)
+			manager.cancelAuthorizationFlow()
+		})
+	}
+
+	it.each(["signout", "cancel", "replacement"] as const)("discards a manual exchange after %s", async (action) => {
+		const { manager, secrets, storedCredentials } = createManager()
+		const state = stateFromAuthUrl(manager.startAuthorizationFlow())
+		const response = deferred<Response>()
+		fetchMock.mockReturnValueOnce(response.promise)
+		const exchange = manager.submitCallbackUrl(callbackUrl(state))
+		const rejected = expect(exchange).rejects.toThrow(/cancelled/)
+		if (action === "signout") await manager.clearCredentials()
+		else if (action === "cancel") manager.cancelAuthorizationFlow()
+		else manager.startAuthorizationFlow()
+		response.resolve(jsonResponse(TOKEN_RESPONSE))
+		await rejected
+		expect(secrets.store).not.toHaveBeenCalled()
+		expect(storedCredentials()).toBeNull()
+		expect(manager.getCredentials()).toBeNull()
+		if (action === "replacement") {
+			fetchMock.mockResolvedValueOnce(jsonResponse(TOKEN_RESPONSE))
+			await expect(manager.submitCallbackUrl("new-code")).resolves.toMatchObject({ access_token: "access-token" })
+		}
+	})
+
+	it("does not let an obsolete invalid-grant failure delete a newer account", async () => {
+		const { manager, secrets, storedCredentials } = createManager()
+		await manager.saveCredentials(oldCredentials)
+		const response = deferred<Response>()
+		fetchMock.mockReturnValueOnce(response.promise)
+		const refresh = manager.getAccessToken()
+		manager.startAuthorizationFlow()
+		fetchMock.mockResolvedValueOnce(jsonResponse(TOKEN_RESPONSE))
+		await manager.submitCallbackUrl("new-code")
+		response.resolve(jsonResponse({ error: "invalid_grant" }, { ok: false }))
+		expect(await refresh).toBeNull()
+		expect(secrets.delete).not.toHaveBeenCalled()
+		expect(storedCredentials().access_token).toBe("access-token")
+	})
+
+	it("keeps a newer refresh deduplicated when an obsolete refresh completes", async () => {
+		const { manager, secrets } = createManager()
+		await manager.saveCredentials(oldCredentials)
+		secrets.store.mockClear()
+		const oldResponse = deferred<Response>()
+		const newResponse = deferred<Response>()
+		fetchMock.mockReturnValueOnce(oldResponse.promise).mockReturnValueOnce(newResponse.promise)
+		const oldRefresh = manager.getAccessToken()
+		manager.cancelAuthorizationFlow()
+		const newRefresh = manager.forceRefreshAccessToken()
+		oldResponse.resolve(jsonResponse(TOKEN_RESPONSE))
+		expect(await oldRefresh).toBeNull()
+		const concurrent = manager.getAccessToken()
+		expect(fetchMock).toHaveBeenCalledTimes(2)
+		newResponse.resolve(jsonResponse(TOKEN_RESPONSE))
+		expect(await newRefresh).toBe("access-token")
+		expect(await concurrent).toBe("access-token")
+		expect(secrets.store).toHaveBeenCalledTimes(1)
+	})
+
+	it.each(["signout", "cancel", "replacement"] as const)("orders an in-flight store before %s", async (action) => {
+		const { manager, secrets, storedCredentials } = createManager()
+		await manager.saveCredentials(oldCredentials)
+		const storeStarted = deferred<void>()
+		const storeRelease = deferred<void>()
+		const originalStore = secrets.store.getMockImplementation()!
+		secrets.store.mockImplementationOnce(async (key, value) => {
+			storeStarted.resolve()
+			await storeRelease.promise
+			await originalStore(key, value)
+		})
+		manager.startAuthorizationFlow()
+		fetchMock.mockResolvedValue(jsonResponse(TOKEN_RESPONSE))
+		const exchange = manager.submitCallbackUrl("old-code")
+		const rejected = expect(exchange).rejects.toThrow(/cancelled/)
+		await storeStarted.promise
+		let next: Promise<unknown> | undefined
+		if (action === "signout") next = manager.clearCredentials()
+		else if (action === "cancel") manager.cancelAuthorizationFlow()
+		else {
+			manager.startAuthorizationFlow()
+			fetchMock.mockResolvedValueOnce(jsonResponse({ ...TOKEN_RESPONSE, access_token: "replacement" }))
+			next = manager.submitCallbackUrl("new-code")
+		}
+		expect(secrets.delete).not.toHaveBeenCalled()
+		storeRelease.resolve()
+		await rejected
+		await next
+		expect(storedCredentials()).toEqual(manager.getCredentials())
+		if (action === "signout") expect(storedCredentials()).toBeNull()
+		else expect(storedCredentials().access_token).toBe(action === "cancel" ? "old-access" : "replacement")
+	})
+
+	it("orders a newer sign-in after a deferred sign-out deletion", async () => {
+		const { manager, secrets, storedCredentials } = createManager()
+		await manager.saveCredentials(oldCredentials)
+		const started = deferred<void>()
+		const release = deferred<void>()
+		const originalDelete = secrets.delete.getMockImplementation()!
+		secrets.delete.mockImplementationOnce(async () => {
+			started.resolve()
+			await release.promise
+			await originalDelete()
+		})
+		const signout = manager.clearCredentials()
+		await started.promise
+		manager.startAuthorizationFlow()
+		fetchMock.mockResolvedValueOnce(jsonResponse(TOKEN_RESPONSE))
+		const exchange = manager.submitCallbackUrl("new-code")
+		release.resolve()
+		await signout
+		await exchange
+		expect(storedCredentials().access_token).toBe("access-token")
+		expect(manager.getCredentials()).toEqual(storedCredentials())
+	})
+
+	it.each(["sign-in", "explicit save"] as const)(
+		"discards refreshes started during a %s credential write",
+		async (action) => {
+			const { manager, secrets, storedCredentials } = createManager()
+			await manager.saveCredentials(oldCredentials)
+			const started = deferred<void>()
+			const release = deferred<void>()
+			const originalStore = secrets.store.getMockImplementation()!
+			secrets.store.mockImplementationOnce(async (key, value) => {
+				started.resolve()
+				await release.promise
+				await originalStore(key, value)
+			})
+			manager.startAuthorizationFlow()
+			fetchMock.mockResolvedValueOnce(jsonResponse(TOKEN_RESPONSE))
+			const replacement =
+				action === "sign-in"
+					? manager.submitCallbackUrl("new-code")
+					: manager.saveCredentials({ ...oldCredentials, access_token: "access-token" })
+			await started.promise
+			const response = deferred<Response>()
+			fetchMock.mockReset().mockReturnValueOnce(response.promise)
+			const refresh = manager.forceRefreshAccessToken()
+			response.resolve(jsonResponse({ ...TOKEN_RESPONSE, access_token: "stale-refresh" }))
+			await new Promise((resolve) => setImmediate(resolve))
+			release.resolve()
+			await replacement
+			expect(await refresh).toBeNull()
+			expect(storedCredentials().access_token).toBe("access-token")
+			expect(manager.getCredentials()).toEqual(storedCredentials())
+		},
+	)
+
+	it("deletes a deferred refresh write before sign-out resolves", async () => {
+		const { manager, secrets, storedCredentials } = createManager()
+		await manager.saveCredentials(oldCredentials)
+		const started = deferred<void>()
+		const release = deferred<void>()
+		const originalStore = secrets.store.getMockImplementation()!
+		secrets.store.mockImplementationOnce(async (key, value) => {
+			started.resolve()
+			await release.promise
+			await originalStore(key, value)
+		})
+		fetchMock.mockResolvedValueOnce(jsonResponse(TOKEN_RESPONSE))
+		const refresh = manager.getAccessToken()
+		await started.promise
+		const signout = manager.clearCredentials()
+		release.resolve()
+		expect(await refresh).toBeNull()
+		await signout
+		expect(storedCredentials()).toBeNull()
+		expect(manager.getCredentials()).toBeNull()
+	})
+
+	it.each([true, false])("clears only a confirmed invalid grant (invalid=%s)", async (invalid) => {
+		const { manager, secrets, storedCredentials } = createManager()
+		await manager.saveCredentials(oldCredentials)
+		fetchMock.mockResolvedValueOnce(
+			jsonResponse(
+				{ error: invalid ? "invalid_grant" : "temporarily_unavailable" },
+				{ ok: false, status: invalid ? 400 : 503 },
+			),
+		)
+		expect(await manager.getAccessToken()).toBeNull()
+		expect(secrets.delete).toHaveBeenCalledTimes(invalid ? 1 : 0)
+		expect(storedCredentials()).toEqual(invalid ? null : oldCredentials)
+	})
+
+	it("does not resurrect credentials from a deferred load after sign-out", async () => {
+		const { manager, secrets } = createManager()
+		const response = deferred<string>()
+		const started = deferred<void>()
+		secrets.get.mockImplementationOnce(() => {
+			started.resolve()
+			return response.promise
+		})
+		const loading = manager.getAccessToken()
+		await started.promise
+		const signout = manager.clearCredentials()
+		response.resolve(JSON.stringify(oldCredentials))
+		expect(await loading).toBeNull()
+		await signout
+		expect(manager.getCredentials()).toBeNull()
+		expect(fetchMock).not.toHaveBeenCalled()
+	})
+
+	it("allows deletion after a failed secret write", async () => {
+		const { manager, secrets } = createManager()
+		secrets.store.mockRejectedValueOnce(new Error("storage failure"))
+		await expect(manager.saveCredentials(oldCredentials)).rejects.toThrow("storage failure")
+		await manager.clearCredentials()
+		expect(secrets.delete).toHaveBeenCalledTimes(1)
+	})
+})
+
+describe("OAuth loopback listener", () => {
+	let manager: OpenAiCodexOAuthManager
+	let server: http.Server | undefined
+
+	beforeEach(() => {
+		nock.enableNetConnect("127.0.0.1:1455")
+		fetchMock.mockReset()
+		vi.stubGlobal("fetch", fetchMock)
+		manager = createManager().manager
+	})
+
+	afterEach(async () => {
+		const closed = server?.listening ? once(server, "close") : undefined
+		manager.cancelAuthorizationFlow()
+		await closed
+		server = undefined
+		nock.disableNetConnect()
+		vi.useRealTimers()
+		vi.unstubAllGlobals()
+	})
+
+	const listen = async () => {
+		const state = stateFromAuthUrl(manager.startAuthorizationFlow())
+		const waiting = manager.waitForCallback()
+		// Observe cancellation immediately, including in tests which deliberately reject the waiter.
+		void waiting.catch(() => undefined)
+		server = (manager as unknown as { pendingAuth: { server: http.Server } }).pendingAuth.server
+		await once(server, "listening")
+		return { state, waiting }
+	}
+
+	const request = (path: string, method = "GET") =>
+		new Promise<number | undefined>((resolve, reject) => {
+			const address = server!.address() as AddressInfo
+			const req = http.request(
+				{ host: address.address, port: address.port, path, method, agent: false },
+				(res) => {
+					res.resume()
+					res.on("end", () => resolve(res.statusCode))
+				},
+			)
+			req.on("error", reject)
+			req.end()
+		})
+
+	it("binds only to loopback and accepts a valid callback after invalid requests", async () => {
+		const { state, waiting } = await listen()
+		expect((server!.address() as AddressInfo).address).toBe("127.0.0.1")
+		expect(await request("/favicon.ico")).toBe(404)
+		expect(await request("/auth/callback")).toBe(400)
+		expect(await request("/auth/callback?code=abc&state=wrong")).toBe(400)
+		expect(await request("/auth/callback?error=access_denied")).toBe(400)
+		expect(await request("/auth/callback?error=access_denied&state=wrong")).toBe(400)
+		expect(await request(`/auth/callback?code=abc&state=${state}`, "POST")).toBe(405)
+		expect(await request(`/auth/callback?code=abc&state=${state}&state=wrong`)).toBe(400)
+		expect(await request(`/auth/callback?code=abc&error=denied&state=${state}`)).toBe(400)
+		expect(fetchMock).not.toHaveBeenCalled()
+		fetchMock.mockResolvedValueOnce(jsonResponse(TOKEN_RESPONSE))
+		expect(await request(`/auth/callback?code=abc&state=${state}`)).toBe(200)
+		await expect(waiting).resolves.toMatchObject({ access_token: "access-token" })
+	})
+
+	it("rejects the waiter for an OAuth error with the correct state", async () => {
+		const { state, waiting } = await listen()
+		const rejected = expect(waiting).rejects.toThrow("OAuth error: access_denied")
+		expect(await request(`/auth/callback?error=access_denied&state=${state}`)).toBe(400)
+		await rejected
+		expect(fetchMock).not.toHaveBeenCalled()
+	})
+
+	it("settles the real listener from a pasted callback", async () => {
+		const { state, waiting } = await listen()
+		fetchMock.mockResolvedValueOnce(jsonResponse(TOKEN_RESPONSE))
+		const credentials = await manager.submitCallbackUrl(callbackUrl(state))
+		expect(await waiting).toEqual(credentials)
+	})
+
+	it("keeps a valid flow available after a callback exchange failure", async () => {
+		const { state, waiting } = await listen()
+		fetchMock.mockResolvedValueOnce(jsonResponse({ error: "invalid_grant" }, { ok: false }))
+		expect(await request(`/auth/callback?code=old&state=${state}`)).toBe(500)
+		fetchMock.mockResolvedValueOnce(jsonResponse(TOKEN_RESPONSE))
+		expect(await request(`/auth/callback?code=new&state=${state}`)).toBe(200)
+		await expect(waiting).resolves.toMatchObject({ access_token: "access-token" })
+	})
+
+	it("invalidates a pending manual exchange when the listener times out", async () => {
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] })
+		const { state, waiting } = await listen()
+		const response = deferred<Response>()
+		fetchMock.mockReturnValueOnce(response.promise)
+		const exchange = manager.submitCallbackUrl(callbackUrl(state))
+		const rejectedExchange = expect(exchange).rejects.toThrow(/cancelled/)
+		const rejectedWaiter = expect(waiting).rejects.toThrow(/timed out/)
+		await vi.advanceTimersByTimeAsync(5 * 60 * 1000)
+		response.resolve(jsonResponse(TOKEN_RESPONSE))
+		await rejectedWaiter
+		await rejectedExchange
+		expect(manager.getCredentials()).toBeNull()
+	})
+
+	it("shares repeated waiters and settles them when cancelled before the listener starts", async () => {
+		manager.startAuthorizationFlow()
+		const first = manager.waitForCallback()
+		const second = manager.waitForCallback()
+		server = (manager as unknown as { pendingAuth: { server: http.Server } }).pendingAuth.server
+		const rejectedFirst = expect(first).rejects.toThrow(/cancelled/)
+		const rejectedSecond = expect(second).rejects.toThrow(/cancelled/)
+		manager.cancelAuthorizationFlow()
+		await rejectedFirst
+		await rejectedSecond
+		await new Promise((resolve) => setImmediate(resolve))
+		expect(server.listening).toBe(false)
+	})
+
+	it("allows a pasted callback when the callback port is occupied", async () => {
+		const occupied = http.createServer()
+		occupied.listen(1455, "127.0.0.1")
+		await once(occupied, "listening")
+		try {
+			manager.startAuthorizationFlow()
+			await expect(manager.waitForCallback()).rejects.toThrow(/already in use/)
+			fetchMock.mockResolvedValueOnce(jsonResponse(TOKEN_RESPONSE))
+			await expect(manager.submitCallbackUrl("manual-code")).resolves.toMatchObject({
+				access_token: "access-token",
+			})
+		} finally {
+			const closed = once(occupied, "close")
+			occupied.close()
+			await closed
+		}
+	})
+
+	it.each(["signout", "cancel", "replacement"] as const)(
+		"discards an in-flight socket exchange after %s",
+		async (action) => {
+			const { state, waiting } = await listen()
+			const response = deferred<Response>()
+			const started = deferred<void>()
+			fetchMock.mockImplementationOnce(() => {
+				started.resolve()
+				return response.promise
+			})
+			const callback = request(`/auth/callback?code=abc&state=${state}`)
+			await started.promise
+			const rejected = expect(waiting).rejects.toThrow(/cancelled/)
+			if (action === "signout") await manager.clearCredentials()
+			else if (action === "cancel") manager.cancelAuthorizationFlow()
+			else manager.startAuthorizationFlow()
+			response.resolve(jsonResponse(TOKEN_RESPONSE))
+			expect(await callback).toBe(500)
+			await rejected
+			expect(manager.getCredentials()).toBeNull()
+			if (action === "replacement") {
+				fetchMock.mockResolvedValueOnce(jsonResponse(TOKEN_RESPONSE))
+				await expect(manager.submitCallbackUrl("new-code")).resolves.toMatchObject({
+					access_token: "access-token",
+				})
+			}
+		},
+	)
+
+	it("does not exchange the same flow twice while a socket callback is pending", async () => {
+		const { state, waiting } = await listen()
+		const response = deferred<Response>()
+		const started = deferred<void>()
+		fetchMock.mockImplementationOnce(() => {
+			started.resolve()
+			return response.promise
+		})
+		const callback = request(`/auth/callback?code=abc&state=${state}`)
+		await started.promise
+		expect(await request(`/auth/callback?code=abc&state=${state}`)).toBe(409)
+		await expect(manager.submitCallbackUrl(callbackUrl(state))).rejects.toThrow(/already in progress/)
+		expect(fetchMock).toHaveBeenCalledTimes(1)
+		response.resolve(jsonResponse(TOKEN_RESPONSE))
+		expect(await callback).toBe(200)
+		await waiting
+	})
+})
 
 describe("parseCallbackInput()", () => {
 	it("reads the code and state from a full callback URL", () => {
@@ -162,14 +605,10 @@ describe("OpenAiCodexOAuthManager.submitCallbackUrl()", () => {
 	it("settles the waiting callback promise so the browser and paste paths share one result", async () => {
 		const { manager } = createManager()
 		const settle = vi.fn()
-		const state = "pending-state"
+		const state = stateFromAuthUrl(manager.startAuthorizationFlow())
 
 		// Stand in for waitForCallback() without binding the fixed port.
-		;(manager as unknown as { pendingAuth: unknown }).pendingAuth = {
-			codeVerifier: generateCodeVerifier(),
-			state,
-			settle,
-		}
+		;(manager as unknown as { pendingAuth: { settle: typeof settle } }).pendingAuth.settle = settle
 
 		fetchMock.mockResolvedValueOnce(jsonResponse(TOKEN_RESPONSE))
 		const credentials = await manager.submitCallbackUrl(callbackUrl(state))

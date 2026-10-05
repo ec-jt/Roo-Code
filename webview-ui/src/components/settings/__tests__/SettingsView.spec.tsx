@@ -1,6 +1,6 @@
 // pnpm --filter @roo-code/vscode-webview test src/components/settings/__tests__/SettingsView.spec.tsx
 
-import { render, screen, fireEvent, within } from "@/utils/test-utils"
+import { render, screen, fireEvent, within, act } from "@/utils/test-utils"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 
 import { vscode } from "@/utils/vscode"
@@ -176,6 +176,12 @@ vi.mock("@/components/ui", () => ({
 	Select: ({ children, value, onValueChange }: any) => (
 		<div data-testid="select" data-value={value}>
 			<button onClick={() => onValueChange && onValueChange("test-change")}>{value}</button>
+			{(value === "chromium" || value === "chrome") && (
+				<>
+					<button onClick={() => onValueChange("chrome")}>Select installed Chrome</button>
+					<button onClick={() => onValueChange("chromium")}>Select managed Chromium</button>
+				</>
+			)}
 			{children}
 		</div>
 	),
@@ -320,6 +326,62 @@ const renderSettingsView = () => {
 
 	return { onDone, activateTab, getSettingsContent }
 }
+
+describe("SettingsView - Local Browser Settings", () => {
+	beforeEach(() => vi.clearAllMocks())
+
+	it("wires browser selection changes into outgoing settings and preserves the default", () => {
+		const { activateTab, getSettingsContent } = renderSettingsView()
+		activateTab("browser")
+		fireEvent.click(screen.getByTestId("save-button"))
+		expect(vscode.postMessage).toHaveBeenCalledWith(
+			expect.objectContaining({
+				type: "updateSettings",
+				updatedSettings: expect.objectContaining({ browserLocalBrowser: "chromium" }),
+			}),
+		)
+		for (const [label, browserLocalBrowser] of [
+			["Select installed Chrome", "chrome"],
+			["Select managed Chromium", "chromium"],
+		]) {
+			vi.mocked(vscode.postMessage).mockClear()
+			fireEvent.click(within(getSettingsContent()).getByRole("button", { name: label }))
+			fireEvent.click(screen.getByTestId("save-button"))
+			expect(vscode.postMessage).toHaveBeenCalledWith(
+				expect.objectContaining({
+					type: "updateSettings",
+					updatedSettings: expect.objectContaining({ browserLocalBrowser }),
+				}),
+			)
+		}
+	})
+
+	it("restores and saves Chrome even while remote browsing is enabled", () => {
+		const { rerender } = render(<ExtensionStateContextProvider>{null}</ExtensionStateContextProvider>)
+		act(() => {
+			window.dispatchEvent(
+				new MessageEvent("message", {
+					data: { type: "state", state: { browserLocalBrowser: "chrome", remoteBrowserEnabled: true } },
+				}),
+			)
+		})
+		rerender(
+			<ExtensionStateContextProvider>
+				<SettingsView onDone={vi.fn()} targetSection="browser" />
+			</ExtensionStateContextProvider>,
+		)
+		expect(
+			within(screen.getByTestId("settings-content")).getByRole("button", { name: "chrome" }),
+		).toBeInTheDocument()
+		fireEvent.click(screen.getByTestId("save-button"))
+		expect(vscode.postMessage).toHaveBeenCalledWith(
+			expect.objectContaining({
+				type: "updateSettings",
+				updatedSettings: expect.objectContaining({ browserLocalBrowser: "chrome", remoteBrowserEnabled: true }),
+			}),
+		)
+	})
+})
 
 describe("SettingsView - Sound Settings", () => {
 	it("renders the preview off by default and saves opt-in and opt-out", () => {

@@ -865,6 +865,17 @@ describe("ClineProvider", () => {
 		expect(state).toHaveProperty("writeDelayMs")
 	})
 
+	it.each([undefined, "chromium", "chrome"] as const)(
+		"projects local browser %s into internal and webview state",
+		async (browserLocalBrowser) => {
+			await provider.contextProxy.setValues({ browserLocalBrowser, remoteBrowserEnabled: true })
+			expect((await provider.getState()).browserLocalBrowser).toBe(browserLocalBrowser ?? "chromium")
+			expect((await provider.getStateToPostToWebview()).browserLocalBrowser).toBe(
+				browserLocalBrowser ?? "chromium",
+			)
+		},
+	)
+
 	test("language is set to VSCode language", async () => {
 		// Mock VSCode language as Spanish
 		;(vscode.env as any).language = "pt-BR"

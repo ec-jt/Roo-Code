@@ -2314,6 +2314,8 @@ export const webviewMessageHandler = async (
 						await provider.postStateToWebview()
 					})
 					.catch((error) => {
+						// Sign-out or a replacement sign-in intentionally cancels the previous waiter.
+						if (error instanceof Error && error.message === "Authentication operation cancelled") return
 						provider.log(`OpenAI Codex OAuth callback failed: ${error}`)
 						if (!String(error).includes("timed out")) {
 							vscode.window.showErrorMessage(`OpenAI Codex sign in failed: ${error.message || error}`)

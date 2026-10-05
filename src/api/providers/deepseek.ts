@@ -55,13 +55,12 @@ export class DeepSeekHandler extends OpenAiHandler {
 		const modelId = this.options.apiModelId ?? deepSeekDefaultModelId
 		const { info: modelInfo } = this.getModel()
 
-		// Check if this is a thinking-enabled model. Covers the legacy deepseek-reasoner
-		// alias and the v4 reasoning models (deepseek-v4-pro, deepseek-pro / V4.1-Pro).
-		const isThinkingModel = modelId.includes("deepseek-reasoner") || modelId.includes("deepseek-pro")
+		// Keep thinking and tool continuation aligned with the catalog for all reasoning aliases.
+		const isThinkingModel = "preserveReasoning" in modelInfo && modelInfo.preserveReasoning === true
 
 		// Convert messages to R1 format (merges consecutive same-role messages)
 		// This is required for DeepSeek which does not support successive messages with the same role
-		// For thinking models (deepseek-reasoner), enable mergeToolResultText to preserve reasoning_content
+		// For thinking models, enable mergeToolResultText to preserve reasoning_content
 		// during tool call sequences. Without this, environment_details text after tool_results would
 		// create user messages that cause DeepSeek to drop all previous reasoning_content.
 		// See: https://api-docs.deepseek.com/guides/thinking_mode
@@ -75,7 +74,7 @@ export class DeepSeekHandler extends OpenAiHandler {
 			messages: convertedMessages,
 			stream: true as const,
 			stream_options: { include_usage: true },
-			// Enable thinking mode for deepseek-reasoner or when tools are used with thinking model
+			// Enable thinking mode for models that preserve reasoning during tool continuation.
 			...(isThinkingModel && { thinking: { type: "enabled" } }),
 			tools: this.convertToolsForOpenAI(metadata?.tools),
 			tool_choice: metadata?.tool_choice,

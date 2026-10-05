@@ -1,5 +1,6 @@
 import type * as vscode from "vscode"
 import * as fs from "fs/promises"
+import * as os from "os"
 // @ts-ignore - resolver does not publish types, matching BrowserSession.
 import PCR from "puppeteer-chromium-resolver"
 import { launch, connect } from "puppeteer-core"
@@ -8,7 +9,14 @@ import { discoverChromeHostUrl } from "../browserDiscovery"
 
 vi.mock("puppeteer-core", () => ({ launch: vi.fn(), connect: vi.fn(), TimeoutError: class extends Error {} }))
 vi.mock("puppeteer-chromium-resolver", () => ({ default: vi.fn() }))
-vi.mock("fs/promises", () => ({ mkdir: vi.fn(), readdir: vi.fn(), mkdtemp: vi.fn(), rm: vi.fn() }))
+vi.mock("fs/promises", () => ({
+	mkdir: vi.fn(),
+	readdir: vi.fn(),
+	mkdtemp: vi.fn(),
+	rm: vi.fn(),
+	stat: vi.fn(),
+	access: vi.fn(),
+}))
 vi.mock("../../../utils/fs", () => ({ fileExistsAtPath: vi.fn().mockResolvedValue(true) }))
 vi.mock("../browserDiscovery", () => ({ discoverChromeHostUrl: vi.fn(), tryChromeHostUrl: vi.fn() }))
 
@@ -107,13 +115,102 @@ describe("sandboxed browser launch", () => {
 		},
 	)
 
-	it("falls back to headless without a display on other platforms", async () => {
-		vi.stubGlobal("process", { ...process, platform: "darwin" })
+	it.each(["darwin", "win32"])("uses headed mode without Linux display variables on %s", async (platform) => {
+		vi.stubGlobal("process", { ...process, platform })
 		vi.stubEnv("DISPLAY", "")
 		vi.stubEnv("WAYLAND_DISPLAY", "")
 		settings.browserHeaded = true
 		await session.launchBrowser()
-		expect(launch).toHaveBeenCalledWith(expect.objectContaining({ headless: true }))
+		expect(launch).toHaveBeenCalledWith(expect.objectContaining({ headless: false, args: [] }))
+	})
+
+	it("never removes profiles owned by independent concurrent sessions", async () => {
+		const other = new BrowserSession((session as any).context)
+		vi.mocked(fs.mkdtemp).mockResolvedValueOnce("/tmp/profile-a").mockResolvedValueOnce("/tmp/profile-b")
+		await Promise.all([session.launchBrowser(), other.launchBrowser()])
+		expect(fs.readdir).not.toHaveBeenCalled()
+		expect(fs.rm).not.toHaveBeenCalled()
+		await session.closeBrowser()
+		expect(fs.rm).toHaveBeenCalledExactlyOnceWith("/tmp/profile-a", { recursive: true, force: true })
+		await other.closeBrowser()
+		expect(fs.rm).toHaveBeenLastCalledWith("/tmp/profile-b", { recursive: true, force: true })
+	})
+
+	it("cleans only its own failed launch profile while another session is active", async () => {
+		const other = new BrowserSession((session as any).context)
+		vi.mocked(fs.mkdtemp).mockResolvedValueOnce("/tmp/profile-a").mockResolvedValueOnce("/tmp/profile-b")
+		await session.launchBrowser()
+		vi.mocked(launch).mockRejectedValueOnce(new Error("launch failure"))
+		await expect(other.launchBrowser()).rejects.toThrow("launch failure")
+		expect(fs.rm).toHaveBeenCalledExactlyOnceWith("/tmp/profile-b", { recursive: true, force: true })
+		await session.closeBrowser()
+		expect(fs.rm).toHaveBeenLastCalledWith("/tmp/profile-a", { recursive: true, force: true })
+	})
+
+	it.each([undefined, "chromium"])("keeps managed Chromium as the default (%s)", async (selection) => {
+		settings.browserLocalBrowser = selection
+		await session.launchBrowser()
+		expect(PCR).toHaveBeenCalledOnce()
+		expect(fs.stat).not.toHaveBeenCalled()
+	})
+
+	it.each([
+		"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+		`${os.homedir()}/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`,
+	])("launches installed macOS Chrome at %s without a download", async (executablePath) => {
+		vi.stubGlobal("process", { ...process, platform: "darwin" })
+		settings.browserLocalBrowser = "chrome"
+		vi.mocked(fs.stat).mockImplementation(async (candidate) => {
+			if (candidate !== executablePath) throw new Error("missing")
+			return { isFile: () => true } as never
+		})
+		await session.launchBrowser()
+		expect(PCR).not.toHaveBeenCalled()
+		expect(discoverChromeHostUrl).not.toHaveBeenCalled()
+		expect(launch).toHaveBeenCalledWith(
+			expect.objectContaining({ executablePath, userDataDir: "/tmp/roo-browser-profile-test", args: [] }),
+		)
+	})
+
+	it.each(["ProgramFiles", "ProgramFiles(x86)", "LOCALAPPDATA"])(
+		"finds Windows Chrome under %s",
+		async (location) => {
+			vi.stubGlobal("process", { ...process, platform: "win32" })
+			for (const key of ["ProgramFiles", "ProgramFiles(x86)", "LOCALAPPDATA"]) vi.stubEnv(key, "")
+			vi.stubEnv(location, "C:\\ChromeRoot")
+			settings.browserLocalBrowser = "chrome"
+			vi.mocked(fs.stat).mockResolvedValue({ isFile: () => true } as never)
+			await session.launchBrowser()
+			expect(launch).toHaveBeenCalledWith(
+				expect.objectContaining({ executablePath: "C:\\ChromeRoot\\Google\\Chrome\\Application\\chrome.exe" }),
+			)
+			expect(PCR).not.toHaveBeenCalled()
+		},
+	)
+
+	it.each(["darwin", "win32", "linux"])(
+		"fails explicitly for unavailable installed Chrome on %s",
+		async (platform) => {
+			vi.stubGlobal("process", { ...process, platform })
+			settings.browserLocalBrowser = "chrome"
+			vi.mocked(fs.stat).mockRejectedValue(new Error("missing"))
+			await expect(session.launchBrowser()).rejects.toThrow(/select managed Chromium/i)
+			expect(launch).not.toHaveBeenCalled()
+			expect(PCR).not.toHaveBeenCalled()
+			expect(fs.mkdtemp).not.toHaveBeenCalled()
+			expect(discoverChromeHostUrl).not.toHaveBeenCalled()
+		},
+	)
+
+	it("does not download or retry managed Chromium when installed Chrome cannot launch", async () => {
+		vi.stubGlobal("process", { ...process, platform: "darwin" })
+		settings.browserLocalBrowser = "chrome"
+		vi.mocked(fs.stat).mockResolvedValue({ isFile: () => true } as never)
+		vi.mocked(launch).mockRejectedValueOnce(new Error("incompatible Chrome"))
+		await expect(session.launchBrowser()).rejects.toThrow("sandboxed Google Chrome")
+		expect(launch).toHaveBeenCalledOnce()
+		expect(PCR).not.toHaveBeenCalled()
+		expect(fs.rm).toHaveBeenCalledExactlyOnceWith("/tmp/roo-browser-profile-test", { recursive: true, force: true })
 	})
 
 	it("fails remote discovery without launching a local browser", async () => {
@@ -125,6 +222,7 @@ describe("sandboxed browser launch", () => {
 
 	it("preserves remote connection and disconnect semantics", async () => {
 		settings.remoteBrowserEnabled = true
+		settings.browserLocalBrowser = "chrome"
 		vi.mocked(discoverChromeHostUrl).mockResolvedValue("http://localhost:9222")
 		vi.mocked(connect).mockResolvedValue({ disconnect } as never)
 		await session.launchBrowser()
@@ -132,5 +230,8 @@ describe("sandboxed browser launch", () => {
 		expect(disconnect).toHaveBeenCalledOnce()
 		expect(close).not.toHaveBeenCalled()
 		expect(launch).not.toHaveBeenCalled()
+		expect(fs.stat).not.toHaveBeenCalled()
+		expect(fs.rm).not.toHaveBeenCalled()
+		expect(PCR).not.toHaveBeenCalled()
 	})
 })

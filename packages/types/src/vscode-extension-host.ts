@@ -290,6 +290,7 @@ export type ExtensionState = Pick<
 	| "browserToolEnabled"
 	| "browserViewportSize"
 	| "browserHeaded"
+	| "browserLocalBrowser"
 	| "screenshotQuality"
 	| "remoteBrowserEnabled"
 	| "remoteBrowserHost"

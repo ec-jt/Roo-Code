@@ -1,33 +1,44 @@
-# Visible browser sessions
+# Local and visible browser sessions
 
-In Roo Settings > Browser, enable the browser tool and select **Show browser window**, then save settings. Close any existing browser session and launch a new one. Existing installations default to headless mode until this option is selected.
+## Select a browser
 
-The window opens on the machine running the VS Code extension host. For SSH, containers, or code-server, this is not necessarily the user's desktop. An accessible graphical session is required. Linux uses X11 when DISPLAY is present, or explicitly selects Wayland when only WAYLAND_DISPLAY is present. Display environment variables alone do not guarantee access to a working display.
+In **Roo Settings > Browser**, enable the browser tool and choose a local browser:
 
-Both visible and headless local launches retain Chromium's sandbox and native user agent. There is no sandbox-disable setting and no retry with unsafe flags. Linux root execution is rejected before Chromium resolution/download. Display or sandbox launch failures preserve the underlying error, clean up the failed launch's profile, and provide next steps.
+- **Managed Chromium** is the default. Roo resolves or downloads its managed Chromium installation when needed.
+- **Installed Google Chrome (macOS/Windows)** uses Chrome already installed on the machine running the VS Code extension host. Roo checks standard system and per-user application locations. It does not download Chrome, search the network, or silently fall back to Chromium if Chrome is unavailable. On Linux, select managed Chromium or a trusted remote browser instead.
+
+Save the settings, close any existing browser session, and launch a new session to apply the selection.
+
+Both choices use a fresh, isolated Roo profile. Roo does not use your personal Chrome profile, cookies, or signed-in accounts. Closing a session deletes only that session's temporary profile; launching another session does not delete profiles owned by other VS Code windows. Profiles left by an interrupted extension host are not automatically reclaimed by another launch.
+
+## Show a browser window
+
+Select **Show browser window** and save settings. Existing installations default to headless mode. Close the current session and launch a new one after changing this setting.
+
+Native macOS and Windows launches do not require Linux display environment variables. Linux uses X11 when DISPLAY is present, or Wayland when only WAYLAND_DISPLAY is present. Without either variable, Roo falls back to headless mode. Display variables do not guarantee access to a working desktop.
+
+The browser runs on the **extension host**, not necessarily on your local desktop. For SSH, containers, WSL, or code-server, installing Chrome on the computer displaying VS Code does not make it available on a different extension host. A visible window requires an accessible desktop on that host.
+
+Local launches retain the browser's sandbox and native user agent. Roo does not retry with sandbox-disabled flags or change host security policy. Linux root requests for a visible browser fall back to headless mode without disabling the sandbox, so Chromium can still reject the launch. Display or sandbox failures preserve the underlying error and clean up the failed launch's owned profile. A non-root, sandbox-capable extension host is recommended.
+
+## Screenshot write permissions
+
+Saving a screenshot to disk requires destination-specific file-write approval. Browser auto-approval alone does not authorize a screenshot file write. Existing file-write auto-approval and protected-file policies apply.
+
+The destination must be inside the workspace, allowed by ignore rules, and permitted by the active mode's file-writing restrictions. Symlink paths and hard-linked destination files are rejected. These checks run again after approval and before writing. Ordinary browser interactions and in-memory full-page captures do not require file-write approval.
+
+The filesystem checks mitigate path-redirection races but are not a complete sandbox against another process concurrently replacing workspace directories.
 
 ## Remote browsers
 
-The existing remote connection setting remains available. Local visibility settings do not change the remote browser's mode. Use a trusted browser that is already visible and sandboxed, with a debugging endpoint reachable only by trusted clients. Roo cannot verify or repair the sandbox policy of an externally started browser. Failed remote discovery/connection now reports an error instead of silently launching a local browser.
+Remote mode disables the local browser selection and visibility controls without clearing the saved local preference. It connects to the configured debugging endpoint instead of launching either local browser. A failed remote connection reports an error instead of silently starting a local browser.
 
-## Host prerequisites and deployment
+Use a trusted, sandboxed remote browser whose debugging endpoint is reachable only by trusted clients. Roo cannot verify or repair an external browser's sandbox policy. Disconnecting Roo does not close the externally managed browser.
 
-A source change cannot make an unavailable Chromium sandbox usable. On the Ubuntu host used for this work, a previous non-root Chromium launch failed with `No usable sandbox` under AppArmor user-namespace restrictions. Running the extension host as non-root is necessary but not sufficient. An administrator-approved sandbox-capable environment or an existing trusted remote browser is still required. This feature does not change AppArmor, kernel settings, permissions, or install sandbox helpers.
+## Validation and deployment limits
 
-Tests mock browser launch and do not demonstrate a working graphical browser on this host. No browser was launched during implementation. No live AA inventory was retrieved or manually verified. No CAPTCHA automation was added. Human verification must happen in an operational visible session, with agent actions paused while the human interacts.
+The regression tests cover default Chromium selection, standard Chrome installation discovery, missing/unsupported Chrome errors, no download or fallback for Chrome, isolated profiles, concurrent-session cleanup, platform-specific visibility, and screenshot write authorization. Settings tests cover persistence, saved values, selection changes, and remote-mode disabling. Panel tests cover activity updates after initial hydration.
 
-The test script's pretest hook built local bundles during validation. No VSIX was installed and no extension was reloaded. Packaging and deployment require separate approval; the running extension should not be assumed to contain these changes.
+Browser launch tests use mocks. Real macOS and Windows desktop launches, installed Chrome compatibility, and usable Linux sandbox/display access require separate platform testing. Source edits require rebuilding and deployment; after installing an updated extension, reload the VS Code window to activate it.
 
-## Validation
-
-Run from the repository root, using pnpm 10.8.1:
-
-```sh
-pnpm --dir src exec vitest run services/browser/__tests__/BrowserSession.spec.ts
-pnpm --dir webview-ui exec vitest run src/components/settings/__tests__/BrowserSettings.spec.tsx
-pnpm --filter @roo-code/types check-types
-pnpm --filter roo-cline check-types
-pnpm --filter @roo-code/vscode-webview check-types
-```
-
-The launch suite covers default/headed/headless sandbox-preserving options, native user agent, root rejection, missing display, Wayland-only selection, non-Linux behavior, sandbox/display errors, failed-launch cleanup, no local fallback, and remote disconnect semantics. The UI suite covers the default, changed value propagation, saved value, and remote-mode disabling. These are mocked regressions, not end-to-end display or sandbox verification.
+Run focused backend tests from the backend workspace and UI tests from the webview workspace. Type checks and lint should also run in their owning workspaces before packaging.

@@ -1,5 +1,16 @@
 # Roo Code Changelog
 
+## 4.2.7 - Cordis preview 5
+
+- Keep managed Chromium as the default and add optional installed Google Chrome on macOS and Windows with isolated Roo profiles, explicit missing-installation errors, and no silent fallback.
+- Fix native desktop browser visibility, isolate profile cleanup across sessions, and enforce screenshot write approval, ignore/mode restrictions, and linked-path checks.
+- Prevent cancelled OAuth refreshes and exchanges from restoring credentials. Restrict callbacks to loopback and preserve valid sign-in after invalid callback requests.
+- Prevent Codex request replay after partial output, align DeepSeek reasoning aliases, and update standalone browser-panel activity from live state.
+- Include native tool-call finalization and malformed-call retry-loop fixes from the preceding branch commit.
+- Stop copying local environment files during extension builds. New browser-selection help uses English fallback. Native macOS/Windows launches and live provider authentication require separate validation.
+
+GitHub prerelease tag: **v4.2.7-cordis-preview.5**. Cordis runtime preview remains off by default.
+
 ## 4.2.6 - Cordis preview 4
 
 - Add a default-off **Nested subtasks** toggle to Settings and the chat auto-approval menu. Nested delegation can auto-approve only with the master switch, this opt-in, and either Subtasks or All actions enabled.

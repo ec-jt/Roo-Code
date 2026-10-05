@@ -627,6 +627,12 @@
 		"retiredRooProviderMessage": "The Roo Code Router is no longer available. It was a hosted service that has been discontinued."
 	},
 	"browser": {
+		"localBrowser": {
+			"label": "Local browser",
+			"chromium": "Managed Chromium",
+			"chrome": "Installed Google Chrome (macOS/Windows)",
+			"description": "Applies on the next local launch. The browser runs on the machine hosting the extension, which may differ from your desktop. Installed Chrome requires a standard macOS or Windows installation and uses an isolated Roo profile, not your personal Chrome profile. If Chrome is missing or unsupported, launch fails with an error; Roo does not download or fall back to Chromium. Remote browser connections ignore this selection."
+		},
 		"headed": {
 			"label": "Show browser window",
 			"description": "Open a visible local browser on the extension host's display for manual interaction. Applies on the next launch. Requires an accessible graphical session and a usable Chromium sandbox; Linux cannot launch as root. Remote browser visibility is controlled separately. Roo never disables the sandbox or silently falls back to another browser mode."

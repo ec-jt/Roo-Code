@@ -13,6 +13,8 @@ import { type BrowserActionResult } from "@roo-code/types"
 import { fileExistsAtPath } from "../../utils/fs"
 
 import { discoverChromeHostUrl, tryChromeHostUrl } from "./browserDiscovery"
+import { findInstalledChrome } from "./installedChrome"
+import { validateScreenshotPath, writeScreenshot } from "./screenshotPath"
 
 // Timeout constants
 const BROWSER_NAVIGATION_TIMEOUT = 10_000 // 10 seconds
@@ -72,19 +74,6 @@ export class BrowserSession {
 		return tmpBaseDir
 	}
 
-	private async cleanupOrphanedBrowserTempDirs(baseDir: string): Promise<void> {
-		try {
-			const entries = await fs.readdir(baseDir, { withFileTypes: true })
-			await Promise.all(
-				entries
-					.filter((entry) => entry.isDirectory() && entry.name.startsWith("roo-browser-profile-"))
-					.map((entry) => fs.rm(path.join(baseDir, entry.name), { recursive: true, force: true })),
-			)
-		} catch {
-			// best effort cleanup only
-		}
-	}
-
 	/**
 	 * Gets the viewport size from global state or returns default
 	 */
@@ -101,7 +90,7 @@ export class BrowserSession {
 		console.log("Launching local browser")
 		const requestedHeaded = this.context.globalState.get<boolean>("browserHeaded") ?? false
 		const isRoot = process.platform === "linux" && process.getuid?.() === 0
-		const hasDisplay = Boolean(process.env.DISPLAY || process.env.WAYLAND_DISPLAY)
+		const hasDisplay = process.platform !== "linux" || Boolean(process.env.DISPLAY || process.env.WAYLAND_DISPLAY)
 		const headed = requestedHeaded && hasDisplay && !isRoot
 		if (requestedHeaded && !headed) {
 			console.warn(
@@ -110,10 +99,12 @@ export class BrowserSession {
 					: "Visible browser requested without an accessible display; falling back to headless Chromium",
 			)
 		}
-		const stats = await this.ensureChromiumExists()
+		const useChrome = this.context.globalState.get<string>("browserLocalBrowser") === "chrome"
+		const stats = useChrome
+			? { executablePath: await findInstalledChrome(), puppeteer: { launch } }
+			: await this.ensureChromiumExists()
 		const viewport = this.getViewport()
 		const tmpBaseDir = await this.ensureBrowserTempBaseDir()
-		await this.cleanupOrphanedBrowserTempDirs(tmpBaseDir)
 		this.userDataDir = await fs.mkdtemp(path.join(tmpBaseDir, "roo-browser-profile-"))
 		this.browserTempDir = tmpBaseDir
 		try {
@@ -138,10 +129,12 @@ export class BrowserSession {
 			this.resetBrowserState()
 			const detail = error instanceof Error ? error.message : String(error)
 			throw new Error(
-				`Failed to launch ${headed ? "visible" : "headless"} sandboxed Chromium. ` +
+				`Failed to launch ${headed ? "visible" : "headless"} sandboxed ${useChrome ? "Google Chrome" : "Chromium"}. ` +
 					"Run the extension host as a non-root user with a usable Chromium sandbox. " +
 					"On Linux, AppArmor or user-namespace restrictions may require administrator review; Roo does not change host security policy. " +
-					(headed ? "Verify that the extension host can access its X11 or Wayland display. " : "") +
+					(headed && process.platform === "linux"
+						? "Verify that the extension host can access its X11 or Wayland display. "
+						: "") +
 					"Alternatively, configure a trusted remote browser. No sandbox-disabled fallback was attempted. " +
 					`Original error: ${detail}`,
 			)
@@ -1100,36 +1093,23 @@ export class BrowserSession {
 	 * @returns BrowserActionResult with screenshot data and saved file path
 	 * @throws Error if the resolved path escapes the workspace directory
 	 */
-	async saveScreenshot(filePath: string, cwd: string): Promise<BrowserActionResult> {
-		// Always resolve the path against the workspace root
-		const normalizedCwd = path.resolve(cwd)
-		const fullPath = path.resolve(cwd, filePath)
-
-		// Validate that the resolved path stays within the workspace (before calling doAction)
-		if (!fullPath.startsWith(normalizedCwd + path.sep) && fullPath !== normalizedCwd) {
-			throw new Error(
-				`Screenshot path "${filePath}" resolves to "${fullPath}" which is outside the workspace "${normalizedCwd}". ` +
-					`Paths must be relative to the workspace and cannot escape it.`,
-			)
-		}
-
-		return this.doAction(async (page) => {
-			// Ensure directory exists
-			await fs.mkdir(path.dirname(fullPath), { recursive: true })
-
-			// Determine image type from extension
-			const imageType = this.getImageTypeFromPath(filePath)
-
-			// Take screenshot directly to file (more efficient than base64 for file saving)
-			await page.screenshot({
-				path: fullPath,
-				type: imageType,
-				quality:
-					imageType === "png"
-						? undefined
-						: ((this.context.globalState.get("screenshotQuality") as number | undefined) ?? 75),
-			})
+	async saveScreenshot(
+		filePath: string,
+		cwd: string,
+		validateAccess?: () => Promise<void>,
+	): Promise<BrowserActionResult> {
+		await validateAccess?.()
+		await validateScreenshotPath(filePath, cwd)
+		if (!this.page) throw new Error("Browser is not launched")
+		const imageType = this.getImageTypeFromPath(filePath)
+		const data = await this.page.screenshot({
+			type: imageType,
+			quality:
+				imageType === "png" ? undefined : (this.context.globalState.get<number>("screenshotQuality") ?? 75),
 		})
+		// Keep write errors outside doAction, which deliberately logs browser action errors.
+		await writeScreenshot(filePath, cwd, data, validateAccess)
+		return this.doAction(async () => {})
 	}
 
 	/**

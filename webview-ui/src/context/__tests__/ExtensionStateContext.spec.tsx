@@ -55,11 +55,18 @@ describe("model operation state merging", () => {
 })
 
 const TestComponent = () => {
-	const { allowedCommands, setAllowedCommands, soundEnabled, showRooIgnoredFiles, setShowRooIgnoredFiles } =
-		useExtensionState()
+	const {
+		allowedCommands,
+		setAllowedCommands,
+		soundEnabled,
+		showRooIgnoredFiles,
+		setShowRooIgnoredFiles,
+		browserLocalBrowser,
+	} = useExtensionState()
 
 	return (
 		<div>
+			<div data-testid="local-browser">{browserLocalBrowser}</div>
 			<div data-testid="allowed-commands">{JSON.stringify(allowedCommands)}</div>
 			<div data-testid="sound-enabled">{JSON.stringify(soundEnabled)}</div>
 			<div data-testid="show-rooignored-files">{JSON.stringify(showRooIgnoredFiles)}</div>
@@ -92,6 +99,27 @@ const ApiConfigTestComponent = () => {
 }
 
 describe("ExtensionStateContext", () => {
+	it("defaults to Chromium and restores saved Chrome through state hydration", () => {
+		render(
+			<ExtensionStateContextProvider>
+				<TestComponent />
+			</ExtensionStateContextProvider>,
+		)
+		expect(screen.getByTestId("local-browser")).toHaveTextContent("chromium")
+		act(() => {
+			window.dispatchEvent(
+				new MessageEvent("message", { data: { type: "state", state: { browserLocalBrowser: "chrome" } } }),
+			)
+		})
+		expect(screen.getByTestId("local-browser")).toHaveTextContent("chrome")
+		act(() => {
+			window.dispatchEvent(
+				new MessageEvent("message", { data: { type: "state", state: { remoteBrowserEnabled: true } } }),
+			)
+		})
+		expect(screen.getByTestId("local-browser")).toHaveTextContent("chrome")
+	})
+
 	it("initializes with empty allowedCommands array", () => {
 		render(
 			<ExtensionStateContextProvider>

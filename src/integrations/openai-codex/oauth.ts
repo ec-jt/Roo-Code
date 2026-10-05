@@ -218,17 +218,17 @@ export function buildAuthorizationUrl(codeChallenge: string, state: string): str
 }
 
 /**
-	* Parses a callback value pasted in by the user into its parts.
-	*
-	* Accepts any of:
-	* - the full callback URL from the browser address bar, including an error redirect
-	* - a bare query string such as `code=...&state=...`
-	* - the raw authorization code on its own
-	*
-	* This exists because the fixed loopback redirect only works when the browser runs on the same
-	* machine as the extension host. Remote setups (code-server, SSH remote, WSL, dev containers)
-	* cannot complete the redirect, so the user has to hand the value back.
-	*/
+ * Parses a callback value pasted in by the user into its parts.
+ *
+ * Accepts any of:
+ * - the full callback URL from the browser address bar, including an error redirect
+ * - a bare query string such as `code=...&state=...`
+ * - the raw authorization code on its own
+ *
+ * This exists because the fixed loopback redirect only works when the browser runs on the same
+ * machine as the extension host. Remote setups (code-server, SSH remote, WSL, dev containers)
+ * cannot complete the redirect, so the user has to hand the value back.
+ */
 export function parseCallbackInput(input: string): { code?: string; state?: string; error?: string } {
 	const raw = (input ?? "").trim().replace(/^["'`]+|["'`]+$/g, "")
 	if (!raw) {
@@ -381,10 +381,15 @@ export class OpenAiCodexOAuthManager {
 	private context: ExtensionContext | null = null
 	private credentials: OpenAiCodexCredentials | null = null
 	private logFn: ((message: string) => void) | null = null
-	private refreshPromise: Promise<OpenAiCodexCredentials> | null = null
+	private generation = 0
+	private storageQueue: Promise<unknown> = Promise.resolve()
+	private refreshPromise: Promise<OpenAiCodexCredentials | null> | null = null
 	private pendingAuth: {
+		generation: number
 		codeVerifier: string
 		state: string
+		exchanging?: boolean
+		callbackPromise?: Promise<OpenAiCodexCredentials>
 		server?: http.Server
 		/**
 		 * Settles the promise returned by waitForCallback. Kept on the pending flow so a callback
@@ -421,63 +426,74 @@ export class OpenAiCodexOAuthManager {
 	 * Useful when the server invalidates an access token early.
 	 */
 	async forceRefreshAccessToken(): Promise<string | null> {
+		const generation = this.generation
 		if (!this.credentials) {
 			await this.loadCredentials()
 		}
 
-		if (!this.credentials) {
+		if (generation !== this.generation || !this.credentials) {
 			return null
 		}
 
-		try {
-			// De-dupe concurrent refreshes
-			if (!this.refreshPromise) {
-				const prevRefreshToken = this.credentials.refresh_token
-				this.log(`[openai-codex-oauth] Forcing token refresh (expires=${this.credentials.expires})...`)
-				this.refreshPromise = refreshAccessToken(this.credentials).then((newCreds) => {
-					const rotated = newCreds.refresh_token !== prevRefreshToken
-					this.log(
-						`[openai-codex-oauth] Forced refresh response received (expires_in≈${Math.round(
-							(newCreds.expires - Date.now()) / 1000,
-						)}s, refresh_token_rotated=${rotated})`,
-					)
-					return newCreds
-				})
-			}
+		const refreshed = await this.refreshCredentials()
+		return generation === this.generation ? (refreshed?.access_token ?? null) : null
+	}
 
-			const newCredentials = await this.refreshPromise
-			this.refreshPromise = null
-			await this.saveCredentials(newCredentials)
-			this.log(`[openai-codex-oauth] Forced token persisted (expires=${newCredentials.expires})`)
-			return newCredentials.access_token
-		} catch (error) {
-			this.refreshPromise = null
-			this.logError("[openai-codex-oauth] Failed to force refresh token:", error)
-			if (error instanceof OpenAiCodexOAuthTokenError && error.isLikelyInvalidGrant()) {
-				this.log("[openai-codex-oauth] Refresh token appears invalid; clearing stored credentials")
-				await this.clearCredentials()
-			}
-			return null
+	private refreshCredentials(): Promise<OpenAiCodexCredentials | null> {
+		if (this.refreshPromise) {
+			return this.refreshPromise
 		}
+		const generation = this.generation
+		const credentials = this.credentials
+		if (!credentials) return Promise.resolve(null)
+
+		const refresh = (async () => {
+			try {
+				const refreshed = await refreshAccessToken(credentials)
+				await this.persistCredentials(refreshed, generation)
+				return generation === this.generation ? refreshed : null
+			} catch (error) {
+				// A stale failure must not clear credentials belonging to a newer sign-in.
+				if (generation === this.generation) {
+					this.logError("[openai-codex-oauth] Failed to refresh token:", error)
+					if (error instanceof OpenAiCodexOAuthTokenError && error.isLikelyInvalidGrant()) {
+						await this.clearCredentials()
+					}
+				}
+				return null
+			}
+		})()
+		this.refreshPromise = refresh
+		return refresh.finally(() => {
+			if (this.refreshPromise === refresh) this.refreshPromise = null
+		})
+	}
+
+	private withStorage<T>(operation: () => Promise<T>): Promise<T> {
+		const result = this.storageQueue.then(operation)
+		// A failed operation must not prevent subsequent deletion or persistence.
+		this.storageQueue = result.catch(() => undefined)
+		return result
 	}
 
 	/**
 	 * Load credentials from storage
 	 */
 	async loadCredentials(): Promise<OpenAiCodexCredentials | null> {
-		if (!this.context) {
+		const context = this.context
+		const generation = this.generation
+		if (!context) {
 			return null
 		}
 
 		try {
-			const credentialsJson = await this.context.secrets.get(OPENAI_CODEX_CREDENTIALS_KEY)
-			if (!credentialsJson) {
-				return null
-			}
-
-			const parsed = JSON.parse(credentialsJson)
-			this.credentials = openAiCodexCredentialsSchema.parse(parsed)
-			return this.credentials
+			return await this.withStorage(async () => {
+				if (generation !== this.generation) return null
+				const credentialsJson = await context.secrets.get(OPENAI_CODEX_CREDENTIALS_KEY)
+				if (generation !== this.generation || !credentialsJson) return null
+				this.credentials = openAiCodexCredentialsSchema.parse(JSON.parse(credentialsJson))
+				return this.credentials
+			})
 		} catch (error) {
 			this.logError("[openai-codex-oauth] Failed to load credentials:", error)
 			return null
@@ -488,74 +504,77 @@ export class OpenAiCodexOAuthManager {
 	 * Save credentials to storage
 	 */
 	async saveCredentials(credentials: OpenAiCodexCredentials): Promise<void> {
-		if (!this.context) {
+		// An explicit replacement also invalidates refreshes for the previous account.
+		this.cancelAuthorizationFlow()
+		await this.persistCredentials(credentials, this.generation, true)
+	}
+
+	private async persistCredentials(
+		credentials: OpenAiCodexCredentials,
+		generation: number,
+		replace = false,
+	): Promise<number> {
+		const context = this.context
+		if (!context) {
 			throw new Error("OAuth manager not initialized")
 		}
 
-		await this.context.secrets.store(OPENAI_CODEX_CREDENTIALS_KEY, JSON.stringify(credentials))
-		this.credentials = credentials
+		return this.withStorage(async () => {
+			if (generation !== this.generation) throw new Error("Authentication operation cancelled")
+			await context.secrets.store(OPENAI_CODEX_CREDENTIALS_KEY, JSON.stringify(credentials))
+			if (generation !== this.generation) {
+				// SecretStorage cannot abort an in-flight write. Restore the last committed state
+				// before allowing any newer save/delete/read to use storage.
+				if (this.credentials) {
+					await context.secrets.store(OPENAI_CODEX_CREDENTIALS_KEY, JSON.stringify(this.credentials))
+				} else {
+					await context.secrets.delete(OPENAI_CODEX_CREDENTIALS_KEY)
+				}
+				throw new Error("Authentication operation cancelled")
+			}
+			this.credentials = credentials
+			if (replace) {
+				// Also discard refreshes started against the old account during this write.
+				// Do this before releasing the queue to any pending refresh persistence.
+				this.generation++
+				this.refreshPromise = null
+			}
+			return this.generation
+		})
 	}
 
 	/**
 	 * Clear credentials from storage
 	 */
 	async clearCredentials(): Promise<void> {
-		if (!this.context) {
+		this.cancelAuthorizationFlow()
+		this.credentials = null
+		const context = this.context
+		if (!context) {
 			return
 		}
 
-		await this.context.secrets.delete(OPENAI_CODEX_CREDENTIALS_KEY)
-		this.credentials = null
+		await this.withStorage(async () => context.secrets.delete(OPENAI_CODEX_CREDENTIALS_KEY))
 	}
 
 	/**
 	 * Get a valid access token, refreshing if necessary
 	 */
 	async getAccessToken(): Promise<string | null> {
+		const generation = this.generation
 		// Try to load credentials if not already loaded
 		if (!this.credentials) {
 			await this.loadCredentials()
 		}
 
-		if (!this.credentials) {
+		if (generation !== this.generation || !this.credentials) {
 			return null
 		}
 
 		// Check if token is expired and refresh if needed
 		if (isTokenExpired(this.credentials)) {
-			try {
-				// De-dupe concurrent refreshes
-				if (!this.refreshPromise) {
-					this.log(
-						`[openai-codex-oauth] Access token expired (expires=${this.credentials.expires}). Refreshing...`,
-					)
-					const prevRefreshToken = this.credentials.refresh_token
-					this.refreshPromise = refreshAccessToken(this.credentials).then((newCreds) => {
-						const rotated = newCreds.refresh_token !== prevRefreshToken
-						this.log(
-							`[openai-codex-oauth] Refresh response received (expires_in≈${Math.round(
-								(newCreds.expires - Date.now()) / 1000,
-							)}s, refresh_token_rotated=${rotated})`,
-						)
-						return newCreds
-					})
-				}
-
-				const newCredentials = await this.refreshPromise
-				this.refreshPromise = null
-				await this.saveCredentials(newCredentials)
-				this.log(`[openai-codex-oauth] Token persisted (expires=${newCredentials.expires})`)
-			} catch (error) {
-				this.refreshPromise = null
-				this.logError("[openai-codex-oauth] Failed to refresh token:", error)
-
-				// Only clear secrets when the refresh token is clearly invalid/revoked.
-				if (error instanceof OpenAiCodexOAuthTokenError && error.isLikelyInvalidGrant()) {
-					this.log("[openai-codex-oauth] Refresh token appears invalid; clearing stored credentials")
-					await this.clearCredentials()
-				}
-				return null
-			}
+			const refreshed = await this.refreshCredentials()
+			return generation === this.generation ? (refreshed?.access_token ?? null) : null
 		}
 
 		return this.credentials.access_token
@@ -603,6 +622,7 @@ export class OpenAiCodexOAuthManager {
 		const state = generateState()
 
 		this.pendingAuth = {
+			generation: this.generation,
 			codeVerifier,
 			state,
 		}
@@ -615,37 +635,32 @@ export class OpenAiCodexOAuthManager {
 	 * Returns a promise that resolves when authentication is complete
 	 */
 	async waitForCallback(): Promise<OpenAiCodexCredentials> {
-		if (!this.pendingAuth) {
+		const pendingAuth = this.pendingAuth
+		if (!pendingAuth) {
 			throw new Error("No pending authorization flow")
 		}
 
-		// Close any existing server before starting a new one
-		if (this.pendingAuth.server) {
-			try {
-				this.pendingAuth.server.close()
-			} catch {
-				// Ignore errors when closing
-			}
-			this.pendingAuth.server = undefined
-		}
+		if (pendingAuth.callbackPromise) return pendingAuth.callbackPromise
 
-		return new Promise((resolve, reject) => {
+		pendingAuth.callbackPromise = new Promise((resolve, reject) => {
 			// A callback URL pasted in by the user must settle the same promise the browser
 			// redirect would have settled.
-			const pendingAuth = this.pendingAuth
-			if (pendingAuth) {
-				pendingAuth.settle = (outcome) => {
-					if (outcome.credentials) {
-						resolve(outcome.credentials)
-					} else {
-						reject(outcome.error ?? new Error("Authentication failed"))
-					}
+			pendingAuth.settle = (outcome) => {
+				if (outcome.credentials) {
+					resolve(outcome.credentials)
+				} else {
+					reject(outcome.error ?? new Error("Authentication failed"))
 				}
 			}
 
 			const server = http.createServer(async (req, res) => {
 				try {
 					const url = new URL(req.url || "", `http://localhost:${OPENAI_CODEX_OAUTH_CONFIG.callbackPort}`)
+					if (req.method !== "GET") {
+						res.writeHead(405)
+						res.end("Method Not Allowed")
+						return
+					}
 
 					if (url.pathname !== "/auth/callback") {
 						res.writeHead(404)
@@ -657,36 +672,43 @@ export class OpenAiCodexOAuthManager {
 					const state = url.searchParams.get("state")
 					const error = url.searchParams.get("error")
 
-					if (error) {
-						res.writeHead(400)
-						res.end(`Authentication failed: ${error}`)
-						reject(new Error(`OAuth error: ${error}`))
-						server.close()
-						return
-					}
-
-					if (!code || !state) {
+					// Validate state before accepting either a success or an OAuth error.
+					// Unrelated local requests must not terminate the real sign-in.
+					if (
+						!state ||
+						(!code && !error) ||
+						(code && error) ||
+						url.searchParams.getAll("state").length !== 1
+					) {
 						res.writeHead(400)
 						res.end("Missing code or state parameter")
-						reject(new Error("Missing code or state parameter"))
-						server.close()
 						return
 					}
 
-					if (state !== this.pendingAuth?.state) {
+					if (state !== pendingAuth.state || this.pendingAuth !== pendingAuth) {
 						res.writeHead(400)
 						res.end("State mismatch - possible CSRF attack")
-						reject(new Error("State mismatch"))
-						server.close()
+						return
+					}
+
+					if (pendingAuth.exchanging) {
+						res.writeHead(409)
+						res.end("Authentication exchange already in progress")
+						return
+					}
+
+					if (error) {
+						res.writeHead(400)
+						res.end("Authentication failed")
+						pendingAuth.settle?.({ error: new Error(`OAuth error: ${error}`) })
+						this.cancelAuthorizationFlow()
 						return
 					}
 
 					try {
 						// Note: state is validated above but not passed to exchangeCodeForTokens
 						// per the implementation guide (OpenAI rejects it)
-						const credentials = await exchangeCodeForTokens(code, this.pendingAuth.codeVerifier)
-
-						await this.saveCredentials(credentials)
+						await this.completeAuthorization(pendingAuth, code!)
 
 						res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" })
 						res.end(`<!DOCTYPE html>
@@ -721,25 +743,19 @@ export class OpenAiCodexOAuthManager {
 <script>setTimeout(() => window.close(), 3000);</script>
 </body>
 </html>`)
-
-						this.pendingAuth = null
-						server.close()
-						resolve(credentials)
 					} catch (exchangeError) {
 						res.writeHead(500)
-						res.end(`Token exchange failed: ${exchangeError}`)
-						reject(exchangeError)
-						server.close()
+						res.end("Token exchange failed")
+						this.logError("[openai-codex-oauth] Callback token exchange failed:", exchangeError)
 					}
-				} catch (err) {
-					res.writeHead(500)
-					res.end("Internal server error")
-					reject(err)
-					server.close()
+				} catch {
+					res.writeHead(400)
+					res.end("Invalid callback request")
 				}
 			})
 
 			server.on("error", (err: NodeJS.ErrnoException) => {
+				clearTimeout(timeout)
 				// pendingAuth is deliberately kept. The manual "paste the callback URL" path still
 				// works without a listening socket, for example when the Codex CLI already holds 1455.
 				if (err.code === "EADDRINUSE") {
@@ -758,16 +774,19 @@ export class OpenAiCodexOAuthManager {
 			// Set a timeout for the callback
 			const timeout = setTimeout(
 				() => {
-					server.close()
-					reject(new Error("Authentication timed out"))
+					if (this.pendingAuth === pendingAuth) {
+						pendingAuth.settle?.({ error: new Error("Authentication timed out") })
+						this.cancelAuthorizationFlow()
+					}
 				},
 				5 * 60 * 1000,
 			) // 5 minutes
 
-			server.listen(OPENAI_CODEX_OAUTH_CONFIG.callbackPort, () => {
-				if (this.pendingAuth) {
-					this.pendingAuth.server = server
-				}
+			// Listen only on IPv4 loopback, never a wildcard interface. Browsers can reach
+			// this address using the registered http://localhost redirect URI.
+			pendingAuth.server = server
+			server.listen(OPENAI_CODEX_OAUTH_CONFIG.callbackPort, "127.0.0.1", () => {
+				if (this.pendingAuth !== pendingAuth) server.close()
 			})
 
 			// Clear timeout when server closes
@@ -775,6 +794,7 @@ export class OpenAiCodexOAuthManager {
 				clearTimeout(timeout)
 			})
 		})
+		return pendingAuth.callbackPromise
 	}
 
 	/**
@@ -807,31 +827,46 @@ export class OpenAiCodexOAuthManager {
 
 		this.log("[openai-codex-oauth] Completing sign in from a pasted callback URL")
 
-		const credentials = await exchangeCodeForTokens(code, pending.codeVerifier)
-		await this.saveCredentials(credentials)
+		return this.completeAuthorization(pending, code)
+	}
 
-		const settle = pending.settle
-		if (this.pendingAuth === pending) {
-			this.pendingAuth = null
-		}
+	private async completeAuthorization(
+		pending: NonNullable<OpenAiCodexOAuthManager["pendingAuth"]>,
+		code: string,
+	): Promise<OpenAiCodexCredentials> {
+		if (pending.exchanging) throw new Error("Authentication exchange already in progress")
+		pending.exchanging = true
 		try {
+			const credentials = await exchangeCodeForTokens(code, pending.codeVerifier)
+			if (this.pendingAuth !== pending || pending.generation !== this.generation) {
+				throw new Error("Authentication operation cancelled")
+			}
+			// Discard any refresh of the previous account, including one started during sign-in.
+			pending.generation = ++this.generation
+			this.refreshPromise = null
+			const generation = await this.persistCredentials(credentials, pending.generation, true)
+			if (this.pendingAuth !== pending || generation !== this.generation) {
+				throw new Error("Authentication operation cancelled")
+			}
+			this.pendingAuth = null
 			pending.server?.close()
-		} catch {
-			// Ignore errors when closing
+			pending.settle?.({ credentials })
+			return credentials
+		} finally {
+			pending.exchanging = false
 		}
-		settle?.({ credentials })
-
-		return credentials
 	}
 
 	/**
 	 * Cancel any pending authorization flow
 	 */
 	cancelAuthorizationFlow(): void {
-		if (this.pendingAuth?.server) {
-			this.pendingAuth.server.close()
-		}
+		this.generation++
+		this.refreshPromise = null
+		const pending = this.pendingAuth
 		this.pendingAuth = null
+		pending?.server?.close()
+		pending?.settle?.({ error: new Error("Authentication operation cancelled") })
 	}
 
 	/**

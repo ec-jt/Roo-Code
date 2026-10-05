@@ -48,9 +48,9 @@ describe("OpenAiCodexHandler Codex headers", () => {
 	})
 
 	it("sends OpenAI-Beta and x-client-request-id on the fetch fallback request", async () => {
-		// Force the SDK path to throw so the handler falls back to the manual SSE fetch.
+		// A non-streaming SDK response is an explicit compatibility failure.
 		;(handler as never as { client: unknown }).client = {
-			responses: { create: vi.fn().mockRejectedValue(new Error("sdk unavailable")) },
+			responses: { create: vi.fn().mockResolvedValue({}) },
 		}
 
 		const fetchMock = vi.fn().mockResolvedValue({

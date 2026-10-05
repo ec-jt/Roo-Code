@@ -57,6 +57,22 @@ describe("ContextProxy", () => {
 		await proxy.initialize()
 	})
 
+	it("roundtrips the local browser selection without changing it for remote connections", async () => {
+		const stored = new Map<string, unknown>()
+		mockGlobalState.update.mockImplementation(async (key: string, value: unknown) => {
+			stored.set(key, value)
+		})
+		mockGlobalState.get.mockImplementation((key: string) => stored.get(key))
+		expect(proxy.getValue("browserLocalBrowser")).toBeUndefined()
+		for (const browserLocalBrowser of ["chrome", "chromium"] as const) {
+			await proxy.setValues({ browserLocalBrowser, remoteBrowserEnabled: true })
+			const reloaded = new ContextProxy(mockContext)
+			await reloaded.initialize()
+			expect(reloaded.getValue("browserLocalBrowser")).toBe(browserLocalBrowser)
+			expect(mockGlobalState.update).toHaveBeenCalledWith("browserLocalBrowser", browserLocalBrowser)
+		}
+	})
+
 	it("roundtrips nested-subtask opt-in through extension storage", async () => {
 		const stored = new Map<string, unknown>()
 		mockGlobalState.update.mockImplementation(async (key: string, value: unknown) => {

@@ -234,6 +234,7 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 		writeDelayMs: 1000,
 		browserViewportSize: "900x600",
 		browserHeaded: false,
+		browserLocalBrowser: "chromium",
 		screenshotQuality: 75,
 		terminalShellIntegrationTimeout: 4000,
 		mcpEnabled: true,

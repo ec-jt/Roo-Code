@@ -157,14 +157,15 @@ const BrowserSessionRow = memo((props: BrowserSessionRowProps) => {
 		}
 	}, [])
 
-	// Try to use ExtensionStateContext if available, otherwise use props
-	let browserViewportSize = props.browserViewportSizeProp || "900x600"
-	let isBrowserSessionActive = props.isBrowserSessionActiveProp || false
+	// Dedicated panel updates are newer than its initial extension-state snapshot.
+	// Explicit props take precedence, including an inactive (false) session.
+	let browserViewportSize = props.browserViewportSizeProp ?? "900x600"
+	let isBrowserSessionActive = props.isBrowserSessionActiveProp ?? false
 
 	try {
 		const extensionState = useExtensionState()
-		browserViewportSize = extensionState.browserViewportSize || "900x600"
-		isBrowserSessionActive = extensionState.isBrowserSessionActive || false
+		browserViewportSize = props.browserViewportSizeProp ?? extensionState.browserViewportSize ?? "900x600"
+		isBrowserSessionActive = props.isBrowserSessionActiveProp ?? extensionState.isBrowserSessionActive ?? false
 	} catch (_e) {
 		// Not in ExtensionStateContext, use props
 	}

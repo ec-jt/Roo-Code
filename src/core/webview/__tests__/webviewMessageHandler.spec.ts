@@ -10,6 +10,8 @@ vi.mock("../../../integrations/openai-codex/oauth", () => ({
 		getAccessToken: vi.fn(),
 		getAccountId: vi.fn(),
 		submitCallbackUrl: vi.fn(),
+		startAuthorizationFlow: vi.fn(),
+		waitForCallback: vi.fn(),
 	},
 }))
 
@@ -92,6 +94,9 @@ vi.mock("vscode", () => {
 	const showTextDocument = vi.fn().mockResolvedValue(undefined)
 
 	return {
+		env: { openExternal: vi.fn().mockResolvedValue(true), uiKind: 1 },
+		UIKind: { Desktop: 1, Web: 2 },
+		Uri: { parse: vi.fn((value: string) => value) },
 		window: {
 			showInformationMessage,
 			showErrorMessage,
@@ -644,6 +649,34 @@ describe("webviewMessageHandler - requestOpenAiCodexRateLimits", () => {
 				fetchedAt: 1700000000000,
 			},
 		})
+	})
+})
+
+describe("webviewMessageHandler - OpenAI Codex callback lifecycle", () => {
+	beforeEach(() => {
+		vi.clearAllMocks()
+		vi.mocked(openAiCodexOAuthManager.startAuthorizationFlow).mockReturnValue("https://auth.openai.com/authorize")
+	})
+
+	it.each(["Authentication operation cancelled", "Authentication timed out"])(
+		"does not show an error notification for %s",
+		async (message) => {
+			vi.mocked(openAiCodexOAuthManager.waitForCallback).mockRejectedValue(new Error(message))
+			await webviewMessageHandler(mockClineProvider, { type: "openAiCodexSignIn" })
+			await new Promise<void>((resolve) => setImmediate(resolve))
+			expect(openAiCodexOAuthManager.waitForCallback).toHaveBeenCalledOnce()
+			expect(vscode.window.showErrorMessage).not.toHaveBeenCalled()
+			expect(vscode.window.showInformationMessage).not.toHaveBeenCalled()
+		},
+	)
+
+	it("still reports unexpected callback failures", async () => {
+		vi.mocked(openAiCodexOAuthManager.waitForCallback).mockRejectedValue(new Error("Token exchange failed"))
+		await webviewMessageHandler(mockClineProvider, { type: "openAiCodexSignIn" })
+		await new Promise<void>((resolve) => setImmediate(resolve))
+		expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+			"OpenAI Codex sign in failed: Token exchange failed",
+		)
 	})
 })
 

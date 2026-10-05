@@ -1,6 +1,7 @@
 import { VSCodeCheckbox, VSCodeTextField, VSCodeLink } from "@vscode/webview-ui-toolkit/react"
 import { HTMLAttributes, useEffect, useMemo, useState } from "react"
 import { Trans } from "react-i18next"
+import type { GlobalSettings } from "@roo-code/types"
 
 import {
 	Select,
@@ -25,6 +26,7 @@ type BrowserSettingsProps = HTMLAttributes<HTMLDivElement> & {
 	browserToolEnabled?: boolean
 	browserViewportSize?: string
 	browserHeaded?: boolean
+	browserLocalBrowser?: GlobalSettings["browserLocalBrowser"]
 	screenshotQuality?: number
 	remoteBrowserHost?: string
 	remoteBrowserEnabled?: boolean
@@ -32,6 +34,7 @@ type BrowserSettingsProps = HTMLAttributes<HTMLDivElement> & {
 		| "browserToolEnabled"
 		| "browserViewportSize"
 		| "browserHeaded"
+		| "browserLocalBrowser"
 		| "screenshotQuality"
 		| "remoteBrowserHost"
 		| "remoteBrowserEnabled"
@@ -42,6 +45,7 @@ export const BrowserSettings = ({
 	browserToolEnabled,
 	browserViewportSize,
 	browserHeaded,
+	browserLocalBrowser,
 	screenshotQuality,
 	remoteBrowserHost,
 	remoteBrowserEnabled,
@@ -136,6 +140,40 @@ export const BrowserSettings = ({
 
 				{browserToolEnabled && (
 					<div className="flex flex-col gap-3 pl-3 border-l-2 border-vscode-button-background">
+						<SearchableSetting
+							settingId="browser-local-browser"
+							section="browser"
+							label={t("settings:browser.localBrowser.label")}>
+							<label htmlFor="browser-local-browser" className="block font-medium mb-1">
+								{t("settings:browser.localBrowser.label")}
+							</label>
+							<Select
+								value={browserLocalBrowser ?? "chromium"}
+								disabled={remoteBrowserEnabled}
+								onValueChange={(value) => {
+									if (value === "chromium" || value === "chrome") {
+										setCachedStateField("browserLocalBrowser", value)
+									}
+								}}>
+								<SelectTrigger
+									id="browser-local-browser"
+									aria-describedby="browser-local-browser-description"
+									className="w-full">
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value="chromium">
+										{t("settings:browser.localBrowser.chromium")}
+									</SelectItem>
+									<SelectItem value="chrome">{t("settings:browser.localBrowser.chrome")}</SelectItem>
+								</SelectContent>
+							</Select>
+							<div
+								id="browser-local-browser-description"
+								className="text-vscode-descriptionForeground text-sm mt-1">
+								{t("settings:browser.localBrowser.description")}
+							</div>
+						</SearchableSetting>
 						<SearchableSetting
 							settingId="browser-headed"
 							section="browser"

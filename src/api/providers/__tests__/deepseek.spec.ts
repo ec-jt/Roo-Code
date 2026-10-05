@@ -476,6 +476,53 @@ describe("DeepSeekHandler", () => {
 			expect(callArgs.thinking).toBeUndefined()
 		})
 
+		it.each([
+			["deepseek-reasoner", true],
+			["deepseek-v4-pro", true],
+			["deepseek-pro", true],
+			["deepseek-v4-flash", true],
+			["deepseek-flash", true],
+			["deepseek-chat", false],
+		] as const)("aligns thinking and tool continuation for %s", async (apiModelId, thinking) => {
+			const aliasHandler = new DeepSeekHandler({ ...mockOptions, apiModelId })
+			const environment = "<environment_details>Current workspace</environment_details>"
+			const assistantMessage: Anthropic.Messages.MessageParam & { reasoning_content: string } = {
+				role: "assistant",
+				reasoning_content: "I need to read the file.",
+				content: [{ type: "tool_use", id: "call_123", name: "read_file", input: { path: "test.txt" } }],
+			}
+			const continuation: Anthropic.Messages.MessageParam[] = [
+				...messages,
+				assistantMessage,
+				{
+					role: "user",
+					content: [
+						{ type: "tool_result", tool_use_id: "call_123", content: "file contents" },
+						{ type: "text", text: environment },
+					],
+				},
+			]
+			for await (const _chunk of aliasHandler.createMessage(systemPrompt, continuation)) {
+				// Consume the stream to inspect the request payload.
+			}
+
+			const request = mockCreate.mock.calls[0][0]
+			expect(request.model).toBe(apiModelId)
+			expect(request.thinking).toEqual(thinking ? { type: "enabled" } : undefined)
+			const toolIndex = request.messages.findIndex((message: { role: string }) => message.role === "tool")
+			expect(request.messages[toolIndex]).toEqual({
+				role: "tool",
+				tool_call_id: "call_123",
+				content: thinking ? `file contents\n\n${environment}` : "file contents",
+			})
+			if (thinking) {
+				expect(request.messages[toolIndex - 1].reasoning_content).toBe(assistantMessage.reasoning_content)
+				expect(request.messages.slice(toolIndex + 1)).toEqual([])
+			} else {
+				expect(request.messages.slice(toolIndex + 1)).toEqual([{ role: "user", content: environment }])
+			}
+		})
+
 		it("should handle tool calls with reasoning_content", async () => {
 			const reasonerHandler = new DeepSeekHandler({
 				...mockOptions,
