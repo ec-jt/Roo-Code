@@ -154,7 +154,7 @@ export async function buildNativeToolsArrayWithRestrictions(options: BuildToolsO
 			nativeToolGate.add(name)
 			continue
 		}
-		if (requiredCred !== undefined && !requiredCred) {
+		if (Object.hasOwn(CREDENTIAL_REQUIREMENTS, name) && !requiredCred?.trim()) {
 			nativeToolGate.add(name)
 		}
 	}

@@ -13,6 +13,37 @@ vi.mock("@vscode/webview-ui-toolkit/react", () => ({
 }))
 
 describe("NativeToolIntegrationsSettings", () => {
+	it.each([undefined, "", " \t "])(
+		"disables Brave toggles for missing key %j without blocking Context7",
+		(braveApiKey) => {
+			render(
+				<NativeToolIntegrationsSettings
+					braveApiKey={braveApiKey}
+					setBraveApiKey={vi.fn()}
+					setContext7ApiKey={vi.fn()}
+				/>,
+			)
+			for (const name of ["brave_web_search", "brave_local_search"]) {
+				expect(screen.getByRole("checkbox", { name: new RegExp(name) })).toBeDisabled()
+			}
+			expect(screen.getByRole("checkbox", { name: /context7_query_docs/ })).toBeEnabled()
+		},
+	)
+
+	it("keeps valid-key Brave controls usable while preserving explicit disable state", () => {
+		render(
+			<NativeToolIntegrationsSettings
+				braveApiKey=" test-key "
+				nativeToolEnabled={{ brave_web_search: false }}
+				setBraveApiKey={vi.fn()}
+				setContext7ApiKey={vi.fn()}
+			/>,
+		)
+		expect(screen.getByRole("checkbox", { name: /brave_web_search/ })).toBeEnabled()
+		expect(screen.getByRole("checkbox", { name: /brave_web_search/ })).not.toBeChecked()
+		expect(screen.getByRole("checkbox", { name: /brave_local_search/ })).toBeEnabled()
+	})
+
 	it.each([undefined, "", " \t "])("keeps Context7 toggles available with key %j", (context7ApiKey) => {
 		const setNativeToolEnabled = vi.fn()
 		render(

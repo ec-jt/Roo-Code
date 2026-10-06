@@ -47,7 +47,8 @@ const TOOL_CATALOG: ToolInfo[] = [
 	{
 		name: "markdownify",
 		label: "Markdownify",
-		description: "Convert a local file or a web page to markdown-friendly text. Provide exactly one of path or url.",
+		description:
+			"Convert a local file or a web page to markdown-friendly text. Provide exactly one of path or url.",
 	},
 	{
 		name: "git_tools",
@@ -159,9 +160,9 @@ export const NativeToolIntegrationsSettings = ({
 					/>
 					<p className="text-vscode-descriptionForeground text-xs mt-1">
 						Used by <code>git_tools</code> and <code>git_repo_research</code> when the workspace remote
-						points at a private GitHub repository. The token is injected via the{" "}
-						<code>GH_TOKEN</code> environment variable so <code>git</code> can fetch private history.
-						Required scopes: <code>repo</code> (private repo access). Leave empty for public-only repos.
+						points at a private GitHub repository. The token is injected via the <code>GH_TOKEN</code>{" "}
+						environment variable so <code>git</code> can fetch private history. Required scopes:{" "}
+						<code>repo</code> (private repo access). Leave empty for public-only repos.
 					</p>
 				</div>
 			</div>
@@ -175,7 +176,7 @@ export const NativeToolIntegrationsSettings = ({
 				{TOOL_CATALOG.map((tool) => {
 					const enabled = isToolEnabled(nativeToolEnabled, tool.name)
 					const credentialMissing =
-						(tool.requiresCredential === "brave" && !braveApiKey) ||
+						(tool.requiresCredential === "brave" && !braveApiKey?.trim()) ||
 						(tool.requiresCredential === "github" && !githubToken)
 					return (
 						<div key={tool.name} className="ml-1">

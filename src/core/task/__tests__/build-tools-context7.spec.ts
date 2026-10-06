@@ -87,6 +87,33 @@ describe("Context7 native tool registration", () => {
 		},
 	)
 
+	it.each([undefined, "", " \t\n "])(
+		"hides Brave tools for missing key %j in both registration modes",
+		async (braveApiKey) => {
+			for (const includeAllToolsWithRestrictions of [false, true]) {
+				const result = await build({ braveApiKey }, { includeAllToolsWithRestrictions })
+				for (const name of ["brave_web_search", "brave_local_search"]) {
+					expect(names(result.tools)).not.toContain(name)
+					if (includeAllToolsWithRestrictions) expect(result.allowedFunctionNames).not.toContain(name)
+				}
+				expect(names(result.tools)).toEqual(expect.arrayContaining(context7Tools))
+			}
+		},
+	)
+
+	it("registers Brave with a nonblank key but honors explicit disable settings", async () => {
+		const state = { braveApiKey: " test-key " }
+		const enabled = await build(state, { includeAllToolsWithRestrictions: true })
+		for (const name of ["brave_web_search", "brave_local_search"]) {
+			expect(names(enabled.tools)).toContain(name)
+			expect(enabled.allowedFunctionNames).toContain(name)
+			const disabled = await build({ ...state, nativeToolEnabled: { [name]: false } })
+			expect(names(disabled.tools)).not.toContain(name)
+			const restricted = await build(state, { disabledTools: [name] })
+			expect(names(restricted.tools)).not.toContain(name)
+		}
+	})
+
 	it("keeps existing Brave and Git credential behavior", async () => {
 		const result = await build({ braveApiKey: "", context7ApiKey: "" })
 		expect(names(result.tools)).not.toContain("brave_web_search")

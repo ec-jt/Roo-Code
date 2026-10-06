@@ -1,5 +1,13 @@
 # Roo Code Changelog
 
+## 4.2.11 - Cordis preview 9
+
+- Hide Brave web/local search tools when their required key is unset, empty, or whitespace-only, including restricted all-tools registration.
+- Normalize Brave keys in execution handlers and settings availability checks. Keep approval, explicit disable settings, and Context7 keyless access unchanged.
+- Replace this repository's unconditional test-coverage instructions with focused risk-based validation, result reuse, and explicit limits. Test scripts and mandatory hooks are unchanged; these workspace rules are not installed into other projects by the VSIX.
+
+GitHub prerelease tag: **v4.2.11-cordis-preview.9**.
+
 ## 4.2.10 - Cordis preview 8
 
 - Exclude disposable Python environments, including `.venv` used by uv, tox/nox environments, Python tool caches, workspace-local `.cache`/`.uv-cache`, and common JavaScript package/build caches from checkpoints at any project depth.

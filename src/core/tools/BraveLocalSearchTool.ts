@@ -14,7 +14,7 @@ export class BraveLocalSearchTool extends BaseTool<"brave_local_search"> {
 		const { query, count } = params
 		const { askApproval, pushToolResult } = callbacks
 		const state = await task.providerRef.deref()?.getState()
-		const apiKey = state?.braveApiKey
+		const apiKey = state?.braveApiKey?.trim()
 
 		if (!query) {
 			task.consecutiveMistakeCount++
@@ -24,7 +24,8 @@ export class BraveLocalSearchTool extends BaseTool<"brave_local_search"> {
 		}
 
 		if (!apiKey) {
-			const error = "Brave Search API key is not configured in Settings → Experimental → Native Tool Integrations."
+			const error =
+				"Brave Search API key is not configured in Settings → Experimental → Native Tool Integrations."
 			await task.say("error", error)
 			task.didToolFailInCurrentTurn = true
 			pushToolResult(formatResponse.toolError(error))
