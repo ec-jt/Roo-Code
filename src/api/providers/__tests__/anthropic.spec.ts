@@ -631,17 +631,29 @@ describe("AnthropicHandler", () => {
 		})
 	})
 
-	describe("claude-fable-5-1 adaptive thinking (always on)", () => {
+	describe.each([
+		{ modelId: "claude-fable-5-1", defaultEffort: "high" },
+		{ modelId: "claude-opus-5-5", defaultEffort: "medium" },
+	])("$modelId adaptive thinking (always on)", ({ modelId, defaultEffort }) => {
 		const systemPrompt = "You are a helpful assistant."
+		const expectedThinking = {
+			type: "adaptive",
+			display: "summarized",
+			block_binding: { prefix_mismatch_behavior: "drop_block" },
+		}
 
-		it("should use adaptive thinking with default high effort and native 1M context", async () => {
-			const fable51Handler = new AnthropicHandler({
+		it("should use the model's default effort, native 1M context, and prompt caching", async () => {
+			const alwaysOnHandler = new AnthropicHandler({
 				apiKey: "test-api-key",
-				apiModelId: "claude-fable-5-1",
+				apiModelId: modelId,
+				anthropicBeta1MContext: true,
+				modelTemperature: 0.5,
 			})
 
-			const stream = fable51Handler.createMessage(systemPrompt, [
+			const stream = alwaysOnHandler.createMessage(systemPrompt, [
 				{ role: "user", content: [{ type: "text" as const, text: "Hello" }] },
+				{ role: "assistant", content: "Hi" },
+				{ role: "user", content: "Continue" },
 			])
 
 			for await (const _chunk of stream) {
@@ -650,77 +662,89 @@ describe("AnthropicHandler", () => {
 
 			const requestBody = mockCreate.mock.calls[mockCreate.mock.calls.length - 1]?.[0]
 			const requestOptions = mockCreate.mock.calls[mockCreate.mock.calls.length - 1]?.[1]
-			expect(requestBody.model).toBe("claude-fable-5-1")
-			expect(requestBody.thinking).toEqual({ type: "adaptive", display: "summarized" })
-			expect(requestBody.output_config).toEqual({ effort: "high" })
+			expect(requestBody.model).toBe(modelId)
+			expect(alwaysOnHandler.getModel().info.contextWindow).toBe(1_000_000)
+			expect(requestBody.thinking).toEqual(expectedThinking)
+			expect(requestBody.output_config).toEqual({ effort: defaultEffort })
 			expect(requestBody.temperature).toBeUndefined()
 			expect(requestBody.max_tokens).toBe(128_000)
 			expect(requestBody.system[0].cache_control).toEqual({ type: "ephemeral" })
+			expect(requestBody.messages[0].content[0].cache_control).toEqual({ type: "ephemeral" })
+			expect(requestBody.messages[2].content[0].cache_control).toEqual({ type: "ephemeral" })
 			expect(requestOptions?.headers?.["anthropic-beta"]).toContain("prompt-caching-2024-07-31")
+			expect(requestOptions?.headers?.["anthropic-beta"]).toContain("thinking-binding-controls-2026-08-01")
+			expect(requestOptions?.headers?.["anthropic-beta"]).not.toContain("context-1m-2025-08-07")
 		})
 
-		it("should keep adaptive thinking enabled even when reasoning is explicitly disabled", async () => {
-			const fable51Handler = new AnthropicHandler({
-				apiKey: "test-api-key",
-				apiModelId: "claude-fable-5-1",
-				enableReasoningEffort: false,
-			})
+		it.each([undefined, "disable", "none", "minimal"] as const)(
+			"should keep thinking enabled and use default effort with stale %s and a disabled toggle",
+			async (reasoningEffort) => {
+				const alwaysOnHandler = new AnthropicHandler({
+					apiKey: "test-api-key",
+					apiModelId: modelId,
+					enableReasoningEffort: false,
+					reasoningEffort,
+					modelMaxThinkingTokens: 4096,
+				})
 
-			const stream = fable51Handler.createMessage(systemPrompt, [
-				{ role: "user", content: [{ type: "text" as const, text: "Hello" }] },
-			])
+				const stream = alwaysOnHandler.createMessage(systemPrompt, [
+					{ role: "user", content: [{ type: "text" as const, text: "Hello" }] },
+				])
 
-			for await (const _chunk of stream) {
-				// Consume stream
-			}
+				for await (const _chunk of stream) {
+					// Consume stream
+				}
 
-			const requestBody = mockCreate.mock.calls[mockCreate.mock.calls.length - 1]?.[0]
-			// Fable 5.1 rejects thinking {"type": "disabled"} — adaptive thinking is always on
-			expect(requestBody.thinking).toEqual({ type: "adaptive", display: "summarized" })
-			expect(requestBody.output_config).toEqual({ effort: "high" })
-		})
+				const requestBody = mockCreate.mock.calls[mockCreate.mock.calls.length - 1]?.[0]
+				expect(requestBody.thinking).toEqual(expectedThinking)
+				expect(requestBody.output_config).toEqual({ effort: defaultEffort })
+				expect(requestBody.max_tokens).toBe(128_000)
+			},
+		)
 
-		it("should never send forced tool_choice even with thinking nominally disabled", async () => {
-			const fable51Handler = new AnthropicHandler({
-				apiKey: "test-api-key",
-				apiModelId: "claude-fable-5-1",
-				enableReasoningEffort: false,
-			})
+		it.each(["required", { type: "function", function: { name: "get_weather" } }] as const)(
+			"should not send forced tool choice %j with thinking nominally disabled",
+			async (toolChoice) => {
+				const alwaysOnHandler = new AnthropicHandler({
+					apiKey: "test-api-key",
+					apiModelId: modelId,
+					enableReasoningEffort: false,
+				})
 
-			const stream = fable51Handler.createMessage(
-				systemPrompt,
-				[{ role: "user", content: [{ type: "text" as const, text: "Hello" }] }],
-				{
-					taskId: "test-task",
-					tools: [
-						{
-							type: "function" as const,
-							function: { name: "get_weather", description: "", parameters: {} },
-						},
-					],
-					tool_choice: "required",
-				},
-			)
+				const stream = alwaysOnHandler.createMessage(
+					systemPrompt,
+					[{ role: "user", content: [{ type: "text" as const, text: "Hello" }] }],
+					{
+						taskId: "test-task",
+						tools: [
+							{
+								type: "function" as const,
+								function: { name: "get_weather", description: "", parameters: {} },
+							},
+						],
+						tool_choice: toolChoice,
+					},
+				)
 
-			for await (const _chunk of stream) {
-				// Consume stream
-			}
+				for await (const _chunk of stream) {
+					// Consume stream
+				}
 
-			const requestBody = mockCreate.mock.calls[mockCreate.mock.calls.length - 1]?.[0]
-			// Fable 5.1 rejects forced tool use (type "any" or "tool") with a 400
-			expect(requestBody.tool_choice).toBeUndefined()
-			expect(requestBody.tools).toEqual(expect.any(Array))
-		})
+				const requestBody = mockCreate.mock.calls[mockCreate.mock.calls.length - 1]?.[0]
+				expect(requestBody.tool_choice).toBeUndefined()
+				expect(requestBody.tools).toEqual(expect.any(Array))
+			},
+		)
 
 		it("should pass through xhigh and max effort levels", async () => {
 			for (const effort of ["xhigh", "max"] as const) {
-				const fable51Handler = new AnthropicHandler({
+				const alwaysOnHandler = new AnthropicHandler({
 					apiKey: "test-api-key",
-					apiModelId: "claude-fable-5-1",
+					apiModelId: modelId,
 					reasoningEffort: effort,
 				})
 
-				const stream = fable51Handler.createMessage(systemPrompt, [
+				const stream = alwaysOnHandler.createMessage(systemPrompt, [
 					{ role: "user", content: [{ type: "text" as const, text: "Hello" }] },
 				])
 
@@ -731,6 +755,28 @@ describe("AnthropicHandler", () => {
 				const requestBody = mockCreate.mock.calls[mockCreate.mock.calls.length - 1]?.[0]
 				expect(requestBody.output_config).toEqual({ effort })
 			}
+		})
+
+		it("should preserve replayed thinking blocks and signatures with binding compatibility", async () => {
+			const alwaysOnHandler = new AnthropicHandler({ apiKey: "test-api-key", apiModelId: modelId })
+			const thinkingBlock = { type: "thinking" as const, thinking: "Prior reasoning", signature: "signed-block" }
+			const redactedBlock = { type: "redacted_thinking" as const, data: "opaque-data" }
+			const messages: Anthropic.Messages.MessageParam[] = [
+				{ role: "user", content: "Original question" },
+				{ role: "assistant", content: [thinkingBlock, redactedBlock, { type: "text", text: "Answer" }] },
+				{ role: "user", content: "Continue" },
+			]
+			const originalMessages = structuredClone(messages)
+
+			for await (const _chunk of alwaysOnHandler.createMessage("Updated instructions", messages)) {
+				// Consume stream.
+			}
+
+			const [requestBody, requestOptions] = mockCreate.mock.calls[mockCreate.mock.calls.length - 1]
+			expect(requestBody.thinking).toEqual(expectedThinking)
+			expect(requestOptions.headers["anthropic-beta"]).toContain("thinking-binding-controls-2026-08-01")
+			expect(requestBody.messages[1].content).toEqual(originalMessages[1].content)
+			expect(messages).toEqual(originalMessages)
 		})
 	})
 

@@ -1197,6 +1197,12 @@ export class OpenAiCodexHandler extends BaseProvider implements SingleCompletion
 	}
 
 	private getReasoningEffort(model: OpenAiCodexModel): ReasoningEffortExtended | undefined {
+		if (model.info.requiredReasoningEffort && Array.isArray(model.info.supportsReasoningEffort)) {
+			const requested = this.options.reasoningEffort
+			return requested && model.info.supportsReasoningEffort.includes(requested)
+				? (requested as ReasoningEffortExtended)
+				: model.info.reasoningEffort
+		}
 		const selected = (this.options.reasoningEffort as any) ?? (model.info.reasoningEffort as any)
 		return selected && selected !== "disable" && selected !== "none" ? (selected as any) : undefined
 	}

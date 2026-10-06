@@ -39,6 +39,22 @@ export const anthropicModels = {
 		description:
 			"Claude Fable 5.1 extends Claude Fable 5 with stronger long-running agentic coding, multistep research, and document, spreadsheet, and slide work. Adaptive thinking is always on.",
 	},
+	"claude-opus-5-5": {
+		maxTokens: 128_000,
+		contextWindow: 1_000_000,
+		supportsImages: true,
+		supportsPromptCache: true,
+		supportsTemperature: false,
+		inputPrice: 4.0,
+		outputPrice: 20.0,
+		cacheWritesPrice: 5.0, // 5-minute cache write
+		cacheReadsPrice: 0.2,
+		supportsReasoningEffort: ["low", "medium", "high", "xhigh", "max"],
+		requiredReasoningEffort: true,
+		reasoningEffort: "medium",
+		description:
+			"Claude Opus 5.5 is built for long-running agentic coding and knowledge work, with native 1M context, 128K max output, and always-on adaptive thinking at medium effort by default.",
+	},
 	"claude-opus-5": {
 		maxTokens: 128_000,
 		contextWindow: 1_000_000, // 1M is both the default and the maximum; there is no smaller context variant

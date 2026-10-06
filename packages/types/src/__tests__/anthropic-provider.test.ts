@@ -43,6 +43,26 @@ describe("anthropic provider models", () => {
 		expect("longContextPricing" in model).toBe(false)
 	})
 
+	it("includes claude-opus-5-5 with native context, flat pricing, and always-on medium effort", () => {
+		const model = anthropicModels["claude-opus-5-5"]
+
+		expect(model.contextWindow).toBe(1_000_000)
+		expect(model.maxTokens).toBe(128_000)
+		expect(model.supportsImages).toBe(true)
+		expect(model.supportsPromptCache).toBe(true)
+		expect(model.supportsTemperature).toBe(false)
+		expect(model.inputPrice).toBe(4)
+		expect(model.outputPrice).toBe(20)
+		expect(model.cacheWritesPrice).toBe(5)
+		expect(model.cacheReadsPrice).toBe(0.2)
+		expect(model.supportsReasoningEffort).toEqual(["low", "medium", "high", "xhigh", "max"])
+		expect(model.requiredReasoningEffort).toBe(true)
+		expect(model.reasoningEffort).toBe("medium")
+		expect("supportsReasoningBudget" in model).toBe(false)
+		expect("tiers" in model).toBe(false)
+		expect("longContextPricing" in model).toBe(false)
+	})
+
 	it("includes claude-opus-5 with expected capabilities", () => {
 		const model = anthropicModels["claude-opus-5"]
 

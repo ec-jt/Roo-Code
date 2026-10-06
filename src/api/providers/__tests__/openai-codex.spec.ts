@@ -5,6 +5,21 @@ import { openAiCodexOAuthManager } from "../../../integrations/openai-codex/oaut
 import type { ApiStreamChunk } from "../../transform/stream"
 
 describe("OpenAiCodexHandler.getModel", () => {
+	it("resolves Sol 6.1 without changing the subscription provider default", () => {
+		const model = new OpenAiCodexHandler({ apiModelId: "gpt-6.1-sol" }).getModel()
+		expect(model.id).toBe("gpt-6.1-sol")
+		expect(model.info).toMatchObject({
+			contextWindow: 1_050_000,
+			maxTokens: 128000,
+			inputPrice: 0,
+			outputPrice: 0,
+			requiredReasoningEffort: true,
+			reasoningEffort: "medium",
+			supportsReasoningEffort: ["low", "medium", "high", "xhigh", "max"],
+		})
+		expect(new OpenAiCodexHandler({}).getModel().id).toBe("gpt-5.6-sol")
+	})
+
 	it.each(["gpt-5.1", "gpt-5", "gpt-5.1-codex", "gpt-5-codex", "gpt-5-codex-mini", "gpt-5.3-codex-spark"])(
 		"should return specified model when a valid model id is provided: %s",
 		(apiModelId) => {
@@ -73,6 +88,32 @@ describe("OpenAiCodexHandler SDK fallback", () => {
 		}
 		return chunks
 	}
+
+	it.each([
+		[undefined, "medium"],
+		["disable", "medium"],
+		["none", "medium"],
+		["minimal", "medium"],
+		["low", "low"],
+		["medium", "medium"],
+		["high", "high"],
+		["xhigh", "xhigh"],
+		["max", "max"],
+	] as const)("sends supported Sol 6.1 effort for setting %s", async (reasoningEffort, expected) => {
+		handler = new OpenAiCodexHandler({ apiModelId: "gpt-6.1-sol", reasoningEffort })
+		const create = vi.fn().mockImplementation(async function* () {
+			yield { type: "response.output_text.delta", delta: "answer" }
+		})
+		;(handler as unknown as { client: unknown }).client = { responses: { create } }
+		await consume()
+		expect(create.mock.calls[0][0]).toMatchObject({
+			model: "gpt-6.1-sol",
+			reasoning: { effort: expected },
+			include: ["reasoning.encrypted_content"],
+		})
+		expect(create.mock.calls[0][0].temperature).toBeUndefined()
+		expect(fetchMock).not.toHaveBeenCalled()
+	})
 
 	it.each([
 		["missing Responses API", {}],

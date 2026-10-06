@@ -1,5 +1,14 @@
 # Roo Code Changelog
 
+## 4.2.12 - Cordis preview 10
+
+- Add GPT-6.1 Sol to OpenAI ChatGPT Plus/Pro with 1.05M context, 128K output, medium default reasoning, and low through max effort. Unsupported stale effort values fall back to the model default.
+- Add Claude Opus 5.5 to the direct Anthropic provider with native 1M context, 128K output, updated pricing, and always-on adaptive thinking at medium effort.
+- Retain existing Fable 5.1 support and high default effort. Opus 5.5 and Fable 5.1 use documented thinking-binding compatibility for edited conversation prefixes, which can drop affected prior thinking instead of rejecting requests.
+- Preserve provider defaults and account-entitlement requirements. No unverified Fable 5.2 model ID is added.
+
+GitHub prerelease tag: **v4.2.12-cordis-preview.10**.
+
 ## 4.2.11 - Cordis preview 9
 
 - Hide Brave web/local search tools when their required key is unset, empty, or whitespace-only, including restricted all-tools registration.

@@ -209,17 +209,37 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 		// API allows (allowed values: "summarized" | "omitted"). On newer adaptive
 		// models the default is "omitted", which yields an EMPTY thinking block
 		// (signature only) — without this the UI would never show any reasoning.
-		// Claude Fable 5.1 cannot disable adaptive thinking: the API rejects
-		// thinking {"type": "disabled"} with a 400 error, so keep it on regardless
-		// of the user's reasoning setting.
-		const alwaysOnThinking = modelId.includes("claude-fable-5-1") || modelId.includes("claude-mythos-5-1")
-
 		const useAdaptiveThinking = isAdaptiveThinkingModel(modelId)
+		// Fable 5.1 and Opus 5.5 require thinking and have no supported off effort.
+		const supportedEfforts = model.info.supportsReasoningEffort
+		const alwaysOnThinking =
+			useAdaptiveThinking &&
+			model.info.requiredReasoningEffort &&
+			Array.isArray(supportedEfforts) &&
+			!supportedEfforts.includes("disable")
+		if (alwaysOnThinking && (!reasoningEffort || !supportedEfforts.includes(reasoningEffort))) {
+			// Ignore stale effort values carried over from another model's settings.
+			reasoningEffort = model.info.reasoningEffort
+		}
+
 		if (useAdaptiveThinking) {
 			if (this.options.enableReasoningEffort === false && !alwaysOnThinking) {
 				thinking = undefined
 			} else {
-				thinking = { type: "adaptive", display: "summarized" } as any
+				const needsBindingCompatibility = modelId === "claude-fable-5-1" || modelId === "claude-opus-5-5"
+				thinking = {
+					type: "adaptive",
+					display: "summarized",
+					...(needsBindingCompatibility && {
+						block_binding: { prefix_mismatch_behavior: "drop_block" },
+					}),
+				} as any
+				if (needsBindingCompatibility) {
+					// Roo edits prompts/tools and condenses history. Let the API drop thinking
+					// bound to an edited prefix rather than reject the request. This sacrifices
+					// affected reasoning continuity; replayed blocks and signatures stay intact.
+					betas.push("thinking-binding-controls-2026-08-01")
+				}
 				// When reasoning wasn't explicitly enabled in settings, maxTokens was
 				// clamped to ANTHROPIC_DEFAULT_MAX_TOKENS by getModelMaxOutputTokens.
 				// Adaptive thinking output (thinking + answer) needs the model's full
@@ -251,7 +271,7 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 					thinking &&
 					toolChoice &&
 					(toolChoice.type === "any" || toolChoice.type === "tool")) ||
-				// Claude Fable 5.1 rejects forced tool use (type "any" or "tool") with a 400
+				// Always-on thinking models reject forced tool use with a 400.
 				(alwaysOnThinking && toolChoice && (toolChoice.type === "any" || toolChoice.type === "tool"))
 					? undefined
 					: toolChoice,
@@ -287,6 +307,7 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 		})
 
 		switch (modelId) {
+			case "claude-opus-5-5":
 			case "claude-fable-5-1":
 			case "claude-opus-5":
 			case "claude-fable-5":
@@ -377,6 +398,7 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 
 					// Then check for models that support prompt caching
 					switch (modelId) {
+						case "claude-opus-5-5":
 						case "claude-fable-5-1":
 						case "claude-opus-5":
 						case "claude-fable-5":
