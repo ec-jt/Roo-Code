@@ -58,6 +58,67 @@ describe("checkpoint storage protection (real Git)", () => {
 		expect(await fs.readFile(path.join(workspace, "models/weights.safetensors"), "utf8")).toBe("small source")
 	})
 
+	it("prunes small environment/cache files without gitignore on initial and later snapshots", async () => {
+		const excluded = [
+			".venv/lib/module.py",
+			"nested/.venv/lib/module.py",
+			".cache/uv/archive/module.py",
+			"nested/.uv-cache/archive/module.py",
+			".tox/test/lib/module.py",
+			".pnpm-store/pkg/index.js",
+			"nested/.yarn/cache/pkg/index.js",
+			"artifacts/batch.npy",
+		]
+		const retained = [
+			"pyproject.toml",
+			"uv.lock",
+			"uv.toml",
+			"nested/uv.lock",
+			"requirements.txt",
+			"models/config.json",
+			"artifacts/config.json",
+			".yarn/patches/fix.patch",
+		]
+		for (const name of [...excluded, ...retained]) await write(name)
+		service = new RepoPerTaskCheckpointService("initial", path.join(root, "initial-shadow"), workspace, () => {})
+		const stat = vi.spyOn(fs, "lstat")
+		await service.initShadowGit()
+		git = simpleGit(service.checkpointsDir)
+		expect(await tracked()).toEqual([...retained, "source.ts"].sort())
+		for (const name of excluded)
+			expect(stat.mock.calls.some(([file]) => file === path.join(workspace, name))).toBe(false)
+		await write(".venv/new.py", "new dependency")
+		await write("source.ts", "changed")
+		await service.saveCheckpoint("source only")
+		expect(await tracked()).toEqual([...retained, "source.ts"].sort())
+		await service.restoreCheckpoint(service.baseHash!)
+		expect(await fs.readFile(path.join(workspace, ".venv/new.py"), "utf8")).toBe("new dependency")
+		for (const name of excluded) expect(await fs.readFile(path.join(workspace, name), "utf8")).toBe("small source")
+	})
+
+	it("untracks legacy virtual environments without deleting files or rewriting history", async () => {
+		const name = ".venv/lib/legacy.py"
+		const file = await write(name, "valuable local environment")
+		await git.add(["-f", name])
+		const legacy = await git.commit("legacy environment snapshot")
+		await service.saveCheckpoint("exclude environment")
+		expect(await tracked()).not.toContain(name)
+		expect(await git.show([`${legacy.commit}:${name}`])).toBe("valuable local environment")
+		await service.restoreCheckpoint(service.baseHash!)
+		expect(await fs.readFile(file, "utf8")).toBe("valuable local environment")
+		await expect(service.restoreCheckpoint(legacy.commit)).rejects.toThrow("Checkpoint restore blocked")
+	})
+
+	it("keeps explicit workspace ignore and LFS rules authoritative for dependency lockfiles", async () => {
+		await write("uv.lock", "ignored dependency definition")
+		await write("poetry.lock", "LFS managed definition")
+		await write(".gitignore", "uv.lock\n")
+		await write(".gitattributes", "poetry.lock filter=lfs diff=lfs merge=lfs -text\n")
+		await service.saveCheckpoint("respect workspace policy")
+		expect(await tracked()).not.toContain("uv.lock")
+		expect(await tracked()).not.toContain("poetry.lock")
+	})
+
 	it("skips unknown and extensionless oversized files before ingestion, including initial snapshots", async () => {
 		await large("models/unknown.payload")
 		await large("extensionless")

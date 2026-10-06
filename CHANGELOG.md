@@ -1,5 +1,14 @@
 # Roo Code Changelog
 
+## 4.2.10 - Cordis preview 8
+
+- Exclude disposable Python environments, including `.venv` used by uv, tox/nox environments, Python tool caches, workspace-local `.cache`/`.uv-cache`, and common JavaScript package/build caches from checkpoints at any project depth.
+- Exclude NumPy arrays, pickle/joblib data, TFRecord datasets, and TensorBoard event files, in addition to existing model-weight formats and the 10 MiB per-file ceiling.
+- Preserve recognized dependency lockfiles, including `uv.lock`, while retaining workspace Git ignore and LFS exclusions. Keep source/configuration files in generic model and artifact directories eligible.
+- Apply exclusions on initial and subsequent staging without deleting workspace environments or rewriting old checkpoint history. This release does not reclaim existing history or add an aggregate storage quota.
+
+GitHub prerelease tag: **v4.2.10-cordis-preview.8**.
+
 ## 4.2.9 - Cordis preview 7
 
 - Prioritize direct implementation and concrete deliverables. Use multiple or nested subtasks only for a genuine need, with existing approval and permission boundaries unchanged.

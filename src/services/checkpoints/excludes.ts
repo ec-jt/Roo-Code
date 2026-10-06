@@ -5,6 +5,27 @@ import { fileExistsAtPath } from "../../utils/fs"
 import { MAX_CHECKPOINT_FILE_BYTES } from "./storageProtection"
 
 const getBuildArtifactPatterns = () => [
+	// Disposable environments and caches may contain gigabytes of small files.
+	// Directory patterns also match nested projects without a workspace .gitignore.
+	".venv/",
+	".virtualenv/",
+	".tox/",
+	".nox/",
+	"__pypackages__/",
+	".mypy_cache/",
+	".ruff_cache/",
+	".hypothesis/",
+	".pytype/",
+	".ipynb_checkpoints/",
+	".cache/",
+	".uv-cache/",
+	".npm/",
+	".pnpm-store/",
+	"**/.yarn/cache/",
+	"**/.yarn/unplugged/",
+	".turbo/",
+	".svelte-kit/",
+	"**/.angular/cache/",
 	".gradle/",
 	".idea/",
 	".parcel-cache/",
@@ -128,6 +149,14 @@ const getLargeDataFilePatterns = () => [
 	"*.onnx",
 	"*.h5",
 	"*.hdf5",
+	"*.npy",
+	"*.npz",
+	"*.pkl",
+	"*.pickle",
+	"*.joblib",
+	"*.tfrecord",
+	"*.tfrecords",
+	"*.tfevents.*",
 ]
 
 const getDatabaseFilePatterns = () => [
@@ -222,5 +251,20 @@ export const getExcludePatterns = async (workspacePath: string) => [
 	...getDatabaseFilePatterns(),
 	...getGeospatialPatterns(),
 	...getLogFilePatterns(),
+	...dependencyLockPatterns,
 	...(await getLfsPatterns(workspacePath)),
+]
+
+// Preserve reproducible dependency definitions despite the generic *.lock rule.
+// These cannot re-include files inside an excluded environment/cache directory.
+const dependencyLockPatterns = [
+	"!uv.lock",
+	"!poetry.lock",
+	"!pdm.lock",
+	"!Pipfile.lock",
+	"!yarn.lock",
+	"!Cargo.lock",
+	"!composer.lock",
+	"!Gemfile.lock",
+	"!bun.lock",
 ]

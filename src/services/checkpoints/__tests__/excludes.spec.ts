@@ -2,6 +2,7 @@
 
 import { join } from "path"
 import fs from "fs/promises"
+import ignore from "ignore"
 import { fileExistsAtPath } from "../../../utils/fs"
 import { getExcludePatterns } from "../excludes"
 
@@ -48,6 +49,72 @@ describe("getExcludePatterns", () => {
 		}
 		for (const pattern of ["models/", "*.json", "*.py", "*.ts"]) {
 			expect(patterns).not.toContain(pattern)
+		}
+	})
+
+	it("excludes generated environments and caches at any project depth while retaining definitions", async () => {
+		vi.mocked(fileExistsAtPath).mockResolvedValue(false)
+		const rules = ignore().add(await getExcludePatterns(testWorkspacePath))
+		for (const directory of [
+			".venv",
+			".virtualenv",
+			".tox",
+			".nox",
+			"__pypackages__",
+			".mypy_cache",
+			".ruff_cache",
+			".hypothesis",
+			".pytype",
+			".ipynb_checkpoints",
+			".cache/uv",
+			".cache/huggingface",
+			".uv-cache",
+			".npm",
+			".pnpm-store",
+			".yarn/cache",
+			".yarn/unplugged",
+			".turbo",
+			".svelte-kit",
+			".angular/cache",
+		]) {
+			for (const prefix of ["", "nested/project/"]) {
+				expect(rules.ignores(`${prefix}${directory}/small.py`)).toBe(true)
+				expect(rules.ignores(`${prefix}${directory}/uv.lock`)).toBe(true)
+			}
+		}
+		for (const file of [
+			"uv.lock",
+			"poetry.lock",
+			"pdm.lock",
+			"Pipfile.lock",
+			"yarn.lock",
+			"Cargo.lock",
+			"composer.lock",
+			"Gemfile.lock",
+			"bun.lock",
+			"pyproject.toml",
+			"uv.toml",
+			"requirements.txt",
+			".python-version",
+			"models/config.json",
+			"artifacts/config.json",
+			".yarn/patches/fix.patch",
+		]) {
+			expect(rules.ignores(file)).toBe(false)
+			expect(rules.ignores(`nested/${file}`)).toBe(false)
+		}
+		for (const file of [
+			"runtime.lock",
+			"artifacts/batch.npy",
+			"artifacts/batch.npz",
+			"artifacts/state.pkl",
+			"artifacts/state.pickle",
+			"artifacts/state.joblib",
+			"data/train.tfrecord",
+			"data/train.tfrecords",
+			"runs/events.out.tfevents.123",
+		]) {
+			expect(rules.ignores(file)).toBe(true)
 		}
 	})
 
