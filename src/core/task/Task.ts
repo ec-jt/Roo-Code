@@ -3408,10 +3408,12 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			await this.maybeWaitForProviderRateLimit(currentItem.retryAttempt ?? 0)
 			Task.lastGlobalApiRequestTime = performance.now()
 
+			const timing: NonNullable<ClineApiReqInfo["timing"]> = { startedAt: Date.now() }
 			await this.say(
 				"api_req_started",
 				JSON.stringify({
 					apiProtocol,
+					timing,
 				}),
 			)
 
@@ -3496,7 +3498,15 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 			this.clineMessages[lastApiReqIndex].text = JSON.stringify({
 				apiProtocol,
+				timing,
 			} satisfies ClineApiReqInfo)
+			const publishTiming = () => {
+				if (this.abort || this.modelOperationClosed) return
+				const message = this.clineMessages[lastApiReqIndex]
+				if (!message) return
+				message.text = JSON.stringify({ ...JSON.parse(message.text || "{}"), timing })
+				void this.updateClineMessage(message)
+			}
 
 			await this.saveClineMessages()
 			await this.providerRef.deref()?.postStateToWebviewWithoutTaskHistory()
@@ -3506,6 +3516,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				const streamEpoch = this.modelOperationRevision
 				let cacheWriteTokens = 0
 				let cacheReadTokens = 0
+				let cacheReadTokensReported = false
 				let inputTokens = 0
 				let outputTokens = 0
 				let totalCost: number | undefined
@@ -3519,6 +3530,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				// from now).
 				const updateApiReqMsg = (cancelReason?: ClineApiReqCancelReason, streamingFailedMessage?: string) => {
 					if (this.modelOperationClosed) return
+					if (cancelReason) timing.completedAt ??= Date.now()
 					if (lastApiReqIndex < 0 || !this.clineMessages[lastApiReqIndex]) {
 						return
 					}
@@ -3556,6 +3568,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 						tokensOut: costResult.totalOutputTokens,
 						cacheWrites: cacheWriteTokens,
 						cacheReads: cacheReadTokens,
+						cacheReadTokensReported,
+						timing,
 						cost: totalCost ?? costResult.totalCost,
 						cancelReason,
 						streamingFailedMessage,
@@ -3621,7 +3635,13 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				// Yields only if the first chunk is successful, otherwise will
 				// allow the user to retry the request (most likely due to rate
 				// limit error, which gets thrown on the first chunk).
-				const stream = this.attemptApiRequest(currentItem.retryAttempt ?? 0, { skipProviderRateLimit: true })
+				const stream = this.attemptApiRequest(currentItem.retryAttempt ?? 0, {
+					skipProviderRateLimit: true,
+					onProviderStart: () => {
+						timing.providerStartedAt = Date.now()
+						publishTiming()
+					},
+				})
 				let assistantMessage = ""
 				let reasoningMessage = ""
 				let pendingGroundingSources: GroundingSource[] = []
@@ -3636,21 +3656,21 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 						// If we have an abort controller, race it with the next chunk
 						if (this.currentRequestAbortController) {
+							const signal = this.currentRequestAbortController.signal
+							let onAbort!: () => void
 							const abortPromise = new Promise<never>((_, reject) => {
-								const signal = this.currentRequestAbortController!.signal
+								onAbort = () => reject(new Error("Request cancelled by user"))
 								if (signal.aborted) {
-									reject(new Error("Request cancelled by user"))
+									onAbort()
 								} else {
-									signal.addEventListener(
-										"abort",
-										() => {
-											reject(new Error("Request cancelled by user"))
-										},
-										{ once: true },
-									)
+									signal.addEventListener("abort", onAbort, { once: true })
 								}
 							})
-							return await Promise.race([nextPromise, abortPromise])
+							try {
+								return await Promise.race([nextPromise, abortPromise])
+							} finally {
+								signal.removeEventListener("abort", onAbort)
+							}
 						}
 
 						// No abort controller, just return the next chunk normally
@@ -3658,14 +3678,21 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 					}
 
 					let item = await nextChunkWithAbort()
+					let currentChunkProcessed = false
 					while (!item.done) {
 						const chunk = item.value
-						item = await nextChunkWithAbort()
+						currentChunkProcessed = true
 						if (this.modelOperationClosed) return true
 						if (!chunk) {
 							// Sometimes chunk is undefined, no idea that can cause
 							// it, but this workaround seems to fix it.
+							item = await nextChunkWithAbort()
+							currentChunkProcessed = false
 							continue
+						}
+						if (timing.firstChunkAt === undefined) {
+							timing.firstChunkAt = Date.now()
+							publishTiming()
 						}
 
 						switch (chunk.type) {
@@ -3692,6 +3719,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 								break
 							}
 							case "usage":
+								cacheReadTokensReported ||= chunk.cacheReadTokens !== undefined
 								inputTokens += chunk.inputTokens
 								outputTokens += chunk.outputTokens
 								cacheWriteTokens += chunk.cacheWriteTokens ?? 0
@@ -3880,7 +3908,12 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 								"\n\n[Response interrupted by a tool use result. Only one tool may be used at a time and should be placed at the end of the message.]"
 							break
 						}
+						// Present the current chunk before waiting for more provider output.
+						item = await nextChunkWithAbort()
+						currentChunkProcessed = false
 					}
+					timing.completedAt = Date.now()
+					publishTiming()
 
 					// Create a copy of current token values to avoid race conditions
 					const currentTokens = {
@@ -3943,6 +3976,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 							let chunkCount = 0
 
 							// Use the same iterator that the main loop was using
+							// On an early break, the current chunk was already presented and counted.
+							if (currentChunkProcessed && !item.done) item = await iterator.next()
 							while (!item.done) {
 								if (this.modelOperationClosed || this.modelOperationRevision > streamEpoch + 1) return
 								// Check for timeout
@@ -3962,6 +3997,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 								chunkCount++
 
 								if (chunk && chunk.type === "usage") {
+									cacheReadTokensReported ||= chunk.cacheReadTokens !== undefined
 									usageFound = true
 									bgInputTokens += chunk.inputTokens
 									bgOutputTokens += chunk.outputTokens
@@ -4824,7 +4860,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 	public async *attemptApiRequest(
 		retryAttempt: number = 0,
-		options: { skipProviderRateLimit?: boolean } = {},
+		options: { skipProviderRateLimit?: boolean; onProviderStart?: () => void } = {},
 	): ApiStream {
 		if (this.modelDispatchRuntime && (this.modelOperationClosed || this.abort))
 			throw new ModelDispatchControl(this.abort ? "cancelled" : "stale")
@@ -4873,7 +4909,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 	private async *attemptApiRequestPinned(
 		retryAttempt: number,
-		options: { skipProviderRateLimit?: boolean },
+		options: { skipProviderRateLimit?: boolean; onProviderStart?: () => void },
 	): ApiStream {
 		if (this.modelOperationClosed || this.abort) throw new Error("Task dispatch is closed")
 		if (
@@ -5362,6 +5398,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		if (this.modelOperationClosed || this.abort || requestRevision !== this.modelOperationRevision)
 			throw new Error("Stale request dispatch")
 		this.modelOperationRequestPreparing = false
+		options.onProviderStart?.()
 		if (this.modelDispatchRuntime) {
 			// Provider owns cancellation and physical admission; no legacy retry owner.
 			yield* requestHandler.createMessage(

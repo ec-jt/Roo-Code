@@ -181,6 +181,18 @@
 	"forNextMode": "for next mode",
 	"forPreviousMode": "for previous mode",
 	"apiRequest": {
+		"metrics": {
+			"preparation": "Preparation {{seconds}}s",
+			"firstChunk": "First chunk {{seconds}}s",
+			"preparing": "Preparing context",
+			"waiting": "Waiting for provider",
+			"streaming": "Receiving response",
+			"timingHelp": "Local timings. Preparation includes context and snapshots. First chunk includes provider setup, network, and any retries; it is not necessarily the first visible text token.",
+			"cacheRead": "Cache read: {{tokens}} tokens",
+			"cacheWrite": "Cache write: {{tokens}} tokens",
+			"cacheUnknown": "Cache usage not reported",
+			"expiryUnknown": "Cache expiry: not reported by provider"
+		},
 		"title": "API Request",
 		"failed": "API Request Failed",
 		"streaming": "API Request...",

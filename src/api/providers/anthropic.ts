@@ -45,7 +45,10 @@ function debugTrace(message: string, data?: unknown) {
 	const entry = data ? `[${timestamp}] ${message}: ${JSON.stringify(data, null, 2)}\n` : `[${timestamp}] ${message}\n`
 
 	try {
-		fs.appendFileSync(DEBUG_LOG, entry)
+		// Diagnostic disk I/O must not block the extension host or delay API dispatch.
+		void fs.promises.appendFile(DEBUG_LOG, entry).catch(() => {
+			// Best-effort file logging only.
+		})
 	} catch {
 		// Best-effort file logging only.
 	}

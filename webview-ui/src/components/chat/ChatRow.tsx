@@ -29,6 +29,7 @@ import { TodoChangeDisplay } from "./TodoChangeDisplay"
 import CodeAccordion from "../common/CodeAccordion"
 import MarkdownBlock from "../common/MarkdownBlock"
 import { ReasoningBlock } from "./ReasoningBlock"
+import { ApiRequestMetrics } from "./ApiRequestMetrics"
 import Thumbnails from "../common/Thumbnails"
 import ImageBlock from "../common/ImageBlock"
 import ErrorRow from "./ErrorRow"
@@ -1112,6 +1113,10 @@ export const ChatRowContent = ({
 									errorDetails={apiReqStreamingFailedMessage}
 								/>
 							)}
+							<ApiRequestMetrics
+								info={safeJsonParse<ClineApiReqInfo>(message.text)}
+								active={isApiRequestInProgress}
+							/>
 						</>
 					)
 				case "api_req_retry_delayed":

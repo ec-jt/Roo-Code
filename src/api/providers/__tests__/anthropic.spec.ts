@@ -1,5 +1,7 @@
 // npx vitest run src/api/providers/__tests__/anthropic.spec.ts
 
+import fs from "fs"
+
 import { AnthropicHandler } from "../anthropic"
 import { ApiHandlerOptions } from "../../../shared/api"
 
@@ -70,12 +72,20 @@ describe("AnthropicHandler", () => {
 	let mockOptions: ApiHandlerOptions
 
 	beforeEach(() => {
+		vitest.spyOn(fs.promises, "appendFile").mockResolvedValue(undefined)
 		mockOptions = {
 			apiKey: "test-api-key",
 			apiModelId: "claude-3-5-sonnet-20241022",
 		}
 		handler = new AnthropicHandler(mockOptions)
 		vitest.clearAllMocks()
+	})
+
+	afterEach(() => {
+		vitest.mocked(fs.promises.appendFile).mockRestore()
+		if (vitest.isMockFunction(fs.appendFileSync)) {
+			vitest.mocked(fs.appendFileSync).mockRestore()
+		}
 	})
 
 	describe("constructor", () => {
@@ -139,6 +149,34 @@ describe("AnthropicHandler", () => {
 
 	describe("createMessage", () => {
 		const systemPrompt = "You are a helpful assistant."
+
+		it("should dispatch and stream without waiting for diagnostic writes", async () => {
+			vitest.mocked(fs.promises.appendFile).mockReturnValue(new Promise<void>(() => {}))
+			const syncWrite = vitest.spyOn(fs, "appendFileSync").mockImplementation(() => {})
+
+			const chunks = []
+			for await (const chunk of handler.createMessage(systemPrompt, [{ role: "user", content: "Hello" }])) {
+				chunks.push(chunk)
+			}
+
+			expect(fs.promises.appendFile).toHaveBeenCalledTimes(2)
+			expect(syncWrite).not.toHaveBeenCalled()
+			expect(mockCreate).toHaveBeenCalledTimes(1)
+			expect(chunks).toContainEqual({ type: "text", text: "Hello" })
+		})
+
+		it("should ignore rejected diagnostic writes", async () => {
+			vitest.mocked(fs.promises.appendFile).mockRejectedValue(new Error("Diagnostic log unavailable"))
+
+			const chunks = []
+			for await (const chunk of handler.createMessage(systemPrompt, [{ role: "user", content: "Hello" }])) {
+				chunks.push(chunk)
+			}
+
+			expect(fs.promises.appendFile).toHaveBeenCalledTimes(2)
+			expect(mockCreate).toHaveBeenCalledTimes(1)
+			expect(chunks).toContainEqual({ type: "text", text: "Hello" })
+		})
 
 		it("should handle prompt caching for supported models", async () => {
 			const stream = handler.createMessage(systemPrompt, [

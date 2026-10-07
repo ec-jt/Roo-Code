@@ -944,6 +944,10 @@ export interface ClineAskUseMcpServer {
 
 export interface ClineApiReqInfo {
 	request?: string
+	/** Local phase timestamps, not provider-side transport timings. */
+	timing?: { startedAt: number; providerStartedAt?: number; firstChunkAt?: number; completedAt?: number }
+	/** Distinguishes an explicit zero cache read count from missing provider telemetry. */
+	cacheReadTokensReported?: boolean
 	tokensIn?: number
 	tokensOut?: number
 	cacheWrites?: number

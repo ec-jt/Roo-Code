@@ -439,6 +439,38 @@ describe("Task opt-in model dispatch", () => {
 		expect(admit).not.toHaveBeenCalled()
 	})
 
+	it("presents the first chunk without waiting for the next provider chunk", async () => {
+		;(task as any).modelOperationPrepared = true
+		;(task as any).modelOperationSystemPrompt = "system"
+		admit.mockResolvedValue({ outcome: "granted", settle })
+		let release!: () => void
+		const blocked = new Promise<void>((resolve) => {
+			release = resolve
+		})
+		create.mockResolvedValue(
+			(async function* () {
+				yield { type: "content_block_start", index: 0, content_block: { type: "text", text: "Already here" } }
+				await blocked
+				throw new Error("test stream ended")
+			})(),
+		)
+		const pending = task.recursivelyMakeClineRequests([])
+		const rejected = expect(pending).rejects.toBeInstanceOf(ModelDispatchControl)
+		try {
+			await vi.waitFor(() =>
+				expect(task.assistantMessageContent).toEqual(
+					expect.arrayContaining([expect.objectContaining({ type: "text", content: "Already here" })]),
+				),
+			)
+			const info = JSON.parse(task.clineMessages[1].text!)
+			expect(info.timing.providerStartedAt).toBeGreaterThanOrEqual(info.timing.startedAt)
+			expect(info.timing.firstChunkAt).toBeGreaterThanOrEqual(info.timing.providerStartedAt)
+		} finally {
+			release()
+			await rejected
+		}
+	})
+
 	it.each(["budget-denied", "stream-failed", "empty"])(
 		"preserves %s through the outer task loop without retry",
 		async (failure) => {
@@ -541,6 +573,29 @@ describe("Task opt-in model dispatch", () => {
 			yield { type: "message_stop" }
 		})()
 	}
+
+	it.each([false, true])("counts streamed usage once when interrupted=%s", async (interrupted) => {
+		;(task as any).modelOperationPrepared = true
+		;(task as any).modelOperationSystemPrompt = "system"
+		admit.mockResolvedValue({ outcome: "granted", settle })
+		vi.spyOn(task, "attemptApiRequest").mockImplementation(async function* () {
+			yield { type: "text", text: "answer" }
+			if (interrupted) task.didRejectTool = true
+			yield { type: "usage", inputTokens: 100, outputTokens: 5, cacheReadTokens: 800, cacheWriteTokens: 100 }
+			yield { type: "usage", inputTokens: 0, outputTokens: 7 }
+		})
+		await task.recursivelyMakeClineRequests([])
+		await vi.waitFor(() => {
+			const info = JSON.parse(task.clineMessages[1].text!)
+			expect(info).toMatchObject({
+				tokensIn: 1000,
+				tokensOut: 12,
+				cacheReads: 800,
+				cacheWrites: 100,
+				cacheReadTokensReported: true,
+			})
+		})
+	})
 
 	async function waitForResume(count: number) {
 		await vi.waitFor(() => {
