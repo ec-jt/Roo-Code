@@ -42,6 +42,18 @@ describe("getToolUseGuidelinesSection", () => {
 		expect(guidelines).not.toContain("<actual_tool_name>")
 	})
 
+	it("guides research toward bounded fallback retrieval and traceable local evidence", () => {
+		const guidelines = getToolUseGuidelinesSection()
+		expect(guidelines).toContain("change the retrieval method")
+		expect(guidelines).toContain("research/<task-topic>/")
+		expect(guidelines).toContain("shallow clone or a pinned source archive")
+		expect(guidelines).toContain("connection and total time limits")
+		expect(guidelines).toContain("repository commit/tag or paper identifier/version")
+		expect(guidelines).toContain("Never use a shell or download to bypass a denied tool action")
+		expect(guidelines).toContain("Do not execute downloaded code")
+		expect(guidelines).toContain("do not commit them or change ignore rules without authorization")
+	})
+
 	it("should not include per-tool confirmation guidelines", () => {
 		const guidelines = getToolUseGuidelinesSection()
 
