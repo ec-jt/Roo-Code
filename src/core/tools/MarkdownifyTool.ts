@@ -10,6 +10,7 @@ import { isPathOutsideWorkspace } from "../../utils/pathUtils"
 import { validateWebUrl } from "../../services/browser/validateWebUrl"
 import type { ToolUse } from "../../shared/tools"
 import { BaseTool, ToolCallbacks } from "./BaseTool"
+import { runReadOnlyTool } from "./runReadOnlyTool"
 
 type Params = { path?: string; url?: string }
 
@@ -61,17 +62,13 @@ export class MarkdownifyTool extends BaseTool<"markdownify"> {
 				pushToolResult(formatResponse.rooIgnoreError(relPath))
 				return
 			}
-			pushToolResult(await extractTextFromFile(absolutePath!))
+			await runReadOnlyTool(this.name, task, callbacks, () => extractTextFromFile(absolutePath!))
 			return
 		}
 
-		await task.urlContentFetcher.launchBrowser()
-		try {
-			const markdown = await task.urlContentFetcher.urlToMarkdown(url!)
-			pushToolResult(markdown)
-		} finally {
-			await task.urlContentFetcher.closeBrowser()
-		}
+		await runReadOnlyTool(this.name, task, callbacks, (signal) =>
+			task.urlContentFetcher.fetchMarkdown(url!, signal),
+		)
 	}
 
 	override async handlePartial(task: Task, block: ToolUse<"markdownify">): Promise<void> {

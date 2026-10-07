@@ -110,4 +110,42 @@ describe("URL fetcher sandbox and lifecycle", () => {
 		await expect(fetcher.urlToMarkdown("https://example.com")).rejects.toThrow(/HTTP/)
 		expect(page.content).not.toHaveBeenCalled()
 	})
+	it("fetches and cleans up in one lifecycle operation", async () => {
+		expect(await fetcher.fetchMarkdown("https://example.com", new AbortController().signal)).toBe("Web content")
+		expect(browser.close).toHaveBeenCalledOnce()
+	})
+	it("cleans up a failed conversion", async () => {
+		page.content.mockRejectedValueOnce(new Error("content failed"))
+		await expect(fetcher.fetchMarkdown("https://example.com", new AbortController().signal)).rejects.toThrow(
+			"content failed",
+		)
+		expect(browser.close).toHaveBeenCalledOnce()
+	})
+	it("does not launch for an already cancelled fetch", async () => {
+		const controller = new AbortController()
+		controller.abort(new Error("cancelled"))
+		await expect(fetcher.fetchMarkdown("https://example.com", controller.signal)).rejects.toThrow("cancelled")
+		expect(launch).not.toHaveBeenCalled()
+	})
+	it("cleans up a late launch before allowing another fetch", async () => {
+		let finish!: (value: any) => void
+		vi.mocked(launch).mockImplementationOnce(
+			() =>
+				new Promise((resolve) => {
+					finish = resolve
+				}),
+		)
+		const controller = new AbortController()
+		const first = fetcher.fetchMarkdown("https://example.com/first", controller.signal)
+		const rejected = expect(first).rejects.toThrow("cancelled")
+		await vi.waitFor(() => expect(launch).toHaveBeenCalledOnce())
+		controller.abort(new Error("cancelled"))
+		const next = fetcher.fetchMarkdown("https://example.com/next", new AbortController().signal)
+		finish(browser)
+		await rejected
+		expect(await next).toBe("Web content")
+		expect(page.goto).toHaveBeenCalledOnce()
+		expect(page.goto).toHaveBeenCalledWith("https://example.com/next", expect.any(Object))
+		expect(browser.close).toHaveBeenCalledTimes(2)
+	})
 })

@@ -1,5 +1,4 @@
 import path from "path"
-import { promises as fs } from "fs"
 
 import { type ClineSayTool } from "@roo-code/types"
 
@@ -12,6 +11,7 @@ import { getReadablePath } from "../../utils/path"
 import { isPathOutsideWorkspace } from "../../utils/pathUtils"
 import type { ToolUse } from "../../shared/tools"
 import { BaseTool, ToolCallbacks } from "./BaseTool"
+import { runReadOnlyTool } from "./runReadOnlyTool"
 
 type Params = {
 	action: "read_text_file" | "list_directory" | "search_files"
@@ -65,32 +65,35 @@ export class FileSystemTool extends BaseTool<"file_system"> {
 				pushToolResult(formatResponse.rooIgnoreError(relPath))
 				return
 			}
-			pushToolResult(await extractTextFromFile(absolutePath))
+			await runReadOnlyTool(this.name, task, callbacks, () => extractTextFromFile(absolutePath))
 			return
 		}
 
 		if (action === "list_directory") {
-			const [files, didHitLimit] = await listFiles(absolutePath, recursive || false, 200)
-			const { showRooIgnoredFiles = false } = (await task.providerRef.deref()?.getState()) ?? {}
-			const result = formatResponse.formatFilesList(
-				absolutePath,
-				files,
-				didHitLimit,
-				task.rooIgnoreController,
-				showRooIgnoredFiles,
-				task.rooProtectedController,
-			)
-			pushToolResult(result)
+			await runReadOnlyTool(this.name, task, callbacks, async () => {
+				const [files, didHitLimit] = await listFiles(absolutePath, recursive || false, 200)
+				const { showRooIgnoredFiles = false } = (await task.providerRef.deref()?.getState()) ?? {}
+				return formatResponse.formatFilesList(
+					absolutePath,
+					files,
+					didHitLimit,
+					task.rooIgnoreController,
+					showRooIgnoredFiles,
+					task.rooProtectedController,
+				)
+			})
 			return
 		}
 
 		if (action === "search_files") {
-			const result = await regexSearchFiles(task.cwd, absolutePath, regex!, file_pattern || undefined, task.rooIgnoreController)
-			pushToolResult(result)
+			await runReadOnlyTool(this.name, task, callbacks, () =>
+				regexSearchFiles(task.cwd, absolutePath, regex!, file_pattern || undefined, task.rooIgnoreController),
+			)
 			return
 		}
 
-		await fs.access(absolutePath)
+		task.didToolFailInCurrentTurn = true
+		pushToolResult(formatResponse.toolError(`Unsupported filesystem action: ${action}`))
 	}
 
 	override async handlePartial(task: Task, block: ToolUse<"file_system">): Promise<void> {

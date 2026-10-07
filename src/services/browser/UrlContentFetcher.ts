@@ -114,6 +114,23 @@ export class UrlContentFetcher {
 		return this.lifecycle.run(() => this.urlToMarkdownNow(url))
 	}
 
+	/** Keep ownership through cleanup, including when the caller stops waiting. */
+	fetchMarkdown(url: string, signal: AbortSignal): Promise<string> {
+		validateWebUrl(url)
+		return this.lifecycle.run(async () => {
+			signal.throwIfAborted()
+			try {
+				await this.launchBrowserNow()
+				signal.throwIfAborted()
+				const markdown = await this.urlToMarkdownNow(url)
+				signal.throwIfAborted()
+				return markdown
+			} finally {
+				await this.closeBrowserNow()
+			}
+		})
+	}
+
 	private async urlToMarkdownNow(url: string): Promise<string> {
 		this.lifecycle.assertOpen()
 		if (!this.browser || !this.page) {

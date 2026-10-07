@@ -20,8 +20,7 @@ describe("MarkdownifyTool URL access boundaries", () => {
 			rooIgnoreController: { validateAccess: vi.fn(() => false) },
 			urlContentFetcher: {
 				launchBrowser: vi.fn(),
-				urlToMarkdown: vi.fn().mockResolvedValue("Web content"),
-				closeBrowser: vi.fn(),
+				fetchMarkdown: vi.fn().mockResolvedValue("Web content"),
 			},
 		} as unknown as Task
 		callbacks = {
@@ -50,8 +49,8 @@ describe("MarkdownifyTool URL access boundaries", () => {
 	it.each(["http://example.com/page", "https://example.com/page"])("allows %s after approval", async (url) => {
 		await tool.execute({ url }, task, callbacks)
 		expect(callbacks.askApproval).toHaveBeenCalled()
-		expect(task.urlContentFetcher.urlToMarkdown).toHaveBeenCalledWith(url)
-		expect(task.urlContentFetcher.closeBrowser).toHaveBeenCalled()
+		expect(task.urlContentFetcher.fetchMarkdown).toHaveBeenCalledWith(url, expect.any(AbortSignal))
+		expect(callbacks.pushToolResult).toHaveBeenCalledWith("Web content")
 	})
 
 	it("keeps local paths subject to outside-workspace approval and ignore checks", async () => {
