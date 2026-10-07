@@ -51,7 +51,17 @@ const tabsByMessageAction: Partial<Record<NonNullable<ExtensionMessage["action"]
 }
 
 const App = () => {
-	const { didHydrateState, hydrationFailed, showWelcome, shouldShowAnnouncement, renderContext, cloudUserInfo, cloudIsAuthenticated, cloudApiUrl, cloudOrganizations } = useExtensionState()
+	const {
+		didHydrateState,
+		hydrationFailed,
+		showWelcome,
+		shouldShowAnnouncement,
+		renderContext,
+		cloudUserInfo,
+		cloudIsAuthenticated,
+		cloudApiUrl,
+		cloudOrganizations,
+	} = useExtensionState()
 
 	// Create a persistent state manager
 	const marketplaceStateManager = useMemo(() => new MarketplaceViewStateManager(), [])
@@ -189,11 +199,14 @@ const App = () => {
 					The webview did not receive a state reply from the extension. This can follow a webview reload or
 					memory pressure.
 				</div>
-				<button type="button" className="mt-2 underline" onClick={() => vscode.postMessage({ type: "webviewDidLaunch" })}>
+				<button
+					type="button"
+					className="mt-2 underline"
+					onClick={() => vscode.postMessage({ type: "webviewDidLaunch" })}>
 					Retry loading
 				</button>
 				<div className="text-vscode-descriptionForeground text-xs">
-					If this keeps happening, run "Developer: Reload Window".
+					If this keeps happening, run &quot;Developer: Reload Window&quot;.
 				</div>
 			</div>
 		) : null

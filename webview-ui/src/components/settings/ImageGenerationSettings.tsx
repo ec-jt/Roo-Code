@@ -280,7 +280,6 @@ export const ImageGenerationSettings = ({
 		setLiteLlmVideoGenerationSelectedModel(value)
 	}
 
-	const requiresApiKey = true
 	const isConfigured =
 		currentProvider === "litellm" ? !!effectiveLiteLlmApiKey && !!liteLlmImageBaseUrl : !!openRouterImageApiKey
 
