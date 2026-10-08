@@ -143,8 +143,27 @@ export interface ChatWindowState {
 	reason?: "staleRevision"
 }
 
+export interface AssistantMessageEdit {
+	operationId: string
+	taskId: string
+	instanceId: string
+	ts: number
+	expectedText: string
+	text: string
+}
+
+export interface AssistantMessageEditResult {
+	operationId: string
+	taskId: string
+	instanceId: string
+	ts: number
+	success: boolean
+	error?: string
+}
+
 export interface ExtensionMessage {
 	type:
+		| "assistantMessageEditResult"
 		| "action"
 		| "state"
 		| "runningTaskUpdated"
@@ -258,6 +277,7 @@ export interface ExtensionMessage {
 	commandActivities?: CommandActivityInfo[]
 	memoryBrowser?: MemoryBrowserState
 	memoryError?: string
+	assistantMessageEditResult?: AssistantMessageEditResult
 	modelOperationStatus?: ModelOperationStatus
 	images?: string[]
 	filePaths?: string[]
@@ -573,6 +593,7 @@ export type EditQueuedMessagePayload = Pick<QueuedMessage, "id" | "text" | "imag
 
 export interface WebviewMessage {
 	type:
+		| "editAssistantMessage"
 		| "chatWindowRequest"
 		| "chatWindowAck"
 		| "chatMessageOpen"
@@ -756,6 +777,7 @@ export interface WebviewMessage {
 	chatWindowRequest?: ChatWindowRequest
 	chatWindowAck?: ChatWindowAck
 	chatMessageOpen?: { taskId: string; instanceId: string; ts: number }
+	assistantMessageEdit?: AssistantMessageEdit
 	chatFileChangesOpen?: { taskId: string; instanceId: string; path: string }
 	commandActivityControl?: { id: string; action: "stop" | "show" }
 	memoryBrowserRequest?: MemoryBrowserRequest

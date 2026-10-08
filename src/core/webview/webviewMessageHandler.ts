@@ -22,6 +22,7 @@ import {
 import { customToolRegistry } from "@roo-code/core"
 
 import { type ApiMessage } from "../task-persistence/apiMessages"
+import { validateAssistantMessageEdit } from "../task/assistant-message-edit"
 
 import { ClineProvider } from "./ClineProvider"
 import { BrowserSessionPanelManager } from "./BrowserSessionPanelManager"
@@ -98,6 +99,60 @@ export const webviewMessageHandler = async (
 	message: WebviewMessage,
 	marketplaceManager?: MarketplaceManager,
 ) => {
+	// Handle before the generic read-only/background guards: editors require a correlated result.
+	if (message.type === "editAssistantMessage") {
+		const payload = message.assistantMessageEdit
+		let error: string | undefined
+		try {
+			validateAssistantMessageEdit(payload)
+			if (provider.isTaskBackgrounded || provider.isChatWindowFollowing?.() === false)
+				throw new Error("Return to the latest page of the foreground task before editing.")
+			const task = provider.getCurrentTask()
+			if (!task || task.taskId !== payload.taskId || task.instanceId !== payload.instanceId)
+				throw new Error("The task instance changed. Reopen the editor.")
+			await task.editAssistantMessage(payload)
+		} catch (cause) {
+			error = cause instanceof Error ? cause.message : "The assistant edit could not be saved."
+		}
+		await provider.postMessageToWebview({
+			type: "assistantMessageEditResult",
+			assistantMessageEditResult: {
+				operationId: typeof payload?.operationId === "string" ? payload.operationId.slice(0, 256) : "",
+				taskId: typeof payload?.taskId === "string" ? payload.taskId.slice(0, 256) : "",
+				instanceId: typeof payload?.instanceId === "string" ? payload.instanceId.slice(0, 256) : "",
+				ts: typeof payload?.ts === "number" && Number.isFinite(payload.ts) ? payload.ts : 0,
+				success: error === undefined,
+				...(error ? { error } : {}),
+			},
+		})
+		return
+	}
+	// Do not let a concurrent webview action replace history or wake an ask during a save.
+	if (
+		provider.isChatWindowFollowing?.() !== false &&
+		provider.getCurrentTask()?.isAssistantMessageEditing &&
+		[
+			"askResponse",
+			"alwaysAllowReadOnlyAsk",
+			"terminalOperation",
+			"checkpointRestore",
+			"deleteMessage",
+			"submitEditedMessage",
+			"deleteMessageConfirm",
+			"editMessageConfirm",
+			"queueMessage",
+			"removeQueuedMessage",
+			"editQueuedMessage",
+			"modelOperation",
+			"modelOperationApproval",
+			"condenseTaskContextRequest",
+			"mode",
+			"updateTodoList",
+			"loadApiConfiguration",
+			"loadApiConfigurationById",
+		].includes(message.type)
+	)
+		return
 	// Browsing old pages is read-only, even if a delayed UI event arrives.
 	if (
 		provider.isChatWindowFollowing?.() === false &&
@@ -129,7 +184,9 @@ export const webviewMessageHandler = async (
 		return
 	const actionTask = provider.getCurrentTask()
 	const isCurrentAction = () =>
-		provider.getCurrentTask() === actionTask && provider.isChatWindowFollowing?.() !== false
+		provider.getCurrentTask() === actionTask &&
+		!actionTask?.isAssistantMessageEditing &&
+		provider.isChatWindowFollowing?.() !== false
 
 	// Utility functions provided for concise get/update of global state via contextProxy API.
 	const getGlobalState = <K extends keyof GlobalState>(key: K) => provider.contextProxy.getValue(key)

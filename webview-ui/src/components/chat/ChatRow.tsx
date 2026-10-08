@@ -30,6 +30,7 @@ import CodeAccordion from "../common/CodeAccordion"
 import MarkdownBlock from "../common/MarkdownBlock"
 import { ReasoningBlock } from "./ReasoningBlock"
 import { ApiRequestMetrics } from "./ApiRequestMetrics"
+import { AssistantMessageEditor } from "./AssistantMessageEditor"
 import Thumbnails from "../common/Thumbnails"
 import ImageBlock from "../common/ImageBlock"
 import ErrorRow from "./ErrorRow"
@@ -1254,6 +1255,7 @@ export const ChatRowContent = ({
 							<div className="pl-6">
 								<Markdown markdown={message.text} partial={message.partial} />
 								<RegenerateWithModel message={message} />
+								<AssistantMessageEditor message={message} isStreaming={isStreaming} />
 								{message.images && message.images.length > 0 && (
 									<div style={{ marginTop: "10px" }}>
 										{message.images.map((image, index) => (

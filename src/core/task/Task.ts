@@ -37,6 +37,7 @@ import {
 	type ContextCondense,
 	type ContextTruncation,
 	type ClineMessage,
+	type AssistantMessageEdit,
 	type ClineSay,
 	type ClineAsk,
 	type ToolProgressStatus,
@@ -73,6 +74,13 @@ import { maybeRemoveImageBlocks } from "../../api/transform/image-cleaning"
 import { findLastIndex } from "../../shared/array"
 import { combineApiRequests } from "../../shared/combineApiRequests"
 import { ChatHistoryIndex } from "../webview/history/ChatHistoryIndex"
+import {
+	prepareAssistantMessageEdit,
+	validateAssistantMessageEdit,
+	beginAssistantEdit,
+	finishAssistantEdit,
+	assertNoInterruptedAssistantEdit,
+} from "./assistant-message-edit"
 import { combineCommandSequences } from "../../shared/combineCommandSequences"
 import { t } from "../../i18n"
 import { hasTokenUsageChanged, hasToolUsageChanged } from "../../shared/getApiMetrics"
@@ -369,6 +377,12 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	private persistenceClosed = false
 	private persistenceDisposal?: Promise<void>
 	private readonly pendingMessageSaves = new Set<Promise<boolean>>()
+	private assistantEditPromise?: Promise<void>
+	private assistantEditWaitingForResume = false
+	private assistantEditContextOperation = false
+	public get isAssistantMessageEditing(): boolean {
+		return this.assistantEditPromise !== undefined
+	}
 
 	providerRef: WeakRef<ClineProvider>
 	private readonly globalStoragePath: string
@@ -572,6 +586,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	}
 
 	private modelOperationBlockReason(): string | undefined {
+		if (this.isAssistantMessageEditing) return "An assistant history edit is being saved."
 		if (this.modelOperationFailure) return this.modelOperationFailure
 		if (this.modelOperationClosed || this.abort || this.abandoned) return "Task dispatch is closed."
 		if (this.modelOperationPreparing) return "Preparing the model-operation prefix."
@@ -649,6 +664,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 	/** Additional presenter restriction, before branch admission and all handler effects. */
 	public async checkToolInvocation(block: ToolUse | McpToolUse): Promise<InvocationDecision> {
+		if (this.isAssistantMessageEditing) return { allow: false, reason: "An assistant history edit is being saved." }
 		const revision = this.modelOperationRevision
 		if (this.abort || this.modelOperationClosed || this.toolExecutionDisposed)
 			return { allow: false, reason: "Task dispatch is closed." }
@@ -743,6 +759,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	private ensureModelOperationProvenance(): Promise<void> {
 		return (this.modelOperationProvenanceReady ??= (async () => {
 			try {
+				await assertNoInterruptedAssistantEdit(this.globalStoragePath, this.taskId)
 				const root = await getStorageBasePath(this.globalStoragePath)
 				const provenance = await readBranchProvenance(root, this.taskId)
 				if (!provenance) return
@@ -877,6 +894,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 	/** Historical input is independent of completed effects, but detachment requires quiescence. */
 	public getHistoricalModelOperationBlockReason(): string | undefined {
+		if (this.isAssistantMessageEditing) return "An assistant history edit is being saved."
 		if (this.modelOperationClosed || this.abandoned) return "Task dispatch is closed. Reload the source task."
 		if (!this.isInitialized || this.modelOperationPreparing) return "Wait for task initialization to finish."
 		if (this.rootTaskId || this.parentTaskId || this.childTaskId || this.pendingNewTaskToolCallId || this.isPaused)
@@ -1642,6 +1660,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	// so rewind/edit behavior can still reference original message boundaries.
 
 	async overwriteApiConversationHistory(newHistory: ApiMessage[]) {
+		if (this.isAssistantMessageEditing) throw new Error("An assistant history edit is being saved.")
 		if (this.persistenceClosed) throw new Error("Task persistence is closed")
 		this.apiConversationHistory = newHistory
 		if (!(await this.saveApiConversationHistory(true)))
@@ -1805,11 +1824,128 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	}
 
 	public async overwriteClineMessages(newMessages: ClineMessage[]) {
+		if (this.isAssistantMessageEditing) throw new Error("An assistant history edit is being saved.")
 		if (this.persistenceClosed) throw new Error("Task persistence is closed")
 		this.clineMessages = newMessages
 		this.chatHistoryIndex.rebuild(newMessages)
 		restoreTodoListForTask(this)
 		await this.saveClineMessages(true)
+	}
+
+	/** Save a correction without fulfilling an ask or dispatching work. */
+	public async editAssistantMessage(edit: AssistantMessageEdit): Promise<void> {
+		validateAssistantMessageEdit(edit)
+		if (this.isAssistantMessageEditing) throw new Error("Another assistant edit is being saved.")
+		this.assertAssistantEditAllowed(edit)
+		const prepared = prepareAssistantMessageEdit(this.clineMessages, this.apiConversationHistory, edit)
+		const originalUi = this.clineMessages
+		const originalApi = this.apiConversationHistory
+		const freshHandler = buildApiHandler(this.apiConfiguration)
+		const saving = Promise.resolve().then(async () => {
+			let mutated = false
+			let marked = false
+			try {
+				await this.flushPersistence()
+				await Promise.all(this.pendingMessageSaves)
+				this.assertAssistantEditAllowed(edit)
+				await beginAssistantEdit(this.globalStoragePath, this.taskId)
+				marked = true
+				this.assertAssistantEditAllowed(edit)
+				this.apiConversationHistory = prepared.api
+				this.clineMessages = prepared.ui
+				this.chatHistoryIndex.rebuild(prepared.ui)
+				mutated = true
+				if (!(await this.saveApiConversationHistory(true))) throw new Error("Could not save model history.")
+				await this.saveClineMessages(true)
+				this.assertAssistantEditAllowed(edit)
+				await finishAssistantEdit(this.globalStoragePath, this.taskId)
+				this.api = freshHandler
+				this.skipPrevResponseIdOnce = true
+				this.modelOperationRevision++
+				this.modelOperationSnapshot = undefined
+				this.modelOperationRequestId = undefined
+			} catch (error) {
+				this.modelOperationFailure =
+					"Assistant edit could not be saved safely. Reopen the task before continuing."
+				this.modelOperationClosed = true
+				if (mutated) {
+					this.apiConversationHistory = originalApi
+					this.clineMessages = originalUi
+					this.chatHistoryIndex.rebuild(originalUi)
+					// Disposal drains this operation. Roll back even after its persistence fence.
+					const options = { taskId: this.taskId, globalStoragePath: this.globalStoragePath, barrier: true }
+					const restored = await Promise.allSettled([
+						saveApiMessages({ ...options, messages: originalApi }),
+						saveTaskMessages({ ...options, messages: originalUi }),
+					])
+					if (restored.every((result) => result.status === "fulfilled"))
+						await finishAssistantEdit(this.globalStoragePath, this.taskId)
+				} else if (marked) {
+					await finishAssistantEdit(this.globalStoragePath, this.taskId)
+				}
+				// An uncleared marker also fences reopened instances after incomplete rollback.
+				throw error
+			}
+		})
+		this.assistantEditPromise = saving
+		try {
+			await saving
+		} finally {
+			this.assistantEditPromise = undefined
+		}
+		if (this.providerRef.deref()?.getCurrentTask() === this) await this.updateClineMessage(prepared.message)
+	}
+
+	private assertAssistantEditAllowed(edit: AssistantMessageEdit): void {
+		const provider = this.providerRef.deref()
+		if (edit.taskId !== this.taskId || edit.instanceId !== this.instanceId || provider?.getCurrentTask() !== this)
+			throw new Error("The task instance changed. Reopen the editor.")
+		if (provider.isTaskBackgrounded || provider.isChatWindowFollowing?.() === false)
+			throw new Error("Return to the latest page of the foreground task before editing.")
+		if (
+			this.persistenceClosed ||
+			this.modelOperationClosed ||
+			this.abort ||
+			this.abandoned ||
+			this.toolExecutionDisposed
+		)
+			throw new Error("Task dispatch is closed. Reopen the task before editing.")
+		if (
+			!this.isInitialized ||
+			this.modelOperationPreparing ||
+			this.modelOperationPrepared ||
+			this.modelOperationProfileId
+		)
+			throw new Error("Initializing or prepared replay tasks cannot be edited.")
+		if (this.clineMessages.at(-1)?.type === "ask" && !this.assistantEditWaitingForResume)
+			throw new Error("Wait for a settled resume prompt before editing.")
+		if (this.isPaused || this.childTaskId || this.pendingNewTaskToolCallId)
+			throw new Error("Wait for the delegated task to settle before editing.")
+		if (
+			this.modelOperationRequests ||
+			this.modelOperationUsageCollectors ||
+			this.modelOperationRequestPreparing ||
+			this.assistantEditContextOperation ||
+			this.modelDispatchControllers.size ||
+			this.isStreaming ||
+			this.isWaitingForFirstChunk ||
+			(this.modelOperationLoops && !this.assistantEditWaitingForResume)
+		)
+			throw new Error("A request is active. Stop it and reopen the task without resuming before editing.")
+		if (
+			this.presentAssistantMessageLocked ||
+			this.presentAssistantMessageHasPendingUpdates ||
+			this.diffViewProvider.isEditing ||
+			this.terminalProcess ||
+			TerminalRegistry.getTerminals(true).length ||
+			this.modelOperationAdmissionsPending ||
+			this.modelOperationAdmission.pending ||
+			this.autoApprovalTimeoutRef ||
+			this.askResponse !== undefined ||
+			!this.messageQueueService.isEmpty() ||
+			(this.interactiveAsk && !this.assistantEditWaitingForResume)
+		)
+			throw new Error("Wait for tools, approvals, terminals, and queued messages to settle before editing.")
 	}
 
 	private async updateClineMessage(message: ClineMessage) {
@@ -1904,6 +2040,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		if (this.persistenceDisposal) return this.persistenceDisposal
 		this.persistenceClosed = true
 		this.persistenceDisposal = Promise.allSettled([
+			...(this.assistantEditPromise ? [this.assistantEditPromise] : []),
 			this.flushPersistence(),
 			...Array.from(this.pendingMessageSaves, async (saving) => {
 				if (!(await saving)) throw new Error("Task message persistence failed during disposal")
@@ -2161,9 +2298,13 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			}
 		}
 
+		// A settled resume prompt is safe to edit without fulfilling the ask.
+		this.assistantEditWaitingForResume =
+			isStatusMutable && (type === "resume_task" || type === "resume_completed_task")
 		// Wait for askResponse to be set
 		await pWaitFor(
 			() => {
+				if (this.isAssistantMessageEditing) return false
 				if (this.modelOperationClosed || this.abort || this.abandoned) {
 					timeouts.forEach((timeout) => clearTimeout(timeout))
 					throw new Error("Task dispatch is closed")
@@ -2192,6 +2333,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			},
 			{ interval: 100 },
 		)
+		this.assistantEditWaitingForResume = false
 
 		if (this.lastMessageTs !== askTs) {
 			// Could happen if we send multiple asks in a row i.e. with
@@ -2238,7 +2380,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	}
 
 	handleWebviewAskResponse(askResponse: ClineAskResponse, text?: string, images?: string[]) {
-		if (this.modelOperationClosed) return
+		if (this.modelOperationClosed || this.isAssistantMessageEditing) return
 		// Clear any pending auto-approval timeout when user responds
 		this.cancelAutoApprovalTimeout()
 
@@ -2335,6 +2477,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		mode?: string,
 		providerProfile?: string,
 	): Promise<void> {
+		if (this.isAssistantMessageEditing || this.modelOperationClosed) return
 		try {
 			text = (text ?? "").trim()
 			images = images ?? []
@@ -2393,6 +2536,16 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	}
 
 	public async condenseContext(): Promise<void> {
+		if (this.isAssistantMessageEditing || this.modelOperationClosed) throw new Error("Task dispatch is closed")
+		this.assistantEditContextOperation = true
+		try {
+			await this.condenseContextOperation()
+		} finally {
+			this.assistantEditContextOperation = false
+		}
+	}
+
+	private async condenseContextOperation(): Promise<void> {
 		if (!this.modelDispatchRuntime) return this.condenseContextWithHandler(this.api)
 		if (this.modelDispatchControllers.size || this.modelOperationLoops)
 			throw new ModelDispatchControl("policy-denied")
@@ -2798,6 +2951,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 	private async resumeTaskFromHistory() {
 		try {
+			await assertNoInterruptedAssistantEdit(this.globalStoragePath, this.taskId)
 			await this.ensureModelOperationProvenance()
 			const modifiedClineMessages = await this.getSavedClineMessages()
 
@@ -3376,6 +3530,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		userContent: Anthropic.Messages.ContentBlockParam[],
 		includeFileDetails: boolean = false,
 	): Promise<boolean> {
+		if (this.isAssistantMessageEditing) throw new Error("An assistant history edit is being saved.")
 		if (this.modelOperationLoops || this.modelOperationRequests) throw new Error("A request is already active")
 		this.modelOperationLoops++
 		try {
@@ -4967,6 +5122,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		retryAttempt: number = 0,
 		options: { skipProviderRateLimit?: boolean; onProviderStart?: () => void } = {},
 	): ApiStream {
+		if (this.isAssistantMessageEditing) throw new Error("An assistant history edit is being saved.")
 		if (this.modelDispatchRuntime && (this.modelOperationClosed || this.abort))
 			throw new ModelDispatchControl(this.abort ? "cancelled" : "stale")
 		if (this.modelDispatchRuntime && this.modelDispatchControllers.size)
@@ -6007,6 +6163,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	 * @param context - Context string for logging (e.g., the calling tool name)
 	 */
 	public processQueuedMessages(): void {
+		if (this.isAssistantMessageEditing || this.modelOperationClosed) return
 		try {
 			if (!this.messageQueueService.isEmpty()) {
 				const queued = this.messageQueueService.dequeueMessage()

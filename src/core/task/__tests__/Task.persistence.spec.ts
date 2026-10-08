@@ -5,6 +5,14 @@ import * as path from "path"
 import * as vscode from "vscode"
 
 import type { GlobalState, ProviderSettings } from "@roo-code/types"
+import { beginAssistantEdit, finishAssistantEdit } from "../assistant-message-edit"
+
+vi.mock("../assistant-message-edit", async (original) => ({
+	...(await original<typeof import("../assistant-message-edit")>()),
+	beginAssistantEdit: vi.fn().mockResolvedValue(undefined),
+	finishAssistantEdit: vi.fn().mockResolvedValue(undefined),
+	assertNoInterruptedAssistantEdit: vi.fn().mockResolvedValue(undefined),
+}))
 
 import { Task } from "../Task"
 import { ClineProvider } from "../../webview/ClineProvider"
@@ -418,6 +426,142 @@ describe("Task persistence", () => {
 			const callArgs = mockSaveTaskMessages.mock.calls[0][0]
 			expect(callArgs.messages).toBe(task.clineMessages)
 			expect(callArgs.barrier).toBe(false)
+		})
+	})
+
+	describe("assistant history edits", () => {
+		const setup = () => {
+			const task = new Task({
+				provider: mockProvider,
+				apiConfiguration: mockApiConfig,
+				task: "test",
+				startTask: false,
+			})
+			task.isInitialized = true
+			mockProvider.getCurrentTask = vi.fn().mockReturnValue(task)
+			mockProvider.isChatWindowFollowing = vi.fn().mockReturnValue(true)
+			task.clineMessages = [
+				{ ts: 1, type: "say", say: "text", text: "root" },
+				{ ts: 2, type: "say", say: "text", text: "old", requestId: "r" },
+				{ ts: 4, type: "ask", ask: "resume_task" },
+			]
+			task.apiConversationHistory = [
+				{ role: "user", content: "root" },
+				{ role: "assistant", requestId: "r", id: "response", content: "old", ts: 3 },
+				{ role: "user", content: "later" },
+			]
+			;(task as any).assistantEditWaitingForResume = true
+			return {
+				task,
+				edit: {
+					taskId: task.taskId,
+					instanceId: task.instanceId,
+					operationId: "op",
+					ts: 2,
+					expectedText: "old",
+					text: "new",
+				},
+			}
+		}
+
+		it("saves both histories in place without waking a resume loop or dispatching", async () => {
+			const { task, edit } = setup()
+			;(task as any).modelOperationLoops = 1
+			const handler = task.api
+			const request = vi.spyOn(task, "recursivelyMakeClineRequests")
+			await task.editAssistantMessage(edit)
+			expect(task.clineMessages[1].text).toBe("new")
+			expect(task.apiConversationHistory[1]).toMatchObject({ content: "new" })
+			expect(task.apiConversationHistory[1].id).toBeUndefined()
+			expect(task.apiConversationHistory[2].content).toBe("later")
+			expect(task.api).not.toBe(handler)
+			expect(task.skipPrevResponseIdOnce).toBe(true)
+			expect((task as any).askResponse).toBeUndefined()
+			expect(request).not.toHaveBeenCalled()
+			expect(mockSaveApiMessages).toHaveBeenCalledWith(expect.objectContaining({ barrier: true }))
+			expect(mockSaveTaskMessages).toHaveBeenCalledWith(expect.objectContaining({ barrier: true }))
+			expect(beginAssistantEdit).toHaveBeenCalled()
+			expect(finishAssistantEdit).toHaveBeenCalled()
+		})
+
+		it.each([
+			"modelOperationRequests",
+			"modelOperationPrepared",
+			"presentAssistantMessageLocked",
+			"assistantEditContextOperation",
+			"persistenceClosed",
+		])("rejects busy or closed %s", async (field) => {
+			const { task, edit } = setup()
+			;(task as any)[field] = true
+			await expect(task.editAssistantMessage(edit)).rejects.toThrow()
+			expect(mockSaveApiMessages).not.toHaveBeenCalled()
+		})
+
+		it("rejects stale identities and compare-and-swap text", async () => {
+			const { task, edit } = setup()
+			await expect(task.editAssistantMessage({ ...edit, instanceId: "stale" })).rejects.toThrow("instance")
+			await expect(task.editAssistantMessage({ ...edit, expectedText: "stale" })).rejects.toThrow("changed")
+		})
+
+		it("blocks concurrent edits, ask responses and provider dispatch during persistence", async () => {
+			const { task, edit } = setup()
+			let release!: () => void
+			mockFlushTaskSaves.mockImplementationOnce(
+				() =>
+					new Promise<void>((resolve) => {
+						release = resolve
+					}),
+			)
+			const saving = task.editAssistantMessage(edit)
+			await Promise.resolve()
+			await expect(task.editAssistantMessage(edit)).rejects.toThrow("Another")
+			task.handleWebviewAskResponse("yesButtonClicked")
+			expect((task as any).askResponse).toBeUndefined()
+			await expect(task.attemptApiRequest().next()).rejects.toThrow("edit")
+			await expect(task.overwriteApiConversationHistory([])).rejects.toThrow("edit")
+			await expect(task.overwriteClineMessages([])).rejects.toThrow("edit")
+			release()
+			await saving
+		})
+
+		it.each(["api", "ui"])("rolls back %s persistence failures and fences dispatch", async (kind) => {
+			const { task, edit } = setup()
+			if (kind === "api") mockSaveApiMessages.mockRejectedValueOnce(new Error("disk full"))
+			else mockSaveTaskMessages.mockRejectedValueOnce(new Error("disk full"))
+			await expect(task.editAssistantMessage(edit)).rejects.toThrow()
+			expect(task.apiConversationHistory[1].content).toBe("old")
+			expect(task.clineMessages[1].text).toBe("old")
+			expect(task.modelOperationDispatchClosed).toBe(true)
+			await expect(task.attemptApiRequest().next()).rejects.toThrow("closed")
+		})
+
+		it("retains the durable marker when rollback fails", async () => {
+			const { task, edit } = setup()
+			mockSaveApiMessages
+				.mockRejectedValueOnce(new Error("save failed"))
+				.mockRejectedValueOnce(new Error("rollback failed"))
+			await expect(task.editAssistantMessage(edit)).rejects.toThrow()
+			expect(finishAssistantEdit).not.toHaveBeenCalled()
+			expect(task.modelOperationDispatchClosed).toBe(true)
+		})
+
+		it("drains an edit on disposal without saving the proposed text", async () => {
+			const { task, edit } = setup()
+			let release!: () => void
+			mockFlushTaskSaves.mockImplementationOnce(
+				() =>
+					new Promise<void>((resolve) => {
+						release = resolve
+					}),
+			)
+			const saving = task.editAssistantMessage(edit)
+			await Promise.resolve()
+			const closed = (task as any).closePersistence()
+			const saveResult = expect(saving).rejects.toThrow("closed")
+			const closeResult = expect(closed).rejects.toThrow("closed")
+			release()
+			await Promise.all([saveResult, closeResult])
+			expect(task.clineMessages[1].text).toBe("old")
 		})
 	})
 

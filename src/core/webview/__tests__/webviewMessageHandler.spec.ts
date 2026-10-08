@@ -49,6 +49,48 @@ import { getCommands } from "../../../services/command/commands"
 const { openAiCodexOAuthManager } = await import("../../../integrations/openai-codex/oauth")
 const { fetchOpenAiCodexRateLimitInfo } = await import("../../../integrations/openai-codex/rate-limits")
 
+describe("assistant edit acknowledgements", () => {
+	const payload = {
+		operationId: "op",
+		taskId: "task",
+		instanceId: "instance",
+		ts: 2,
+		expectedText: "old",
+		text: "new",
+	}
+	it.each(["success", "background", "historical", "stale", "missing", "invalid", "failure"])(
+		"acknowledges %s",
+		async (kind) => {
+			const editAssistantMessage = vi.fn().mockResolvedValue(undefined)
+			if (kind === "failure") editAssistantMessage.mockRejectedValue(new Error("disk failed"))
+			const provider = {
+				isTaskBackgrounded: kind === "background",
+				isChatWindowFollowing: () => kind !== "historical",
+				getCurrentTask: () =>
+					kind === "missing"
+						? undefined
+						: { taskId: "task", instanceId: kind === "stale" ? "other" : "instance", editAssistantMessage },
+				postMessageToWebview: vi.fn().mockResolvedValue(undefined),
+			} as unknown as ClineProvider
+			await webviewMessageHandler(provider, {
+				type: "editAssistantMessage",
+				assistantMessageEdit: kind === "invalid" ? { ...payload, text: "" } : payload,
+			})
+			expect(provider.postMessageToWebview).toHaveBeenCalledWith({
+				type: "assistantMessageEditResult",
+				assistantMessageEditResult: expect.objectContaining({
+					operationId: "op",
+					taskId: "task",
+					instanceId: "instance",
+					ts: 2,
+					success: kind === "success",
+				}),
+			})
+			if (!["success", "failure"].includes(kind)) expect(editAssistantMessage).not.toHaveBeenCalled()
+		},
+	)
+})
+
 const mockGetModels = getModels as Mock<typeof getModels>
 const mockGetCommands = vi.mocked(getCommands)
 const mockGetAccessToken = vi.mocked(openAiCodexOAuthManager.getAccessToken)
