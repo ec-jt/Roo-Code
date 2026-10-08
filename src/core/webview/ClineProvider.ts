@@ -100,6 +100,7 @@ import { getUri } from "./getUri"
 import { REQUESTY_BASE_URL } from "../../shared/utils/requesty"
 import { validateAndFixToolResultIds } from "../task/validateToolResultIds"
 import { RunningTaskMonitor } from "./RunningTaskMonitor"
+import { MemoryController } from "./MemoryController"
 import { CommandActivity } from "../../integrations/terminal/CommandActivity"
 import { scopedCommandActivities } from "../../integrations/terminal/activityScope"
 
@@ -145,6 +146,13 @@ export class ClineProvider
 	private taskCreationCallback: (task: Task) => void
 	private taskEventListeners: WeakMap<Task, Array<() => void>> = new WeakMap()
 	private _runningTaskMonitor?: RunningTaskMonitor
+	private _memoryController?: MemoryController
+	public get memoryController(): MemoryController {
+		return (this._memoryController ??= new MemoryController(this))
+	}
+	public refreshMemoryBrowser(scope: "project" | "personal" = "project"): Promise<void> {
+		return this.memoryController.refresh(scope)
+	}
 	private commandActivitySubscription?: () => void
 
 	public getCommandActivities() {
@@ -864,6 +872,7 @@ export class ClineProvider
 		}
 
 		this._disposed = true
+		this._memoryController?.dispose()
 		this.commandActivitySubscription?.()
 		this.commandActivitySubscription = undefined
 		this.runningTaskMonitor.clear()
@@ -2528,6 +2537,7 @@ export class ClineProvider
 			autoCondenseContextPercent: autoCondenseContextPercent ?? 100,
 			uriScheme: vscode.env.uriScheme,
 			currentTaskId: currentTask?.taskId,
+			memoryEnabledForCurrentProject: await this.memoryController.enabled(),
 			runningTask: this.runningTaskMonitor.value,
 			modelOperation: currentTask?.modelOperationState,
 			currentTaskItem: currentTask?.taskId ? this.taskHistoryStore.get(currentTask.taskId) : undefined,
@@ -2674,6 +2684,7 @@ export class ClineProvider
 		// Return the same structure as before.
 		return {
 			apiConfiguration: providerSettings,
+			memoryEnabledForCurrentProject: await this.memoryController.enabled(),
 			lastShownAnnouncementId: stateValues.lastShownAnnouncementId,
 			customInstructions: stateValues.customInstructions,
 			apiModelId: stateValues.apiModelId,

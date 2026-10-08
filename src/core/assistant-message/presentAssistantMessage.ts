@@ -45,6 +45,7 @@ import { generateImageTool } from "../tools/GenerateImageTool"
 import { generateVideoTool } from "../tools/GenerateVideoTool"
 import { applyDiffTool as applyDiffToolClass } from "../tools/ApplyDiffTool"
 import { isValidToolName, validateToolUse } from "../tools/validateToolUse"
+import { memoryTool } from "../tools/MemoryTool"
 import { codebaseSearchTool } from "../tools/CodebaseSearchTool"
 
 import { formatResponse } from "../prompts/responses"
@@ -721,6 +722,13 @@ export async function presentAssistantMessage(cline: Task) {
 							break
 						case "managed_environment":
 							await managedEnvironmentTool.handle(cline, block as ToolUse<"managed_environment">, {
+								askApproval,
+								handleError,
+								pushToolResult,
+							})
+							break
+						case "memory":
+							await memoryTool.handle(cline, block as ToolUse<"memory">, {
 								askApproval,
 								handleError,
 								pushToolResult,

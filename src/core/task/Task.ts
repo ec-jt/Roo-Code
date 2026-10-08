@@ -129,6 +129,12 @@ import {
 	taskMetadata,
 } from "../task-persistence"
 import { getEnvironmentDetails } from "../environment/getEnvironmentDetails"
+import {
+	getTaskMemoryContext,
+	appendTaskMemoryContext,
+	needsTaskMemoryContext,
+	assertTaskMemoryDispatch,
+} from "../../services/memory/taskMemory"
 import { checkContextWindowExceededError } from "../context/context-management/context-error-handling"
 import {
 	type CheckpointDiffOptions,
@@ -528,6 +534,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	private modelOperationRequests = 0
 	private modelOperationUsageCollectors = 0
 	private modelOperationRequestPinned = false
+	private memoryContextForTurn = ""
 	private modelOperationRequestPreparing = false
 	private deferredApiConfiguration?: ProviderSettings
 	private modelOperationProvenanceReady?: Promise<void>
@@ -3355,6 +3362,9 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				this.updateApiConfiguration(this.deferredApiConfiguration)
 				this.deferredApiConfiguration = undefined
 			}
+			// Read memory once at the new-turn boundary, before pinning. Prepared replay
+			// uses its exact imported snapshot and must never acquire fresh memory.
+			this.memoryContextForTurn = this.modelOperationPrepared ? "" : await getTaskMemoryContext(this)
 			this.modelOperationRequestPinned = true
 			const currentItem = stack.pop()!
 			const currentUserContent = currentItem.userContent
@@ -3487,6 +3497,10 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			const shouldAddUserMessage =
 				((currentItem.retryAttempt ?? 0) === 0 && !isEmptyUserContent) || currentItem.userMessageWasRemoved
 			if (shouldAddUserMessage) {
+				if (!this.modelOperationPrepared) {
+					const history = getMessagesSinceLastSummary(getEffectiveApiHistory(this.apiConversationHistory))
+					finalUserContent = appendTaskMemoryContext(finalUserContent, this.memoryContextForTurn, history)
+				}
 				await this.addToApiConversationHistory({ role: "user", content: finalUserContent })
 			}
 
@@ -5187,6 +5201,19 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		// Get the effective API history by filtering out condensed messages
 		// This allows non-destructive condensing where messages are tagged but not deleted,
 		// enabling accurate rewind operations while still sending condensed history to the API.
+		// Compaction may remove the index injected at the start of this turn. Reload
+		// only that already captured index at a user-content boundary, never a fresh store read.
+		if (!this.modelOperationPrepared && this.memoryContextForTurn) {
+			const history = getMessagesSinceLastSummary(getEffectiveApiHistory(this.apiConversationHistory))
+			if (needsTaskMemoryContext(this.memoryContextForTurn, history)) {
+				// Effective history can contain filtered copies. Update the stored user
+				// boundary so snapshots also retain this already captured index.
+				const lastUser = [...this.apiConversationHistory].reverse().find((message) => message.role === "user")
+				if (lastUser && Array.isArray(lastUser.content)) {
+					lastUser.content = appendTaskMemoryContext(lastUser.content, this.memoryContextForTurn, history)
+				}
+			}
+		}
 		const effectiveHistory = getEffectiveApiHistory(this.apiConversationHistory)
 		const messagesSinceLastSummary = getMessagesSinceLastSummary(effectiveHistory)
 		// For API only: merge consecutive user messages (excludes summary messages per
@@ -5395,6 +5422,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		}
 		// Publishing state may synchronously fence this task. Never install a fresh
 		// controller after cancellation, or dispatch after that fence.
+		if (!this.modelOperationPrepared) await assertTaskMemoryDispatch(this)
 		if (this.modelOperationClosed || this.abort || requestRevision !== this.modelOperationRevision)
 			throw new Error("Stale request dispatch")
 		this.modelOperationRequestPreparing = false

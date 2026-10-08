@@ -101,6 +101,7 @@ export type ToolParamName = (typeof toolParamNames)[number]
  */
 export type NativeToolArgs = {
 	managed_environment: { action: "prepare" | "install" | "status"; manifest_path: string }
+	memory: import("zod").infer<typeof import("../core/prompts/tools/native-tools/memory").memoryArgsSchema>
 	access_mcp_resource: { server_name: string; uri: string }
 	brave_web_search: { query: string; count?: number; offset?: number }
 	brave_local_search: { query: string; count?: number }
@@ -301,6 +302,7 @@ export type ToolGroupConfig = {
 
 export const TOOL_DISPLAY_NAMES: Record<ToolName, string> = {
 	managed_environment: "manage Roo-owned Python environments",
+	memory: "manage bounded memory topics",
 	execute_command: "run commands",
 	browser_action: "use a browser",
 	read_file: "read files",
@@ -363,7 +365,7 @@ export const TOOL_GROUPS: Record<ToolGroup, ToolGroupConfig> = {
 		tools: ["browser_action"],
 	},
 	command: {
-		tools: ["execute_command", "read_command_output", "managed_environment"],
+		tools: ["execute_command", "read_command_output", "managed_environment", "memory"],
 	},
 	mcp: {
 		tools: ["use_mcp_tool", "access_mcp_resource"],

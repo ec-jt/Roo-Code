@@ -575,6 +575,9 @@ export const webviewMessageHandler = async (
 	}
 
 	switch (message.type) {
+		case "memoryBrowserRequest":
+			await provider.memoryController.handle(message.memoryBrowserRequest)
+			break
 		case "commandActivityControl":
 			await provider.handleCommandActivityControl(message.commandActivityControl)
 			break

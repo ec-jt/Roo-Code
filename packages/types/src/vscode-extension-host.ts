@@ -58,12 +58,52 @@ export interface CommandActivityInfo {
 	outputTail: string
 }
 
+export interface MemoryTopic {
+	id: string
+	name: string
+	description: string
+	type: "user" | "feedback" | "project" | "reference"
+	body: string
+	createdAt: string
+	modifiedAt: string
+	sourceTaskId?: string
+	revision: string
+}
+export interface MemoryBrowserState {
+	projectKey: string
+	projectLabel: string
+	rootPath: string
+	directory: string
+	scope: "project" | "personal"
+	enabled: boolean
+	personalRecall: boolean
+	consentRevision: string
+	listRevision: string
+	records: Omit<MemoryTopic, "body">[]
+	selected?: MemoryTopic
+	errors: string[]
+	omitted: number
+}
+export interface MemoryBrowserRequest {
+	action: "refresh" | "consent" | "read" | "save" | "delete" | "clear" | "open"
+	scope: "project" | "personal"
+	projectKey?: string
+	expectedRevision?: string | null
+	consentRevision?: string
+	enabled?: boolean
+	personalRecall?: boolean
+	id?: string
+	query?: string
+	input?: Pick<MemoryTopic, "name" | "description" | "type" | "body">
+}
+
 export interface ExtensionMessage {
 	type:
 		| "action"
 		| "state"
 		| "runningTaskUpdated"
 		| "commandActivitiesUpdated"
+		| "memoryBrowser"
 		| "modelOperationStatus"
 		| "taskHistoryUpdated"
 		| "taskHistoryItemUpdated"
@@ -170,6 +210,8 @@ export interface ExtensionMessage {
 	state?: Partial<ExtensionState>
 	runningTask?: RunningTaskInfo
 	commandActivities?: CommandActivityInfo[]
+	memoryBrowser?: MemoryBrowserState
+	memoryError?: string
 	modelOperationStatus?: ModelOperationStatus
 	images?: string[]
 	filePaths?: string[]
@@ -381,6 +423,7 @@ export type ExtensionState = Pick<
 	version: string
 	clineMessages: ClineMessage[]
 	currentTaskId?: string
+	memoryEnabledForCurrentProject?: boolean
 	runningTask?: RunningTaskInfo
 	commandActivities?: CommandActivityInfo[]
 	modelOperation?: ModelOperationState
@@ -488,6 +531,7 @@ export interface WebviewMessage {
 		| "foregroundTask"
 		| "cancelBackgroundTask"
 		| "commandActivityControl"
+		| "memoryBrowserRequest"
 		| "modelOperation"
 		| "modelOperationApproval"
 		| "deleteMultipleTasksWithIds"
@@ -659,6 +703,7 @@ export interface WebviewMessage {
 	taskId?: string
 	instanceId?: string
 	commandActivityControl?: { id: string; action: "stop" | "show" }
+	memoryBrowserRequest?: MemoryBrowserRequest
 	modelOperation?: ModelOperation
 	modelOperationApproval?: ModelOperationApproval
 	editedMessageContent?: string
@@ -859,6 +904,7 @@ export interface ClineSayTool {
 		| "imageGenerated"
 		| "fileSystem"
 		| "managedEnvironment"
+		| "memory"
 		| "markdownify"
 		| "gitRepoResearch"
 		| "gitTools"

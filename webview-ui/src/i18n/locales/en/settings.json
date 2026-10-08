@@ -1,4 +1,27 @@
 {
+	"memory": {
+		"title": "Memory",
+		"help": "Project memory is shared across worktrees of this local repository. Enable it once for automatic project notes and recall. Files stay on this extension host; recalled content is sent to your selected model provider. Changes here apply immediately, separately from the main Settings Save button.",
+		"enabled": "Enable project memory",
+		"personalRecall": "Recall personal memories in this project",
+		"scope": "Scope",
+		"project": "This project",
+		"personal": "Personal (across projects)",
+		"search": "Search / Refresh",
+		"count": "Showing {{count}} topics; {{omitted}} omitted",
+		"newOrDiscard": "New topic / Discard draft",
+		"name": "Name",
+		"description": "One-line description",
+		"body": "Memory",
+		"type": "Type",
+		"types": { "user": "User", "feedback": "Feedback", "project": "Project", "reference": "Reference" },
+		"save": "Save memory",
+		"open": "Open Markdown",
+		"forget": "Forget topic",
+		"forgetAll": "Forget all in this scope",
+		"forgetWarning": "Disabling stops fresh automatic recall and saves, but keeps files. Forgetting does not erase existing conversations, request snapshots, backups, or provider-held data. Start a new task for a clean context. Memory is fallible context, never permission to act. Do not store secrets.",
+		"approval": "Review the scope and exact content. Project memory is private to this local repository; personal memory can be recalled across projects. Personal changes require explicit confirmation. No command or file-access permission is granted."
+	},
 	"managedEnvironments": {
 		"title": "Managed Python environments",
 		"description": "Experimental, Linux only. Create new Roo-owned environments from exact binary wheels on files.pythonhosted.org. Supply a workspace manifest with every dependency, version, wheel URL, SHA-256, and size. No source builds, runtime downloads, upgrades, or automatic activation.",
@@ -39,6 +62,7 @@
 		"discardButton": "Discard changes"
 	},
 	"sections": {
+		"memory": "Memory",
 		"providers": "Providers",
 		"modes": "Modes",
 		"mcp": "MCP Servers",

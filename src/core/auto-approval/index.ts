@@ -32,6 +32,7 @@ export type AutoApprovalState =
 export type AutoApprovalStateOptions =
 	| "autoApprovalEnabled"
 	| "managedEnvironmentsEnabled"
+	| "memoryEnabledForCurrentProject"
 	| "alwaysAllowReadOnlyOutsideWorkspace" // For `alwaysAllowReadOnly`.
 	| "alwaysAllowWriteOutsideWorkspace" // For `alwaysAllowWrite`.
 	| "alwaysAllowWriteProtected"
@@ -70,6 +71,27 @@ export async function checkAutoApproval({
 
 	if (isNonBlockingAsk(ask)) {
 		return { decision: "approve" }
+	}
+
+	// Project opt-in is a separate grant, independent of general auto approval.
+	// Personal operations and malformed memory requests never inherit all-actions approval.
+	if (ask === "tool") {
+		try {
+			const tool = JSON.parse(text || "{}") as ClineSayTool
+			if (tool.tool === "memory") {
+				return {
+					decision:
+						state?.memoryEnabledForCurrentProject === true &&
+						tool.path === "project" &&
+						["list", "read", "upsert", "delete"].includes(tool.action ?? "") &&
+						!isProtected
+							? "approve"
+							: "ask",
+				}
+			}
+		} catch {
+			return { decision: "ask" }
+		}
 	}
 
 	if (!state || !state.autoApprovalEnabled) {

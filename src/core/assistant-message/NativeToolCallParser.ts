@@ -1,4 +1,5 @@
 import { parseJSON } from "partial-json"
+import { memoryArgsSchema } from "../prompts/tools/native-tools/memory"
 
 import { type ToolName, toolNames, type FileEntry } from "@roo-code/types"
 import { customToolRegistry } from "@roo-code/core"
@@ -811,6 +812,9 @@ export class NativeToolCallParser {
 			let usedLegacyFormat = false
 
 			switch (resolvedName) {
+				case "memory":
+					nativeArgs = memoryArgsSchema.parse(args)
+					break
 				case "read_file":
 					// Check for legacy format first: { files: [...] }
 					// Handle both array and stringified array (some models double-stringify)

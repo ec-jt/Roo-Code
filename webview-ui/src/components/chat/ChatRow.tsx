@@ -1005,6 +1005,18 @@ export const ChatRowContent = ({
 						)}
 					</>
 				)
+			case "memory":
+				return (
+					<section className="text-sm space-y-2">
+						<strong>
+							{t("settings:memory.title")}: {tool.path} / {tool.action}
+						</strong>
+						<p>{t("settings:memory.approval")}</p>
+						<pre className="whitespace-pre-wrap break-all max-h-80 overflow-auto text-xs">
+							{tool.content}
+						</pre>
+					</section>
+				)
 			case "managedEnvironment":
 				return (
 					<section className="text-sm space-y-2">

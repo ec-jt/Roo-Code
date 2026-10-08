@@ -1,0 +1,60 @@
+# Project memory MVP
+
+## Using memory in Roo
+
+Open **Settings > Memory**. **Enable project memory** is off by default. The native confirmation identifies the local project and external storage location and explains that recalled content is sent to the selected model provider. Settings in this panel apply immediately rather than waiting for the general Settings Save button. Linked worktrees share project consent; independent clones do not.
+
+Once enabled, the structured memory tool can recall and maintain project notes without a second general auto-approval toggle. Mandatory tool approvals and mode restrictions still apply. Personal changes never inherit project or all-actions consent: they require ordinary approval plus an exact-content native confirmation. Enable **Recall personal memories in this project** separately if personal topics should appear in automatic recall.
+
+The memory browser supports search, creation, editing, opening the Markdown file, forgetting one topic, and clearing a scope. Personal saves and destructive operations require confirmation. Editing uses revisions so a concurrent change returns a conflict rather than overwriting it. Use New topic / Discard draft before selecting another topic if you have unsaved changes. Import and advanced tidy tools are deferred.
+
+Disabling blocks new automatic reads and model writes, but keeps manual browsing and forgetting available. The request-preparation consent check fails closed if consent changes before dispatch. It does not rewrite a prepared model-operation replay or retract memory already in an existing transcript. Start a new task for clean context after forgetting sensitive material.
+
+Task recall injects a bounded metadata index as lower-trust user context, not as privileged system rules. Topic bodies are read on demand. Changed indexes are appended at safe turn boundaries; compaction can reinsert the turn's already captured index. Prepared model regeneration does not acquire live memory. There is no extra model call, embedding service, automatic import, or background summarizer.
+
+The browser watches memory changes with debounce once opened. Cross-window storage operations recheck on-disk consent/revisions. Topic reads currently scan within fixed limits instead of maintaining a persistent retrieval cache. Source provenance is limited to task IDs: no retroactive source-file access filter is claimed. Stored references are not automatically opened. New UI strings use English fallback pending translation approval.
+
+Project memory stores short, inspectable topics on the extension host. It is separate from workspace files, rules, checkpoints, and task history. It defaults off. Enabling project memory permits project maintenance and bounded recall; it does not grant filesystem, shell, network, or personal-write permissions.
+
+Recalled topics enter prompts sent to the selected model/provider. Local storage does not mean local inference. Secret-pattern checks are best effort, not a privacy or sandbox guarantee. Do not save credentials, private keys, session cookies, copied sensitive output, or speculative facts. Forgetting a topic does not erase prior prompts, task transcripts, request snapshots, backups, or provider-held data. Use task deletion controls separately and start a new task when a clean conversation context is needed.
+
+## Identity and files
+
+The caller supplies the extension global-storage root and the actual task workspace folder. [Project resolution](../src/services/memory/project.ts) hashes the canonical local Git common directory. Main checkouts, subdirectories, and linked worktrees share a project. Independent clones, nested repositories, and submodules remain separate. No remote URL or network request participates. Outside Git, the canonical selected folder is the identity, not its home or ancestor directory. Project moves need explicit migration and renewed scope review; there is no automatic migration or synchronization.
+
+The [store](../src/services/memory/MemoryStore.ts) keeps project topics below the storage root's memory/projects/key directory and personal topics below memory/personal. Each UUID-named Markdown topic has plain YAML frontmatter with its ID, name, description, type, creation/modification timestamps, and optional source task ID. Topic text is authoritative. Revisions are SHA-256 hashes of exact UTF-8 file contents, not timestamps. Manual edits therefore invalidate stale writes even when metadata dates are unchanged.
+
+The managed [MEMORY.md](../plans/project-memory-system.md#2-markdown-records-and-index) cache is derived from topics. Reads always reconcile in memory without writing. Successful mutations refresh the on-disk cache when possible. Missing or stale caches never hide valid topics. A cache whose self-check no longer matches is preserved and reported for review, not silently overwritten or recalled. Move manually added index notes into proper topics. Malformed, oversized, secret-bearing, or unsafe topics are excluded and returned as file-specific issues without deleting their contents.
+
+Consent uses a separate small YAML control document per project. Minimal forgotten-ID text tombstones prevent deleted IDs from reappearing after stale updates or interrupted deletions. No forgotten content or topic history is retained. An interrupted deletion can leave a tombstoned topic physically present; it is withheld from recall and reported for manual deletion. Tombstones are capped at 256 KiB, after which deletion fails visibly pending storage review.
+
+## Integration API
+
+All exports are in the [service entry point](../src/services/memory/index.ts); structural interfaces and limits are in [types](../src/services/memory/types.ts).
+
+- [resolveMemoryProject()](../src/services/memory/project.ts:12) resolves a workspace directory asynchronously and returns a key, display label, and canonical selected root path.
+- [MemoryStore](../src/services/memory/MemoryStore.ts:32) takes the absolute storage root and resolved project. Its directory/path helpers accept only known scopes and validated UUIDs. Pin this object to the task rather than following editor navigation.
+- [getConsent()](../src/services/memory/MemoryStore.ts:60) returns enablement, personal-recall consent, and a revision. The initial revision is the literal disabled. Invalid controls fail closed. Reads create no directories or locks.
+- [setConsent()](../src/services/memory/MemoryStore.ts:77) takes both Boolean settings plus the expected consent revision. Only trusted, user-authorized UI code may call it. Every write changes the revision, including disable/re-enable, so queued operations cannot reuse the old grant.
+- [list()](../src/services/memory/MemoryStore.ts:178) accepts scope, optional case-insensitive query, and optional count limit. It returns records, errors, whole-inventory revision, total matches, and omitted matches. Default limit: 100; maximum: 200. Search covers name, description, type, and body. There is no semantic search or deduplication.
+- [read()](../src/services/memory/MemoryStore.ts:203) accepts scope and ID and returns a record or no record. [list()](../src/services/memory/MemoryStore.ts:178) and [read()](../src/services/memory/MemoryStore.ts:203) deliberately support explicit manual browsing while disabled. Model tool callers must check current consent before and after reads and enforce personal-recall consent for automatic personal access.
+- [upsert()](../src/services/memory/MemoryStore.ts:299) accepts scope, input fields, and authorization options. Creation requires no ID and a null expected revision. The service generates the ID and timestamps. An update requires the existing ID and exact revision. User-supplied creation/modification dates and unknown fields are rejected. There is no restore or caller-selected create ID.
+- [delete()](../src/services/memory/MemoryStore.ts:346) requires scope, ID, expected topic revision, and authorization callback. [clear()](../src/services/memory/MemoryStore.ts:367) requires scope, expected whole-inventory revision from a list result, and authorization callback. Both allow manual forgetting while disabled. Invalid topics require manual repair/removal before clearing. Model deletion callers must still enforce task permissions and current consent in their callback.
+- [getIndex()](../src/services/memory/MemoryStore.ts:236) returns a derived manual-preview index for one scope. [getRecallIndex()](../src/services/memory/MemoryStore.ts:247) returns only consent-permitted index text, revision, included count, omitted count, and errors. Its optional byte budget can reduce the default. Personal recall is included only when both project enablement and personal-recall consent are on. The combined index remains within one budget. The parent must recheck consent at dispatch, label content as lower-trust data, apply source-access restrictions, preserve the chosen snapshot through compaction/replay, and render error/omission notices.
+
+Authorization callbacks run while the scope's cross-process lock is held, immediately before the final revision/consent checks and commit. They must not call a mutation on the same scope or otherwise acquire its lock. They may read or change consent, which has a different lock. A consent guard is acquired after the callback and held through the topic commit, serializing it against disable. The callback must validate current task/mode permissions, mandatory approvals, explicit denials, and personal-write confirmation for the exact proposed content. The store cannot infer user authorization from model input.
+
+Failures use [MemoryError](../src/services/memory/types.ts:80) with a stable code, including CONFLICT, DISABLED, SECRET, LIMIT, INVALID_STORE, INVALID_RECORD, INVALID_CONSENT, UNSAFE_FILE, UNSAFE_PATH, and LOCK_LOST. A conflict requires rereading before a new operation. Creation retries do not have persisted operation IDs: after an ambiguous I/O result, list/search before retrying to avoid duplicate topics. Updates never silently use last-writer-wins.
+
+## Bounds and safety limits
+
+- Each scope: 200 valid topics, 2 MiB of topic data, at most 1,024 directory entries scanned.
+- Topic: 32 KiB, 512 lines, 4 KiB of frontmatter; name 160 characters, description 512 characters, source task ID 160 characters.
+- Injected index: 16 KiB and 200 entry lines combined across project/personal scope. Omitted counts are explicit. Invalid files appear separately in errors.
+- Managed index adds a small header/footer outside the injected text. UI/tool results must apply their own response budgets when rendering full record lists.
+
+[Filesystem helpers](../src/services/memory/files.ts) validate every directory ancestor and reject symlinks. File reads use pre-open type checks, nonblocking/no-follow flags, and descriptor checks. Hardlinks and special files, including FIFOs, are rejected. Markdown/text writes use exclusive private temporary files and atomic rename. Scope locks serialize cooperating extension hosts; separate consent locks allow revocation while an approval dialog is open. The service never follows imports, executes record content, or fetches links.
+
+These are defense-in-depth measures, not a sandbox against another process with the same filesystem permissions. An uncooperative writer can race the final check and rename because portable Node filesystem APIs do not provide directory-descriptor-relative transactions. Locks coordinate service writers, not arbitrary editors. Topic writes flush file contents but do not promise power-loss durability of directory entries. Store roots that pass through symlinks are rejected rather than silently canonicalized to another storage destination.
+
+No background summarizer, file watcher, embeddings, automatic semantic merge, import, migration, export archive, or advanced tidy workflow is implemented in this storage MVP. Reads intentionally derive fresh state within fixed bounds. Provider-neutral recall caching, cross-window UI refresh, request snapshots, task permissions, and browser controls belong to the integrating layers.

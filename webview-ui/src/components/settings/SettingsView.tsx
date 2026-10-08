@@ -41,6 +41,7 @@ import {
 
 import { vscode } from "@src/utils/vscode"
 import { ManagedEnvironmentSettings } from "./ManagedEnvironmentSettings"
+import { MemorySettings } from "./MemorySettings"
 import { cn } from "@src/lib/utils"
 import { useAppTranslation } from "@src/i18n/TranslationContext"
 import { ExtensionStateContextType, useExtensionState } from "@src/context/ExtensionStateContext"
@@ -102,6 +103,7 @@ export const sectionNames = [
 	"autoApprove",
 	"slashCommands",
 	"skills",
+	"memory",
 	"browser",
 	"checkpoints",
 	"notifications",
@@ -631,6 +633,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 			{ id: "providers", icon: Plug },
 			{ id: "modes", icon: Users2 },
 			{ id: "skills", icon: GraduationCap },
+			{ id: "memory", icon: Database },
 			{ id: "slashCommands", icon: SquareSlash },
 			{ id: "autoApprove", icon: CheckCheck },
 			{ id: "mcp", icon: Server },
@@ -928,6 +931,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 
 						{/* Skills Section */}
 						{renderTab === "skills" && <SkillsSettings />}
+						{renderTab === "memory" && !isIndexing && <MemorySettings />}
 
 						{/* Browser Section */}
 						{renderTab === "browser" && (

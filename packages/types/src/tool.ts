@@ -17,6 +17,7 @@ export type ToolGroup = z.infer<typeof toolGroupsSchema>
 export const toolNames = [
 	"execute_command",
 	"managed_environment",
+	"memory",
 	"browser_action",
 	"read_file",
 	"read_command_output",

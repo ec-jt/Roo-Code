@@ -129,6 +129,7 @@ export async function buildNativeToolsArrayWithRestrictions(options: BuildToolsO
 	// turned them off in Settings → Experimental → Native Tool Integrations
 	// OR because a required credential is missing.
 	const nativeToolGate = new Set<string>()
+	if (state?.memoryEnabledForCurrentProject !== true) nativeToolGate.add("memory")
 	try {
 		getManagedEnvironmentPolicy(state)
 	} catch {

@@ -20,6 +20,7 @@ import gitTools from "./git_tools"
 import listFiles from "./list_files"
 import markdownify from "./markdownify"
 import managedEnvironment from "./managed_environment"
+import memory from "./memory"
 import newTask from "./new_task"
 import readCommandOutput from "./read_command_output"
 import { createReadFileTool, type ReadFileToolOptions } from "./read_file"
@@ -78,6 +79,7 @@ export function getNativeTools(options: NativeToolsOptions = {}): OpenAI.Chat.Ch
 		listFiles,
 		markdownify,
 		managedEnvironment,
+		memory,
 		newTask,
 		readCommandOutput,
 		createReadFileTool(readFileOptions),
