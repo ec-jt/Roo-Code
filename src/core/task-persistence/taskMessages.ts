@@ -1,4 +1,3 @@
-import { safeWriteJson } from "../../utils/safeWriteJson"
 import * as path from "path"
 import * as fs from "fs/promises"
 
@@ -8,6 +7,7 @@ import { fileExistsAtPath } from "../../utils/fs"
 
 import { GlobalFileNames } from "../../shared/globalFileNames"
 import { getTaskDirectoryPath } from "../../utils/storage"
+import { saveTaskSnapshot, type TaskSaveOptions } from "./taskSaves"
 
 export type ReadTaskMessagesOptions = {
 	taskId: string
@@ -43,14 +43,23 @@ export async function readTaskMessages({
 	return []
 }
 
-export type SaveTaskMessagesOptions = {
+export type SaveTaskMessagesOptions = TaskSaveOptions & {
 	messages: ClineMessage[]
-	taskId: string
-	globalStoragePath: string
 }
 
-export async function saveTaskMessages({ messages, taskId, globalStoragePath }: SaveTaskMessagesOptions) {
-	const taskDir = await getTaskDirectoryPath(globalStoragePath, taskId)
-	const filePath = path.join(taskDir, GlobalFileNames.uiMessages)
-	await safeWriteJson(filePath, messages)
+export async function saveTaskMessages({ messages, ...options }: SaveTaskMessagesOptions) {
+	const snapshot = structuredClone(messages)
+	await saveTaskSnapshot(options, GlobalFileNames.uiMessages, () => snapshot)
+}
+
+/**
+ * Clone only when selected for writing; barriers capture immediately.
+ * The factory must refer to a stable revision, not an array that callers mutate
+ * while queued. Use saveTaskMessages for mutable inputs requiring capture now.
+ */
+export function saveTaskMessagesFromSnapshot({
+	snapshot,
+	...options
+}: TaskSaveOptions & { snapshot: () => ClineMessage[] }): Promise<void> {
+	return saveTaskSnapshot(options, GlobalFileNames.uiMessages, () => structuredClone(snapshot()))
 }

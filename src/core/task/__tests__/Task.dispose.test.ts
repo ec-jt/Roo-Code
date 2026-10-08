@@ -5,6 +5,10 @@ import { ClineProvider } from "../../webview/ClineProvider"
 
 // Mock dependencies
 vi.mock("../../webview/ClineProvider")
+vi.mock("../../task-persistence", async (importOriginal) => ({
+	...(await importOriginal<Record<string, unknown>>()),
+	flushTaskSaves: vi.fn().mockResolvedValue(undefined),
+}))
 vi.mock("../../../integrations/terminal/TerminalRegistry", () => ({
 	TerminalRegistry: {
 		releaseTerminalsForTask: vi.fn(),
@@ -83,7 +87,7 @@ describe("Task dispose method", () => {
 		expect(fetcherDispose).toHaveBeenCalledOnce()
 	})
 
-	test("abort waits for browser disposal before saving final messages", async () => {
+	test("abort admits final messages before closing persistence and waits for browser disposal", async () => {
 		let finish!: () => void
 		vi.spyOn(task.browserSession, "dispose").mockImplementation(
 			() =>
@@ -94,10 +98,10 @@ describe("Task dispose method", () => {
 		const save = vi.spyOn(task as any, "saveClineMessages").mockResolvedValue(undefined)
 		vi.spyOn(task, "emitFinalTokenUsageUpdate").mockImplementation(() => {})
 		const aborting = task.abortTask(true)
-		expect(save).not.toHaveBeenCalled()
+		expect(save).toHaveBeenCalledWith(true)
 		finish()
 		await aborting
-		expect(save).toHaveBeenCalled()
+		expect(save).toHaveBeenCalledOnce()
 		await expect(task.urlContentFetcher.launchBrowser()).rejects.toThrow("disposed")
 	})
 

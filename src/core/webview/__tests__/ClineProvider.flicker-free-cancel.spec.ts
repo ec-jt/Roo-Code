@@ -170,6 +170,15 @@ describe("ClineProvider flicker-free cancel", () => {
 		vi.mocked(Task).mockImplementation(() => mockTask2 as any)
 	})
 
+	it("does not construct a replacement after a durability failure", async () => {
+		;(provider as any).clineStack = [mockTask1]
+		mockTask1.abortTask.mockRejectedValue(new Error("disk full"))
+		const { historyItem } = await provider.getTaskWithId(mockTask1.taskId)
+		await expect(provider.createTaskWithHistoryItem(historyItem)).rejects.toThrow("disk full")
+		expect(Task).not.toHaveBeenCalled()
+		expect(provider.getCurrentTask()).toBe(mockTask1)
+	})
+
 	it("should not remove current task from stack when rehydrating same taskId", async () => {
 		// Setup: Add a task to the stack first
 		;(provider as any).clineStack = [mockTask1]

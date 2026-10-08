@@ -1,6 +1,5 @@
 import { Task } from "../task/Task"
 import { ClineProvider } from "./ClineProvider"
-import { saveTaskMessages } from "../task-persistence"
 import * as vscode from "vscode"
 import pWaitFor from "p-wait-for"
 import { t } from "../../i18n"
@@ -24,22 +23,19 @@ export interface CheckpointRestoreConfig {
  * This consolidates the common logic while handling operation-specific behavior.
  */
 export async function handleCheckpointRestoreOperation(config: CheckpointRestoreConfig): Promise<void> {
-	const { provider, currentCline, messageTs, checkpoint, operation, editData } = config
+	const { provider, messageTs, checkpoint, operation, editData } = config
+	let currentCline = config.currentCline
 
 	try {
-		// For delete operations, ensure the task is properly aborted to handle any pending ask operations
-		// This prevents "Current ask promise was ignored" errors
-		// For edit operations, we don't abort because the checkpoint restore will handle it
-		if (operation === "delete" && currentCline && !currentCline.abort) {
-			currentCline.abortTask()
-			// Wait a bit for the abort to complete
-			await pWaitFor(() => currentCline.abort === true, {
-				timeout: 1000,
-				interval: 50,
-			}).catch(() => {
-				// Continue even if timeout - the abort flag should be set
-			})
-		}
+		// Cancellation drains the old instance. Restore through its replacement,
+		// never through an instance whose persistence has already been closed.
+		if (provider.getCurrentTask() !== currentCline || provider.isChatWindowFollowing?.() === false) return
+		await provider.cancelTask()
+		if (!(await waitForClineInitialization(provider))) throw new Error("Task did not initialize for restore")
+		const replacement = provider.getCurrentTask()
+		if (!replacement || replacement.taskId !== currentCline.taskId || provider.isChatWindowFollowing?.() === false)
+			throw new Error("Task changed during checkpoint restore")
+		currentCline = replacement
 
 		// For edit operations, set up pending edit data before restoration
 		if (operation === "edit" && editData) {
@@ -61,23 +57,7 @@ export async function handleCheckpointRestoreOperation(config: CheckpointRestore
 			operation,
 		})
 
-		// For delete operations, we need to save messages and reinitialize
-		// For edit operations, the reinitialization happens automatically
-		// and processes the pending edit
-		if (operation === "delete") {
-			// Save the updated messages to disk after checkpoint restoration
-			await saveTaskMessages({
-				messages: currentCline.clineMessages,
-				taskId: currentCline.taskId,
-				globalStoragePath: provider.contextProxy.globalStorageUri.fsPath,
-			})
-
-			// Get the updated history item and reinitialize
-			const { historyItem } = await provider.getTaskWithId(currentCline.taskId)
-			await provider.createTaskWithHistoryItem(historyItem)
-		}
-		// For edit operations, the task cancellation in checkpointRestore
-		// will trigger reinitialization, which will process pendingEditAfterRestore
+		// checkpointRestore persists its rewind and awaits reinitialization.
 	} catch (error) {
 		console.error(`Error in checkpoint restore (${operation}):`, error)
 		vscode.window.showErrorMessage(

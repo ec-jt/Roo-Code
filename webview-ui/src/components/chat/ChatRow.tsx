@@ -184,8 +184,20 @@ export const ChatRowContent = ({
 }: ChatRowContentProps) => {
 	const { t, i18n } = useTranslation()
 
-	const { mcpServers, alwaysAllowMcp, currentCheckpoint, mode, apiConfiguration, clineMessages, currentTaskItem } =
-		useExtensionState()
+	const {
+		mcpServers,
+		alwaysAllowMcp,
+		currentCheckpoint,
+		mode,
+		apiConfiguration,
+		clineMessages: windowMessages,
+		currentTaskItem,
+		chatWindow,
+	} = useExtensionState()
+	const clineMessages = useMemo(() => {
+		const previews = new Set(chatWindow?.truncatedTs ?? [])
+		return (windowMessages ?? []).filter((row) => !previews.has(row.ts))
+	}, [windowMessages, chatWindow?.truncatedTs])
 	const { info: model } = useSelectedModel(apiConfiguration)
 	const [isEditing, setIsEditing] = useState(false)
 	const [editedContent, setEditedContent] = useState("")

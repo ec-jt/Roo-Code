@@ -72,9 +72,10 @@ import { maybeRemoveImageBlocks } from "../../api/transform/image-cleaning"
 // shared
 import { findLastIndex } from "../../shared/array"
 import { combineApiRequests } from "../../shared/combineApiRequests"
+import { ChatHistoryIndex } from "../webview/history/ChatHistoryIndex"
 import { combineCommandSequences } from "../../shared/combineCommandSequences"
 import { t } from "../../i18n"
-import { getApiMetrics, hasTokenUsageChanged, hasToolUsageChanged } from "../../shared/getApiMetrics"
+import { hasTokenUsageChanged, hasToolUsageChanged } from "../../shared/getApiMetrics"
 import { ClineAskResponse } from "../../shared/WebviewMessage"
 import { defaultModeSlug, getModeBySlug, getGroupName } from "../../shared/modes"
 import { DiffStrategy, type ToolUse, type McpToolUse, type ToolParamName, toolParamNames } from "../../shared/tools"
@@ -127,6 +128,7 @@ import {
 	saveApiMessages,
 	readTaskMessages,
 	saveTaskMessages,
+	flushTaskSaves,
 	taskMetadata,
 } from "../task-persistence"
 import { getEnvironmentDetails } from "../environment/getEnvironmentDetails"
@@ -364,6 +366,9 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	browserSession: BrowserSession
 	private browserDisposal?: Promise<void>
 	private disposal?: Promise<void>
+	private persistenceClosed = false
+	private persistenceDisposal?: Promise<void>
+	private readonly pendingMessageSaves = new Set<Promise<boolean>>()
 
 	providerRef: WeakRef<ClineProvider>
 	private readonly globalStoragePath: string
@@ -410,6 +415,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	// LLM Messages & Chat Messages
 	apiConversationHistory: ApiMessage[] = []
 	clineMessages: ClineMessage[] = []
+	readonly chatHistoryIndex = new ChatHistoryIndex()
 
 	// Ask
 	private askResponse?: ClineAskResponse
@@ -806,7 +812,13 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			await saveBranchReplay(root, this.taskId, copy, origin)
 			this.apiConversationHistory = messages
 			this.clineMessages = copy.clineMessages.filter((message) => message.say !== "api_req_started")
-			await saveApiMessages({ messages, taskId: this.taskId, globalStoragePath: this.globalStoragePath })
+			if (this.persistenceClosed) throw new Error("Task persistence is closed")
+			await saveApiMessages({
+				messages,
+				taskId: this.taskId,
+				globalStoragePath: this.globalStoragePath,
+				barrier: true,
+			})
 			await this.saveClineMessages(true)
 			this.modelOperationProvenanceReady = Promise.resolve()
 			this.modelOperationPrepared = true
@@ -859,6 +871,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			{ timeout: 5000, interval: 10 },
 		)
 		this.didFinishAbortingStream = true
+		await this.closePersistence()
 		await this.disposeBrowserResources()
 	}
 
@@ -897,6 +910,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		this.abort = true
 		this.userMessageContentReady = true
 		this.didFinishAbortingStream = true
+		await this.closePersistence()
 		await this.disposeBrowserResources()
 	}
 
@@ -1400,11 +1414,12 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	// API Messages
 
 	private async getSavedApiConversationHistory(): Promise<ApiMessage[]> {
+		await this.flushPersistence()
 		return readApiMessages({ taskId: this.taskId, globalStoragePath: this.globalStoragePath })
 	}
 
 	private async addToApiConversationHistory(message: Anthropic.MessageParam, reasoning?: string) {
-		if (this.modelOperationClosed) return
+		if (this.modelOperationClosed || this.persistenceClosed) return
 		// Capture the encrypted_content / thought signatures from the provider (e.g., OpenAI Responses API, Google GenAI) if present.
 		// We only persist data reported by the current response body.
 		const handler = this.api as ApiHandler & {
@@ -1627,8 +1642,10 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	// so rewind/edit behavior can still reference original message boundaries.
 
 	async overwriteApiConversationHistory(newHistory: ApiMessage[]) {
+		if (this.persistenceClosed) throw new Error("Task persistence is closed")
 		this.apiConversationHistory = newHistory
-		await this.saveApiConversationHistory()
+		if (!(await this.saveApiConversationHistory(true)))
+			throw new Error("Could not overwrite API conversation history")
 	}
 
 	/**
@@ -1647,9 +1664,16 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	 * So we usually only need to flush the pending user message with tool_results.
 	 */
 	public async flushPendingToolResultsToHistory(): Promise<boolean> {
+		if (this.persistenceClosed) return false
 		// Only flush if there's actually pending content to save
 		if (this.userMessageContent.length === 0) {
-			return true
+			try {
+				await this.flushPersistence()
+				return true
+			} catch (error) {
+				console.error("Failed to flush task history before delegation:", error)
+				return false
+			}
 		}
 
 		// CRITICAL: Wait for the assistant message to be saved to API history first.
@@ -1670,7 +1694,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				interval: 50,
 				timeout: 30_000, // 30 second timeout as safety net
 			}).catch(() => {
-				// If timeout or abort, log and proceed anyway to avoid hanging
+				// A missing assistant turn is not a safe delegation boundary.
 				console.warn(
 					`[Task#${this.taskId}] flushPendingToolResultsToHistory: timed out waiting for assistant message to be saved`,
 				)
@@ -1678,7 +1702,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		}
 
 		// If task was aborted while waiting, don't flush
-		if (this.abort) {
+		if (this.abort || this.persistenceClosed || !this.assistantMessageSavedToHistory) {
 			return false
 		}
 
@@ -1696,7 +1720,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		const userMessageWithTs = { ...validatedMessage, ts: Date.now() }
 		this.apiConversationHistory.push(userMessageWithTs as ApiMessage)
 
-		const saved = await this.saveApiConversationHistory()
+		const saved = await this.saveApiConversationHistory(true)
 
 		if (saved) {
 			// Clear the pending content since it's now saved
@@ -1710,13 +1734,16 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		return saved
 	}
 
-	private async saveApiConversationHistory(): Promise<boolean> {
+	private async saveApiConversationHistory(barrier = false): Promise<boolean> {
+		if (this.persistenceClosed) return false
 		try {
 			await saveApiMessages({
-				messages: structuredClone(this.apiConversationHistory),
+				messages: this.apiConversationHistory,
 				taskId: this.taskId,
 				globalStoragePath: this.globalStoragePath,
+				barrier,
 			})
+			if (barrier) await this.flushPersistence()
 			return true
 		} catch (error) {
 			console.error("Failed to save API conversation history:", error)
@@ -1730,6 +1757,10 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	 * Used by delegation flow when flushPendingToolResultsToHistory reports failure.
 	 */
 	public async retrySaveApiConversationHistory(): Promise<boolean> {
+		// Retrying a disk failure is safe; retrying a missing assistant boundary is not.
+		if (this.persistenceClosed || (this.userMessageContent.length > 0 && !this.assistantMessageSavedToHistory)) {
+			return false
+		}
 		const delays = [100, 500, 1500]
 
 		for (let attempt = 0; attempt < delays.length; attempt++) {
@@ -1738,7 +1769,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				`[Task#${this.taskId}] retrySaveApiConversationHistory: retry attempt ${attempt + 1}/${delays.length}`,
 			)
 
-			const success = await this.saveApiConversationHistory()
+			const success = await this.saveApiConversationHistory(true)
 
 			if (success) {
 				return true
@@ -1751,11 +1782,12 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	// Cline Messages
 
 	private async getSavedClineMessages(): Promise<ClineMessage[]> {
+		await this.flushPersistence()
 		return readTaskMessages({ taskId: this.taskId, globalStoragePath: this.globalStoragePath })
 	}
 
 	private async addToClineMessages(message: ClineMessage) {
-		if (this.modelOperationClosed) return
+		if (this.modelOperationClosed || this.persistenceClosed) return
 		if (
 			this.modelOperationRequestId &&
 			(message.type === "ask" || ["text", "reasoning", "completion_result", "tool"].includes(message.say ?? ""))
@@ -1763,6 +1795,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			message.requestId = this.modelOperationRequestId
 		}
 		this.clineMessages.push(message)
+		this.chatHistoryIndex.append(this.clineMessages, message)
 		const provider = this.providerRef.deref()
 		// Avoid resending large, mostly-static fields (notably taskHistory) on every chat message update.
 		// taskHistory is maintained in-memory in the webview and updated via taskHistoryItemUpdated.
@@ -1772,24 +1805,59 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	}
 
 	public async overwriteClineMessages(newMessages: ClineMessage[]) {
+		if (this.persistenceClosed) throw new Error("Task persistence is closed")
 		this.clineMessages = newMessages
+		this.chatHistoryIndex.rebuild(newMessages)
 		restoreTodoListForTask(this)
-		await this.saveClineMessages()
+		await this.saveClineMessages(true)
 	}
 
 	private async updateClineMessage(message: ClineMessage) {
+		this.chatHistoryIndex.update(this.clineMessages, message)
 		const provider = this.providerRef.deref()
 		await provider?.postMessageToWebview({ type: "messageUpdated", clineMessage: message })
 		this.emit(RooCodeEventName.Message, { action: "updated", message })
 	}
 
-	private async saveClineMessages(strict = false): Promise<boolean> {
+	private saveClineMessages(strict = false): Promise<boolean> {
+		if (this.persistenceClosed) {
+			return strict ? Promise.reject(new Error("Task persistence is closed")) : Promise.resolve(false)
+		}
+		const saving = this.persistClineMessages(strict)
+		this.pendingMessageSaves.add(saving)
+		// Track metadata too, not just the queued JSON write. Observe both outcomes
+		// without creating an unhandled rejected cleanup promise.
+		void saving.then(
+			() => this.pendingMessageSaves.delete(saving),
+			() => this.pendingMessageSaves.delete(saving),
+		)
+		return saving
+	}
+
+	private async persistClineMessages(strict: boolean): Promise<boolean> {
+		// Direct finalization mutations can bypass updateClineMessage. Only revisit the tail.
+		const lastMessage = this.clineMessages.at(-1)
+		if (lastMessage) this.chatHistoryIndex.update(this.clineMessages, lastMessage)
 		try {
+			// Metadata only needs the task row and latest non-resume timestamp when
+			// full-history totals are supplied. Capture that small revision before awaiting.
+			const indexedTokenUsage = this.chatHistoryIndex.ensure(this.clineMessages).tokenUsage
+			const lastRelevantIndex = findLastIndex(
+				this.clineMessages,
+				(message) => !(message.ask === "resume_task" || message.ask === "resume_completed_task"),
+			)
+			const metadataMessages = structuredClone(
+				this.clineMessages.length
+					? [this.clineMessages[0], this.clineMessages[lastRelevantIndex] ?? this.clineMessages[0]]
+					: [],
+			)
 			await saveTaskMessages({
-				messages: structuredClone(this.clineMessages),
+				messages: this.clineMessages,
 				taskId: this.taskId,
 				globalStoragePath: this.globalStoragePath,
+				barrier: strict,
 			})
+			if (strict) await this.flushPersistence()
 
 			if (this._taskApiConfigName === undefined) {
 				await this.taskApiConfigReady
@@ -1800,7 +1868,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				rootTaskId: this.rootTaskId,
 				parentTaskId: this.parentTaskId,
 				taskNumber: this.taskNumber,
-				messages: this.clineMessages,
+				messages: metadataMessages,
+				tokenUsage: indexedTokenUsage,
 				globalStoragePath: this.globalStoragePath,
 				workspace: this.cwd,
 				mode: this._taskMode || defaultModeSlug, // Use the task's own mode, not the current provider mode.
@@ -1824,6 +1893,26 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			console.error("Failed to save Roo messages:", error)
 			return false
 		}
+	}
+
+	private flushPersistence(): Promise<void> {
+		return flushTaskSaves({ taskId: this.taskId, globalStoragePath: this.globalStoragePath })
+	}
+
+	/** Fence synchronously, then drain admitted writes and their metadata callbacks. */
+	private closePersistence(): Promise<void> {
+		if (this.persistenceDisposal) return this.persistenceDisposal
+		this.persistenceClosed = true
+		this.persistenceDisposal = Promise.allSettled([
+			this.flushPersistence(),
+			...Array.from(this.pendingMessageSaves, async (saving) => {
+				if (!(await saving)) throw new Error("Task message persistence failed during disposal")
+			}),
+		]).then((results) => {
+			const failure = results.find((result) => result.status === "rejected")
+			if (failure?.status === "rejected") throw failure.reason
+		})
+		return this.persistenceDisposal
 	}
 
 	private findMessageByTimestamp(ts: number): ClineMessage | undefined {
@@ -2161,7 +2250,9 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		// Use allowEmpty=true to ensure a checkpoint is recorded even if there are no file changes.
 		// Suppress the checkpoint_saved chat row for this particular checkpoint to keep the timeline clean.
 		if (askResponse === "messageResponse") {
-			void this.checkpointSave(false, true)
+			void this.checkpointSave(false, true).catch((error) => {
+				console.error("Failed to persist task before checkpoint:", error)
+			})
 		}
 
 		// Mark the last follow-up question as answered
@@ -2984,19 +3075,10 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 		this.emit(RooCodeEventName.TaskAborted)
 
-		try {
-			await this.dispose() // Wait for browser ownership cleanup before removal/replacement.
-		} catch (error) {
-			console.error(`Error during task ${this.taskId}.${this.instanceId} disposal:`, error)
-			// Don't rethrow - we want abort to always succeed
-		}
-		// Save the countdown message in the automatic retry or other content.
-		try {
-			// Save the countdown message in the automatic retry or other content.
-			await this.saveClineMessages()
-		} catch (error) {
-			console.error(`Error saving messages during abort for task ${this.taskId}.${this.instanceId}:`, error)
-		}
+		// Admit the final snapshot before disposal fences this instance. Never save
+		// after resource cleanup, when a replacement may already own the same task.
+		if (!this.persistenceClosed) void this.saveClineMessages(true).catch(() => {})
+		await this.dispose()
 	}
 
 	private disposeBrowserResources(): Promise<void> {
@@ -3012,8 +3094,14 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	public dispose(options?: { preserveArtifacts?: boolean }): Promise<void> {
 		if (this.disposal) return this.disposal
 		// Fence pending launches immediately, while keeping synchronous listener cleanup.
-		this.disposal = this.disposeBrowserResources().catch((error) => {
-			console.error("Error disposing task browser resources:", error)
+		this.disposal = Promise.allSettled([
+			this.closePersistence(),
+			this.disposeBrowserResources().catch((error) => {
+				console.error("Error disposing task browser resources:", error)
+			}),
+		]).then((results) => {
+			const failure = results.find((result) => result.status === "rejected")
+			if (failure?.status === "rejected") throw failure.reason
 		})
 		this.unsubscribePreviewSettings?.()
 		this.unsubscribePreviewSettings = undefined
@@ -3233,7 +3321,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		}
 
 		// Save the updated history
-		if (!(await this.saveApiConversationHistory()))
+		if (!(await this.saveApiConversationHistory(true)))
 			throw new Error("Could not save parent history before resuming.")
 		assertCurrent()
 
@@ -3515,6 +3603,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				apiProtocol,
 				timing,
 			} satisfies ClineApiReqInfo)
+			this.chatHistoryIndex.update(this.clineMessages, this.clineMessages[lastApiReqIndex])
 			const publishTiming = () => {
 				if (this.abort || this.modelOperationClosed) return
 				const message = this.clineMessages[lastApiReqIndex]
@@ -3589,6 +3678,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 						cancelReason,
 						streamingFailedMessage,
 					} satisfies ClineApiReqInfo)
+					this.chatHistoryIndex.update(this.clineMessages, this.clineMessages[lastApiReqIndex])
 				}
 
 				const abortStream = async (cancelReason: ClineApiReqCancelReason, streamingFailedMessage?: string) => {
@@ -4881,7 +4971,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			throw new ModelDispatchControl(this.abort ? "cancelled" : "stale")
 		if (this.modelDispatchRuntime && this.modelDispatchControllers.size)
 			throw new ModelDispatchControl("policy-denied")
-		if (this.modelOperationClosed || this.abort) throw new Error("Task dispatch is closed")
+		if (this.modelOperationClosed || this.abort || this.persistenceClosed)
+			throw new Error("Task dispatch is closed")
 		if (this.modelOperationRequests) throw new Error("A request is already active")
 		this.modelOperationRequests++
 		const dispatchController = this.modelDispatchRuntime ? new AbortController() : undefined
@@ -5312,7 +5403,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			})
 		}
 
-		if (this.modelOperationClosed || this.abort) throw new Error("Task dispatch is closed")
+		if (this.modelOperationClosed || this.abort || this.persistenceClosed)
+			throw new Error("Task dispatch is closed")
 		try {
 			const persistedHistory = structuredClone(this.apiConversationHistory)
 			const historyIdentity = JSON.stringify(persistedHistory)
@@ -5382,6 +5474,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				messages: persistedHistory,
 				taskId: this.taskId,
 				globalStoragePath: this.globalStoragePath,
+				barrier: true,
 			})
 			await saveRequestSnapshot(await getStorageBasePath(this.globalStoragePath), snapshot)
 			if (this.modelOperationClosed || this.abort || requestRevision !== this.modelOperationRevision)
@@ -5648,6 +5741,9 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 	public async checkpointSave(force: boolean = false, suppressMessage: boolean = false) {
 		if (this.modelOperationPrepared || this.modelOperationClosed) return
+		if (this.persistenceClosed) throw new Error("Task persistence is closed")
+		await this.flushPersistence()
+		if (this.persistenceClosed) throw new Error("Task persistence is closed")
 		return checkpointSave(this, force, suppressMessage)
 	}
 
@@ -5793,6 +5889,9 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		return cleanConversationHistory
 	}
 	public async checkpointRestore(options: CheckpointRestoreOptions) {
+		if (this.persistenceClosed) throw new Error("Task persistence is closed")
+		await this.flushPersistence()
+		if (this.persistenceClosed) throw new Error("Task persistence is closed")
 		return checkpointRestore(this, options)
 	}
 
@@ -5807,7 +5906,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	}
 
 	public getTokenUsage(): TokenUsage {
-		return getApiMetrics(this.combineMessages(this.clineMessages.slice(1)))
+		return this.chatHistoryIndex.ensure(this.clineMessages).tokenUsage
 	}
 
 	public recordToolUsage(toolName: ToolName) {

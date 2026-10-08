@@ -1,7 +1,7 @@
 import NodeCache from "node-cache"
 import getFolderSize from "get-folder-size"
 
-import type { ClineMessage, HistoryItem } from "@roo-code/types"
+import type { ClineMessage, HistoryItem, TokenUsage } from "@roo-code/types"
 
 import { combineApiRequests } from "../../shared/combineApiRequests"
 import { combineCommandSequences } from "../../shared/combineCommandSequences"
@@ -18,6 +18,8 @@ export type TaskMetadataOptions = {
 	parentTaskId?: string
 	taskNumber: number
 	messages: ClineMessage[]
+	/** Full-history totals from the caller's index, when available. */
+	tokenUsage?: TokenUsage
 	globalStoragePath: string
 	workspace: string
 	mode?: string
@@ -33,6 +35,7 @@ export async function taskMetadata({
 	parentTaskId,
 	taskNumber,
 	messages,
+	tokenUsage: precomputedTokenUsage,
 	globalStoragePath,
 	workspace,
 	mode,
@@ -72,7 +75,8 @@ export async function taskMetadata({
 
 		timestamp = lastRelevantMessage.ts
 
-		tokenUsage = getApiMetrics(combineApiRequests(combineCommandSequences(messages.slice(1))))
+		tokenUsage =
+			precomputedTokenUsage ?? getApiMetrics(combineApiRequests(combineCommandSequences(messages.slice(1))))
 
 		// Get task directory size
 		const cachedSize = taskSizeCache.get<number>(taskDir)

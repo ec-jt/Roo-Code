@@ -22,7 +22,6 @@ import {
 import { customToolRegistry } from "@roo-code/core"
 
 import { type ApiMessage } from "../task-persistence/apiMessages"
-import { saveTaskMessages } from "../task-persistence"
 
 import { ClineProvider } from "./ClineProvider"
 import { BrowserSessionPanelManager } from "./BrowserSessionPanelManager"
@@ -99,6 +98,39 @@ export const webviewMessageHandler = async (
 	message: WebviewMessage,
 	marketplaceManager?: MarketplaceManager,
 ) => {
+	// Browsing old pages is read-only, even if a delayed UI event arrives.
+	if (
+		provider.isChatWindowFollowing?.() === false &&
+		[
+			"askResponse",
+			"alwaysAllowReadOnlyAsk",
+			"terminalOperation",
+			"checkpointRestore",
+			"deleteMessage",
+			"submitEditedMessage",
+			"deleteMessageConfirm",
+			"editMessageConfirm",
+			"queueMessage",
+			"removeQueuedMessage",
+			"editQueuedMessage",
+			"modelOperation",
+			"modelOperationApproval",
+			"condenseTaskContextRequest",
+			"mode",
+			"updateTodoList",
+			"cancelTask",
+			"cancelAutoApproval",
+			"killBrowserSession",
+			"commandActivityControl",
+			"loadApiConfiguration",
+			"loadApiConfigurationById",
+		].includes(message.type)
+	)
+		return
+	const actionTask = provider.getCurrentTask()
+	const isCurrentAction = () =>
+		provider.getCurrentTask() === actionTask && provider.isChatWindowFollowing?.() !== false
+
 	// Utility functions provided for concise get/update of global state via contextProxy API.
 	const getGlobalState = <K extends keyof GlobalState>(key: K) => provider.contextProxy.getValue(key)
 	const updateGlobalState = async <K extends keyof GlobalState>(key: K, value: GlobalState[K]) =>
@@ -329,11 +361,8 @@ export const webviewMessageHandler = async (
 				}
 
 				// Save the updated messages with restored checkpoints
-				await saveTaskMessages({
-					messages: currentCline.clineMessages,
-					taskId: currentCline.taskId,
-					globalStoragePath: provider.contextProxy.globalStorageUri.fsPath,
-				})
+				if (!isCurrentAction()) return
+				await currentCline.overwriteClineMessages(currentCline.clineMessages)
 
 				// Update the UI to reflect the deletion
 				await provider.postStateToWebview()
@@ -499,16 +528,13 @@ export const webviewMessageHandler = async (
 			}
 
 			// Save the updated messages with restored checkpoints
-			await saveTaskMessages({
-				messages: currentCline.clineMessages,
-				taskId: currentCline.taskId,
-				globalStoragePath: provider.contextProxy.globalStorageUri.fsPath,
-			})
+			if (!isCurrentAction()) return
+			await currentCline.overwriteClineMessages(currentCline.clineMessages)
 
 			// Update the UI to reflect the deletion
 			await provider.postStateToWebview()
 
-			await currentCline.submitUserMessage(editedContent, images)
+			if (isCurrentAction()) await currentCline.submitUserMessage(editedContent, images)
 		} catch (error) {
 			console.error("Error in edit message:", error)
 			vscode.window.showErrorMessage(
@@ -575,6 +601,12 @@ export const webviewMessageHandler = async (
 	}
 
 	switch (message.type) {
+		case "chatWindowRequest":
+		case "chatWindowAck":
+		case "chatMessageOpen":
+		case "chatFileChangesOpen":
+			await provider.handleChatWindowMessage(message)
+			break
 		case "memoryBrowserRequest":
 			await provider.memoryController.handle(message.memoryBrowserRequest)
 			break
@@ -732,6 +764,7 @@ export const webviewMessageHandler = async (
 			break
 
 		case "alwaysAllowReadOnlyAsk":
+			if (provider.isChatWindowFollowing?.() === false) break
 			await handleAlwaysAllowReadOnlyAsk(provider, message.alwaysAllowReadOnlyAsk)
 			break
 
@@ -741,6 +774,7 @@ export const webviewMessageHandler = async (
 				if (
 					!task ||
 					provider.isTaskBackgrounded ||
+					provider.isChatWindowFollowing?.() === false ||
 					(message.taskId !== undefined && message.taskId !== task.taskId) ||
 					(message.instanceId !== undefined && message.instanceId !== task.instanceId)
 				)
@@ -750,6 +784,7 @@ export const webviewMessageHandler = async (
 				if (
 					provider.getCurrentTask() === task &&
 					!provider.isTaskBackgrounded &&
+					provider.isChatWindowFollowing?.() !== false &&
 					task.clineMessages?.at(-1)?.ts === askTs
 				)
 					task.handleWebviewAskResponse(message.askResponse!, resolved.text, resolved.images)
@@ -1297,10 +1332,14 @@ export const webviewMessageHandler = async (
 					await pWaitFor(() => provider.getCurrentTask()?.isInitialized === true, { timeout: 3_000 })
 				} catch (error) {
 					vscode.window.showErrorMessage(t("common:errors.checkpoint_timeout"))
+					break
 				}
 
 				try {
-					await provider.getCurrentTask()?.checkpointRestore(result.data)
+					const restoredTask = provider.getCurrentTask()
+					if (restoredTask?.taskId !== actionTask?.taskId || provider.isChatWindowFollowing?.() === false)
+						break
+					await restoredTask?.checkpointRestore(result.data)
 				} catch (error) {
 					vscode.window.showErrorMessage(t("common:errors.checkpoint_failed"))
 				}
@@ -2036,6 +2075,7 @@ export const webviewMessageHandler = async (
 		case "editMessageConfirm":
 			if (message.messageTs && message.text) {
 				const resolved = await resolveIncomingImages({ text: message.text, images: message.images })
+				if (!isCurrentAction()) break
 				await handleEditMessageConfirm(
 					message.messageTs,
 					resolved.text,

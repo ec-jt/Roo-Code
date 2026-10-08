@@ -46,6 +46,7 @@ import { CheckpointWarning } from "./CheckpointWarning"
 import { QueuedMessages } from "./QueuedMessages"
 import { WorktreeSelector } from "./WorktreeSelector"
 import FileChangesPanel from "./FileChangesPanel"
+import { ChatWindowControls, PlainHistoryMessage } from "./ChatWindowControls"
 import { useScrollLifecycle } from "@src/hooks/useScrollLifecycle"
 
 export interface ChatViewProps {
@@ -75,6 +76,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 
 	const {
 		clineMessages: messages,
+		chatWindow,
 		currentTaskItem,
 		currentTaskTodos,
 		taskHistory,
@@ -89,6 +91,28 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 		messageQueue = [],
 		showWorktreesInHomeScreen,
 	} = useExtensionState()
+	const historical = chatWindow?.following === false
+	const historicalRef = useRef(historical)
+	historicalRef.current = historical
+	const truncatedTs = useMemo(() => new Set(chatWindow?.truncatedTs ?? []), [chatWindow?.truncatedTs])
+	// Previews never enter tool JSON parsers, command merging, or browser grouping.
+	const renderMessages = useMemo(
+		() =>
+			messages.map(
+				(message): ClineMessage =>
+					truncatedTs.has(message.ts)
+						? {
+								ts: message.ts,
+								type: "say",
+								say: "text",
+								text: message.text,
+								reasoning: message.reasoning,
+								partial: message.partial,
+							}
+						: message,
+			),
+		[messages, truncatedTs],
+	)
 
 	// Show a WarningRow when the user sends a message with a retired provider.
 	const [showRetiredProviderWarning, setShowRetiredProviderWarning] = useState(false)
@@ -111,6 +135,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 	const task = useMemo(() => messages.at(0), [messages])
 
 	const latestTodos = useMemo(() => {
+		if (chatWindow) return currentTaskTodos
 		// First check if we have initial todos from the state (for new subtasks)
 		if (currentTaskTodos && currentTaskTodos.length > 0) {
 			// Check if there are any todo updates in messages
@@ -124,12 +149,18 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 		}
 		// Fall back to extracting from messages
 		return getLatestTodo(messages)
-	}, [messages, currentTaskTodos])
+	}, [messages, currentTaskTodos, chatWindow])
 
-	const modifiedMessages = useMemo(() => combineApiRequests(combineCommandSequences(messages.slice(1))), [messages])
+	const modifiedMessages = useMemo(
+		() => (historical ? [] : combineApiRequests(combineCommandSequences(renderMessages.slice(1)))),
+		[renderMessages, historical],
+	)
 
 	// Has to be after api_req_finished are all reduced into api_req_started messages.
-	const apiMetrics = useMemo(() => getApiMetrics(modifiedMessages), [modifiedMessages])
+	const apiMetrics = useMemo(
+		() => chatWindow?.summary.tokenUsage ?? getApiMetrics(modifiedMessages),
+		[chatWindow?.summary.tokenUsage, modifiedMessages],
+	)
 
 	const [inputValue, setInputValue] = useState("")
 	const inputValueRef = useRef(inputValue)
@@ -196,10 +227,10 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 	useEffect(() => {
 		// Only send cancel if there's actual input (user is typing)
 		// and we have a pending follow-up question
-		if (isFollowUpAutoApprovalPaused) {
+		if (isFollowUpAutoApprovalPaused && !historical) {
 			vscode.postMessage({ type: "cancelAutoApproval" })
 		}
-	}, [isFollowUpAutoApprovalPaused])
+	}, [isFollowUpAutoApprovalPaused, historical])
 
 	const isProfileDisabled = useMemo(
 		() => !!apiConfiguration && !ProfileValidator.isProfileAllowed(apiConfiguration, organizationAllowList),
@@ -210,8 +241,15 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 	// of these messages, we are deep comparing) i.e. the button state after
 	// hitting button sets enableButtons to false,  and this effect otherwise
 	// would have to true again even if messages didn't change.
-	const lastMessage = useMemo(() => messages.at(-1), [messages])
-	const secondLastMessage = useMemo(() => messages.at(-2), [messages])
+	const lastMessage = useMemo(() => {
+		if (historical) return undefined
+		const live = chatWindow ? chatWindow.liveMessage : renderMessages.at(-1)
+		return live && !truncatedTs.has(live.ts) ? live : undefined
+	}, [chatWindow, historical, renderMessages, truncatedTs])
+	const secondLastMessage = useMemo(
+		() => (historical ? undefined : renderMessages.at(-2)),
+		[renderMessages, historical],
+	)
 
 	const volume = typeof soundVolume === "number" ? soundVolume : 0.5
 	const [playNotification] = useSound(`${audioBaseUri}/notification.wav`, { volume, soundEnabled, interrupt: true })
@@ -255,6 +293,14 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 	}
 
 	useDeepCompareEffect(() => {
+		if (historical || (chatWindow && !lastMessage)) {
+			setSendingDisabled(true)
+			setClineAsk(undefined)
+			setEnableButtons(false)
+			setPrimaryButtonText(undefined)
+			setSecondaryButtonText(undefined)
+			return
+		}
 		// if last message is an ask, show user ask UI
 		// if user finished a task, then start a new task with a new conversation history since in this moment that the extension is waiting for user response, the user could close the extension and the conversation history would be lost.
 		// basically as long as a task is active, the conversation history will be persisted
@@ -450,7 +496,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 					break
 			}
 		}
-	}, [lastMessage, secondLastMessage])
+	}, [lastMessage, secondLastMessage, historical, !!chatWindow])
 
 	// Update button text when messages change (e.g., completion_result is added) for subtasks in resume_task state
 	useEffect(() => {
@@ -593,6 +639,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 	 */
 	const handleSendMessage = useCallback(
 		(text: string, images: string[]) => {
+			if (historicalRef.current) return
 			text = text.trim()
 
 			if (text || images.length > 0) {
@@ -700,12 +747,14 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 
 	// Handle stop button click from textarea
 	const handleStopTask = useCallback(() => {
+		if (historicalRef.current) return
 		vscode.postMessage({ type: "cancelTask" })
 		setDidClickCancel(true)
 	}, [setDidClickCancel])
 
 	// Handle enqueue button click from textarea
 	const handleEnqueueCurrentMessage = useCallback(() => {
+		if (historicalRef.current) return
 		const text = inputValue.trim()
 		if (text || selectedImages.length > 0) {
 			vscode.postMessage({
@@ -723,6 +772,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 	// extension.
 	const handlePrimaryButtonClick = useCallback(
 		(text?: string, images?: string[]) => {
+			if (historicalRef.current) return
 			// Mark that user has responded
 			userRespondedRef.current = true
 
@@ -798,6 +848,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 
 	const handleSecondaryButtonClick = useCallback(
 		(text?: string, images?: string[]) => {
+			if (historicalRef.current) return
 			// Mark that user has responded
 			userRespondedRef.current = true
 
@@ -855,6 +906,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 	const handleMessage = useCallback(
 		(e: MessageEvent) => {
 			const message: ExtensionMessage = e.data
+			if (historicalRef.current && message.type === "invoke") return
 
 			switch (message.type) {
 				case "action":
@@ -972,6 +1024,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 		// Remove the 500-message limit to prevent array index shifting
 		// Virtuoso is designed to efficiently handle large lists through virtualization
 		const newVisibleMessages = modifiedMessages.filter((message) => {
+			if (truncatedTs.has(message.ts)) return true
 			// Filter out checkpoint_saved messages that should be suppressed
 			if (message.say === "checkpoint_saved") {
 				// Check if this checkpoint has the suppressMessage flag set
@@ -1048,7 +1101,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 			.forEach((msg: ClineMessage) => everVisibleMessagesTsRef.current.set(msg.ts, true))
 
 		return newVisibleMessages
-	}, [modifiedMessages])
+	}, [modifiedMessages, truncatedTs])
 
 	useEffect(() => {
 		const cleanupInterval = setInterval(() => {
@@ -1248,7 +1301,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 		const listFilesBatched = batchConsecutive(readFileBatched, isListFilesAsk, synthesizeListFilesBatch)
 		const result = batchConsecutive(listFilesBatched, isEditFileAsk, synthesizeEditFileBatch)
 
-		if (isCondensing) {
+		if (isCondensing && !historical) {
 			result.push({
 				type: "say",
 				say: "condense_context",
@@ -1257,7 +1310,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 			} as ClineMessage)
 		}
 		return result
-	}, [isCondensing, visibleMessages])
+	}, [isCondensing, visibleMessages, historical])
 
 	const checkpointIndices = useMemo(() => {
 		const indices: number[] = []
@@ -1296,6 +1349,12 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 		isHidden,
 		hasTask: !!task,
 	})
+	const wasHistorical = useRef(historical)
+	useEffect(() => {
+		if (historical) virtuosoRef.current?.scrollToIndex({ index: 0, align: "start", behavior: "auto" })
+		else if (wasHistorical.current) handleScrollToBottomClick()
+		wasHistorical.current = historical
+	}, [historical, chatWindow?.startIndex, handleScrollToBottomClick])
 
 	// Expanding a row indicates the user is browsing; disable sticky follow.
 	// Placed after the hook call so enterUserBrowsingHistory is defined.
@@ -1350,6 +1409,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 
 	const switchToMode = useCallback(
 		(modeSlug: string): void => {
+			if (historicalRef.current) return
 			// Update local state and notify extension to sync mode change.
 			setMode(modeSlug)
 
@@ -1361,6 +1421,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 
 	const handleSuggestionClickInRow = useCallback(
 		(suggestion: SuggestionItem, event?: React.MouseEvent) => {
+			if (historicalRef.current) return
 			// Mark that user has responded if this is a manual click (not auto-approval)
 			if (event) {
 				userRespondedRef.current = true
@@ -1399,6 +1460,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 	)
 
 	const handleBatchFileResponse = useCallback((response: { [key: string]: boolean }) => {
+		if (historicalRef.current) return
 		// Handle batch file response, e.g., for file uploads
 		vscode.postMessage({ type: "askResponse", askResponse: "objectResponse", text: JSON.stringify(response) })
 	}, [])
@@ -1406,6 +1468,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 	// Cancel backend auto-approval timeout when FollowUpSuggest's countdown effect cleans up.
 	// This is called when auto-approve is toggled off, a suggestion is clicked, or the component unmounts.
 	const handleFollowUpUnmount = useCallback(() => {
+		if (historicalRef.current) return
 		vscode.postMessage({ type: "cancelAutoApproval" })
 	}, [])
 
@@ -1434,6 +1497,14 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 
 	const itemContent = useCallback(
 		(index: number, messageOrGroup: ClineMessage) => {
+			if (chatWindow && (historical || truncatedTs.has(messageOrGroup.ts))) {
+				return (
+					<PlainHistoryMessage
+						message={messages.find((row) => row.ts === messageOrGroup.ts) ?? messageOrGroup}
+						window={chatWindow}
+					/>
+				)
+			}
 			const hasCheckpoint = modifiedMessages.some((message) => message.say === "checkpoint_saved")
 
 			// Check if this is a browser action message
@@ -1498,6 +1569,10 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 			)
 		},
 		[
+			chatWindow,
+			messages,
+			historical,
+			truncatedTs,
 			expandedRows,
 			toggleRowExpansion,
 			modifiedMessages,
@@ -1559,6 +1634,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 
 	useImperativeHandle(ref, () => ({
 		acceptInput: () => {
+			if (historicalRef.current) return
 			const hasInput = inputValue.trim() || selectedImages.length > 0
 
 			// Special case: during command_output, queue the message instead of
@@ -1579,7 +1655,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 	}))
 
 	const handleCondenseContext = (taskId: string) => {
-		if (isCondensing || sendingDisabled) {
+		if (historicalRef.current || isCondensing || sendingDisabled) {
 			return
 		}
 		setIsCondensing(true)
@@ -1609,6 +1685,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 				<>
 					<TaskHeader
 						task={task}
+						previewWindow={chatWindow && truncatedTs.has(task.ts) ? chatWindow : undefined}
 						tokensIn={apiMetrics.totalTokensIn}
 						tokensOut={apiMetrics.totalTokensOut}
 						cacheWrites={apiMetrics.totalCacheWrites}
@@ -1636,10 +1713,11 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 								: undefined
 						}
 						contextTokens={apiMetrics.contextTokens}
-						buttonsDisabled={sendingDisabled}
+						buttonsDisabled={sendingDisabled || historical}
 						handleCondenseContext={handleCondenseContext}
 						todos={latestTodos}
 					/>
+					{chatWindow && <ChatWindowControls window={chatWindow} />}
 
 					{checkpointWarning && (
 						<div className="px-3">
@@ -1675,17 +1753,17 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 							key={task.ts}
 							className="scrollable grow overflow-y-scroll mb-1"
 							increaseViewportBy={{ top: 3_000, bottom: 1000 }}
-							data={groupedMessages}
+							data={historical ? messages.slice(1) : groupedMessages}
 							itemContent={itemContent}
-							followOutput={followOutputCallback}
+							followOutput={historical ? false : followOutputCallback}
 							atBottomStateChange={atBottomStateChangeCallback}
 							atBottomThreshold={10}
 						/>
 					</div>
-					{!showScrollToBottom && enableButtons && clineAsk === "tool" && (
-						<AlwaysAllowReadOnlyButton message={messages.at(-1)} />
+					{!historical && !showScrollToBottom && enableButtons && clineAsk === "tool" && (
+						<AlwaysAllowReadOnlyButton message={lastMessage} />
 					)}
-					{areButtonsVisible && (
+					{!historical && areButtonsVisible && (
 						<div
 							className={`flex h-9 items-center mb-1 px-[15px] ${
 								showScrollToBottom ? "opacity-100" : enableButtons ? "opacity-100" : "opacity-50"
@@ -1775,24 +1853,30 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 				</>
 			)}
 
-			{task && <FileChangesPanel clineMessages={messages} />}
-			<RunningTaskMonitor visible={!isHidden} />
-			<QueuedMessages
-				queue={messageQueue}
-				onRemove={(index) => {
-					if (messageQueue[index]) {
-						vscode.postMessage({ type: "removeQueuedMessage", text: messageQueue[index].id })
-					}
-				}}
-				onUpdate={(index, newText) => {
-					if (messageQueue[index]) {
-						vscode.postMessage({
-							type: "editQueuedMessage",
-							payload: { id: messageQueue[index].id, text: newText, images: messageQueue[index].images },
-						})
-					}
-				}}
-			/>
+			{task && <FileChangesPanel clineMessages={messages} chatWindow={chatWindow} />}
+			{!historical && <RunningTaskMonitor visible={!isHidden} />}
+			{!historical && (
+				<QueuedMessages
+					queue={messageQueue}
+					onRemove={(index) => {
+						if (messageQueue[index]) {
+							vscode.postMessage({ type: "removeQueuedMessage", text: messageQueue[index].id })
+						}
+					}}
+					onUpdate={(index, newText) => {
+						if (messageQueue[index]) {
+							vscode.postMessage({
+								type: "editQueuedMessage",
+								payload: {
+									id: messageQueue[index].id,
+									text: newText,
+									images: messageQueue[index].images,
+								},
+							})
+						}
+					}}
+				/>
+			)}
 			{showRetiredProviderWarning && (
 				<div className="px-[15px] py-1">
 					<WarningRow
@@ -1807,31 +1891,45 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 					/>
 				</div>
 			)}
-			<ModelOperationPanel />
-			<ChatTextArea
-				ref={textAreaRef}
-				inputValue={inputValue}
-				setInputValue={setInputValue}
-				sendingDisabled={sendingDisabled || isProfileDisabled}
-				selectApiConfigDisabled={sendingDisabled && clineAsk !== "api_req_failed"}
-				placeholderText={placeholderText}
-				selectedImages={selectedImages}
-				setSelectedImages={setSelectedImages}
-				onSend={() => handleSendMessage(inputValue, selectedImages)}
-				onSelectImages={selectImages}
-				shouldDisableImages={shouldDisableImages}
-				onHeightChange={() => {
-					if (isAtBottomRef.current && scrollPhaseRef.current !== "USER_BROWSING_HISTORY") {
-						scrollToBottomAuto()
-					}
-				}}
-				mode={mode}
-				setMode={setMode}
-				modeShortcutText={modeShortcutText}
-				isStreaming={isStreaming}
-				onStop={handleStopTask}
-				onEnqueueMessage={handleEnqueueCurrentMessage}
-			/>
+			{!historical && <ModelOperationPanel />}
+			{historical ? (
+				<div className="px-3 py-2">
+					<textarea
+						aria-label="Preserved draft (read-only history)"
+						className="w-full bg-vscode-input-background"
+						readOnly
+						value={inputValue}
+					/>
+					{selectedImages.length > 0 && (
+						<p className="text-xs">{selectedImages.length} draft image(s) preserved</p>
+					)}
+				</div>
+			) : (
+				<ChatTextArea
+					ref={textAreaRef}
+					inputValue={inputValue}
+					setInputValue={setInputValue}
+					sendingDisabled={historical || sendingDisabled || isProfileDisabled}
+					selectApiConfigDisabled={sendingDisabled && clineAsk !== "api_req_failed"}
+					placeholderText={placeholderText}
+					selectedImages={selectedImages}
+					setSelectedImages={setSelectedImages}
+					onSend={() => handleSendMessage(inputValue, selectedImages)}
+					onSelectImages={selectImages}
+					shouldDisableImages={shouldDisableImages}
+					onHeightChange={() => {
+						if (isAtBottomRef.current && scrollPhaseRef.current !== "USER_BROWSING_HISTORY") {
+							scrollToBottomAuto()
+						}
+					}}
+					mode={mode}
+					setMode={setMode}
+					modeShortcutText={modeShortcutText}
+					isStreaming={!historical && isStreaming}
+					onStop={handleStopTask}
+					onEnqueueMessage={handleEnqueueCurrentMessage}
+				/>
+			)}
 
 			{isProfileDisabled && (
 				<div className="px-3">

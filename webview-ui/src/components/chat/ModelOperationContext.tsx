@@ -37,7 +37,13 @@ export const ModelOperationPanel = () => <>{useModelOperation()?.panel}</>
 
 export function ModelOperationProvider({ children }: { children: ReactNode }) {
 	const { t } = useTranslation()
-	const { modelOperation: state, listApiConfigMeta: profiles = [], currentApiConfigName } = useExtensionState()
+	const {
+		modelOperation: state,
+		listApiConfigMeta: profiles = [],
+		currentApiConfigName,
+		chatWindow,
+	} = useExtensionState()
+	const historical = chatWindow?.following === false
 	const [selection, setSelection] = useState<Selection>()
 	const [confirmed, setConfirmed] = useState(false)
 	const [pending, setPending] = useState<Pending>()
@@ -76,7 +82,7 @@ export function ModelOperationProvider({ children }: { children: ReactNode }) {
 
 	const busy = !!pending && sameInstance(state, pending.source) && state!.revision <= pending.source.revision + 1
 	const open: ModelOperationControls["open"] = (kind, requestId, profileId) => {
-		if (!state || busy) return
+		if (!state || busy || historical) return
 		setConfirmed(false)
 		setSelection({
 			source: { ...state },
@@ -93,6 +99,7 @@ export function ModelOperationProvider({ children }: { children: ReactNode }) {
 	const disabledReason = stale ? t("chat:modelOperation.stale") : switchReason
 	const dispatch = () => {
 		if (
+			historical ||
 			!selection ||
 			!confirmed ||
 			disabledReason ||
@@ -125,6 +132,7 @@ export function ModelOperationProvider({ children }: { children: ReactNode }) {
 		// Capture exactly the identity displayed with this approval. No normal ask-response or auto-approval path.
 		if (
 			!state?.approval ||
+			historical ||
 			answeredApproval === state.approval.approvalId ||
 			pendingRef.current?.operationId === state.approval.approvalId
 		)
@@ -190,7 +198,7 @@ export function ModelOperationProvider({ children }: { children: ReactNode }) {
 		<ModelOperationContext.Provider value={{ open, busy, panel }}>
 			{children}
 			<Dialog
-				open={!!selection}
+				open={!!selection && !historical}
 				onOpenChange={(value) => {
 					if (!value) setSelection(undefined)
 				}}>

@@ -11,7 +11,7 @@ import {
 } from "lucide-react"
 import prettyBytes from "pretty-bytes"
 
-import type { ClineMessage } from "@roo-code/types"
+import type { ChatWindowState, ClineMessage } from "@roo-code/types"
 
 import { getModelMaxOutputTokens } from "@roo/api"
 
@@ -29,9 +29,11 @@ import { ContextWindowProgress } from "./ContextWindowProgress"
 import { Mention } from "./Mention"
 import { TodoListDisplay } from "./TodoListDisplay"
 import { LucideIconButton } from "./LucideIconButton"
+import { PlainHistoryMessage } from "./ChatWindowControls"
 
 export interface TaskHeaderProps {
 	task: ClineMessage
+	previewWindow?: ChatWindowState
 	tokensIn: number
 	tokensOut: number
 	cacheWrites?: number
@@ -49,6 +51,7 @@ export interface TaskHeaderProps {
 
 const TaskHeader = ({
 	task,
+	previewWindow,
 	tokensIn,
 	tokensOut,
 	cacheWrites,
@@ -64,7 +67,7 @@ const TaskHeader = ({
 	todos,
 }: TaskHeaderProps) => {
 	const { t } = useTranslation()
-	const { apiConfiguration, currentTaskItem, clineMessages, isBrowserSessionActive } = useExtensionState()
+	const { apiConfiguration, currentTaskItem, clineMessages, isBrowserSessionActive, chatWindow } = useExtensionState()
 	const { id: modelId, info: model } = useSelectedModel(apiConfiguration)
 	const [isTaskExpanded, setIsTaskExpanded] = useState(false)
 
@@ -173,7 +176,11 @@ const TaskHeader = ({
 							{isTaskExpanded && <span className="font-bold">{t("chat:task.title")}</span>}
 							{!isTaskExpanded && (
 								<div className="flex items-center gap-2 whitespace-nowrap overflow-hidden text-ellipsis">
-									<Mention text={task.text} />
+									{previewWindow ? (
+										<span>Task prompt (preview). Expand to read.</span>
+									) : (
+										<Mention text={task.text} />
+									)}
 								</div>
 							)}
 						</div>
@@ -302,6 +309,7 @@ const TaskHeader = ({
 										variant="ghost"
 										size="sm"
 										aria-label={t("chat:browser.session")}
+										disabled={chatWindow?.following === false}
 										onClick={() => vscode.postMessage({ type: "openBrowserSessionPanel" } as any)}
 										className={cn(
 											"relative h-5 w-5 p-0",
@@ -344,7 +352,11 @@ const TaskHeader = ({
 									WebkitLineClamp: "unset",
 									WebkitBoxOrient: "vertical",
 								}}>
-								<Mention text={task.text} />
+								{previewWindow ? (
+									<PlainHistoryMessage message={task} window={previewWindow} />
+								) : (
+									<Mention text={task.text} />
+								)}
 							</div>
 						</div>
 						{task.images && task.images.length > 0 && <Thumbnails images={task.images} />}

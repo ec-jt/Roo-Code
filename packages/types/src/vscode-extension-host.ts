@@ -5,7 +5,7 @@ import type { ProviderSettings, ProviderSettingsEntry } from "./provider-setting
 import type { HistoryItem } from "./history.js"
 import type { ModeConfig, PromptComponent } from "./mode.js"
 import type { Experiments } from "./experiment.js"
-import type { ClineMessage, QueuedMessage } from "./message.js"
+import type { ClineMessage, QueuedMessage, TokenUsage } from "./message.js"
 import {
 	type MarketplaceItem,
 	type MarketplaceInstalledMetadata,
@@ -95,6 +95,52 @@ export interface MemoryBrowserRequest {
 	id?: string
 	query?: string
 	input?: Pick<MemoryTopic, "name" | "description" | "type" | "body">
+}
+
+export interface ChatFileSummary {
+	path: string
+	added: number
+	removed: number
+	changes: number
+}
+
+export interface ChatWindowRequest {
+	taskId: string
+	instanceId: string
+	revision: number
+	before?: number
+	after?: number
+	latest?: boolean
+}
+
+export interface ChatWindowAck {
+	taskId: string
+	instanceId: string
+	sequence: number
+	phase: "received" | "rendered"
+}
+
+/** Indices address authoritative history, endIndex is exclusive. Row zero is pinned separately. */
+export interface ChatWindowState {
+	taskId: string
+	instanceId: string
+	revision: number
+	sequence: number
+	startIndex: number
+	endIndex: number
+	totalMessages: number
+	hasOlder: boolean
+	hasNewer: boolean
+	following: boolean
+	summary: { tokenUsage: TokenUsage; files: ChatFileSummary[]; filesOmitted: number }
+	/** Render these rows as plain previews, never parse their truncated tool JSON. */
+	truncatedTs: number[]
+	/** Latest control row, only supplied when following. Never truncate an unanswered ask. */
+	liveMessage?: ClineMessage
+	oversizedLiveAsk?: boolean
+	/** Serialized bytes of { clineMessages, chatWindow }, including this field. */
+	byteLength: number
+	reason?: "staleRevision"
 }
 
 export interface ExtensionMessage {
@@ -422,6 +468,7 @@ export type ExtensionState = Pick<
 	lockApiConfigAcrossModes?: boolean
 	version: string
 	clineMessages: ClineMessage[]
+	chatWindow?: ChatWindowState
 	currentTaskId?: string
 	memoryEnabledForCurrentProject?: boolean
 	runningTask?: RunningTaskInfo
@@ -526,6 +573,10 @@ export type EditQueuedMessagePayload = Pick<QueuedMessage, "id" | "text" | "imag
 
 export interface WebviewMessage {
 	type:
+		| "chatWindowRequest"
+		| "chatWindowAck"
+		| "chatMessageOpen"
+		| "chatFileChangesOpen"
 		| "updateTodoList"
 		| "backgroundTask"
 		| "foregroundTask"
@@ -702,6 +753,10 @@ export interface WebviewMessage {
 	text?: string
 	taskId?: string
 	instanceId?: string
+	chatWindowRequest?: ChatWindowRequest
+	chatWindowAck?: ChatWindowAck
+	chatMessageOpen?: { taskId: string; instanceId: string; ts: number }
+	chatFileChangesOpen?: { taskId: string; instanceId: string; path: string }
 	commandActivityControl?: { id: string; action: "stop" | "show" }
 	memoryBrowserRequest?: MemoryBrowserRequest
 	modelOperation?: ModelOperation

@@ -139,6 +139,7 @@ vi.mock("../../condense", async (importOriginal) => {
 })
 
 vi.mock("../../../utils/storage", () => ({
+	getStorageBasePath: vi.fn().mockImplementation(async (globalStoragePath) => globalStoragePath),
 	getTaskDirectoryPath: vi
 		.fn()
 		.mockImplementation((globalStoragePath, taskId) => Promise.resolve(`${globalStoragePath}/tasks/${taskId}`)),
@@ -245,6 +246,7 @@ describe("flushPendingToolResultsToHistory", () => {
 		})
 
 		// Set up pending tool result in userMessageContent
+		task.assistantMessageSavedToHistory = true
 		task.userMessageContent = [
 			{
 				type: "tool_result",
@@ -275,6 +277,7 @@ describe("flushPendingToolResultsToHistory", () => {
 		})
 
 		// Set up pending tool result
+		task.assistantMessageSavedToHistory = true
 		task.userMessageContent = [
 			{
 				type: "tool_result",
@@ -298,6 +301,7 @@ describe("flushPendingToolResultsToHistory", () => {
 		})
 
 		// Set up multiple pending tool results
+		task.assistantMessageSavedToHistory = true
 		task.userMessageContent = [
 			{
 				type: "tool_result",
@@ -330,6 +334,7 @@ describe("flushPendingToolResultsToHistory", () => {
 		})
 
 		const beforeTs = Date.now()
+		task.assistantMessageSavedToHistory = true
 
 		task.userMessageContent = [
 			{
@@ -403,14 +408,26 @@ describe("flushPendingToolResultsToHistory", () => {
 
 		// Clear mock call history
 		mockPWaitFor.mockClear()
+		mockPWaitFor.mockImplementationOnce(async () => {
+			task.assistantMessageSavedToHistory = true
+		})
 
 		await task.flushPendingToolResultsToHistory()
 
 		// Should have called pWaitFor since flag was false
 		expect(mockPWaitFor).toHaveBeenCalled()
 
-		// Should still save the message (mock resolves immediately)
+		// Save only after the assistant is durable.
 		expect(task.apiConversationHistory.length).toBe(1)
+	})
+
+	it("fails closed when the assistant history never becomes ready", async () => {
+		const task = new Task({ provider: mockProvider, apiConfiguration: mockApiConfig, startTask: false })
+		task.userMessageContent = [{ type: "tool_result", tool_use_id: "pending", content: "result" }]
+		mockPWaitFor.mockRejectedValueOnce(new Error("timeout"))
+		await expect(task.flushPendingToolResultsToHistory()).resolves.toBe(false)
+		expect(task.apiConversationHistory).toEqual([])
+		expect(task.userMessageContent).toHaveLength(1)
 	})
 
 	it("should not flush when task is aborted during wait", async () => {

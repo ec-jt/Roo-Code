@@ -3,9 +3,9 @@ import { useTranslation } from "react-i18next"
 import { ChevronDown, ChevronRight, FileDiff } from "lucide-react"
 import { createTwoFilesPatch } from "diff"
 
-import type { ClineMessage, ExtensionMessage } from "@roo-code/types"
+import type { ChatWindowState, ClineMessage, ExtensionMessage } from "@roo-code/types"
 
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui"
+import { Button, Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui"
 import { cn } from "@/lib/utils"
 import { vscode } from "@src/utils/vscode"
 
@@ -15,9 +15,57 @@ import CodeAccordion from "../common/CodeAccordion"
 interface FileChangesPanelProps {
 	clineMessages: ClineMessage[] | undefined
 	className?: string
+	chatWindow?: ChatWindowState
 }
 
-const FileChangesPanel = memo(({ clineMessages, className }: FileChangesPanelProps) => {
+// Do not mount legacy extraction or file-content listeners when summaries are present.
+const FileChangesPanel = memo((props: FileChangesPanelProps) =>
+	props.chatWindow ? (
+		<SummaryFileChangesPanel window={props.chatWindow} className={props.className} />
+	) : (
+		<LegacyFileChangesPanel {...props} />
+	),
+)
+
+function SummaryFileChangesPanel({ window, className }: { window: ChatWindowState; className?: string }) {
+	const { files, filesOmitted } = window.summary
+	if (!files.length && !filesOmitted) return null
+	return (
+		<details className={cn("mx-3 my-2 text-xs shrink-0", className)}>
+			<summary className="cursor-pointer">{files.length} file(s) changed in this conversation</summary>
+			<div className="max-h-48 overflow-y-auto">
+				{files.map((file) => (
+					<div key={file.path} className="flex flex-wrap items-center gap-2 py-1">
+						<span className="break-all">{file.path}</span>
+						<span>{file.changes} changes</span>
+						<span className="text-vscode-charts-green">+{file.added}</span>
+						<span className="text-vscode-charts-red">-{file.removed}</span>
+						<Button
+							size="sm"
+							variant="secondary"
+							onClick={() =>
+								vscode.postMessage({
+									type: "chatFileChangesOpen",
+									chatFileChangesOpen: {
+										taskId: window.taskId,
+										instanceId: window.instanceId,
+										path: file.path,
+									},
+								})
+							}>
+							Open stored diffs
+						</Button>
+					</div>
+				))}
+				{filesOmitted > 0 && (
+					<p>{filesOmitted} additional file summaries omitted. Export the task for the complete history.</p>
+				)}
+			</div>
+		</details>
+	)
+}
+
+const LegacyFileChangesPanel = memo(({ clineMessages, className }: FileChangesPanelProps) => {
 	const { t } = useTranslation()
 	const [panelExpanded, setPanelExpanded] = useState(false)
 	const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set())

@@ -1,4 +1,3 @@
-import { safeWriteJson } from "../../utils/safeWriteJson"
 import * as path from "path"
 import * as fs from "fs/promises"
 
@@ -8,6 +7,7 @@ import { fileExistsAtPath } from "../../utils/fs"
 
 import { GlobalFileNames } from "../../shared/globalFileNames"
 import { getTaskDirectoryPath } from "../../utils/storage"
+import { saveTaskSnapshot, type TaskSaveOptions } from "./taskSaves"
 
 export type ApiMessage = Anthropic.MessageParam & {
 	ts?: number
@@ -110,14 +110,23 @@ export async function readApiMessages({
 
 export async function saveApiMessages({
 	messages,
-	taskId,
-	globalStoragePath,
-}: {
+	...options
+}: TaskSaveOptions & {
 	messages: ApiMessage[]
-	taskId: string
-	globalStoragePath: string
 }) {
-	const taskDir = await getTaskDirectoryPath(globalStoragePath, taskId)
-	const filePath = path.join(taskDir, GlobalFileNames.apiConversationHistory)
-	await safeWriteJson(filePath, messages)
+	// Existing callers may pass live mutable arrays. Capture before the first await.
+	const snapshot = structuredClone(messages)
+	await saveTaskSnapshot(options, GlobalFileNames.apiConversationHistory, () => snapshot)
+}
+
+/**
+ * Clone only when selected for writing; barriers capture immediately.
+ * The factory must refer to a stable revision, not an array that callers mutate
+ * while queued. Use saveApiMessages for mutable inputs requiring capture now.
+ */
+export function saveApiMessagesFromSnapshot({
+	snapshot,
+	...options
+}: TaskSaveOptions & { snapshot: () => ApiMessage[] }): Promise<void> {
+	return saveTaskSnapshot(options, GlobalFileNames.apiConversationHistory, () => structuredClone(snapshot()))
 }

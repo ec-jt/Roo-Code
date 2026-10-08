@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useState } from "react"
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react"
 
 import {
 	type ProviderSettings,
@@ -152,6 +152,24 @@ export interface ExtensionStateContextType extends ExtensionState {
 export const ExtensionStateContext = createContext<ExtensionStateContextType | undefined>(undefined)
 
 export const mergeExtensionState = (prevState: ExtensionState, newState: Partial<ExtensionState>) => {
+	// The transport sequence is provider-wide, including task switches and clears.
+	// Reject the entire stale task snapshot, not just its message array.
+	if (
+		(newState.clineMessagesSeq !== undefined &&
+			prevState.clineMessagesSeq !== undefined &&
+			newState.clineMessagesSeq < prevState.clineMessagesSeq) ||
+		(newState.chatWindow && prevState.chatWindow && newState.chatWindow.sequence <= prevState.chatWindow.sequence)
+	)
+		return prevState
+
+	if (prevState.chatWindow && newState.clineMessages !== undefined && !newState.chatWindow) {
+		if (newState.clineMessages.length === 0) {
+			newState = { ...newState, chatWindow: undefined }
+		} else {
+			// Unscoped legacy messages must not replace a bounded page.
+			newState = { ...newState, clineMessages: prevState.clineMessages }
+		}
+	}
 	const { customModePrompts: prevCustomModePrompts, experiments: prevExperiments, ...prevRest } = prevState
 
 	const {
@@ -315,6 +333,24 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 	const [includeTaskHistoryInEnhance, setIncludeTaskHistoryInEnhance] = useState(true)
 	const [includeCurrentTime, setIncludeCurrentTime] = useState(true)
 	const [includeCurrentCost, setIncludeCurrentCost] = useState(true)
+	// Track transport acceptance synchronously, including multiple events in one React batch.
+	const transportState = useRef(state)
+	useEffect(() => {
+		const window = state.chatWindow
+		if (!window) return
+		const frame = requestAnimationFrame(() => {
+			vscode.postMessage({
+				type: "chatWindowAck",
+				chatWindowAck: {
+					taskId: window.taskId,
+					instanceId: window.instanceId,
+					sequence: window.sequence,
+					phase: "rendered",
+				},
+			})
+		})
+		return () => cancelAnimationFrame(frame)
+	}, [state.chatWindow])
 
 	const setListApiConfigMeta = useCallback(
 		(value: ProviderSettingsEntry[]) => setState((prevState) => ({ ...prevState, listApiConfigMeta: value })),
@@ -343,8 +379,19 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 					break
 				case "state": {
 					const newState = message.state ?? {}
+					const accepted = mergeExtensionState(transportState.current, newState)
+					if (accepted === transportState.current) break
+					transportState.current = accepted
+					if (newState.chatWindow) {
+						const { taskId, instanceId, sequence } = newState.chatWindow
+						vscode.postMessage({
+							type: "chatWindowAck",
+							chatWindowAck: { taskId, instanceId, sequence, phase: "received" },
+						})
+					}
 					setState((prevState) => mergeExtensionState(prevState, newState))
-					setShowWelcome(!checkExistKey(newState.apiConfiguration))
+					if (newState.apiConfiguration !== undefined)
+						setShowWelcome(!checkExistKey(newState.apiConfiguration))
 					setDidHydrateState(true)
 					setHydrationFailed(false)
 					// Update alwaysAllowFollowupQuestions if present in state message
@@ -409,6 +456,7 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 				case "messageUpdated": {
 					const clineMessage = message.clineMessage!
 					setState((prevState) => {
+						if (prevState.chatWindow) return prevState
 						// worth noting it will never be possible for a more up-to-date message to be sent here or in normal messages post since the presentAssistantContent function uses lock
 						const lastIndex = findLastIndex(prevState.clineMessages, (msg) => msg.ts === clineMessage.ts)
 						if (lastIndex !== -1) {

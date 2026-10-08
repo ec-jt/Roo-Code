@@ -33,6 +33,9 @@ describe("ClineProvider.removeClineFromStack() delegation awareness", () => {
 
 		const provider = {
 			delegationRevision: 0,
+			assertTaskForegrounded: vi.fn(),
+			runningTaskMonitor: { clear: vi.fn() },
+			getCurrentTask: (): any => provider.clineStack.at(-1),
 			clineStack: [childTask] as any[],
 			taskEventListeners: new Map(),
 			log: vi.fn(),
@@ -66,6 +69,16 @@ describe("ClineProvider.removeClineFromStack() delegation awareness", () => {
 		await removing
 		expect(removeListeners).toHaveBeenCalledOnce()
 		expect(provider.taskEventListeners.has(childTask)).toBe(false)
+	})
+
+	it("retains the task and listeners when durability fails", async () => {
+		const { provider, childTask } = buildMockProvider({ childTaskId: "failed-save" })
+		childTask.abortTask.mockRejectedValue(new Error("disk full"))
+		const cleanup = vi.fn()
+		provider.taskEventListeners.set(childTask, [cleanup])
+		await expect(ClineProvider.prototype.removeClineFromStack.call(provider as any)).rejects.toThrow("disk full")
+		expect(provider.clineStack).toEqual([childTask])
+		expect(cleanup).not.toHaveBeenCalled()
 	})
 
 	it("repairs parent metadata when a delegated child is explicitly abandoned", async () => {
@@ -203,6 +216,7 @@ describe("ClineProvider.removeClineFromStack() delegation awareness", () => {
 
 	it("handles empty stack gracefully", async () => {
 		const provider = {
+			assertTaskForegrounded: vi.fn(),
 			clineStack: [] as any[],
 			taskEventListeners: new Map(),
 			log: vi.fn(),
@@ -283,6 +297,9 @@ describe("ClineProvider.removeClineFromStack() delegation awareness", () => {
 		const updateTaskHistory = vi.fn().mockResolvedValue([])
 
 		const provider = {
+			assertTaskForegrounded: vi.fn(),
+			runningTaskMonitor: { clear: vi.fn() },
+			getCurrentTask: (): any => provider.clineStack.at(-1),
 			clineStack: [taskB] as any[],
 			taskEventListeners: new Map(),
 			log: vi.fn(),

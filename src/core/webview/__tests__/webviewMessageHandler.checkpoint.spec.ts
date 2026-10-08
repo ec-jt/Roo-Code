@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { webviewMessageHandler } from "../webviewMessageHandler"
-import { saveTaskMessages } from "../../task-persistence"
 import { handleCheckpointRestoreOperation } from "../checkpointRestoreHandler"
 import { MessageManager } from "../../message-manager"
 
@@ -93,12 +92,8 @@ describe("webviewMessageHandler - checkpoint operations", () => {
 				restoreCheckpoint: false,
 			})
 
-			// Verify saveTaskMessages was called
-			expect(saveTaskMessages).toHaveBeenCalledWith({
-				messages: expect.any(Array),
-				taskId: "test-task-123",
-				globalStoragePath: "/test/storage",
-			})
+			// Restore checkpoint metadata through the Task's strict persistence boundary.
+			expect(mockCline.overwriteClineMessages).toHaveBeenLastCalledWith(mockCline.clineMessages)
 
 			// Verify checkpoint restore was NOT called
 			expect(mockCline.checkpointRestore).not.toHaveBeenCalled()

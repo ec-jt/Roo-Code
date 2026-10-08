@@ -1,4 +1,5 @@
-export { type ApiMessage, readApiMessages, saveApiMessages } from "./apiMessages"
-export { readTaskMessages, saveTaskMessages } from "./taskMessages"
+export { type ApiMessage, readApiMessages, saveApiMessages, saveApiMessagesFromSnapshot } from "./apiMessages"
+export { readTaskMessages, saveTaskMessages, saveTaskMessagesFromSnapshot } from "./taskMessages"
+export { flushTaskSaves, type TaskSaveOptions } from "./taskSaves"
 export { taskMetadata } from "./taskMetadata"
 export { TaskHistoryStore } from "./TaskHistoryStore"

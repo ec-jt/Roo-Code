@@ -39,6 +39,10 @@ import {
 	isRetiredProvider,
 } from "@roo-code/types"
 import { aggregateTaskCostsRecursive, type AggregatedCosts } from "./aggregateTaskCosts"
+import { ChatWindow, CHAT_EDITOR_BYTES, utf8Preview } from "./history/ChatWindow"
+import { ChatWindowDiagnostics } from "./history/ChatWindowDiagnostics"
+import { ChatHistoryDocument } from "./history/ChatHistoryDocument"
+import { fileDiffs } from "./history/ChatHistoryIndex"
 
 import { Package } from "../../shared/package"
 import { findLast } from "../../shared/array"
@@ -93,7 +97,13 @@ import { getStorageBasePath } from "../../utils/storage"
 
 import { webviewMessageHandler } from "./webviewMessageHandler"
 import type { ClineMessage } from "@roo-code/types"
-import { readApiMessages, saveApiMessages, saveTaskMessages, TaskHistoryStore } from "../task-persistence"
+import {
+	readApiMessages,
+	saveApiMessages,
+	saveTaskMessages,
+	flushTaskSaves,
+	TaskHistoryStore,
+} from "../task-persistence"
 import { readTaskMessages } from "../task-persistence/taskMessages"
 import { getNonce } from "./getNonce"
 import { getUri } from "./getUri"
@@ -272,6 +282,11 @@ export class ClineProvider
 	 * Used by the frontend to reject stale state that arrives out-of-order.
 	 */
 	private clineMessagesSeq = 0
+	private readonly chatWindow = new ChatWindow()
+	private readonly chatWindowDiagnostics = new ChatWindowDiagnostics((message) => this.log(message))
+	private chatWindowTimer?: ReturnType<typeof setTimeout>
+	private lastChatWindowPost = 0
+	private chatHistoryDocument?: ChatHistoryDocument
 
 	public isViewLaunched = false
 	public settingsImportedAt?: number
@@ -352,7 +367,11 @@ export class ClineProvider
 				try {
 					// Only rehydrate on genuine streaming failures.
 					// User-initiated cancels are handled by cancelTask().
-					if (instance.abortReason === "streaming_failed" && !instance.modelOperationDispatchClosed) {
+					if (
+						instance.abortReason === "streaming_failed" &&
+						!instance.abandoned &&
+						!instance.modelOperationDispatchClosed
+					) {
 						// Defensive safeguard: if another path already replaced this instance, skip
 						const current = this.getCurrentTask()
 						if (current && current.instanceId !== instance.instanceId) {
@@ -716,9 +735,8 @@ export class ClineProvider
 			return
 		}
 
-		// Pop the top Cline instance from the stack.
-		let task = this.clineStack.pop()
-		if (!options?.internal) this.runningTaskMonitor.clear()
+		// Keep the instance attached until its durable writes have settled.
+		let task = this.clineStack.at(-1)
 
 		if (task) {
 			// Capture delegation metadata before abort/dispose, since abortTask(true)
@@ -736,7 +754,11 @@ export class ClineProvider
 				this.log(
 					`[ClineProvider#removeClineFromStack] abortTask() failed ${task.taskId}.${task.instanceId}: ${e.message}`,
 				)
+				throw e
 			}
+			if (this.getCurrentTask() !== task) throw new Error("Task changed during disposal")
+			this.clineStack.pop()
+			if (!options?.internal) this.runningTaskMonitor.clear()
 
 			// Remove event listeners before clearing the reference.
 			const cleanupFunctions = this.taskEventListeners.get(task)
@@ -872,6 +894,9 @@ export class ClineProvider
 		}
 
 		this._disposed = true
+		if (this.chatWindowTimer) clearTimeout(this.chatWindowTimer)
+		this.chatWindowDiagnostics.dispose()
+		this.chatHistoryDocument?.dispose()
 		this._memoryController?.dispose()
 		this.commandActivitySubscription?.()
 		this.commandActivitySubscription = undefined
@@ -1308,6 +1333,13 @@ export class ClineProvider
 			}
 		}
 		if (!options?.internal) this.assertTaskForegrounded()
+		// Do not construct a replacement that can read or write this history until
+		// the previous instance has fenced producers and drained its save queue.
+		if (isRehydratingCurrentTask) {
+			await currentTask.abortTask(true)
+			if (this.getCurrentTask() !== currentTask) throw new Error("Task changed during rehydration")
+			options?.assertCurrent?.()
+		}
 		const task = new Task({
 			provider: this,
 			apiConfiguration,
@@ -1332,15 +1364,6 @@ export class ClineProvider
 
 			// Properly dispose of the old task to ensure garbage collection
 			const oldTask = this.clineStack[stackIndex]
-
-			// Abort the old task to stop running processes and mark as abandoned
-			try {
-				await oldTask.abortTask(true)
-			} catch (e) {
-				this.log(
-					`[createTaskWithHistoryItem] abortTask() failed for old task ${oldTask.taskId}.${oldTask.instanceId}: ${e.message}`,
-				)
-			}
 
 			// Remove event listeners from the old task
 			const cleanupFunctions = this.taskEventListeners.get(oldTask)
@@ -1417,6 +1440,27 @@ export class ClineProvider
 		if (this._disposed) {
 			return
 		}
+		if (message.type === "messageUpdated") {
+			const task = this.getCurrentTask()
+			if (!task) return
+			// Partial text/reasoning updates are replaceable. Asks and transitions are immediate.
+			if (
+				message.clineMessage?.partial &&
+				message.clineMessage.type !== "ask" &&
+				Date.now() - this.lastChatWindowPost < 200
+			) {
+				if (!this.chatWindowTimer)
+					this.chatWindowTimer = setTimeout(
+						() => {
+							this.chatWindowTimer = undefined
+							void this.postChatWindow()
+						},
+						200 - (Date.now() - this.lastChatWindowPost),
+					)
+				return
+			}
+			return this.postChatWindow()
+		}
 		if (
 			this.isTaskBackgrounded &&
 			(message.type === "invoke" ||
@@ -1428,6 +1472,17 @@ export class ClineProvider
 			return
 		// State assembly is asynchronous. Never let an older snapshot undo a monitor event.
 		if (message.type === "state" && message.state) {
+			if (message.state.clineMessages !== undefined) {
+				// Assemble at the final send boundary, after every async settings/history read.
+				const task = this.getCurrentTask()
+				const snapshot = task ? this.chatWindow.snapshot(task) : { clineMessages: [], chatWindow: undefined }
+				Object.assign(message.state, snapshot, {
+					clineMessagesSeq: ++this.clineMessagesSeq,
+					currentTaskTodos: task?.todoList ?? [],
+				})
+				this.lastChatWindowPost = Date.now()
+				if (snapshot.chatWindow && this.view) this.chatWindowDiagnostics.sent(snapshot.chatWindow)
+			}
 			this.runningTaskMonitor.syncApproval()
 			message.state.runningTask = this.runningTaskMonitor.value
 			message.state.commandActivities = this.getCommandActivities()
@@ -1438,6 +1493,72 @@ export class ClineProvider
 		} catch {
 			// View disposed, drop message silently
 		}
+	}
+
+	private async postChatWindow() {
+		if (this.chatWindowTimer) clearTimeout(this.chatWindowTimer)
+		this.chatWindowTimer = undefined
+		await this.postMessageToWebview({ type: "state", state: { clineMessages: [] } })
+	}
+
+	public isChatWindowFollowing(): boolean {
+		const task = this.getCurrentTask()
+		return !task || this.chatWindow.isFollowing(task)
+	}
+
+	public async handleChatWindowMessage(message: WebviewMessage) {
+		if (message.type === "chatWindowAck") {
+			if (message.chatWindowAck) this.chatWindowDiagnostics.acknowledge(message.chatWindowAck)
+			return
+		}
+		const task = this.getCurrentTask()
+		if (!task) return
+		if (message.type === "chatWindowRequest") {
+			if (message.chatWindowRequest && this.chatWindow.request(task, message.chatWindowRequest))
+				await this.postChatWindow()
+			return
+		}
+		const request = message.chatMessageOpen ?? message.chatFileChangesOpen
+		if (!request || request.taskId !== task.taskId || request.instanceId !== task.instanceId) return
+		let content = ""
+		if (message.type === "chatMessageOpen" && message.chatMessageOpen) {
+			const row = task.clineMessages.find((row) => row.ts === message.chatMessageOpen!.ts)
+			if (!row) return
+			// Do not serialize images or huge message objects to obtain an editor preview.
+			if ((row.text?.length ?? 0) + (row.reasoning?.length ?? 0) > CHAT_EDITOR_BYTES) {
+				void vscode.window.showWarningMessage(
+					"This history entry is too large to open. Export the task to inspect the full content.",
+				)
+				return
+			}
+			content = [row.text ?? "", row.reasoning ?? ""].filter(Boolean).join("\n\n")
+		} else if (message.type === "chatFileChangesOpen" && message.chatFileChangesOpen) {
+			const chunks: string[] = []
+			let bytes = 0
+			for (const row of task.clineMessages) {
+				for (const entry of fileDiffs(row)) {
+					if (entry.path !== message.chatFileChangesOpen.path) continue
+					bytes += Buffer.byteLength(entry.diff) + 2
+					if (bytes > CHAT_EDITOR_BYTES) {
+						void vscode.window.showWarningMessage(
+							"This history entry is too large to open. Export the task to inspect the full content.",
+						)
+						return
+					}
+					chunks.push(entry.diff)
+				}
+			}
+			content = chunks.join("\n\n")
+		} else return
+		if (content.length > CHAT_EDITOR_BYTES || Buffer.byteLength(content) > CHAT_EDITOR_BYTES) {
+			void vscode.window.showWarningMessage(
+				"This history entry is too large to open. Export the task to inspect the full content.",
+			)
+			return
+		}
+		if (this.getCurrentTask() !== task) return
+		this.chatHistoryDocument ??= new ChatHistoryDocument()
+		await this.chatHistoryDocument.open(content, () => this.getCurrentTask() === task)
 	}
 
 	private async getHMRHtmlContent(webview: vscode.Webview): Promise<string> {
@@ -2172,6 +2293,10 @@ export class ClineProvider
 				}
 			}
 
+			// Producers have stopped. Drain admitted writes before deleting histories.
+			for (const taskId of allIdsToDelete) {
+				await flushTaskSaves({ taskId, globalStoragePath: this.contextProxy.globalStorageUri.fsPath })
+			}
 			// Delete all tasks from state in one batch
 			await this.taskHistoryStore.deleteMany(allIdsToDelete)
 			this.recentTasksCache = undefined
@@ -2279,7 +2404,7 @@ export class ClineProvider
 	 */
 	async postStateToWebviewWithoutClineMessages(): Promise<void> {
 		const state = await this.getStateToPostToWebview()
-		const { clineMessages: _omitMessages, taskHistory: _omitHistory, ...rest } = state
+		const { clineMessages: _omitMessages, chatWindow: _omitWindow, taskHistory: _omitHistory, ...rest } = state
 		this.postMessageToWebview({ type: "state", state: rest })
 	}
 
@@ -2540,8 +2665,13 @@ export class ClineProvider
 			memoryEnabledForCurrentProject: await this.memoryController.enabled(),
 			runningTask: this.runningTaskMonitor.value,
 			modelOperation: currentTask?.modelOperationState,
-			currentTaskItem: currentTask?.taskId ? this.taskHistoryStore.get(currentTask.taskId) : undefined,
-			clineMessages: currentTask?.clineMessages || [],
+			currentTaskItem: currentTask?.taskId
+				? (() => {
+						const item = this.taskHistoryStore.get(currentTask.taskId)
+						return item ? { ...item, task: utf8Preview(item.task, 64 * 1024) } : undefined
+					})()
+				: undefined,
+			...(currentTask ? this.chatWindow.snapshot(currentTask) : { clineMessages: [], chatWindow: undefined }),
 			currentTaskTodos: currentTask?.todoList || [],
 			messageQueue: currentTask?.messageQueueService?.messages,
 			taskHistory: this.taskHistoryStore.getAll().filter((item: HistoryItem) => item.ts && item.task),
@@ -3246,11 +3376,10 @@ export class ClineProvider
 		// This ensures the stream fails quickly rather than waiting for network timeout
 		task.cancelCurrentRequest()
 
-		// Begin abort (non-blocking)
-		task.abortTask()
-
 		// Immediately mark the original instance as abandoned to prevent any residual activity
 		task.abandoned = true
+		// Replacement is allowed only after persistence and resource cleanup succeed.
+		await task.abortTask()
 
 		await pWaitFor(
 			() =>
@@ -3408,28 +3537,8 @@ export class ClineProvider
 		//    is already added to apiConversationHistory by the normal flow in
 		//    recursivelyMakeClineRequests BEFORE tools start executing. We only need to
 		//    flush the pending user message with tool_results.
-		try {
-			const flushSuccess = await parent.flushPendingToolResultsToHistory()
-
-			if (!flushSuccess) {
-				console.warn(`[delegateParentAndOpenChild] Flush failed for parent ${parentTaskId}, retrying...`)
-				const retrySuccess = await parent.retrySaveApiConversationHistory()
-
-				if (!retrySuccess) {
-					console.error(
-						`[delegateParentAndOpenChild] CRITICAL: Parent ${parentTaskId} API history not persisted to disk. Child return may produce stale state.`,
-					)
-					vscode.window.showWarningMessage(
-						"Warning: Parent task state could not be saved. The parent task may lose recent context when resumed.",
-					)
-				}
-			}
-		} catch (error) {
-			this.log(
-				`[delegateParentAndOpenChild] Error flushing pending tool results (non-fatal): ${
-					error instanceof Error ? error.message : String(error)
-				}`,
-			)
+		if (!(await parent.flushPendingToolResultsToHistory()) && !(await parent.retrySaveApiConversationHistory())) {
+			throw new Error("Cannot delegate: parent history could not be saved. Resolve the storage error and retry.")
 		}
 
 		await revalidate()
@@ -3438,16 +3547,7 @@ export class ClineProvider
 		// 3) Enforce single-open invariant by closing/disposing the parent first
 		//    This ensures we never have >1 tasks open at any time during delegation.
 		//    Await abort completion to ensure clean disposal and prevent unhandled rejections.
-		try {
-			await this.removeClineFromStack({ internal: true })
-		} catch (error) {
-			this.log(
-				`[delegateParentAndOpenChild] Error during parent disposal (non-fatal): ${
-					error instanceof Error ? error.message : String(error)
-				}`,
-			)
-			// Non-fatal: proceed with child creation even if parent cleanup had issues
-		}
+		await this.removeClineFromStack({ internal: true })
 
 		// 3) Switch provider mode to child's requested mode BEFORE creating the child task
 		//    This ensures the child's system prompt and configuration are based on the correct mode.
@@ -3498,6 +3598,7 @@ export class ClineProvider
 					(err as Error)?.message ?? String(err)
 				}`,
 			)
+			throw err
 		}
 
 		// 6) Start the child task now that parent metadata is safely persisted.
@@ -3590,7 +3691,12 @@ export class ClineProvider
 			if (lastUi?.say !== "subtask_result" || lastUi.text !== completionResultSummary) {
 				parentClineMessages.push({ type: "say", say: "subtask_result", text: completionResultSummary, ts })
 			}
-			await saveTaskMessages({ messages: parentClineMessages, taskId: parentTaskId, globalStoragePath })
+			await saveTaskMessages({
+				messages: parentClineMessages,
+				taskId: parentTaskId,
+				globalStoragePath,
+				barrier: true,
+			})
 			// Find the tool_use_id from the last assistant message's new_task tool_use
 			let toolUseId: string | undefined
 			for (let i = parentApiMessages.length - 1; i >= 0; i--) {
@@ -3674,7 +3780,12 @@ export class ClineProvider
 			}
 
 			assertCurrent()
-			await saveApiMessages({ messages: parentApiMessages as any, taskId: parentTaskId, globalStoragePath })
+			await saveApiMessages({
+				messages: parentApiMessages as any,
+				taskId: parentTaskId,
+				globalStoragePath,
+				barrier: true,
+			})
 
 			assertCurrent()
 			// Closing the child saves its final history and preserves the parent's

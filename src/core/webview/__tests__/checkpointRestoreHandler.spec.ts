@@ -1,4 +1,3 @@
-import { describe, it, expect, vi, beforeEach } from "vitest"
 import { handleCheckpointRestoreOperation } from "../checkpointRestoreHandler"
 import { saveTaskMessages } from "../../task-persistence"
 import pWaitFor from "p-wait-for"
@@ -46,6 +45,7 @@ describe("checkpointRestoreHandler", () => {
 
 		// Setup mock provider
 		mockProvider = {
+			cancelTask: vi.fn().mockResolvedValue(undefined),
 			getCurrentTask: vi.fn(() => mockCline),
 			postMessageToWebview: vi.fn(),
 			getTaskWithId: vi.fn(() => ({
@@ -66,7 +66,7 @@ describe("checkpointRestoreHandler", () => {
 	})
 
 	describe("handleCheckpointRestoreOperation", () => {
-		it("should abort task before checkpoint restore for delete operations", async () => {
+		it("waits for provider cancellation before checkpoint restore", async () => {
 			// Simulate a task that hasn't been aborted yet
 			mockCline.abort = false
 
@@ -80,11 +80,11 @@ describe("checkpointRestoreHandler", () => {
 			})
 
 			// Verify abortTask was called before checkpointRestore
-			expect(mockCline.abortTask).toHaveBeenCalled()
+			expect(mockProvider.cancelTask).toHaveBeenCalled()
 			expect(mockCline.checkpointRestore).toHaveBeenCalled()
 
 			// Verify the order of operations
-			const abortOrder = mockCline.abortTask.mock.invocationCallOrder[0]
+			const abortOrder = mockProvider.cancelTask.mock.invocationCallOrder[0]
 			const restoreOrder = mockCline.checkpointRestore.mock.invocationCallOrder[0]
 			expect(abortOrder).toBeLessThan(restoreOrder)
 		})
@@ -145,7 +145,7 @@ describe("checkpointRestoreHandler", () => {
 			})
 		})
 
-		it("should save messages after delete operation", async () => {
+		it("does not issue a duplicate direct save after checkpoint restore", async () => {
 			// Mock the checkpoint restore to simulate message deletion
 			mockCline.checkpointRestore.mockImplementation(async () => {
 				mockCline.clineMessages = mockCline.clineMessages.slice(0, 2)
@@ -160,37 +160,43 @@ describe("checkpointRestoreHandler", () => {
 				operation: "delete",
 			})
 
-			// Verify saveTaskMessages was called
-			expect(saveTaskMessages).toHaveBeenCalledWith({
-				messages: mockCline.clineMessages,
-				taskId: "test-task-123",
-				globalStoragePath: "/test/storage",
-			})
-
-			// Verify createTaskWithHistoryItem was called
-			expect(mockProvider.createTaskWithHistoryItem).toHaveBeenCalled()
+			expect(saveTaskMessages).not.toHaveBeenCalled()
+			expect(mockProvider.createTaskWithHistoryItem).not.toHaveBeenCalled()
 		})
 
-		it("should reinitialize task with correct history item after delete", async () => {
-			const expectedHistoryItem = {
-				id: "test-task-123",
-				messages: mockCline.clineMessages,
-			}
+		it("restores only through the replacement instance", async () => {
+			const oldTask = mockCline
+			const replacement = { ...mockCline, checkpointRestore: vi.fn() }
+			mockProvider.cancelTask.mockImplementation(async () => {
+				mockCline = replacement
+			})
 
 			await handleCheckpointRestoreOperation({
 				provider: mockProvider,
-				currentCline: mockCline,
+				currentCline: oldTask,
 				messageTs: 3,
 				messageIndex: 2,
 				checkpoint: { hash: "abc123" },
 				operation: "delete",
 			})
 
-			// Verify getTaskWithId was called
-			expect(mockProvider.getTaskWithId).toHaveBeenCalledWith("test-task-123")
+			expect(oldTask.checkpointRestore).not.toHaveBeenCalled()
+			expect(replacement.checkpointRestore).toHaveBeenCalledOnce()
+		})
 
-			// Verify createTaskWithHistoryItem was called with the correct history item
-			expect(mockProvider.createTaskWithHistoryItem).toHaveBeenCalledWith(expectedHistoryItem)
+		it("does not restore when cancellation persistence fails", async () => {
+			mockProvider.cancelTask.mockRejectedValue(new Error("disk full"))
+			await expect(
+				handleCheckpointRestoreOperation({
+					provider: mockProvider,
+					currentCline: mockCline,
+					messageTs: 3,
+					messageIndex: 2,
+					checkpoint: { hash: "abc123" },
+					operation: "delete",
+				}),
+			).rejects.toThrow("disk full")
+			expect(mockCline.checkpointRestore).not.toHaveBeenCalled()
 		})
 
 		it("should not save messages or reinitialize for edit operation", async () => {

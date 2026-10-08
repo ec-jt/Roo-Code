@@ -5,9 +5,40 @@ import { RooCodeEventName } from "@roo-code/types"
 import { ClineProvider } from "../core/webview/ClineProvider"
 
 describe("ClineProvider.delegateParentAndOpenChild()", () => {
+	it("does not detach the parent or create a child after persistence retries fail", async () => {
+		const parent = {
+			taskId: "parent-1",
+			assertCanDelegate: vi.fn(),
+			flushPendingToolResultsToHistory: vi.fn().mockResolvedValue(false),
+			retrySaveApiConversationHistory: vi.fn().mockResolvedValue(false),
+		}
+		const provider = Object.assign(Object.create(ClineProvider.prototype), {
+			getCurrentTask: () => parent,
+			getTaskWithId: vi.fn().mockResolvedValue({ historyItem: { id: parent.taskId } }),
+			getState: vi.fn().mockResolvedValue({ mode: "code" }),
+			removeClineFromStack: vi.fn(),
+			createTask: vi.fn(),
+		})
+		await expect(
+			provider.delegateParentAndOpenChild({
+				parentTaskId: parent.taskId,
+				message: "child",
+				initialTodos: [],
+				mode: "code",
+			}),
+		).rejects.toThrow("Cannot delegate")
+		expect(provider.removeClineFromStack).not.toHaveBeenCalled()
+		expect(provider.createTask).not.toHaveBeenCalled()
+	})
+
 	it("persists parent delegation metadata and emits TaskDelegated", async () => {
 		const providerEmit = vi.fn()
-		const parentTask = { taskId: "parent-1", emit: vi.fn(), assertCanDelegate: vi.fn() } as any
+		const parentTask = {
+			taskId: "parent-1",
+			emit: vi.fn(),
+			assertCanDelegate: vi.fn(),
+			flushPendingToolResultsToHistory: vi.fn().mockResolvedValue(true),
+		} as any
 
 		const childStart = vi.fn()
 		const updateTaskHistory = vi.fn()
@@ -100,7 +131,12 @@ describe("ClineProvider.delegateParentAndOpenChild()", () => {
 	it("calls child.start() only after parent metadata is persisted (no race condition)", async () => {
 		const callOrder: string[] = []
 
-		const parentTask = { taskId: "parent-1", emit: vi.fn(), assertCanDelegate: vi.fn() } as any
+		const parentTask = {
+			taskId: "parent-1",
+			emit: vi.fn(),
+			assertCanDelegate: vi.fn(),
+			flushPendingToolResultsToHistory: vi.fn().mockResolvedValue(true),
+		} as any
 		const childStart = vi.fn(() => callOrder.push("child.start"))
 
 		const updateTaskHistory = vi.fn(async () => {

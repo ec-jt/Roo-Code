@@ -28,6 +28,7 @@ vi.mock("../model-operation/storage", () => ({
 	readBranchReplaySnapshot: vi.fn(),
 }))
 vi.mock("../../task-persistence", () => ({
+	flushTaskSaves: vi.fn().mockResolvedValue(undefined),
 	saveApiMessages: vi.fn(),
 	saveTaskMessages: vi.fn(),
 	readApiMessages: vi.fn(async () => []),

@@ -18,12 +18,16 @@ const {
 	mockReadApiMessages,
 	mockReadTaskMessages,
 	mockTaskMetadata,
+	mockFlushTaskSaves,
+	mockCheckpointSave,
 	mockPWaitFor,
 } = vi.hoisted(() => ({
 	mockSaveApiMessages: vi.fn().mockResolvedValue(undefined),
 	mockSaveTaskMessages: vi.fn().mockResolvedValue(undefined),
 	mockReadApiMessages: vi.fn().mockResolvedValue([]),
 	mockReadTaskMessages: vi.fn().mockResolvedValue([]),
+	mockFlushTaskSaves: vi.fn().mockResolvedValue(undefined),
+	mockCheckpointSave: vi.fn().mockResolvedValue(undefined),
 	mockTaskMetadata: vi.fn().mockResolvedValue({
 		historyItem: { id: "test-id", ts: Date.now(), task: "test" },
 		tokenUsage: {
@@ -73,6 +77,7 @@ vi.mock("p-wait-for", () => ({
 }))
 
 vi.mock("../../task-persistence", () => ({
+	flushTaskSaves: mockFlushTaskSaves,
 	saveApiMessages: mockSaveApiMessages,
 	saveTaskMessages: mockSaveTaskMessages,
 	readApiMessages: mockReadApiMessages,
@@ -89,6 +94,13 @@ vi.mock("../../task-persistence", () => ({
 		reconcile: vi.fn().mockResolvedValue(undefined),
 		initialized: Promise.resolve(),
 	})),
+}))
+
+vi.mock("../../checkpoints", () => ({
+	checkpointSave: mockCheckpointSave,
+	getCheckpointService: vi.fn(),
+	checkpointRestore: vi.fn(),
+	checkpointDiff: vi.fn(),
 }))
 
 vi.mock("vscode", () => {
@@ -179,6 +191,7 @@ vi.mock("../../condense", async (importOriginal) => {
 })
 
 vi.mock("../../../utils/storage", () => ({
+	getStorageBasePath: vi.fn().mockImplementation(async (globalStoragePath) => globalStoragePath),
 	getTaskDirectoryPath: vi
 		.fn()
 		.mockImplementation((globalStoragePath, taskId) => Promise.resolve(`${globalStoragePath}/tasks/${taskId}`)),
@@ -323,7 +336,7 @@ describe("Task persistence", () => {
 			vi.useRealTimers()
 		})
 
-		it("snapshots the array before passing to saveApiMessages", async () => {
+		it("passes the live array to the snapshotting persistence API with an exact retry barrier", async () => {
 			mockSaveApiMessages.mockResolvedValueOnce(undefined)
 
 			const task = new Task({
@@ -344,10 +357,9 @@ describe("Task persistence", () => {
 			expect(mockSaveApiMessages).toHaveBeenCalledTimes(1)
 
 			const callArgs = mockSaveApiMessages.mock.calls[0][0]
-			// The messages passed should be a COPY, not the live reference
-			expect(callArgs.messages).not.toBe(task.apiConversationHistory)
-			// But the content should be the same
-			expect(callArgs.messages).toEqual(task.apiConversationHistory)
+			expect(callArgs.messages).toBe(task.apiConversationHistory)
+			expect(callArgs.barrier).toBe(true)
+			expect(mockFlushTaskSaves).toHaveBeenCalled()
 		})
 	})
 
@@ -382,7 +394,7 @@ describe("Task persistence", () => {
 			expect(result).toBe(false)
 		})
 
-		it("snapshots the array before passing to saveTaskMessages", async () => {
+		it("passes the live array to the snapshotting persistence API", async () => {
 			mockSaveTaskMessages.mockResolvedValueOnce(undefined)
 
 			const task = new Task({
@@ -404,10 +416,134 @@ describe("Task persistence", () => {
 			expect(mockSaveTaskMessages).toHaveBeenCalledTimes(1)
 
 			const callArgs = mockSaveTaskMessages.mock.calls[0][0]
-			// The messages passed should be a COPY, not the live reference
-			expect(callArgs.messages).not.toBe(task.clineMessages)
-			// But the content should be the same
-			expect(callArgs.messages).toEqual(task.clineMessages)
+			expect(callArgs.messages).toBe(task.clineMessages)
+			expect(callArgs.barrier).toBe(false)
+		})
+	})
+
+	describe("durability boundaries", () => {
+		const createTask = () =>
+			new Task({ provider: mockProvider, apiConfiguration: mockApiConfig, task: "test", startTask: false })
+
+		it("strict UI saves use a barrier and reject failed flushes", async () => {
+			const task = createTask()
+			mockFlushTaskSaves.mockRejectedValueOnce(new Error("flush failed"))
+			await expect((task as any).saveClineMessages(true)).rejects.toThrow("flush failed")
+			expect(mockSaveTaskMessages).toHaveBeenCalledWith(expect.objectContaining({ barrier: true }))
+			expect(mockProvider.updateTaskHistory).not.toHaveBeenCalled()
+		})
+
+		it("overwrites fail closed and use exact snapshots", async () => {
+			const task = createTask()
+			mockSaveApiMessages.mockRejectedValueOnce(new Error("disk full"))
+			await expect(task.overwriteApiConversationHistory([])).rejects.toThrow("Could not overwrite")
+			expect(mockSaveApiMessages).toHaveBeenCalledWith(expect.objectContaining({ barrier: true }))
+			mockSaveTaskMessages.mockRejectedValueOnce(new Error("disk full"))
+			await expect(task.overwriteClineMessages([])).rejects.toThrow("disk full")
+			expect(mockSaveTaskMessages).toHaveBeenCalledWith(expect.objectContaining({ barrier: true }))
+		})
+
+		it("flushes admitted writes even with no pending delegation tool results", async () => {
+			const task = createTask()
+			mockFlushTaskSaves.mockRejectedValueOnce(new Error("flush failed"))
+			await expect(task.flushPendingToolResultsToHistory()).resolves.toBe(false)
+			expect(mockFlushTaskSaves).toHaveBeenCalledOnce()
+		})
+
+		it("does not turn a missing assistant boundary into a successful retry", async () => {
+			const task = createTask()
+			task.userMessageContent = [{ type: "tool_result", tool_use_id: "pending", content: "result" }]
+			await expect(task.retrySaveApiConversationHistory()).resolves.toBe(false)
+			expect(mockSaveApiMessages).not.toHaveBeenCalled()
+		})
+
+		it("does not resume the parent loop after its exact history save fails", async () => {
+			const task = createTask()
+			mockProvider.getCurrentTask = vi.fn().mockReturnValue(task)
+			vi.spyOn(task, "assertCanDelegate").mockResolvedValue(undefined)
+			const loop = vi.spyOn(task as any, "initiateTaskLoop").mockResolvedValue(undefined)
+			task.apiConversationHistory = [{ role: "user", content: [{ type: "text", text: "result" }] }]
+			mockSaveApiMessages.mockRejectedValueOnce(new Error("disk full"))
+			await expect(task.resumeAfterDelegation()).rejects.toThrow("Could not save parent history")
+			expect(mockSaveApiMessages).toHaveBeenCalledWith(expect.objectContaining({ barrier: true }))
+			expect(loop).not.toHaveBeenCalled()
+		})
+
+		it("waits for flush before reading saved history", async () => {
+			const task = createTask()
+			mockFlushTaskSaves.mockRejectedValueOnce(new Error("flush failed"))
+			await expect((task as any).getSavedApiConversationHistory()).rejects.toThrow("flush failed")
+			expect(mockReadApiMessages).not.toHaveBeenCalled()
+		})
+
+		it("gates checkpoints on persistence and fails closed", async () => {
+			const task = createTask()
+			let finish!: () => void
+			mockFlushTaskSaves.mockImplementationOnce(() => new Promise<void>((resolve) => (finish = resolve)))
+			const saving = task.checkpointSave(true, true)
+			expect(mockCheckpointSave).not.toHaveBeenCalled()
+			finish()
+			await saving
+			expect(mockCheckpointSave).toHaveBeenCalledWith(task, true, true)
+			mockCheckpointSave.mockClear()
+			mockFlushTaskSaves.mockRejectedValueOnce(new Error("flush failed"))
+			await expect(task.checkpointSave()).rejects.toThrow("flush failed")
+			expect(mockCheckpointSave).not.toHaveBeenCalled()
+		})
+
+		it("captures indexed full-history metadata before a queued write completes", async () => {
+			const task = createTask()
+			task.clineMessages = [
+				{ type: "say", say: "text", text: "task", ts: 1 },
+				{ type: "say", say: "api_req_started", text: '{"tokensIn":42,"tokensOut":7,"cost":0.5}', ts: 2 },
+				{ type: "say", say: "text", text: "done", ts: 3 },
+			]
+			let finish!: () => void
+			mockSaveTaskMessages.mockImplementationOnce(() => new Promise<void>((resolve) => (finish = resolve)))
+			const saving = (task as any).saveClineMessages()
+			task.clineMessages[0].text = "mutated"
+			task.clineMessages.push({ type: "say", say: "text", text: "later", ts: 4 })
+			finish()
+			await saving
+			expect(mockTaskMetadata).toHaveBeenCalledWith(
+				expect.objectContaining({
+					messages: [expect.objectContaining({ text: "task", ts: 1 }), expect.objectContaining({ ts: 3 })],
+					tokenUsage: expect.objectContaining({ totalTokensIn: 42, totalTokensOut: 7, totalCost: 0.5 }),
+				}),
+			)
+		})
+
+		it("disposal fences new producers and waits for metadata already admitted", async () => {
+			const task = createTask()
+			let finishMetadata!: () => void
+			vi.mocked(mockProvider.updateTaskHistory).mockImplementationOnce(
+				() => new Promise((resolve) => (finishMetadata = () => resolve([]))),
+			)
+			const saving = (task as any).saveClineMessages()
+			await vi.waitFor(() => expect(mockProvider.updateTaskHistory).toHaveBeenCalled())
+			let disposed = false
+			const disposing = task.dispose({ preserveArtifacts: true }).then(() => {
+				disposed = true
+			})
+			await expect((task as any).saveClineMessages()).resolves.toBe(false)
+			await expect((task as any).saveClineMessages(true)).rejects.toThrow("closed")
+			await expect((task as any).saveApiConversationHistory()).resolves.toBe(false)
+			expect(mockSaveTaskMessages).toHaveBeenCalledOnce()
+			expect(mockSaveApiMessages).not.toHaveBeenCalled()
+			expect(disposed).toBe(false)
+			finishMetadata()
+			await saving
+			await disposing
+			expect(disposed).toBe(true)
+		})
+
+		it("abort admits one final barrier and propagates durability failures", async () => {
+			const task = createTask()
+			mockSaveTaskMessages.mockRejectedValueOnce(new Error("disk full"))
+			await expect(task.abortTask()).rejects.toThrow("disk full")
+			expect(mockSaveTaskMessages).toHaveBeenCalledWith(expect.objectContaining({ barrier: true }))
+			await expect(task.dispose()).rejects.toThrow("disk full")
+			expect(mockSaveTaskMessages).toHaveBeenCalledOnce()
 		})
 	})
 
