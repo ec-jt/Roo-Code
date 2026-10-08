@@ -99,6 +99,7 @@ import { calculateApiCostAnthropic, calculateApiCostOpenAI } from "../../shared/
 import { getWorkspacePath } from "../../utils/path"
 import { sanitizeToolUseId } from "../../utils/tool-id"
 import { getTaskDirectoryPath } from "../../utils/storage"
+import { abortable } from "../../utils/abortable"
 
 // prompts
 import { formatResponse } from "../prompts/responses"
@@ -5439,13 +5440,6 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		// Create an AbortController to allow cancelling the request mid-stream
 		this.currentRequestAbortController = new AbortController()
 		const abortSignal = this.currentRequestAbortController.signal
-		// Increase max listeners to prevent warning during streaming (one listener per chunk)
-		try {
-			const { setMaxListeners } = require("events")
-			setMaxListeners(100, abortSignal)
-		} catch {
-			// setMaxListeners may not be available in all environments
-		}
 		// Reset the flag after using it
 		this.skipPrevResponseIdOnce = false
 
@@ -5468,18 +5462,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			this.isWaitingForFirstChunk = true
 
 			// Race between the first chunk and the abort signal
-			const firstChunkPromise = iterator.next()
-			const abortPromise = new Promise<never>((_, reject) => {
-				if (abortSignal.aborted) {
-					reject(new Error("Request cancelled by user"))
-				} else {
-					abortSignal.addEventListener("abort", () => {
-						reject(new Error("Request cancelled by user"))
-					})
-				}
-			})
-
-			const firstChunk = await Promise.race([firstChunkPromise, abortPromise])
+			const firstChunk = await abortable(abortSignal, () => iterator.next(), "Request cancelled by user")
 			this.isWaitingForFirstChunk = false
 			if (this.modelOperationClosed || this.abort || requestRevision !== this.modelOperationRevision) return
 			yield firstChunk.value
@@ -5572,20 +5555,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		// stream.
 		try {
 			while (!this.modelOperationClosed && !this.abort && requestRevision === this.modelOperationRevision) {
-				const next = await new Promise<IteratorResult<import("../../api/transform/stream").ApiStreamChunk>>(
-					(resolve, reject) => {
-						const onAbort = () => reject(new Error("Request dispatch fenced"))
-						if (abortSignal.aborted) {
-							onAbort()
-							return
-						}
-						abortSignal.addEventListener("abort", onAbort, { once: true })
-						iterator
-							.next()
-							.then(resolve, reject)
-							.finally(() => abortSignal.removeEventListener("abort", onAbort))
-					},
-				)
+				const next = await abortable(abortSignal, () => iterator.next(), "Request dispatch fenced")
 				if (
 					this.modelOperationClosed ||
 					this.abort ||
