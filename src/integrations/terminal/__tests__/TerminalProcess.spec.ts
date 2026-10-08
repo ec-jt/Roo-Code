@@ -6,6 +6,7 @@ import { mergePromise } from "../mergePromise"
 import { TerminalProcess } from "../TerminalProcess"
 import { Terminal } from "../Terminal"
 import { TerminalRegistry } from "../TerminalRegistry"
+import { CommandActivity } from "../CommandActivity"
 
 class TestTerminalProcess extends TerminalProcess {
 	public callTrimRetrievedOutput(): void {
@@ -30,6 +31,7 @@ describe("TerminalProcess", () => {
 	let mockStream: AsyncIterableIterator<string>
 
 	beforeEach(() => {
+		CommandActivity.dispose()
 		// Create properly typed mock terminal
 		mockTerminal = {
 			shellIntegration: {
@@ -55,6 +57,57 @@ describe("TerminalProcess", () => {
 
 		// Reset event listeners
 		terminalProcess.removeAllListeners()
+	})
+
+	afterEach(() => CommandActivity.dispose())
+
+	it("tracks runCommand before execution and captures background output without consuming it", async () => {
+		mockTerminalInfo.taskId = "owner"
+		const callbacks = {
+			onLine: vi.fn(),
+			onCompleted: vi.fn(),
+			onShellExecutionStarted: vi.fn(),
+			onShellExecutionComplete: vi.fn(),
+		}
+		let runPromise: Promise<void> | undefined
+		const originalRun = TerminalProcess.prototype.run
+		const runSpy = vi.spyOn(TerminalProcess.prototype, "run").mockImplementation(function (
+			this: TerminalProcess,
+			command,
+		) {
+			runPromise = originalRun.call(this, command)
+			return runPromise
+		})
+		try {
+			const result = mockTerminalInfo.runCommand("echo captured", callbacks)
+			expect(CommandActivity.snapshot()).toEqual([
+				expect.objectContaining({ command: "echo captured", taskId: "owner" }),
+			])
+			await vi.waitFor(() => expect(runSpy).toHaveBeenCalledOnce())
+			result.continue()
+			const stream = (async function* () {
+				yield "\x1b]633;C\x07after continue\n"
+				mockTerminalInfo.shellExecutionComplete({ exitCode: 0 })
+			})()
+			mockTerminalInfo.setActiveStream(stream)
+			await runPromise
+			expect(CommandActivity.snapshot()[0]).toMatchObject({ status: "completed", outputTail: "after continue\n" })
+			expect(result.getUnretrievedOutput()).toBe("after continue\n")
+			await result
+		} finally {
+			runSpy.mockRestore()
+		}
+	})
+
+	it("aborts continued commands only while the original terminal process is running", () => {
+		mockTerminalInfo.process = terminalProcess
+		mockTerminalInfo.running = true
+		terminalProcess.continue()
+		terminalProcess.abort()
+		expect(mockTerminal.sendText).toHaveBeenCalledExactlyOnceWith("\x03")
+		mockTerminalInfo.process = undefined
+		terminalProcess.abort()
+		expect(mockTerminal.sendText).toHaveBeenCalledTimes(1)
 	})
 
 	describe("run", () => {

@@ -1047,6 +1047,20 @@ export class NativeToolCallParser {
 					}
 					break
 
+				case "managed_environment": {
+					if (!["prepare", "install", "status"].includes(args.action)) {
+						throw new ToolArgumentError("managed_environment.action must be prepare, install, or status.")
+					}
+					if (typeof args.manifest_path !== "string" || !args.manifest_path.trim()) {
+						throw new ToolArgumentError("managed_environment.manifest_path must be a non-empty string.")
+					}
+					if (Object.keys(args).some((key) => !["action", "manifest_path"].includes(key))) {
+						throw new ToolArgumentError("managed_environment accepts only action and manifest_path.")
+					}
+					nativeArgs = { action: args.action, manifest_path: args.manifest_path }
+					break
+				}
+
 				case "file_system": {
 					if (!["read_text_file", "list_directory", "search_files"].includes(args.action)) {
 						throw new ToolArgumentError(

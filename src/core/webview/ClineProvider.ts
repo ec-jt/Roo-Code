@@ -99,6 +99,9 @@ import { getNonce } from "./getNonce"
 import { getUri } from "./getUri"
 import { REQUESTY_BASE_URL } from "../../shared/utils/requesty"
 import { validateAndFixToolResultIds } from "../task/validateToolResultIds"
+import { RunningTaskMonitor } from "./RunningTaskMonitor"
+import { CommandActivity } from "../../integrations/terminal/CommandActivity"
+import { scopedCommandActivities } from "../../integrations/terminal/activityScope"
 
 /**
  * https://github.com/microsoft/vscode-webview-ui-toolkit-samples/blob/main/default/weather-webview/src/providers/WeatherViewProvider.ts
@@ -141,6 +144,110 @@ export class ClineProvider
 	private marketplaceManager: MarketplaceManager
 	private taskCreationCallback: (task: Task) => void
 	private taskEventListeners: WeakMap<Task, Array<() => void>> = new WeakMap()
+	private _runningTaskMonitor?: RunningTaskMonitor
+	private commandActivitySubscription?: () => void
+
+	public getCommandActivities() {
+		const task = this.getCurrentTask()
+		return scopedCommandActivities(task?.cwd ?? this.cwd, task?.taskId)
+	}
+
+	public async handleCommandActivityControl(control?: { id: string; action: "stop" | "show" }): Promise<void> {
+		if (!control || this._disposed) return
+		const activity = this.getCommandActivities().find((entry) => entry.id === control.id)
+		if (!activity) return
+		if (control.action === "show") {
+			CommandActivity.showTerminal(control.id)
+		} else if (control.action === "stop" && activity.canStop) {
+			const answer = await vscode.window.showWarningMessage(
+				"Stop this Roo-tracked command? This requests termination, not rollback, and detached descendants may remain.",
+				{ modal: true, detail: activity.command },
+				"Stop command",
+			)
+			if (
+				answer === "Stop command" &&
+				!this._disposed &&
+				this.getCommandActivities().some((entry) => entry.id === control.id && entry.canStop)
+			) {
+				CommandActivity.stop(control.id)
+			}
+		}
+		await this.postMessageToWebview({
+			type: "commandActivitiesUpdated",
+			commandActivities: this.getCommandActivities(),
+		})
+	}
+	private modelOperationInProgress = false
+	private get runningTaskMonitor(): RunningTaskMonitor {
+		return (this._runningTaskMonitor ??= new RunningTaskMonitor(
+			() => this.getCurrentTask(),
+			(runningTask) => void this.postMessageToWebview({ type: "runningTaskUpdated", runningTask }),
+		))
+	}
+
+	public get isTaskBackgrounded(): boolean {
+		return this.runningTaskMonitor.background
+	}
+
+	/** User entry points must not replace the single background stack. */
+	public warnIfTaskBackgrounded(): boolean {
+		if (!this.isTaskBackgrounded) return false
+		void vscode.window.showWarningMessage("Return to the background task before changing or closing tasks.")
+		return true
+	}
+
+	private assertTaskForegrounded(): void {
+		if (this.warnIfTaskBackgrounded()) throw new Error("Return to the background task first.")
+	}
+
+	public async handleRunningTaskControl(
+		action: "backgroundTask" | "foregroundTask" | "cancelBackgroundTask",
+		taskId?: string,
+		instanceId?: string,
+	): Promise<void> {
+		const task = this.getCurrentTask()
+		if (!task || task.taskId !== taskId || task.instanceId !== instanceId) return
+		if (action === "backgroundTask") {
+			if (this.modelOperationInProgress) {
+				void vscode.window.showWarningMessage(
+					"Wait for the model operation to finish before backgrounding this task.",
+				)
+				return
+			}
+			this.runningTaskMonitor.setBackground(true)
+			await this.postMessageToWebview({ type: "action", action: "historyButtonClicked" })
+		} else if (action === "foregroundTask") {
+			this.runningTaskMonitor.setBackground(false)
+			await this.postMessageToWebview({ type: "action", action: "chatButtonClicked" })
+			// Keep a cancelled background instance loaded for its final timer.
+			// Rehydrate on return so normal resume controls can work again.
+			if (task.abort || task.abandoned) {
+				try {
+					const { historyItem } = await this.getTaskWithId(task.taskId)
+					if (this.getCurrentTask() === task && !this.isTaskBackgrounded) {
+						await this.createTaskWithHistoryItem(historyItem, {
+							internal: true,
+							assertCurrent: () => {
+								if (this.getCurrentTask() !== task || this.isTaskBackgrounded) {
+									throw new Error("Cancelled task return was superseded.")
+								}
+							},
+						})
+					}
+				} catch (error) {
+					// Startup cancellation may precede the first history write. Keep the chat accessible.
+					this.log(
+						`Could not reload cancelled task: ${error instanceof Error ? error.message : String(error)}`,
+					)
+				}
+			}
+		} else if (this.isTaskBackgrounded) {
+			this.runningTaskMonitor.update(task, "cancelled")
+			task.abortReason = "user_cancelled"
+			task.cancelCurrentRequest()
+			await task.abortTask()
+		}
+	}
 	private currentWorkspacePath: string | undefined
 	private _disposed = false
 
@@ -172,6 +279,12 @@ export class ClineProvider
 	) {
 		super()
 		this.currentWorkspacePath = getWorkspacePath()
+		this.commandActivitySubscription = CommandActivity.onChange(() => {
+			void this.postMessageToWebview({
+				type: "commandActivitiesUpdated",
+				commandActivities: this.getCommandActivities(),
+			})
+		})
 
 		ClineProvider.activeInstances.add(this)
 
@@ -218,6 +331,7 @@ export class ClineProvider
 		// Forward <most> task events to the provider.
 		// We do something fairly similar for the IPC-based API.
 		this.taskCreationCallback = (instance: Task) => {
+			const cleanupRunningTask = this.runningTaskMonitor.track(instance)
 			this.emit(RooCodeEventName.TaskCreated, instance)
 
 			// Create named listener functions so we can remove them later.
@@ -241,9 +355,23 @@ export class ClineProvider
 						}
 
 						const { historyItem } = await this.getTaskWithId(instance.taskId)
+						if (this.getCurrentTask() !== instance || instance.abortReason !== "streaming_failed") return
 						const rootTask = instance.rootTask
 						const parentTask = instance.parentTask
-						await this.createTaskWithHistoryItem({ ...historyItem, rootTask, parentTask })
+						await this.createTaskWithHistoryItem(
+							{ ...historyItem, rootTask, parentTask },
+							{
+								internal: true,
+								assertCurrent: () => {
+									if (
+										this.getCurrentTask() !== instance ||
+										instance.abortReason !== "streaming_failed"
+									) {
+										throw new Error("Streaming recovery was superseded.")
+									}
+								},
+							},
+						)
 					}
 				} catch (error) {
 					this.log(
@@ -284,6 +412,7 @@ export class ClineProvider
 
 			// Store the cleanup functions for later removal.
 			this.taskEventListeners.set(instance, [
+				cleanupRunningTask,
 				() => instance.off(RooCodeEventName.TaskStarted, onTaskStarted),
 				() => instance.off(RooCodeEventName.TaskCompleted, onTaskCompleted),
 				() => instance.off(RooCodeEventName.TaskAborted, onTaskAborted),
@@ -413,6 +542,7 @@ export class ClineProvider
 			getStorageRoot: () => getStorageBasePath(this.context.globalStorageUri.fsPath),
 			getWorkspacePath: () => getWorkspacePath(),
 			validateStandalone: async (task) => {
+				if (this.isTaskBackgrounded) throw new ModelOperationBlocked("Return to the background task first.")
 				if (this._disposed || this.clineStack.length !== 1 || this.getCurrentTask() !== task) {
 					throw new ModelOperationBlocked("Only the current loaded standalone task can be branched.")
 				}
@@ -437,6 +567,7 @@ export class ClineProvider
 			},
 			createBranch: (source, snapshot, profileId) => this.createModelOperationBranch(source, snapshot, profileId),
 			activateBranch: (source, branch) => {
+				if (this.isTaskBackgrounded) throw new ModelOperationBlocked("Return to the background task first.")
 				if (
 					this._disposed ||
 					this.clineStack.length !== 1 ||
@@ -463,11 +594,28 @@ export class ClineProvider
 		}))
 	}
 
-	public handleModelOperation(payload: unknown) {
-		return this.getModelOperationCoordinator().run(payload)
+	public async handleModelOperation(payload: unknown) {
+		if (this.warnIfTaskBackgrounded() || this.modelOperationInProgress)
+			return {
+				operationId: "background-blocked",
+				status: "blocked" as const,
+				message: "Return to the task and wait for the current operation to finish.",
+			}
+		this.modelOperationInProgress = true
+		try {
+			return await this.getModelOperationCoordinator().run(payload)
+		} finally {
+			this.modelOperationInProgress = false
+		}
 	}
 
 	public handleModelOperationApproval(payload: unknown) {
+		if (this.isTaskBackgrounded)
+			return Promise.resolve({
+				operationId: "background-blocked",
+				status: "blocked" as const,
+				message: "Return to the task before approving.",
+			})
 		return this.getModelOperationCoordinator().respondToApproval(payload)
 	}
 
@@ -553,7 +701,8 @@ export class ClineProvider
 
 	// Dispose the current instance, but preserve durable delegation for history resume.
 	// Only destructive removal abandons a child's pending return to its parent.
-	async removeClineFromStack(options?: { abandonDelegation?: boolean }) {
+	async removeClineFromStack(options?: { abandonDelegation?: boolean; internal?: boolean }) {
+		if (!options?.internal && !this._disposed) this.assertTaskForegrounded()
 		this.delegationRevision++
 		if (this.clineStack.length === 0) {
 			return
@@ -561,6 +710,7 @@ export class ClineProvider
 
 		// Pop the top Cline instance from the stack.
 		let task = this.clineStack.pop()
+		if (!options?.internal) this.runningTaskMonitor.clear()
 
 		if (task) {
 			// Capture delegation metadata before abort/dispose, since abortTask(true)
@@ -714,6 +864,9 @@ export class ClineProvider
 		}
 
 		this._disposed = true
+		this.commandActivitySubscription?.()
+		this.commandActivitySubscription = undefined
+		this.runningTaskMonitor.clear()
 		this.log("Disposing ClineProvider...")
 
 		// Clear all tasks from the stack.
@@ -1007,15 +1160,16 @@ export class ClineProvider
 		// If the extension is starting a new session, clear previous task state.
 		// But don't clear if there's already an active task (e.g., resumed via IPC/bridge).
 		const currentTask = this.getCurrentTask()
-		if (!currentTask || currentTask.abandoned || currentTask.abort) {
+		if (!this.isTaskBackgrounded && (!currentTask || currentTask.abandoned || currentTask.abort)) {
 			await this.removeClineFromStack()
 		}
 	}
 
 	public async createTaskWithHistoryItem(
 		historyItem: HistoryItem & { rootTask?: Task; parentTask?: Task },
-		options?: { startTask?: boolean; assertCurrent?: () => void },
+		options?: { startTask?: boolean; assertCurrent?: () => void; internal?: boolean },
 	) {
+		if (!options?.internal) this.assertTaskForegrounded()
 		options?.assertCurrent?.()
 		const isCliRuntime = process.env.ROO_CLI_RUNTIME === "1"
 		// CLI injects runtime provider settings from command flags/env at startup.
@@ -1028,7 +1182,7 @@ export class ClineProvider
 		const isRehydratingCurrentTask = currentTask && currentTask.taskId === historyItem.id
 
 		if (!isRehydratingCurrentTask) {
-			await this.removeClineFromStack()
+			await this.removeClineFromStack({ internal: options?.internal })
 		}
 
 		// If the history item has a saved mode, restore it and its associated API configuration.
@@ -1128,6 +1282,7 @@ export class ClineProvider
 
 		const { apiConfiguration, enableCheckpoints, checkpointTimeout, experiments } = await this.getState()
 
+		if (!options?.internal) this.assertTaskForegrounded()
 		options?.assertCurrent?.()
 		// Opening a waiting parent directly resumes it independently of its child.
 		// Revoke the pending return before constructing a task that can write or run.
@@ -1143,6 +1298,7 @@ export class ClineProvider
 				options?.assertCurrent?.()
 			}
 		}
+		if (!options?.internal) this.assertTaskForegrounded()
 		const task = new Task({
 			provider: this,
 			apiConfiguration,
@@ -1251,6 +1407,21 @@ export class ClineProvider
 	public async postMessageToWebview(message: ExtensionMessage) {
 		if (this._disposed) {
 			return
+		}
+		if (
+			this.isTaskBackgrounded &&
+			(message.type === "invoke" ||
+				(message.type === "action" &&
+					(message.action === "chatButtonClicked" ||
+						message.action === "focusInput" ||
+						message.action === "didBecomeVisible")))
+		)
+			return
+		// State assembly is asynchronous. Never let an older snapshot undo a monitor event.
+		if (message.type === "state" && message.state) {
+			this.runningTaskMonitor.syncApproval()
+			message.state.runningTask = this.runningTaskMonitor.value
+			message.state.commandActivities = this.getCommandActivities()
 		}
 
 		try {
@@ -1903,6 +2074,7 @@ export class ClineProvider
 	}
 
 	async showTaskWithId(id: string) {
+		if (this.warnIfTaskBackgrounded()) return
 		if (id !== this.getCurrentTask()?.taskId) {
 			// Non-current task.
 			const { historyItem } = await this.getTaskWithId(id)
@@ -1952,6 +2124,8 @@ export class ClineProvider
 	// this function deletes a task from task history, and deletes its checkpoints and delete the task folder
 	// If the task has subtasks (childIds), they will also be deleted recursively
 	async deleteTaskWithId(id: string, cascadeSubtasks: boolean = true) {
+		// Reject all deletion while backgrounded, including ancestor deletion without a cascade.
+		if (this.warnIfTaskBackgrounded()) return
 		try {
 			// get the task directory full path and history item
 			const { taskDirPath, historyItem } = await this.getTaskWithId(id)
@@ -1979,6 +2153,7 @@ export class ClineProvider
 				await collectChildIds(id)
 			}
 
+			if (this.warnIfTaskBackgrounded()) return
 			// Remove from stack if any of the tasks to delete are in the current task stack
 			for (const taskId of allIdsToDelete) {
 				if (taskId === this.getCurrentTask()?.taskId) {
@@ -2031,6 +2206,7 @@ export class ClineProvider
 	}
 
 	async deleteTaskFromState(id: string) {
+		if (this.warnIfTaskBackgrounded()) return
 		await this.taskHistoryStore.delete(id)
 		this.recentTasksCache = undefined
 
@@ -2236,6 +2412,13 @@ export class ClineProvider
 			alwaysAllowModeSwitch,
 			alwaysAllowSubtasks,
 			alwaysAllowNestedSubtasks,
+			managedEnvironmentsEnabled,
+			alwaysAllowManagedEnvironments,
+			managedEnvironmentsRoot,
+			managedEnvironmentsPythonPath,
+			managedEnvironmentsMaxDownloadMb,
+			managedEnvironmentsMaxDiskMb,
+			managedEnvironmentsTimeoutSeconds,
 			allowedMaxRequests,
 			allowedMaxCost,
 			autoCondenseContext,
@@ -2332,12 +2515,20 @@ export class ClineProvider
 			alwaysAllowModeSwitch: alwaysAllowModeSwitch ?? false,
 			alwaysAllowSubtasks: alwaysAllowSubtasks ?? false,
 			alwaysAllowNestedSubtasks: alwaysAllowNestedSubtasks ?? false,
+			managedEnvironmentsEnabled: managedEnvironmentsEnabled ?? false,
+			alwaysAllowManagedEnvironments: alwaysAllowManagedEnvironments ?? false,
+			managedEnvironmentsRoot,
+			managedEnvironmentsPythonPath,
+			managedEnvironmentsMaxDownloadMb: managedEnvironmentsMaxDownloadMb ?? 512,
+			managedEnvironmentsMaxDiskMb: managedEnvironmentsMaxDiskMb ?? 2048,
+			managedEnvironmentsTimeoutSeconds: managedEnvironmentsTimeoutSeconds ?? 600,
 			allowedMaxRequests,
 			allowedMaxCost,
 			autoCondenseContext: autoCondenseContext ?? true,
 			autoCondenseContextPercent: autoCondenseContextPercent ?? 100,
 			uriScheme: vscode.env.uriScheme,
 			currentTaskId: currentTask?.taskId,
+			runningTask: this.runningTaskMonitor.value,
 			modelOperation: currentTask?.modelOperationState,
 			currentTaskItem: currentTask?.taskId ? this.taskHistoryStore.get(currentTask.taskId) : undefined,
 			clineMessages: currentTask?.clineMessages || [],
@@ -2498,6 +2689,13 @@ export class ClineProvider
 			alwaysAllowModeSwitch: stateValues.alwaysAllowModeSwitch ?? false,
 			alwaysAllowSubtasks: stateValues.alwaysAllowSubtasks ?? false,
 			alwaysAllowNestedSubtasks: stateValues.alwaysAllowNestedSubtasks ?? false,
+			managedEnvironmentsEnabled: stateValues.managedEnvironmentsEnabled ?? false,
+			alwaysAllowManagedEnvironments: stateValues.alwaysAllowManagedEnvironments ?? false,
+			managedEnvironmentsRoot: stateValues.managedEnvironmentsRoot,
+			managedEnvironmentsPythonPath: stateValues.managedEnvironmentsPythonPath,
+			managedEnvironmentsMaxDownloadMb: stateValues.managedEnvironmentsMaxDownloadMb ?? 512,
+			managedEnvironmentsMaxDiskMb: stateValues.managedEnvironmentsMaxDiskMb ?? 2048,
+			managedEnvironmentsTimeoutSeconds: stateValues.managedEnvironmentsTimeoutSeconds ?? 600,
 			alwaysAllowFollowupQuestions: stateValues.alwaysAllowFollowupQuestions ?? false,
 			followupAutoApproveTimeoutMs: stateValues.followupAutoApproveTimeoutMs ?? 60000,
 			diagnosticsEnabled: stateValues.diagnosticsEnabled ?? true,
@@ -2735,6 +2933,7 @@ export class ClineProvider
 	// dev
 
 	async resetState() {
+		if (this.warnIfTaskBackgrounded()) return
 		const answer = await vscode.window.showInformationMessage(
 			t("common:confirmation.reset_state"),
 			{ modal: true },
@@ -2744,6 +2943,7 @@ export class ClineProvider
 		if (answer !== t("common:answers.yes")) {
 			return
 		}
+		if (this.warnIfTaskBackgrounded()) return
 
 		await this.contextProxy.resetAllState()
 		await this.providerSettingsManager.resetAllConfigs()
@@ -2907,6 +3107,7 @@ export class ClineProvider
 		options: CreateTaskOptions = {},
 		configuration: RooCodeSettings = {},
 	): Promise<Task> {
+		if (!parentTask) this.assertTaskForegrounded()
 		if (configuration) {
 			await this.setValues(configuration)
 
@@ -2952,6 +3153,7 @@ export class ClineProvider
 
 		// Single-open-task invariant: always enforce for user-initiated top-level tasks
 		if (!parentTask) {
+			this.assertTaskForegrounded()
 			try {
 				await this.removeClineFromStack()
 			} catch {
@@ -2994,6 +3196,7 @@ export class ClineProvider
 	}
 
 	public async cancelTask(): Promise<void> {
+		if (this.warnIfTaskBackgrounded()) return
 		const task = this.getCurrentTask()
 
 		if (!task) {
@@ -3018,6 +3221,7 @@ export class ClineProvider
 		}
 
 		// Preserve parent and root task information for history item.
+		if (this.getCurrentTask() !== task || this.warnIfTaskBackgrounded()) return
 		const rootTask = task.rootTask
 		const parentTask = task.parentTask
 
@@ -3078,11 +3282,12 @@ export class ClineProvider
 		}
 
 		// Clears task again, so we need to abortTask manually above.
-		await this.createTaskWithHistoryItem({ ...historyItem, rootTask, parentTask })
+		await this.createTaskWithHistoryItem({ ...historyItem, rootTask, parentTask }, { internal: true })
 	}
 
 	// Close the current instance while preserving any pending delegation for resume.
 	public async clearTask(): Promise<void> {
+		if (this.warnIfTaskBackgrounded()) return
 		if (this.clineStack.length > 0) {
 			const task = this.clineStack[this.clineStack.length - 1]
 			console.log(`[clearTask] clearing task ${task.taskId}.${task.instanceId}`)
@@ -3153,6 +3358,7 @@ export class ClineProvider
 			return await this.performDelegation(structuredClone(params))
 		} finally {
 			this.delegationInProgress = false
+			if (!this.getCurrentTask()) this.runningTaskMonitor.clear()
 		}
 	}
 
@@ -3222,7 +3428,7 @@ export class ClineProvider
 		//    This ensures we never have >1 tasks open at any time during delegation.
 		//    Await abort completion to ensure clean disposal and prevent unhandled rejections.
 		try {
-			await this.removeClineFromStack()
+			await this.removeClineFromStack({ internal: true })
 		} catch (error) {
 			this.log(
 				`[delegateParentAndOpenChild] Error during parent disposal (non-fatal): ${
@@ -3463,7 +3669,7 @@ export class ClineProvider
 			// Closing the child saves its final history and preserves the parent's
 			// delegation metadata until the completion transition below.
 			const closeRevision = this.delegationRevision + 1
-			await this.removeClineFromStack()
+			await this.removeClineFromStack({ internal: true })
 			const assertNoReplacement = () => {
 				if (this.getCurrentTask() || this.delegationRevision !== closeRevision) {
 					throw new Error("Subtask return interrupted by another task. Resume the parent from history.")
@@ -3488,6 +3694,7 @@ export class ClineProvider
 			this.emit(RooCodeEventName.TaskCompleted, childTaskId, child!.getTokenUsage(), child!.toolUsage)
 			this.emit(RooCodeEventName.TaskDelegationCompleted, parentTaskId, childTaskId, completionResultSummary)
 			const parentInstance = await this.createTaskWithHistoryItem(updatedHistory, {
+				internal: true,
 				startTask: false,
 				assertCurrent: () => {
 					if (this.getCurrentTask()) throw new Error("Subtask return interrupted by another task.")
@@ -3505,6 +3712,7 @@ export class ClineProvider
 			this.emit(RooCodeEventName.TaskDelegationResumed, parentTaskId, childTaskId)
 		} finally {
 			this.delegationReturnInProgress = false
+			if (!this.getCurrentTask()) this.runningTaskMonitor.clear()
 		}
 	}
 

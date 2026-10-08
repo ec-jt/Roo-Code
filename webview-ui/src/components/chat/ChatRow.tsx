@@ -1005,6 +1005,20 @@ export const ChatRowContent = ({
 						)}
 					</>
 				)
+			case "managedEnvironment":
+				return (
+					<section className="text-sm space-y-2">
+						<strong>
+							{t("settings:managedEnvironments.title")}: {tool.action}
+						</strong>
+						<p className="text-vscode-descriptionForeground">
+							{t("settings:managedEnvironments.approval")}
+						</p>
+						<pre className="whitespace-pre-wrap break-all max-h-96 overflow-auto text-xs border border-vscode-panel-border p-2">
+							{tool.content}
+						</pre>
+					</section>
+				)
 			default:
 				return (
 					<>

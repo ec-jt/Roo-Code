@@ -98,7 +98,31 @@ const ApiConfigTestComponent = () => {
 	)
 }
 
+const MonitorState = () => {
+	const { runningTask } = useExtensionState()
+	return <div data-testid="monitor-state">{runningTask?.instanceId ?? "none"}</div>
+}
+
 describe("ExtensionStateContext", () => {
+	it("accepts monitor updates and explicit clears without replacing chat messages", () => {
+		render(
+			<ExtensionStateContextProvider>
+				<MonitorState />
+			</ExtensionStateContextProvider>,
+		)
+		act(() => {
+			window.dispatchEvent(
+				new MessageEvent("message", {
+					data: { type: "runningTaskUpdated", runningTask: { instanceId: "child" } },
+				}),
+			)
+		})
+		expect(screen.getByTestId("monitor-state")).toHaveTextContent("child")
+		act(() => {
+			window.dispatchEvent(new MessageEvent("message", { data: { type: "runningTaskUpdated" } }))
+		})
+		expect(screen.getByTestId("monitor-state")).toHaveTextContent("none")
+	})
 	it("defaults to Chromium and restores saved Chrome through state hydration", () => {
 		render(
 			<ExtensionStateContextProvider>

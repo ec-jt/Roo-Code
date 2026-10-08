@@ -61,6 +61,7 @@ const App = () => {
 		cloudIsAuthenticated,
 		cloudApiUrl,
 		cloudOrganizations,
+		runningTask,
 	} = useExtensionState()
 
 	// Create a persistent state manager
@@ -68,6 +69,10 @@ const App = () => {
 
 	const [showAnnouncement, setShowAnnouncement] = useState(false)
 	const [tab, setTab] = useState<Tab>("chat")
+	// A webview reload must not expose interactive chat controls for background work.
+	useEffect(() => {
+		if (runningTask?.background && tab === "chat") setTab("history")
+	}, [runningTask?.background, tab])
 
 	const [deleteMessageDialogState, setDeleteMessageDialogState] = useState<DeleteMessageDialogState>({
 		isOpen: false,
@@ -86,16 +91,27 @@ const App = () => {
 	const settingsRef = useRef<SettingsViewRef>(null)
 	const chatViewRef = useRef<ChatViewRef>(null)
 
-	const switchTab = useCallback((newTab: Tab) => {
-		setCurrentSection(undefined)
-		setCurrentMarketplaceTab(undefined)
+	const switchTab = useCallback(
+		(newTab: Tab) => {
+			if (newTab === "chat" && runningTask?.background) {
+				vscode.postMessage({
+					type: "foregroundTask",
+					taskId: runningTask.taskId,
+					instanceId: runningTask.instanceId,
+				})
+				return
+			}
+			setCurrentSection(undefined)
+			setCurrentMarketplaceTab(undefined)
 
-		if (settingsRef.current?.checkUnsaveChanges) {
-			settingsRef.current.checkUnsaveChanges(() => setTab(newTab))
-		} else {
-			setTab(newTab)
-		}
-	}, [])
+			if (settingsRef.current?.checkUnsaveChanges) {
+				settingsRef.current.checkUnsaveChanges(() => setTab(newTab))
+			} else {
+				setTab(newTab)
+			}
+		},
+		[runningTask],
+	)
 
 	const [currentSection, setCurrentSection] = useState<string | undefined>(undefined)
 	const [currentMarketplaceTab, setCurrentMarketplaceTab] = useState<string | undefined>(undefined)
@@ -239,7 +255,7 @@ const App = () => {
 			)}
 			<ChatView
 				ref={chatViewRef}
-				isHidden={tab !== "chat"}
+				isHidden={tab !== "chat" || runningTask?.background === true}
 				showAnnouncement={showAnnouncement}
 				hideAnnouncement={() => setShowAnnouncement(false)}
 			/>

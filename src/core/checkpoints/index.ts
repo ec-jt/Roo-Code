@@ -14,6 +14,7 @@ import { getApiMetrics } from "../../shared/getApiMetrics"
 import { DIFF_VIEW_URI_SCHEME } from "../../integrations/editor/DiffViewProvider"
 
 import { CheckpointServiceOptions, RepoPerTaskCheckpointService } from "../../services/checkpoints"
+import { getCheckpointEnvironmentWarning } from "../../services/managed-environments/checkpoint"
 
 const WARNING_THRESHOLD_MS = 5000
 
@@ -251,6 +252,14 @@ export async function checkpointRestore(
 
 	try {
 		await service.restoreCheckpoint(commitHash)
+		try {
+			const warning = await getCheckpointEnvironmentWarning(task)
+			if (warning) void vscode.window.showWarningMessage(warning)
+		} catch {
+			void vscode.window.showWarningMessage(
+				"Workspace restored, but managed environment compatibility could not be checked. Environments were not changed.",
+			)
+		}
 		await provider?.postMessageToWebview({ type: "currentCheckpointUpdated", text: commitHash })
 
 		if (mode === "restore") {

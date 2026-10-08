@@ -23,6 +23,7 @@ import { ProfileValidator } from "@roo/ProfileValidator"
 import { getLatestTodo } from "@roo/todo"
 
 import { vscode } from "@src/utils/vscode"
+import { RunningTaskMonitor } from "./RunningTaskMonitor"
 import { useAppTranslation } from "@src/i18n/TranslationContext"
 import { useExtensionState } from "@src/context/ExtensionStateContext"
 import { useSelectedModel } from "@src/components/ui/hooks/useSelectedModel"
@@ -1681,7 +1682,6 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 							atBottomThreshold={10}
 						/>
 					</div>
-					<FileChangesPanel clineMessages={messages} />
 					{!showScrollToBottom && enableButtons && clineAsk === "tool" && (
 						<AlwaysAllowReadOnlyButton message={messages.at(-1)} />
 					)}
@@ -1775,6 +1775,8 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 				</>
 			)}
 
+			{task && <FileChangesPanel clineMessages={messages} />}
+			<RunningTaskMonitor visible={!isHidden} />
 			<QueuedMessages
 				queue={messageQueue}
 				onRemove={(index) => {

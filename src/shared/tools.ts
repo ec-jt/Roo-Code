@@ -31,6 +31,7 @@ export interface TextContent {
 
 export const toolParamNames = [
 	"command",
+	"manifest_path",
 	"path",
 	"content",
 	"regex",
@@ -99,6 +100,7 @@ export type ToolParamName = (typeof toolParamNames)[number]
  * Tools not listed here will fall back to `any` for backward compatibility.
  */
 export type NativeToolArgs = {
+	managed_environment: { action: "prepare" | "install" | "status"; manifest_path: string }
 	access_mcp_resource: { server_name: string; uri: string }
 	brave_web_search: { query: string; count?: number; offset?: number }
 	brave_local_search: { query: string; count?: number }
@@ -298,6 +300,7 @@ export type ToolGroupConfig = {
 }
 
 export const TOOL_DISPLAY_NAMES: Record<ToolName, string> = {
+	managed_environment: "manage Roo-owned Python environments",
 	execute_command: "run commands",
 	browser_action: "use a browser",
 	read_file: "read files",
@@ -360,7 +363,7 @@ export const TOOL_GROUPS: Record<ToolGroup, ToolGroupConfig> = {
 		tools: ["browser_action"],
 	},
 	command: {
-		tools: ["execute_command", "read_command_output"],
+		tools: ["execute_command", "read_command_output", "managed_environment"],
 	},
 	mcp: {
 		tools: ["use_mcp_tool", "access_mcp_resource"],

@@ -294,6 +294,62 @@ describe("webviewMessageHandler - image mentions", () => {
 			"data:image/png;base64,from-mention",
 		])
 	})
+
+	it.each(["replacement", "background", "new ask"])(
+		"does not redirect an async response after %s",
+		async (change) => {
+			const task = {
+				taskId: "task",
+				instanceId: "instance",
+				clineMessages: [{ ts: 1 }],
+				handleWebviewAskResponse: vi.fn(),
+			}
+			const replacement = { ...task, instanceId: "new-instance", handleWebviewAskResponse: vi.fn() }
+			vi.mocked(mockClineProvider.getCurrentTask).mockReturnValue(task as any)
+			let resolve!: (value: any) => void
+			vi.mocked(resolveImageMentions).mockImplementationOnce(
+				() =>
+					new Promise((done) => {
+						resolve = done
+					}),
+			)
+			const response = webviewMessageHandler(mockClineProvider, {
+				type: "askResponse",
+				askResponse: "yesButtonClicked",
+				text: "@/img.png",
+			})
+			await vi.waitFor(() => expect(resolve).toBeDefined())
+			if (change === "replacement")
+				vi.mocked(mockClineProvider.getCurrentTask).mockReturnValue(replacement as any)
+			if (change === "background") Object.assign(mockClineProvider, { isTaskBackgrounded: true })
+			if (change === "new ask") task.clineMessages.push({ ts: 2 })
+			resolve({ text: "resolved", images: [] })
+			await response
+			expect(task.handleWebviewAskResponse).not.toHaveBeenCalled()
+			expect(replacement.handleWebviewAskResponse).not.toHaveBeenCalled()
+			Object.assign(mockClineProvider, { isTaskBackgrounded: false })
+		},
+	)
+
+	it("rejects hidden approvals and dispatches correlated monitor controls", async () => {
+		const warn = vi.fn()
+		const control = vi.fn()
+		Object.assign(mockClineProvider, {
+			isTaskBackgrounded: true,
+			warnIfTaskBackgrounded: warn,
+			handleRunningTaskControl: control,
+		})
+		await webviewMessageHandler(mockClineProvider, { type: "askResponse", askResponse: "yesButtonClicked" })
+		expect(warn).toHaveBeenCalledOnce()
+		expect(resolveImageMentions).not.toHaveBeenCalled()
+		await webviewMessageHandler(mockClineProvider, {
+			type: "foregroundTask",
+			taskId: "task",
+			instanceId: "instance",
+		})
+		expect(control).toHaveBeenCalledWith("foregroundTask", "task", "instance")
+		Object.assign(mockClineProvider, { isTaskBackgrounded: false })
+	})
 })
 
 describe("webviewMessageHandler - requestOllamaModels", () => {

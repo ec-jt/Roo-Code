@@ -12,6 +12,7 @@ import { defaultModeSlug, getFullModeDetails } from "../../shared/modes"
 import { getApiMetrics } from "../../shared/getApiMetrics"
 import { listFiles } from "../../services/glob/list-files"
 import { TerminalRegistry } from "../../integrations/terminal/TerminalRegistry"
+import { scopedCommandActivities, formatCommandActivityContext } from "../../integrations/terminal/activityScope"
 import { Terminal } from "../../integrations/terminal/Terminal"
 import { arePathsEqual } from "../../utils/path"
 import { formatResponse } from "../prompts/responses"
@@ -82,6 +83,7 @@ export async function getEnvironmentDetails(cline: Task, includeFileDetails: boo
 	}
 
 	// Get task-specific and background terminals.
+	details += formatCommandActivityContext(scopedCommandActivities(cline.cwd, cline.taskId))
 	const busyTerminals = [
 		...TerminalRegistry.getTerminals(true, cline.taskId),
 		...TerminalRegistry.getBackgroundTerminals(true),

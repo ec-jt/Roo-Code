@@ -32,10 +32,38 @@ import type { WorktreeIncludeStatus } from "./worktree.js"
  * ExtensionMessage
  * Extension -> Webview | CLI
  */
+export interface RunningTaskInfo {
+	taskId: string
+	instanceId: string
+	title: string
+	startedAt: number
+	stoppedAt?: number
+	status: "running" | "approval" | "input" | "completed" | "cancelled" | "failed"
+	background: boolean
+}
+
+export interface CommandActivityInfo {
+	id: string
+	terminalId: number
+	taskId?: string
+	command: string
+	cwd: string
+	provider: "vscode" | "execa"
+	startedAt: number
+	endedAt?: number
+	status: "running" | "completed" | "failed" | "unknown" | "stopping"
+	exitCode?: number
+	canStop: boolean
+	canShowTerminal: boolean
+	outputTail: string
+}
+
 export interface ExtensionMessage {
 	type:
 		| "action"
 		| "state"
+		| "runningTaskUpdated"
+		| "commandActivitiesUpdated"
 		| "modelOperationStatus"
 		| "taskHistoryUpdated"
 		| "taskHistoryItemUpdated"
@@ -140,6 +168,8 @@ export interface ExtensionMessage {
 	 * The webview is responsible for merging.
 	 */
 	state?: Partial<ExtensionState>
+	runningTask?: RunningTaskInfo
+	commandActivities?: CommandActivityInfo[]
 	modelOperationStatus?: ModelOperationStatus
 	images?: string[]
 	filePaths?: string[]
@@ -270,6 +300,13 @@ export type ExtensionState = Pick<
 	| "dismissedUpsells"
 	| "autoApprovalEnabled"
 	| "alwaysAllowReadOnly"
+	| "managedEnvironmentsEnabled"
+	| "alwaysAllowManagedEnvironments"
+	| "managedEnvironmentsRoot"
+	| "managedEnvironmentsPythonPath"
+	| "managedEnvironmentsMaxDownloadMb"
+	| "managedEnvironmentsMaxDiskMb"
+	| "managedEnvironmentsTimeoutSeconds"
 	| "alwaysAllowReadOnlyOutsideWorkspace"
 	| "alwaysAllowWrite"
 	| "alwaysAllowWriteOutsideWorkspace"
@@ -344,6 +381,8 @@ export type ExtensionState = Pick<
 	version: string
 	clineMessages: ClineMessage[]
 	currentTaskId?: string
+	runningTask?: RunningTaskInfo
+	commandActivities?: CommandActivityInfo[]
 	modelOperation?: ModelOperationState
 	currentTaskItem?: HistoryItem
 	currentTaskTodos?: TodoItem[] // Initial todos for the current task
@@ -445,6 +484,10 @@ export type EditQueuedMessagePayload = Pick<QueuedMessage, "id" | "text" | "imag
 export interface WebviewMessage {
 	type:
 		| "updateTodoList"
+		| "backgroundTask"
+		| "foregroundTask"
+		| "cancelBackgroundTask"
+		| "commandActivityControl"
 		| "modelOperation"
 		| "modelOperationApproval"
 		| "deleteMultipleTasksWithIds"
@@ -614,6 +657,8 @@ export interface WebviewMessage {
 		| "openSkillFile"
 	text?: string
 	taskId?: string
+	instanceId?: string
+	commandActivityControl?: { id: string; action: "stop" | "show" }
 	modelOperation?: ModelOperation
 	modelOperationApproval?: ModelOperationApproval
 	editedMessageContent?: string
@@ -813,6 +858,7 @@ export interface ClineSayTool {
 		| "generateImage"
 		| "imageGenerated"
 		| "fileSystem"
+		| "managedEnvironment"
 		| "markdownify"
 		| "gitRepoResearch"
 		| "gitTools"

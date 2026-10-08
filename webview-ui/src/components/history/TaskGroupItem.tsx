@@ -7,6 +7,7 @@ import SubtaskCollapsibleRow from "./SubtaskCollapsibleRow"
 import SubtaskRow from "./SubtaskRow"
 
 interface TaskGroupItemProps {
+	background?: boolean
 	/** The task group to render */
 	group: TaskGroup
 	/** Display variant - compact (preview) or full (history view) */
@@ -44,6 +45,7 @@ const TaskGroupItem = ({
 	onToggleExpand,
 	onToggleSubtaskExpand,
 	className,
+	background = false,
 }: TaskGroupItemProps) => {
 	const { parent, subtasks, isExpanded } = group
 	const hasSubtasks = subtasks.length > 0
@@ -59,6 +61,7 @@ const TaskGroupItem = ({
 			{/* Parent task */}
 			<TaskItem
 				item={parent}
+				background={background}
 				variant={variant}
 				showWorkspace={showWorkspace}
 				isSelectionMode={isSelectionMode}
@@ -84,7 +87,13 @@ const TaskGroupItem = ({
 						isExpanded ? "max-h-[70vh] overflow-y-auto pb-2" : "max-h-0 overflow-clip",
 					)}>
 					{subtasks.map((node) => (
-						<SubtaskRow key={node.item.id} node={node} depth={1} onToggleExpand={onToggleSubtaskExpand} />
+						<SubtaskRow
+							key={node.item.id}
+							node={node}
+							depth={1}
+							onToggleExpand={onToggleSubtaskExpand}
+							background={background}
+						/>
 					))}
 				</div>
 			)}

@@ -8,6 +8,7 @@ import { StandardTooltip } from "../ui"
 import SubtaskCollapsibleRow from "./SubtaskCollapsibleRow"
 
 interface SubtaskRowProps {
+	background?: boolean
 	/** The subtask tree node to display */
 	node: SubtaskTreeNode
 	/** Nesting depth (1 = direct child of parent group) */
@@ -23,11 +24,12 @@ interface SubtaskRowProps {
  * Leaf nodes render just the task row. Nodes with children show
  * a collapsible section that can be expanded to reveal nested subtasks.
  */
-const SubtaskRow = ({ node, depth, onToggleExpand, className }: SubtaskRowProps) => {
+const SubtaskRow = ({ node, depth, onToggleExpand, className, background = false }: SubtaskRowProps) => {
 	const { item, children, isExpanded } = node
 	const hasChildren = children.length > 0
 
 	const handleClick = () => {
+		if (background) return
 		vscode.postMessage({ type: "showTaskWithId", text: item.id })
 	}
 
@@ -42,7 +44,8 @@ const SubtaskRow = ({ node, depth, onToggleExpand, className }: SubtaskRowProps)
 				style={{ paddingLeft: `${depth * 16}px` }}
 				onClick={handleClick}
 				role="button"
-				tabIndex={0}
+				aria-disabled={background}
+				tabIndex={background ? -1 : 0}
 				onKeyDown={(e) => {
 					if (e.key === "Enter" || e.key === " ") {
 						e.preventDefault()
@@ -78,6 +81,7 @@ const SubtaskRow = ({ node, depth, onToggleExpand, className }: SubtaskRowProps)
 							key={child.item.id}
 							node={child}
 							depth={depth + 1}
+							background={background}
 							onToggleExpand={onToggleExpand}
 						/>
 					))}

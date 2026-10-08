@@ -1,4 +1,17 @@
 {
+	"managedEnvironments": {
+		"title": "Managed Python environments",
+		"description": "Experimental, Linux only. Create new Roo-owned environments from exact binary wheels on files.pythonhosted.org. Supply a workspace manifest with every dependency, version, wheel URL, SHA-256, and size. No source builds, runtime downloads, upgrades, or automatic activation.",
+		"enabled": "Enable the managed environment tool",
+		"root": "Private environment root outside the workspace (absolute path)",
+		"python": "Trusted CPython executable (absolute path, not a symlink or venv)",
+		"download": "Maximum download per install (MiB, up to 2048)",
+		"disk": "Observed disk budget per install (MiB, up to 20480; not a hard quota)",
+		"timeout": "Installation timeout (seconds, up to 3600)",
+		"autoApprove": "Auto-approve new managed binary-wheel installs",
+		"warning": "Auto-approval also requires the master auto-approval switch. This permission does not cover shell installs, system packages, drivers, existing environments, or running installed code. A venv is not a sandbox. Checkpoint restore changes files, not environments; compatibility warnings do not reinstall anything. Failed installs may leave partial data for explicit cleanup.",
+		"approval": "Review the exact plan below. Install downloads verified wheels and runs the trusted Python installer in a new environment. It does not change system packages or existing environments. Installed code can access your account when you later run it."
+	},
 	"back": "Back to tasks view",
 	"common": {
 		"save": "Save",

@@ -175,6 +175,25 @@ describe("App", () => {
 		expect(chatView.getAttribute("data-hidden")).toBe("false")
 	}, 10000)
 
+	it("keeps background chat hidden after hydration and returns only after foreground state", async () => {
+		const runningTask = { taskId: "task", instanceId: "instance", background: true }
+		const state = { didHydrateState: true, showWelcome: false, runningTask }
+		mockUseExtensionState.mockReturnValue(state)
+		const { rerender } = render(<AppWithProviders />)
+		expect(await screen.findByTestId("history-view")).toBeInTheDocument()
+		expect(screen.getByTestId("chat-view")).toHaveAttribute("data-hidden", "true")
+		act(() => {
+			screen.getByTestId("history-view").click()
+		})
+		expect(screen.getByTestId("chat-view")).toHaveAttribute("data-hidden", "true")
+		mockUseExtensionState.mockReturnValue({ ...state, runningTask: { ...runningTask, background: false } })
+		rerender(<AppWithProviders />)
+		act(() => {
+			triggerMessage("chatButtonClicked")
+		})
+		expect(screen.getByTestId("chat-view")).toHaveAttribute("data-hidden", "false")
+	})
+
 	it("switches to settings view when receiving settingsButtonClicked action", async () => {
 		render(<AppWithProviders />)
 

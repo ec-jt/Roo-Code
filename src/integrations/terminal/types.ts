@@ -43,6 +43,8 @@ export type RooTerminalProcessResultPromise = RooTerminalProcess & Promise<void>
 
 export interface RooTerminalProcessEvents {
 	line: [line: string]
+	/** Non-consuming output tap that remains attached after continue(). */
+	activity_output: [chunk: string]
 	continue: []
 	completed: [output?: string]
 	stream_available: [stream: AsyncIterable<string>]

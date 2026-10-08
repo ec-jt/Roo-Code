@@ -7,6 +7,7 @@ vitest.mock("execa", () => {
 	const execa = vitest.fn((options: any) => {
 		return (_template: TemplateStringsArray, ...args: any[]) => ({
 			pid: mockPid,
+			exitCode: 0,
 			iterable: (_opts: any) =>
 				(async function* () {
 					yield "test output\n"
@@ -21,10 +22,12 @@ vitest.mock("ps-tree", () => ({
 	default: vitest.fn((_: number, cb: any) => cb(null, [])),
 }))
 
-import { execa } from "execa"
+import { execa, ExecaError } from "execa"
 import { ExecaTerminalProcess } from "../ExecaTerminalProcess"
 import { BaseTerminal } from "../BaseTerminal"
 import type { RooTerminal } from "../types"
+import { ExecaTerminal } from "../ExecaTerminal"
+import { CommandActivity } from "../CommandActivity"
 
 describe("ExecaTerminalProcess", () => {
 	let mockTerminal: RooTerminal
@@ -53,8 +56,77 @@ describe("ExecaTerminalProcess", () => {
 	})
 
 	afterEach(() => {
+		CommandActivity.dispose()
 		process.env = originalEnv
 		vitest.clearAllMocks()
+	})
+
+	it("registers runCommand once and keeps background output separate from model reads", async () => {
+		const terminal = new ExecaTerminal(99, "/fake")
+		terminal.taskId = "captured-owner"
+		const callbacks = {
+			onLine: vi.fn(),
+			onCompleted: vi.fn(),
+			onShellExecutionStarted: vi.fn(),
+			onShellExecutionComplete: vi.fn(),
+		}
+		const result = terminal.runCommand("fake command", callbacks)
+		result.continue()
+		terminal.taskId = undefined
+		await vi.waitFor(() => expect(callbacks.onCompleted).toHaveBeenCalledOnce())
+		expect(CommandActivity.snapshot()).toEqual([
+			expect.objectContaining({
+				command: "fake command",
+				taskId: "captured-owner",
+				status: "completed",
+				outputTail: "test output\n",
+				canStop: false,
+			}),
+		])
+		expect(result.getUnretrievedOutput()).toBe("test output\n")
+		await result
+	})
+
+	it("does not infer exit from stream completion before the child settles", async () => {
+		let resolve!: (result: { exitCode: number }) => void
+		const child = Object.assign(
+			new Promise<{ exitCode: number }>((done) => {
+				resolve = done
+			}),
+			{
+				iterable: () =>
+					(async function* () {
+						yield "tail\n"
+					})(),
+				kill: vi.fn(),
+			},
+		)
+		vi.mocked(execa).mockImplementationOnce((() => () => child) as unknown as typeof execa)
+		const onExit = vi.fn()
+		terminalProcess.on("shell_execution_complete", onExit)
+		const run = terminalProcess.run("fake")
+		await vi.waitFor(() => expect(terminalProcess.hasUnretrievedOutput()).toBe(false))
+		expect(onExit).not.toHaveBeenCalled()
+		resolve({ exitCode: 7 })
+		await run
+		expect(onExit).toHaveBeenCalledWith({ exitCode: 7 })
+	})
+
+	it("reports killed children without fabricating a successful exit code", async () => {
+		const error = Object.assign(new ExecaError(), { message: "killed", signal: "SIGKILL" })
+		const child = {
+			iterable: () =>
+				(async function* () {
+					yield "before exit\n"
+					throw error
+				})(),
+			kill: vi.fn(),
+		}
+		vi.mocked(execa).mockImplementationOnce((() => () => child) as unknown as typeof execa)
+		const onExit = vi.fn()
+		terminalProcess.on("shell_execution_complete", onExit)
+		await terminalProcess.run("fake")
+		expect(onExit).toHaveBeenCalledWith({ exitCode: undefined, signalName: "SIGKILL" })
 	})
 
 	describe("UTF-8 encoding fix", () => {

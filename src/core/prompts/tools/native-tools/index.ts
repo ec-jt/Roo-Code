@@ -19,6 +19,7 @@ import gitRepoResearch from "./git_repo_research"
 import gitTools from "./git_tools"
 import listFiles from "./list_files"
 import markdownify from "./markdownify"
+import managedEnvironment from "./managed_environment"
 import newTask from "./new_task"
 import readCommandOutput from "./read_command_output"
 import { createReadFileTool, type ReadFileToolOptions } from "./read_file"
@@ -76,6 +77,7 @@ export function getNativeTools(options: NativeToolsOptions = {}): OpenAI.Chat.Ch
 		gitTools,
 		listFiles,
 		markdownify,
+		managedEnvironment,
 		newTask,
 		readCommandOutput,
 		createReadFileTool(readFileOptions),

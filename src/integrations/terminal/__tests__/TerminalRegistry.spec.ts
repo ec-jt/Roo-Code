@@ -3,6 +3,8 @@
 import * as vscode from "vscode"
 import { Terminal } from "../Terminal"
 import { TerminalRegistry } from "../TerminalRegistry"
+import { TerminalProcess } from "../TerminalProcess"
+import { CommandActivity } from "../CommandActivity"
 
 const PAGER = process.platform === "win32" ? "" : "cat"
 
@@ -34,6 +36,35 @@ describe("TerminalRegistry", () => {
 					},
 				}) as any,
 		)
+	})
+
+	it("marks closed terminals unknown and disposes activity listeners during cleanup", () => {
+		let close!: (terminal: vscode.Terminal) => void
+		const closeSpy = vi.spyOn(vscode.window, "onDidCloseTerminal").mockImplementation((callback) => {
+			close = callback
+			return { dispose: vi.fn() }
+		})
+		TerminalRegistry["isInitialized"] = false
+		TerminalRegistry.initialize()
+		try {
+			const terminal = TerminalRegistry.createTerminal("/fake", "vscode") as Terminal
+			const process = new TerminalProcess(terminal)
+			terminal.process = process
+			CommandActivity.register(terminal, process, "fake")
+			close(terminal.terminal)
+			expect(CommandActivity.snapshot()[0]).toMatchObject({
+				status: "unknown",
+				canStop: false,
+				canShowTerminal: false,
+			})
+			expect(process.listenerCount("activity_output")).toBe(0)
+			TerminalRegistry.cleanup()
+			expect(CommandActivity.snapshot()).toEqual([])
+		} finally {
+			TerminalRegistry.cleanup()
+			TerminalRegistry["isInitialized"] = false
+			closeSpy.mockRestore()
+		}
 	})
 
 	describe("createTerminal", () => {

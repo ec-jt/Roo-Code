@@ -2,6 +2,7 @@ import type { RooTerminalCallbacks, RooTerminalProcessResultPromise } from "./ty
 import { BaseTerminal } from "./BaseTerminal"
 import { ExecaTerminalProcess } from "./ExecaTerminalProcess"
 import { mergePromise } from "./mergePromise"
+import { CommandActivity } from "./CommandActivity"
 
 export class ExecaTerminal extends BaseTerminal {
 	constructor(id: number, cwd: string) {
@@ -21,6 +22,7 @@ export class ExecaTerminal extends BaseTerminal {
 		const process = new ExecaTerminalProcess(this)
 		process.command = command
 		this.process = process
+		CommandActivity.register(this, process, command)
 
 		process.on("line", (line) => callbacks.onLine(line, process))
 		process.once("completed", (output) => callbacks.onCompleted(output, process))

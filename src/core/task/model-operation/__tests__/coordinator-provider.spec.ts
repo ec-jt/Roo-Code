@@ -437,19 +437,18 @@ describe("ClineProvider model-operation integration", () => {
 				constructed.getTaskWithId = vi.fn().mockResolvedValue({ historyItem: { id: task.taskId } })
 				constructed.createTaskWithHistoryItem = vi.fn().mockResolvedValue(branch as unknown as Task)
 				;(constructed as any).taskCreationCallback(task)
-				const aborted = task.on.mock.calls.find(([event]) => event === RooCodeEventName.TaskAborted)?.[1]
-				expect(aborted).toBeTypeOf("function")
-				await aborted!()
+				const aborted = task.on.mock.calls.filter(([event]) => event === RooCodeEventName.TaskAborted)
+				expect(aborted.length).toBeGreaterThan(0)
+				for (const [, listener] of aborted) await listener()
 				if (fenced) {
 					expect(constructed.getTaskWithId).not.toHaveBeenCalled()
 					expect(constructed.createTaskWithHistoryItem).not.toHaveBeenCalled()
 				} else {
 					expect(constructed.getTaskWithId).toHaveBeenCalledExactlyOnceWith(task.taskId)
-					expect(constructed.createTaskWithHistoryItem).toHaveBeenCalledExactlyOnceWith({
-						id: task.taskId,
-						rootTask: undefined,
-						parentTask: undefined,
-					})
+					expect(constructed.createTaskWithHistoryItem).toHaveBeenCalledExactlyOnceWith(
+						{ id: task.taskId, rootTask: undefined, parentTask: undefined },
+						{ internal: true, assertCurrent: expect.any(Function) },
+					)
 				}
 			} finally {
 				// Avoid normal disposal, which would delete the source task's artifacts.

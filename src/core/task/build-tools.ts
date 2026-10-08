@@ -7,6 +7,7 @@ import { customToolRegistry, formatNative } from "@roo-code/core"
 
 import type { ClineProvider } from "../webview/ClineProvider"
 import { getRooDirectoriesForCwd } from "../../services/roo-config/index.js"
+import { getManagedEnvironmentPolicy } from "../../services/managed-environments/settings"
 
 import { getNativeTools, getMcpServerTools } from "../prompts/tools/native-tools"
 import {
@@ -128,6 +129,11 @@ export async function buildNativeToolsArrayWithRestrictions(options: BuildToolsO
 	// turned them off in Settings → Experimental → Native Tool Integrations
 	// OR because a required credential is missing.
 	const nativeToolGate = new Set<string>()
+	try {
+		getManagedEnvironmentPolicy(state)
+	} catch {
+		nativeToolGate.add("managed_environment")
+	}
 	const isUserEnabled = (name: string): boolean => {
 		if (!nativeToolEnabled) return true
 		const v = nativeToolEnabled[name]

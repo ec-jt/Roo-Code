@@ -40,6 +40,7 @@ import {
 } from "@roo-code/types"
 
 import { vscode } from "@src/utils/vscode"
+import { ManagedEnvironmentSettings } from "./ManagedEnvironmentSettings"
 import { cn } from "@src/lib/utils"
 import { useAppTranslation } from "@src/i18n/TranslationContext"
 import { ExtensionStateContextType, useExtensionState } from "@src/context/ExtensionStateContext"
@@ -512,6 +513,13 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 					maxDiagnosticMessages: maxDiagnosticMessages ?? 50,
 					alwaysAllowSubtasks,
 					alwaysAllowNestedSubtasks,
+					managedEnvironmentsEnabled: cachedState.managedEnvironmentsEnabled,
+					alwaysAllowManagedEnvironments: cachedState.alwaysAllowManagedEnvironments,
+					managedEnvironmentsRoot: cachedState.managedEnvironmentsRoot,
+					managedEnvironmentsPythonPath: cachedState.managedEnvironmentsPythonPath,
+					managedEnvironmentsMaxDownloadMb: cachedState.managedEnvironmentsMaxDownloadMb,
+					managedEnvironmentsMaxDiskMb: cachedState.managedEnvironmentsMaxDiskMb,
+					managedEnvironmentsTimeoutSeconds: cachedState.managedEnvironmentsTimeoutSeconds,
 					alwaysAllowFollowupQuestions: alwaysAllowFollowupQuestions ?? false,
 					followupAutoApproveTimeoutMs,
 					includeTaskHistoryInEnhance: includeTaskHistoryInEnhance ?? true,
@@ -1068,6 +1076,9 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 						)}
 
 						{/* Language Section */}
+						{renderTab === "experimental" && (
+							<ManagedEnvironmentSettings state={cachedState} setField={setCachedStateField} />
+						)}
 						{renderTab === "language" && (
 							<LanguageSettings language={language || "en"} setCachedStateField={setCachedStateField} />
 						)}

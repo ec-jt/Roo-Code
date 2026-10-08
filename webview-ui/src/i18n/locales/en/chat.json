@@ -1,4 +1,41 @@
 {
+	"backgroundActivity": {
+		"title": "Background activity",
+		"commands": "Commands: {{active}} active / {{total}} tracked",
+		"limitations": "Roo-launched commands in this workspace or current task, for this extension session. Not a host process list: detached processes and managed installer subprocesses are not listed separately. Unknown does not mean stopped. Output is a bounded tail; secret redaction is best effort.",
+		"empty": "No tracked commands in this scope.",
+		"elapsed": "{{seconds}}s elapsed",
+		"owner": "Task: {{task}} · Terminal: {{terminal}}",
+		"unassigned": "Unassigned",
+		"exit": "Exit code: {{code}}",
+		"show": "Show terminal",
+		"stop": "Stop command…",
+		"output": "Recent output",
+		"noOutput": "No captured output.",
+		"status": {
+			"running": "Running",
+			"stopping": "Stop requested",
+			"completed": "Completed",
+			"failed": "Failed",
+			"unknown": "Status unknown"
+		}
+	},
+	"runningTask": {
+		"title": "Task monitor",
+		"background": "Run in background",
+		"return": "Return to task",
+		"cancel": "Cancel task",
+		"timerHelp": "Elapsed time for this loaded task session, including approval waits. Resets when a new task instance loads.",
+		"notice": "Single-task background mode. Return to handle approvals or open another task. Background work stops when the extension host restarts.",
+		"status": {
+			"running": "Running",
+			"approval": "Needs approval",
+			"input": "Waiting for input",
+			"completed": "Completed",
+			"cancelled": "Cancelled",
+			"failed": "Failed"
+		}
+	},
 	"modelOperation": {
 		"regenerate": "Regenerate with model…",
 		"switch": "Stop and restart with this model",

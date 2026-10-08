@@ -102,6 +102,21 @@ function fixture() {
 describe("delegated child suspension and history resume", () => {
 	beforeEach(() => vi.clearAllMocks())
 
+	it("returns a background child to its parent without foregrounding or abandoning delegation", async () => {
+		const f = fixture()
+		await f.open("child")
+		const child = f.provider.getCurrentTask()!
+		await f.provider.handleRunningTaskControl("backgroundTask", child.taskId, child.instanceId)
+		expect(child.abortTask).not.toHaveBeenCalled()
+		await f.complete()
+		expect(f.callbacks.handleError).not.toHaveBeenCalled()
+		expect(f.provider.getCurrentTask()!.taskId).toBe("parent")
+		expect(f.provider.isTaskBackgrounded).toBe(true)
+		expect(f.histories.child.status).toBe("completed")
+		expect(f.histories.parent.awaitingChildId).toBeUndefined()
+		expect(f.provider.getCurrentTask()!.resumeAfterDelegation).toHaveBeenCalledOnce()
+	})
+
 	it.each(["close", "history-navigation"])("returns a reopened unfinished child after %s", async (action) => {
 		const f = fixture()
 		await f.open("child")

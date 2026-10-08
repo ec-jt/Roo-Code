@@ -3,6 +3,7 @@
 import Anthropic from "@anthropic-ai/sdk"
 import * as vscode from "vscode"
 import axios from "axios"
+import EventEmitter from "events"
 
 import {
 	type ProviderSettingsEntry,
@@ -11,6 +12,7 @@ import {
 	type ExtensionState,
 	ORGANIZATION_ALLOW_ALL,
 	DEFAULT_CHECKPOINT_TIMEOUT_SECONDS,
+	RooCodeEventName,
 } from "@roo-code/types"
 
 import { defaultModeSlug } from "../../../shared/modes"
@@ -449,6 +451,155 @@ describe("ClineProvider", () => {
 			listResources: vi.fn().mockResolvedValue([]),
 			readResource: vi.fn().mockResolvedValue({ contents: [] }),
 			getAllServers: vi.fn().mockReturnValue([]),
+		})
+	})
+
+	describe("single-stack background mode", () => {
+		function loadTask(taskId = "running", instanceId = "live") {
+			const task = Object.assign(new EventEmitter(), {
+				taskId,
+				instanceId,
+				metadata: { task: "Running task" },
+				clineMessages: [],
+				abortTask: vi.fn(async () => {}),
+				cancelCurrentRequest: vi.fn(),
+			}) as unknown as Task
+			;(provider as any).clineStack = [task]
+			;(provider as any).taskCreationCallback(task)
+			task.emit(RooCodeEventName.TaskFocused)
+			return task
+		}
+
+		it("backgrounds without aborting and requires both identities for all controls", async () => {
+			const task = loadTask()
+			const post = vi.spyOn(provider, "postMessageToWebview").mockResolvedValue(undefined)
+			await provider.handleRunningTaskControl("backgroundTask", task.taskId, "stale")
+			expect(provider.isTaskBackgrounded).toBe(false)
+			await provider.handleRunningTaskControl("backgroundTask", task.taskId, task.instanceId)
+			expect(provider.getCurrentTask()).toBe(task)
+			expect(task.abortTask).not.toHaveBeenCalled()
+			expect(post).toHaveBeenCalledWith({ type: "action", action: "historyButtonClicked" })
+			await provider.handleRunningTaskControl("cancelBackgroundTask", "other", task.instanceId)
+			await provider.handleRunningTaskControl("foregroundTask", task.taskId)
+			expect(task.abortTask).not.toHaveBeenCalled()
+			expect(provider.isTaskBackgrounded).toBe(true)
+			await provider.handleRunningTaskControl("foregroundTask", task.taskId, task.instanceId)
+			expect(provider.isTaskBackgrounded).toBe(false)
+			expect(post).toHaveBeenCalledWith({ type: "action", action: "chatButtonClicked" })
+		})
+
+		it("blocks replacement, active-lineage deletion, and legacy cancel before side effects", async () => {
+			const task = loadTask()
+			await provider.handleRunningTaskControl("backgroundTask", task.taskId, task.instanceId)
+			const history = vi.spyOn(provider, "getTaskWithId")
+			const settings = vi.spyOn(provider, "setValues")
+			await expect(provider.createTask("other")).rejects.toThrow("background task")
+			await expect(provider.createTaskWithHistoryItem({ id: "other" } as any)).rejects.toThrow("background task")
+			await expect(provider.removeClineFromStack()).rejects.toThrow("background task")
+			await provider.showTaskWithId("other")
+			await provider.showTaskWithId(task.taskId)
+			await provider.clearTask()
+			await provider.deleteTaskWithId("ancestor", false)
+			await provider.deleteTaskFromState(task.taskId)
+			await provider.cancelTask()
+			await provider.resetState()
+			await provider.handleModelOperation({})
+			await provider.handleModelOperationApproval({})
+			expect(history).not.toHaveBeenCalled()
+			expect(settings).not.toHaveBeenCalled()
+			expect(task.abortTask).not.toHaveBeenCalled()
+			expect(provider.getCurrentTask()).toBe(task)
+			expect(vscode.window.showWarningMessage).toHaveBeenCalled()
+		})
+
+		it("cancels explicitly without rehydrating and freezes the monitor", async () => {
+			const task = loadTask()
+			await provider.handleRunningTaskControl("backgroundTask", task.taskId, task.instanceId)
+			const rehydrate = vi.spyOn(provider, "createTaskWithHistoryItem")
+			await provider.handleRunningTaskControl("cancelBackgroundTask", task.taskId, task.instanceId)
+			expect(task.cancelCurrentRequest).toHaveBeenCalledOnce()
+			expect(task.abortTask).toHaveBeenCalledOnce()
+			expect(rehydrate).not.toHaveBeenCalled()
+			expect((provider as any).runningTaskMonitor.value).toMatchObject({
+				status: "cancelled",
+				stoppedAt: expect.any(Number),
+				background: true,
+			})
+			expect(provider.getCurrentTask()).toBe(task)
+		})
+
+		it("rehydrates a cancelled instance only after explicit return", async () => {
+			const task = loadTask()
+			await provider.handleRunningTaskControl("backgroundTask", task.taskId, task.instanceId)
+			await provider.handleRunningTaskControl("cancelBackgroundTask", task.taskId, task.instanceId)
+			Object.assign(task, { abort: true })
+			const historyItem = { id: task.taskId }
+			vi.spyOn(provider, "getTaskWithId").mockResolvedValue({ historyItem } as any)
+			const rehydrate = vi.spyOn(provider, "createTaskWithHistoryItem").mockResolvedValue(task)
+			await provider.handleRunningTaskControl("foregroundTask", task.taskId, task.instanceId)
+			expect(provider.isTaskBackgrounded).toBe(false)
+			expect(rehydrate).toHaveBeenCalledWith(historyItem, { internal: true, assertCurrent: expect.any(Function) })
+		})
+
+		it("rejects backgrounding while a model replacement is already in progress", async () => {
+			const task = loadTask()
+			let finish!: () => void
+			;(provider as any).modelOperationCoordinator = {
+				run: vi.fn(
+					() =>
+						new Promise<void>((resolve) => {
+							finish = resolve
+						}),
+				),
+			}
+			const operation = provider.handleModelOperation({})
+			await provider.handleRunningTaskControl("backgroundTask", task.taskId, task.instanceId)
+			expect(provider.isTaskBackgrounded).toBe(false)
+			finish()
+			await operation
+			await provider.handleRunningTaskControl("backgroundTask", task.taskId, task.instanceId)
+			expect(provider.isTaskBackgrounded).toBe(true)
+		})
+
+		it("preserves background across internal removal and replacement without retaining old listeners", async () => {
+			const task = loadTask()
+			await provider.handleRunningTaskControl("backgroundTask", task.taskId, task.instanceId)
+			await provider.removeClineFromStack({ internal: true })
+			expect(provider.isTaskBackgrounded).toBe(true)
+			expect(task.eventNames()).toEqual([])
+			await expect(provider.createTask("during handoff")).rejects.toThrow("background task")
+			const child = loadTask("child", "child-instance")
+			expect((provider as any).runningTaskMonitor.value).toMatchObject({ taskId: child.taskId, background: true })
+			await provider.removeClineFromStack({ internal: true })
+			loadTask("running", "reopened-parent")
+			expect((provider as any).runningTaskMonitor.value).toMatchObject({
+				instanceId: "reopened-parent",
+				background: true,
+			})
+		})
+
+		it("suppresses unsolicited chat focus but not permission messages or explicit return", async () => {
+			const task = loadTask()
+			;(provider as any).view = mockWebviewView
+			await provider.handleRunningTaskControl("backgroundTask", task.taskId, task.instanceId)
+			mockPostMessage.mockClear()
+			await provider.postMessageToWebview({ type: "action", action: "chatButtonClicked" })
+			await provider.postMessageToWebview({ type: "action", action: "focusInput" })
+			expect(mockPostMessage).not.toHaveBeenCalled()
+			await provider.postMessageToWebview({ type: "interactionRequired" })
+			expect(mockPostMessage).toHaveBeenCalledWith({ type: "interactionRequired" })
+			await provider.handleRunningTaskControl("foregroundTask", task.taskId, task.instanceId)
+			expect(mockPostMessage).toHaveBeenCalledWith({ type: "action", action: "chatButtonClicked" })
+		})
+
+		it("cleans the background monitor and task listeners on provider disposal", async () => {
+			const task = loadTask()
+			await provider.handleRunningTaskControl("backgroundTask", task.taskId, task.instanceId)
+			await provider.dispose()
+			expect(task.abortTask).toHaveBeenCalled()
+			expect(task.eventNames()).toEqual([])
+			expect(provider.isTaskBackgrounded).toBe(false)
+			expect((provider as any).runningTaskMonitor.value).toBeUndefined()
 		})
 	})
 

@@ -75,6 +75,7 @@ describe("Checkpoint functionality", () => {
 			postMessageToWebview: vi.fn(),
 			postStateToWebview: vi.fn(),
 			cancelTask: vi.fn(),
+			getState: vi.fn().mockResolvedValue({ managedEnvironmentsEnabled: false }),
 		}
 
 		// Create mock task

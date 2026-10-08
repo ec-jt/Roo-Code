@@ -539,7 +539,50 @@ export const webviewMessageHandler = async (
 		}
 	}
 
+	// Hidden chat controls must not approve, replace, or mutate the background stack.
+	// The correlated monitor controls below are the only task controls available in history.
+	if (
+		provider.isTaskBackgrounded &&
+		[
+			"newTask",
+			"clearTask",
+			"showTaskWithId",
+			"deleteTaskWithId",
+			"deleteMultipleTasksWithIds",
+			"resetState",
+			"askResponse",
+			"alwaysAllowReadOnlyAsk",
+			"cancelTask",
+			"terminalOperation",
+			"checkpointRestore",
+			"deleteMessage",
+			"submitEditedMessage",
+			"deleteMessageConfirm",
+			"editMessageConfirm",
+			"queueMessage",
+			"removeQueuedMessage",
+			"editQueuedMessage",
+			"modelOperation",
+			"modelOperationApproval",
+			"condenseTaskContextRequest",
+			"mode",
+			"loadApiConfiguration",
+			"loadApiConfigurationById",
+		].includes(message.type)
+	) {
+		provider.warnIfTaskBackgrounded()
+		return
+	}
+
 	switch (message.type) {
+		case "commandActivityControl":
+			await provider.handleCommandActivityControl(message.commandActivityControl)
+			break
+		case "backgroundTask":
+		case "foregroundTask":
+		case "cancelBackgroundTask":
+			await provider.handleRunningTaskControl(message.type, message.taskId, message.instanceId)
+			break
 		case "modelOperation":
 			await provider.handleModelOperation(message.modelOperation)
 			break
@@ -673,6 +716,7 @@ export const webviewMessageHandler = async (
 				await provider.postMessageToWebview({ type: "invoke", invoke: "newChat" })
 			} catch (error) {
 				// For all errors, reset the UI and show error
+				if (provider.isTaskBackgrounded) break
 				await provider.postMessageToWebview({ type: "invoke", invoke: "newChat" })
 				// Show error to user
 				vscode.window.showErrorMessage(
@@ -690,10 +734,22 @@ export const webviewMessageHandler = async (
 
 		case "askResponse":
 			{
+				const task = provider.getCurrentTask()
+				if (
+					!task ||
+					provider.isTaskBackgrounded ||
+					(message.taskId !== undefined && message.taskId !== task.taskId) ||
+					(message.instanceId !== undefined && message.instanceId !== task.instanceId)
+				)
+					break
+				const askTs = task.clineMessages?.at(-1)?.ts
 				const resolved = await resolveIncomingImages({ text: message.text, images: message.images })
-				provider
-					.getCurrentTask()
-					?.handleWebviewAskResponse(message.askResponse!, resolved.text, resolved.images)
+				if (
+					provider.getCurrentTask() === task &&
+					!provider.isTaskBackgrounded &&
+					task.clineMessages?.at(-1)?.ts === askTs
+				)
+					task.handleWebviewAskResponse(message.askResponse!, resolved.text, resolved.images)
 			}
 			break
 

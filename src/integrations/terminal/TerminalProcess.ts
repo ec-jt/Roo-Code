@@ -182,6 +182,7 @@ export class TerminalProcess extends BaseTerminalProcess {
 			// filtering here: fullOutput cannot change in length (see getUnretrievedOutput),
 			// and chunks may not be complete so you cannot rely on detecting or removing escape sequences mid-stream.
 			this.fullOutput += data
+			this.emit("activity_output", data)
 
 			// For non-immediately returning commands we want to show loading spinner
 			// right away but this wouldn't happen until it emits a line break, so
@@ -256,7 +257,7 @@ export class TerminalProcess extends BaseTerminalProcess {
 	}
 
 	public override abort() {
-		if (this.isListening) {
+		if (this.terminal.process === this && this.terminal.running && !this.terminal.isClosed()) {
 			// Send SIGINT using CTRL+C
 			this.terminal.terminal.sendText("\x03")
 		}

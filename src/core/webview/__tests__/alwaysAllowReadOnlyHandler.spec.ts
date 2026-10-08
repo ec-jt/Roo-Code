@@ -66,6 +66,14 @@ describe("persistent Read approval", () => {
 		})
 	})
 
+	it("does not persist permissions or approve from the background chat", async () => {
+		const { task, provider, handle } = setup()
+		Object.assign(provider, { isTaskBackgrounded: true })
+		await handle()
+		expect(provider.contextProxy.setValues).not.toHaveBeenCalled()
+		expect(task.handleWebviewAskResponse).not.toHaveBeenCalled()
+	})
+
 	it("does not activate dormant All actions by enabling the master switch", async () => {
 		const { task, provider, settings, handle } = setup()
 		settings.alwaysAllowAll = true

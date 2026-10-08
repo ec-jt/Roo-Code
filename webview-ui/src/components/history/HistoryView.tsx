@@ -24,6 +24,8 @@ import { useGroupedTasks } from "./useGroupedTasks"
 import { countAllSubtasks } from "./types"
 import TaskItem from "./TaskItem"
 import TaskGroupItem from "./TaskGroupItem"
+import { RunningTaskMonitor } from "../chat/RunningTaskMonitor"
+import { useExtensionState } from "@/context/ExtensionStateContext"
 
 type HistoryViewProps = {
 	onDone: () => void
@@ -32,6 +34,8 @@ type HistoryViewProps = {
 type SortOption = "newest" | "oldest" | "mostExpensive" | "mostTokens" | "mostRelevant"
 
 const HistoryView = ({ onDone }: HistoryViewProps) => {
+	const { runningTask } = useExtensionState()
+	const background = runningTask?.background === true
 	const {
 		tasks,
 		searchQuery,
@@ -64,6 +68,7 @@ const HistoryView = ({ onDone }: HistoryViewProps) => {
 
 	// Handle delete with subtask count
 	const handleDelete = (taskId: string) => {
+		if (background) return
 		setDeleteTaskId(taskId)
 		setDeleteSubtaskCount(getSubtaskCount(taskId))
 	}
@@ -96,6 +101,7 @@ const HistoryView = ({ onDone }: HistoryViewProps) => {
 
 	// Handle batch delete button click
 	const handleBatchDelete = () => {
+		if (background) return
 		if (selectedTaskIds.length > 0) {
 			setShowBatchDeleteDialog(true)
 		}
@@ -103,6 +109,7 @@ const HistoryView = ({ onDone }: HistoryViewProps) => {
 
 	return (
 		<Tab>
+			<RunningTaskMonitor />
 			<TabHeader className="flex flex-col gap-2">
 				<div className="flex items-center justify-between gap-2">
 					<div className="flex items-center gap-2">
@@ -124,6 +131,7 @@ const HistoryView = ({ onDone }: HistoryViewProps) => {
 						<Button
 							variant={isSelectionMode ? "primary" : "secondary"}
 							onClick={toggleSelectionMode}
+							disabled={background}
 							data-testid="toggle-selection-mode-button">
 							<span
 								className={`codicon ${isSelectionMode ? "codicon-check-all" : "codicon-checklist"} mr-1`}
@@ -267,6 +275,7 @@ const HistoryView = ({ onDone }: HistoryViewProps) => {
 						itemContent={(_index, item) => (
 							<TaskItem
 								key={item.id}
+								background={background}
 								item={item}
 								variant="full"
 								showWorkspace={showAllWorkspaces}
@@ -293,6 +302,7 @@ const HistoryView = ({ onDone }: HistoryViewProps) => {
 						itemContent={(_index, group) => (
 							<TaskGroupItem
 								key={group.parent.id}
+								background={background}
 								group={group}
 								variant="full"
 								showWorkspace={showAllWorkspaces}
@@ -310,7 +320,7 @@ const HistoryView = ({ onDone }: HistoryViewProps) => {
 			</TabContent>
 
 			{/* Fixed action bar at bottom - only shown in selection mode with selected items */}
-			{isSelectionMode && selectedTaskIds.length > 0 && (
+			{!background && isSelectionMode && selectedTaskIds.length > 0 && (
 				<div className="fixed bottom-0 left-0 right-2 bg-vscode-editor-background border-t border-vscode-panel-border p-2 flex justify-between items-center">
 					<div className="text-vscode-foreground">
 						{t("history:selectedItems", { selected: selectedTaskIds.length, total: tasks.length })}

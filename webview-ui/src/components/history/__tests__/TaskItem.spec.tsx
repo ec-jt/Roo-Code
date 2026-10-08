@@ -1,6 +1,7 @@
 import { render, screen, fireEvent } from "@/utils/test-utils"
 
 import TaskItem from "../TaskItem"
+import { vscode } from "@/utils/vscode"
 
 vi.mock("@src/utils/vscode")
 vi.mock("@src/i18n/TranslationContext", () => ({
@@ -27,6 +28,13 @@ const mockTask = {
 }
 
 describe("TaskItem", () => {
+	it("does not open or delete a history task while background work is protected", () => {
+		vi.clearAllMocks()
+		render(<TaskItem item={mockTask} variant="full" background onDelete={vi.fn()} />)
+		fireEvent.click(screen.getByTestId("task-item-1"))
+		expect(vscode.postMessage).not.toHaveBeenCalled()
+		expect(screen.getByTestId("task-item-1")).toHaveAttribute("aria-disabled", "true")
+	})
 	beforeEach(() => {
 		vi.clearAllMocks()
 	})

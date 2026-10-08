@@ -4,7 +4,8 @@ import type { ClineProvider } from "./ClineProvider"
 
 /** Persist only the Read permission, and answer only the exact ask the user selected. */
 export async function handleAlwaysAllowReadOnlyAsk(
-	provider: Pick<ClineProvider, "getCurrentTask" | "contextProxy" | "postStateToWebview">,
+	provider: Pick<ClineProvider, "getCurrentTask" | "contextProxy" | "postStateToWebview"> &
+		Partial<Pick<ClineProvider, "isTaskBackgrounded">>,
 	request: WebviewMessage["alwaysAllowReadOnlyAsk"],
 ): Promise<void> {
 	if (!request) return
@@ -13,6 +14,7 @@ export async function handleAlwaysAllowReadOnlyAsk(
 	const isCurrent = () => {
 		const operation = task.modelOperationState
 		return (
+			!provider.isTaskBackgrounded &&
 			provider.getCurrentTask() === task &&
 			task.taskId === request.taskId &&
 			task.instanceId === request.instanceId &&

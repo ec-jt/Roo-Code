@@ -335,6 +335,12 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 		(event: MessageEvent) => {
 			const message: ExtensionMessage = event.data
 			switch (message.type) {
+				case "commandActivitiesUpdated":
+					setState((prevState) => ({ ...prevState, commandActivities: message.commandActivities ?? [] }))
+					break
+				case "runningTaskUpdated":
+					setState((prevState) => ({ ...prevState, runningTask: message.runningTask }))
+					break
 				case "state": {
 					const newState = message.state ?? {}
 					setState((prevState) => mergeExtensionState(prevState, newState))

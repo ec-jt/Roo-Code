@@ -25,11 +25,13 @@ export type AutoApprovalState =
 	| "alwaysAllowModeSwitch"
 	| "alwaysAllowSubtasks"
 	| "alwaysAllowExecute"
+	| "alwaysAllowManagedEnvironments"
 	| "alwaysAllowFollowupQuestions"
 
 // Some of these actions have additional settings associated with them.
 export type AutoApprovalStateOptions =
 	| "autoApprovalEnabled"
+	| "managedEnvironmentsEnabled"
 	| "alwaysAllowReadOnlyOutsideWorkspace" // For `alwaysAllowReadOnly`.
 	| "alwaysAllowWriteOutsideWorkspace" // For `alwaysAllowWrite`.
 	| "alwaysAllowWriteProtected"
@@ -72,6 +74,25 @@ export async function checkAutoApproval({
 
 	if (!state || !state.autoApprovalEnabled) {
 		return { decision: "ask" }
+	}
+
+	// Managed installs are a separate consent boundary, including in all-actions mode.
+	if (ask === "tool") {
+		try {
+			const tool = JSON.parse(text || "{}") as ClineSayTool
+			if (tool?.tool === "managedEnvironment") {
+				if (state.managedEnvironmentsEnabled !== true || isProtected) return { decision: "ask" }
+				if (tool.action === "install") {
+					return { decision: state.alwaysAllowManagedEnvironments === true ? "approve" : "ask" }
+				}
+				if (tool.action === "prepare" || tool.action === "status") {
+					return { decision: state.alwaysAllowReadOnly === true ? "approve" : "ask" }
+				}
+				return { decision: "ask" }
+			}
+		} catch {
+			return { decision: "ask" }
+		}
 	}
 
 	// Explicit opt-in for trusted, unattended environments. This preserves the

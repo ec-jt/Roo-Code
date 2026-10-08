@@ -7,6 +7,7 @@ import { TerminalProcess } from "./TerminalProcess"
 import { Terminal } from "./Terminal"
 import { ExecaTerminal } from "./ExecaTerminal"
 import { ShellIntegrationManager } from "./ShellIntegrationManager"
+import { CommandActivity } from "./CommandActivity"
 
 // Although vscode.window.terminals provides a list of all open terminals,
 // there's no way to know whether they're busy or not (exitStatus does not
@@ -36,10 +37,10 @@ export class TerminalRegistry {
 		// Register handler for terminal close events to clean up temporary
 		// directories.
 		const closeDisposable = vscode.window.onDidCloseTerminal((vsceTerminal) => {
-			const terminal = this.getTerminalByVSCETerminal(vsceTerminal)
+			const terminal = this.terminals.find((t) => t instanceof Terminal && t.terminal === vsceTerminal)
 
 			if (terminal) {
-				ShellIntegrationManager.zshCleanupTmpDir(terminal.id)
+				this.removeTerminal(terminal.id)
 			}
 		})
 
@@ -270,6 +271,7 @@ export class TerminalRegistry {
 	}
 
 	public static cleanup() {
+		CommandActivity.dispose()
 		// Clean up all temporary directories.
 		ShellIntegrationManager.clear()
 		this.disposables.forEach((disposable) => disposable.dispose())
@@ -290,7 +292,9 @@ export class TerminalRegistry {
 	}
 
 	private static getAllTerminals(): RooTerminal[] {
-		this.terminals = this.terminals.filter((t) => !t.isClosed())
+		for (const terminal of this.terminals) {
+			if (terminal.isClosed()) this.removeTerminal(terminal.id)
+		}
 		return this.terminals
 	}
 
@@ -322,6 +326,8 @@ export class TerminalRegistry {
 	}
 
 	private static removeTerminal(id: number) {
+		const terminal = this.terminals.find((t) => t.id === id)
+		if (terminal) CommandActivity.terminalClosed(terminal)
 		ShellIntegrationManager.zshCleanupTmpDir(id)
 		this.terminals = this.terminals.filter((t) => t.id !== id)
 	}

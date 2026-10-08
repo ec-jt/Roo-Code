@@ -6,6 +6,7 @@ import { BaseTerminal } from "./BaseTerminal"
 import { TerminalProcess } from "./TerminalProcess"
 import { ShellIntegrationManager } from "./ShellIntegrationManager"
 import { mergePromise } from "./mergePromise"
+import { CommandActivity } from "./CommandActivity"
 
 export class Terminal extends BaseTerminal {
 	public terminal: vscode.Terminal
@@ -49,6 +50,7 @@ export class Terminal extends BaseTerminal {
 		const process = new TerminalProcess(this)
 		process.command = command
 		this.process = process
+		CommandActivity.register(this, process, command)
 
 		// Set up event handlers from callbacks before starting process.
 		// This ensures that we don't miss any events because they are

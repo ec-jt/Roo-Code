@@ -91,6 +91,7 @@ export class ExecaTerminalProcess extends BaseTerminalProcess {
 				}
 
 				this.fullOutput += line
+				this.emit("activity_output", line)
 
 				const now = Date.now()
 
@@ -103,49 +104,39 @@ export class ExecaTerminalProcess extends BaseTerminalProcess {
 			}
 
 			if (this.aborted) {
-				let timeoutId: NodeJS.Timeout | undefined
-
-				const kill = new Promise<void>((resolve) => {
-					console.log(`[ExecaTerminalProcess#run] SIGKILL -> ${this.pid}`)
-
-					timeoutId = setTimeout(() => {
-						try {
-							this.subprocess?.kill("SIGKILL")
-						} catch (e) {}
-
-						resolve()
-					}, 5_000)
-				})
+				const timeoutId = setTimeout(() => {
+					try {
+						this.subprocess?.kill("SIGKILL")
+					} catch (e) {}
+				}, 5_000)
 
 				try {
-					await Promise.race([this.subprocess, kill])
-				} catch (error) {
-					console.log(
-						`[ExecaTerminalProcess#run] subprocess termination error: ${error instanceof Error ? error.message : String(error)}`,
-					)
-				}
-
-				if (timeoutId) {
+					// Aborting or closing stdout is not proof of exit. Await the child result.
+					await this.subprocess
+				} finally {
 					clearTimeout(timeoutId)
 				}
 			}
 
-			this.emit("shell_execution_complete", { exitCode: 0 })
+			const result = await this.subprocess
+			this.emit("shell_execution_complete", { exitCode: result.exitCode })
 		} catch (error) {
 			if (error instanceof ExecaError) {
 				console.error(`[ExecaTerminalProcess#run] shell execution error: ${error.message}`)
-				this.emit("shell_execution_complete", { exitCode: error.exitCode ?? 0, signalName: error.signal })
+				this.emit("shell_execution_complete", { exitCode: error.exitCode, signalName: error.signal })
 			} else {
 				console.error(
 					`[ExecaTerminalProcess#run] shell execution error: ${error instanceof Error ? error.message : String(error)}`,
 				)
 
-				this.emit("shell_execution_complete", { exitCode: 1 })
+				// A stream/transport error does not establish a child exit code.
+				this.emit("shell_execution_complete", { exitCode: undefined })
 			}
 			this.subprocess = undefined
 		}
 
 		this.terminal.setActiveStream(undefined)
+		this.terminal.running = false
 		this.emitRemainingBufferIfListening()
 		this.stopHotTimer()
 		this.emit("completed", this.fullOutput)

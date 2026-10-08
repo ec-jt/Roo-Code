@@ -10,6 +10,7 @@ import TaskItemFooter from "./TaskItemFooter"
 import { StandardTooltip } from "../ui"
 
 interface TaskItemProps {
+	background?: boolean
 	item: DisplayHistoryItem
 	variant: "compact" | "full"
 	showWorkspace?: boolean
@@ -31,8 +32,10 @@ const TaskItem = ({
 	onToggleSelection,
 	onDelete,
 	className,
+	background = false,
 }: TaskItemProps) => {
 	const handleClick = () => {
+		if (background) return
 		if (isSelectionMode && onToggleSelection) {
 			onToggleSelection(item.id, !isSelected)
 		} else {
@@ -46,6 +49,7 @@ const TaskItem = ({
 		<div
 			key={item.id}
 			data-testid={`task-item-${item.id}`}
+			aria-disabled={background}
 			className={cn(
 				"cursor-pointer group relative overflow-hidden",
 				"text-vscode-foreground/80 hover:text-vscode-foreground transition-colors",
@@ -114,7 +118,7 @@ const TaskItem = ({
 						variant={variant}
 						isSelectionMode={isSelectionMode}
 						isSubtask={item.isSubtask}
-						onDelete={onDelete}
+						onDelete={background ? undefined : onDelete}
 					/>
 				</div>
 			</div>

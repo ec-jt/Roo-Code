@@ -20,6 +20,7 @@ import { braveLocalSearchTool } from "../tools/BraveLocalSearchTool"
 import { context7ResolveLibraryIdTool } from "../tools/Context7ResolveLibraryIdTool"
 import { context7QueryDocsTool } from "../tools/Context7QueryDocsTool"
 import { fileSystemTool } from "../tools/FileSystemTool"
+import { managedEnvironmentTool } from "../tools/ManagedEnvironmentTool"
 import { markdownifyTool } from "../tools/MarkdownifyTool"
 import { gitRepoResearchTool } from "../tools/GitRepoResearchTool"
 import { gitToolsTool } from "../tools/GitToolsTool"
@@ -713,6 +714,13 @@ export async function presentAssistantMessage(cline: Task) {
 							break
 						case "context7_query_docs":
 							await context7QueryDocsTool.handle(cline, block as ToolUse<"context7_query_docs">, {
+								askApproval,
+								handleError,
+								pushToolResult,
+							})
+							break
+						case "managed_environment":
+							await managedEnvironmentTool.handle(cline, block as ToolUse<"managed_environment">, {
 								askApproval,
 								handleError,
 								pushToolResult,
