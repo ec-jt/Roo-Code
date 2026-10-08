@@ -141,6 +141,48 @@ describe("incremental summary index", () => {
 		expect(index.tokenUsage).toEqual(expected())
 	})
 
+	it("keeps same-timestamp usage contributions independent through updates and rebuilds", () => {
+		const first = say(2, JSON.stringify({ tokensIn: 10, cost: 1 }), "api_req_started")
+		const second = say(2, JSON.stringify({ tokensIn: 20, cost: 2 }), "api_req_started")
+		const messages = [say(1), first, second]
+		const index = new ChatHistoryIndex().ensure(messages)
+		first.text = JSON.stringify({ tokensIn: 15, cost: 1.5 })
+		index.update(messages, first)
+		expect(index.tokenUsage).toMatchObject({ totalTokensIn: 35, totalCost: 3.5, contextTokens: 20 })
+		second.text = JSON.stringify({ tokensIn: 25, cost: 2.5 })
+		index.update(messages, second)
+		expect(index.tokenUsage).toMatchObject({ totalTokensIn: 40, totalCost: 4, contextTokens: 25 })
+		index.rebuild([...messages])
+		expect(index.tokenUsage).toMatchObject({ totalTokensIn: 40, totalCost: 4, contextTokens: 25 })
+	})
+	it("pairs legacy finish records by row identity even when all timestamps collide", () => {
+		const start = say(2, JSON.stringify({ tokensIn: 10 }), "api_req_started")
+		const finish = say(2, JSON.stringify({ tokensIn: 20, cost: 1 }), "api_req_finished")
+		const later = say(2, JSON.stringify({ tokensIn: 30, cost: 2 }), "api_req_started")
+		const messages = [say(1), start, finish, later]
+		const index = new ChatHistoryIndex().ensure(messages)
+		finish.text = JSON.stringify({ tokensIn: 25, cost: 1.5 })
+		index.update(messages, finish)
+		expect(index.tokenUsage).toMatchObject({ totalTokensIn: 55, totalCost: 3.5, contextTokens: 30 })
+	})
+	it("keeps file summaries independent for same-timestamp edits", () => {
+		const edit = (path: string, added: number) =>
+			say(
+				2,
+				JSON.stringify({ tool: "appliedDiff", path, diff: "+line", diffStats: { added, removed: 0 } }),
+				"tool",
+			)
+		const first = edit("a.ts", 1)
+		const second = edit("b.ts", 2)
+		const messages = [say(1), first, second]
+		const index = new ChatHistoryIndex().ensure(messages)
+		first.text = edit("a.ts", 3).text
+		index.update(messages, first)
+		expect(index.summary().files).toEqual([
+			{ path: "b.ts", added: 2, removed: 0, changes: 1 },
+			{ path: "a.ts", added: 3, removed: 0, changes: 1 },
+		])
+	})
 	it("processes only appended/updated rows during streaming and resets on replacement", () => {
 		const messages = Array.from({ length: 10000 }, (_, i) => say(i))
 		const index = new ChatHistoryIndex().ensure(messages)

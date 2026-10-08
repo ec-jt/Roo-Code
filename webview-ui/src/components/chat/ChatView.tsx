@@ -1500,7 +1500,14 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 
 	const itemContent = useCallback(
 		(index: number, messageOrGroup: ClineMessage) => {
-			if (chatWindow && (historical || isChatPreview(messageOrGroup, chatWindow))) {
+			if (
+				chatWindow &&
+				(historical ||
+					isChatPreview(messageOrGroup, chatWindow) ||
+					messageOrGroup.ask === "command_output" ||
+					messageOrGroup.say === "command_output" ||
+					messageOrGroup.say === "mcp_server_response")
+			) {
 				return (
 					<PlainHistoryMessage
 						key={`${chatWindow.instanceId}:${messageOrGroup.chatPreview?.index ?? messageOrGroup.ts}`}

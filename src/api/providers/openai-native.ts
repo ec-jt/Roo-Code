@@ -33,6 +33,28 @@ import { configureApiRequestTimeout } from "./utils/sdk-timeout"
 
 export type OpenAiNativeModel = ReturnType<OpenAiNativeHandler["getModel"]>
 
+// Only local SDK capability checks may trigger a new request through the SSE fallback.
+class NativeSdkCompatibilityError extends Error {}
+
+class NativeTerminalResponseError extends Error {
+	readonly code?: string
+	constructor(status: "failed" | "incomplete", detail: unknown) {
+		// Do not include provider messages, arbitrary codes, or response payloads in errors.
+		const safeDetails = new Set([
+			"context_length_exceeded",
+			"server_error",
+			"rate_limit_exceeded",
+			"invalid_prompt",
+			"max_output_tokens",
+			"content_filter",
+			"authentication_error",
+		])
+		const code = typeof detail === "string" && safeDetails.has(detail) ? detail : undefined
+		super(`OpenAI Native response ${status}${code ? ` (${code})` : ""}.`)
+		this.code = code
+	}
+}
+
 export class OpenAiNativeHandler extends BaseProvider implements SingleCompletionHandler {
 	protected options: ApiHandlerOptions
 	private client: OpenAI
@@ -427,32 +449,35 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 		}
 
 		try {
-			// Use the official SDK with per-request headers
-			const stream = (await (this.client as any).responses.create(requestBody, {
-				signal: this.abortController.signal,
-				headers: requestHeaders,
-			})) as AsyncIterable<any>
+			let stream: AsyncIterable<any>
+			try {
+				if (typeof this.client.responses?.create !== "function") {
+					throw new NativeSdkCompatibilityError("OpenAI SDK does not support Responses API streaming.")
+				}
+				stream = (await this.client.responses.create(requestBody, {
+					signal: this.abortController.signal,
+					headers: requestHeaders,
+				})) as unknown as AsyncIterable<any>
 
-			if (typeof (stream as any)[Symbol.asyncIterator] !== "function") {
-				throw new Error(
-					"OpenAI SDK did not return an AsyncIterable for Responses API streaming. Falling back to SSE.",
-				)
+				if (typeof stream?.[Symbol.asyncIterator] !== "function") {
+					throw new NativeSdkCompatibilityError("OpenAI SDK did not return a Responses API stream.")
+				}
+			} catch (sdkErr) {
+				this.abortController.signal.throwIfAborted()
+				if (!(sdkErr instanceof NativeSdkCompatibilityError)) throw sdkErr
+				yield* this.makeResponsesApiRequest(requestBody, model, metadata, systemPrompt, messages)
+				return
 			}
 
+			// Stream failures belong to this generation and must never trigger a fallback request.
 			for await (const event of stream) {
-				// Check if request was aborted
-				if (this.abortController.signal.aborted) {
-					break
-				}
+				this.abortController.signal.throwIfAborted()
 
 				for await (const outChunk of this.processEvent(event, model)) {
 					yield outChunk
 				}
 			}
-		} catch (sdkErr: any) {
-			if (checkContextWindowExceededError(sdkErr)) throw sdkErr
-			// For errors, fallback to manual SSE via fetch
-			yield* this.makeResponsesApiRequest(requestBody, model, metadata, systemPrompt, messages)
+			this.abortController.signal.throwIfAborted()
 		} finally {
 			this.abortController = undefined
 		}
@@ -657,21 +682,6 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 
 			// Handle streaming response
 			yield* this.handleStreamResponse(response.body, model)
-		} catch (error) {
-			const model = this.getModel()
-			const errorMessage = error instanceof Error ? error.message : String(error)
-
-			if (error instanceof Error) {
-				if (checkContextWindowExceededError(error)) throw error
-				// Re-throw with the original error message if it's already formatted
-				if (error.message.includes("Responses API")) {
-					throw error
-				}
-				// Otherwise, wrap it with context
-				throw new Error(`Failed to connect to Responses API: ${error.message}`)
-			}
-			// Handle non-Error objects
-			throw new Error(`Unexpected error connecting to Responses API`)
 		} finally {
 			this.abortController = undefined
 		}
@@ -694,12 +704,10 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 
 		try {
 			while (true) {
-				// Check if request was aborted
-				if (this.abortController?.signal.aborted) {
-					break
-				}
+				this.abortController?.signal.throwIfAborted()
 
 				const { done, value } = await reader.read()
+				this.abortController?.signal.throwIfAborted()
 				if (done) break
 
 				buffer += decoder.decode(value, { stream: true })
@@ -715,6 +723,7 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 
 						try {
 							const parsed = JSON.parse(data)
+							this.throwIfTerminalError(parsed)
 
 							// Capture resolved service tier if present
 							if (parsed.response?.service_tier) {
@@ -997,23 +1006,6 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 							) {
 								// Text annotation events - could be citations, references, etc.
 							}
-							// Handle error events
-							else if (parsed.type === "response.error" || parsed.type === "error") {
-								if (checkContextWindowExceededError(parsed))
-									throw Object.assign(new Error("Responses API context limit exceeded."), {
-										code: "context_length_exceeded",
-									})
-								// Error event from the API
-								if (parsed.error || parsed.message) {
-									throw new Error(
-										`Responses API error: ${parsed.error?.message || parsed.message || "Unknown error"}`,
-									)
-								}
-							}
-							// Handle incomplete event
-							else if (parsed.type === "response.incomplete") {
-								// Response was incomplete - might need to handle specially
-							}
 							// Handle queued event
 							else if (parsed.type === "response.queued") {
 								// Response is queued
@@ -1021,19 +1013,6 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 							// Handle in_progress event
 							else if (parsed.type === "response.in_progress") {
 								// Response is being processed
-							}
-							// Handle failed event
-							else if (parsed.type === "response.failed") {
-								if (checkContextWindowExceededError({ error: parsed.response?.error ?? parsed.error }))
-									throw Object.assign(new Error("Responses API context limit exceeded."), {
-										code: "context_length_exceeded",
-									})
-								// Response failed
-								if (parsed.error || parsed.message) {
-									throw new Error(
-										`Response failed: ${parsed.error?.message || parsed.message || "Unknown failure"}`,
-									)
-								}
 							} else if (parsed.type === "response.completed" || parsed.type === "response.done") {
 								// Capture resolved service tier if present
 								if (parsed.response?.service_tier) {
@@ -1129,6 +1108,7 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 					else if (line.trim() && !line.startsWith(":")) {
 						try {
 							const parsed = JSON.parse(line)
+							this.throwIfTerminalError(parsed)
 
 							// Try to extract content from various possible locations
 							if (parsed.content || parsed.text || parsed.message) {
@@ -1138,8 +1118,9 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 									text: parsed.content || parsed.text || parsed.message,
 								}
 							}
-						} catch {
-							// Not JSON, might be plain text - ignore
+						} catch (error) {
+							// Ignore malformed JSON, not terminal API failures.
+							if (!(error instanceof SyntaxError)) throw error
 						}
 					}
 				}
@@ -1147,16 +1128,24 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 
 			// If we didn't get any content, don't throw - the API might have returned an empty response
 			// This can happen in certain edge cases and shouldn't break the flow
-		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : String(error)
-
-			if (error instanceof Error) {
-				if (checkContextWindowExceededError(error)) throw error
-				throw new Error(`Error processing response stream: ${error.message}`)
-			}
-			throw new Error("Unexpected error processing response stream")
 		} finally {
 			reader.releaseLock()
+		}
+	}
+
+	private throwIfTerminalError(event: any): void {
+		if (event?.type === "response.incomplete" || event?.response?.status === "incomplete") {
+			throw new NativeTerminalResponseError("incomplete", event.response?.incomplete_details?.reason)
+		}
+		if (
+			["response.failed", "response.error", "error"].includes(event?.type) ||
+			event?.response?.status === "failed"
+		) {
+			const error = event.response?.error ?? event.error
+			const detail = checkContextWindowExceededError({ ...event, error })
+				? "context_length_exceeded"
+				: (error?.code ?? event.code)
+			throw new NativeTerminalResponseError("failed", detail)
 		}
 	}
 
@@ -1164,11 +1153,7 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 	 * Shared processor for Responses API events.
 	 */
 	private async *processEvent(event: any, model: OpenAiNativeModel): ApiStream {
-		if (
-			["response.failed", "response.error", "error"].includes(event?.type) &&
-			checkContextWindowExceededError({ ...event, error: event.response?.error ?? event.error })
-		)
-			throw Object.assign(new Error("Responses API context limit exceeded."), { code: "context_length_exceeded" })
+		this.throwIfTerminalError(event)
 		// Capture resolved service tier when available
 		if (event?.response?.service_tier) {
 			this.lastServiceTier = event.response.service_tier as ServiceTier

@@ -89,6 +89,21 @@ const push = (window: ChatWindowState, rows: ClineMessage[]) =>
 
 describe("bounded chat view", () => {
 	beforeEach(() => vi.clearAllMocks())
+	it.each(["command_output", "mcp_server_response"] as const)(
+		"retains standalone %s at the latest-page boundary",
+		(say) => {
+			render(
+				<ExtensionStateContextProvider>
+					<ChatView isHidden={false} showAnnouncement={false} hideAnnouncement={() => {}} />
+				</ExtensionStateContextProvider>,
+			)
+			push(page(1), [{ ts: 150, type: "say", say, text: "boundary output" }, live])
+			expect(screen.getByTestId("plain-history-message")).toBeInTheDocument()
+			expect(screen.queryByText("boundary output")).not.toBeInTheDocument()
+			fireEvent.click(screen.getByRole("button", { name: "Show preview" }))
+			expect(screen.getByText("boundary output")).toBeInTheDocument()
+		},
+	)
 	it("hides empty command status entries instead of offering a blank document", () => {
 		const { container } = render(
 			<PlainHistoryMessage message={{ ts: 2, type: "ask", ask: "command_output", text: "" }} window={page(1)} />,

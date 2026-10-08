@@ -568,6 +568,35 @@ describe("Task opt-in model dispatch", () => {
 			expect(backoff).not.toHaveBeenCalled()
 		},
 	)
+	it.each(["empty-text", "empty-thinking", "reasoning-only", "whitespace"])(
+		"outer loop stops after a recovered response containing only %s",
+		async (kind) => {
+			await enableOverflow(false)
+			const content_block =
+				kind === "empty-thinking" || kind === "reasoning-only"
+					? {
+							type: "thinking",
+							thinking: kind === "reasoning-only" ? "thinking without an answer" : "",
+							signature: "sig",
+						}
+					: { type: "text", text: kind === "whitespace" ? " \n" : "" }
+			create
+				.mockRejectedValueOnce(overflow())
+				.mockResolvedValueOnce(response())
+				.mockResolvedValueOnce(
+					(async function* () {
+						yield { type: "content_block_start", index: 0, content_block }
+						yield { type: "message_stop" }
+					})(),
+				)
+			const backoff = vi.spyOn(task as any, "backoffAndAnnounce")
+			await expect(task.recursivelyMakeClineRequests([])).resolves.toBe(true)
+			expect(create).toHaveBeenCalledTimes(3)
+			expect(backoff).not.toHaveBeenCalled()
+			expect(task.say).toHaveBeenCalledWith("error", expect.stringContaining("no response"))
+		},
+	)
+
 	it("requires a fresh admission for recovery and does not mutate history on denial", async () => {
 		await enableOverflow(true)
 		const before = structuredClone(task.apiConversationHistory)

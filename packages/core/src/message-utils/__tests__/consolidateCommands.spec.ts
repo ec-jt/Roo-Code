@@ -5,6 +5,24 @@ import type { ClineMessage } from "@roo-code/types"
 import { consolidateCommands, COMMAND_OUTPUT_STRING } from "../consolidateCommands.js"
 
 describe("consolidateCommands", () => {
+	it("preserves outputs whose parent is outside the page", () => {
+		const messages: ClineMessage[] = [
+			{ ts: 1, type: "say", say: "command_output", text: "command result" },
+			{ ts: 2, type: "say", say: "mcp_server_response", text: "MCP result" },
+		]
+		expect(consolidateCommands(messages)).toEqual(messages)
+	})
+	it("does not replace other rows that share a command timestamp", () => {
+		const messages: ClineMessage[] = [
+			{ ts: 1, type: "say", say: "text", text: "explanation" },
+			{ ts: 1, type: "ask", ask: "command", text: "ls" },
+			{ ts: 2, type: "say", say: "command_output", text: "result" },
+		]
+		const result = consolidateCommands(messages)
+		expect(result).toHaveLength(2)
+		expect(result[0]).toEqual(messages[0])
+		expect(result[1]!.text).toContain("result")
+	})
 	describe("command sequences", () => {
 		it("should consolidate command and command_output messages", () => {
 			const messages: ClineMessage[] = [

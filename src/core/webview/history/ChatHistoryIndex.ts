@@ -44,7 +44,9 @@ export function fileDiffs(message: ClineMessage) {
 export class ChatHistoryIndex {
 	private source?: ClineMessage[]
 	private length = 0
-	private positions = new Map<number, number>()
+	// Message objects identify live rows; numeric maps below use array positions,
+	// never timestamps (several messages can be created in the same millisecond).
+	private positions = new WeakMap<ClineMessage, number>()
 	private rows = new Map<number, Contribution>()
 	private unmatched: number[] = []
 	private finishes = new Map<number, number>()
@@ -72,7 +74,7 @@ export class ChatHistoryIndex {
 	public rebuild(messages: ClineMessage[]) {
 		this.source = messages
 		this.length = 0
-		this.positions.clear()
+		this.positions = new WeakMap()
 		this.rows.clear()
 		this.applied.clear()
 		this.unmatched = []
@@ -96,9 +98,9 @@ export class ChatHistoryIndex {
 
 	public update(messages: ClineMessage[], message: ClineMessage) {
 		this.ensure(messages)
-		const position = this.positions.get(message.ts)
+		const position = this.positions.get(message)
 		if (position === undefined) return this.rebuild(messages)
-		const previous = this.rows.get(message.ts)!
+		const previous = this.rows.get(position)!
 		const kind = message.type === "say" ? message.say : undefined
 		if (
 			previous.kind !== kind &&
@@ -106,30 +108,30 @@ export class ChatHistoryIndex {
 		) {
 			return this.rebuild(messages)
 		}
-		this.apply(message.ts, previous, -1)
-		this.rows.set(message.ts, this.contribution(message, position))
-		this.apply(message.ts, this.rows.get(message.ts)!, 1)
-		const start = this.starts.get(message.ts)
+		this.apply(position, previous, -1)
+		this.rows.set(position, this.contribution(message, position))
+		this.apply(position, this.rows.get(position)!, 1)
+		const start = this.starts.get(position)
 		if (start !== undefined) this.refreshStart(start)
 		this.revision++
 	}
 
 	private appendRow(message: ClineMessage) {
 		const position = this.length++
-		this.positions.set(message.ts, position)
-		this.rows.set(message.ts, this.contribution(message, position))
+		this.positions.set(message, position)
+		this.rows.set(position, this.contribution(message, position))
 		if (position > 0 && message.type === "say") {
-			if (message.say === "api_req_started") this.unmatched.push(message.ts)
+			if (message.say === "api_req_started") this.unmatched.push(position)
 			if (message.say === "api_req_finished") {
 				const start = this.unmatched.pop()
 				if (start !== undefined) {
-					this.finishes.set(start, message.ts)
-					this.starts.set(message.ts, start)
+					this.finishes.set(start, position)
+					this.starts.set(position, start)
 					this.refreshStart(start)
 				}
 			}
 		}
-		this.apply(message.ts, this.rows.get(message.ts)!, 1)
+		this.apply(position, this.rows.get(position)!, 1)
 	}
 
 	private contribution(message: ClineMessage, position: number): Contribution {
@@ -158,22 +160,22 @@ export class ChatHistoryIndex {
 		return result
 	}
 
-	private effective(ts: number, row: Contribution): ApiData {
-		const finish = this.finishes.get(ts)
+	private effective(position: number, row: Contribution): ApiData {
+		const finish = this.finishes.get(position)
 		return finish === undefined ? (row.api ?? {}) : { ...row.api, ...this.rows.get(finish)?.api }
 	}
 
-	private refreshStart(ts: number) {
+	private refreshStart(position: number) {
 		// Remove the previously applied snapshot, then apply the new merged pair.
-		const row = this.rows.get(ts)!
-		this.apply(ts, row, -1)
-		this.apply(ts, row, 1)
+		const row = this.rows.get(position)!
+		this.apply(position, row, -1)
+		this.apply(position, row, 1)
 	}
 
 	private applied = new Map<number, ApiData>()
-	private apply(ts: number, row: Contribution, sign: 1 | -1) {
+	private apply(position: number, row: Contribution, sign: 1 | -1) {
 		if (row.kind === "api_req_started") {
-			const api = sign === -1 ? (this.applied.get(ts) ?? {}) : this.effective(ts, row)
+			const api = sign === -1 ? (this.applied.get(position) ?? {}) : this.effective(position, row)
 			this.totals.totalTokensIn += sign * (api.tokensIn ?? 0)
 			this.totals.totalTokensOut += sign * (api.tokensOut ?? 0)
 			this.totals.totalCost += sign * (api.cost ?? 0)
@@ -181,11 +183,11 @@ export class ChatHistoryIndex {
 			this.totals.totalCacheReads = (this.totals.totalCacheReads ?? 0) + sign * (api.cacheReads ?? 0)
 			if (api.cacheWrites !== undefined) this.cacheWrites += sign
 			if (api.cacheReads !== undefined) this.cacheReads += sign
-			if (sign === 1) this.applied.set(ts, api)
-			this.setContext(this.positions.get(ts)!, sign === 1 ? (api.tokensIn ?? 0) + (api.tokensOut ?? 0) : 0)
+			if (sign === 1) this.applied.set(position, api)
+			this.setContext(position, sign === 1 ? (api.tokensIn ?? 0) + (api.tokensOut ?? 0) : 0)
 		} else {
 			this.totals.totalCost += sign * row.cost
-			if (row.kind === "condense_context") this.setContext(this.positions.get(ts)!, sign === 1 ? row.context : 0)
+			if (row.kind === "condense_context") this.setContext(position, sign === 1 ? row.context : 0)
 		}
 		for (const file of row.files) {
 			const total = this.files.get(file.path) ?? { path: file.path, added: 0, removed: 0, changes: 0 }

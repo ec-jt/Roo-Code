@@ -66,7 +66,9 @@ export function PlainHistoryMessage({ message, window }: { message: ClineMessage
 	const [expanded, setExpanded] = useState(false)
 	const isToolPreview =
 		["tool", "command", "command_output", "use_mcp_server"].includes(message.ask ?? "") ||
-		["tool", "command_output", "browser_action_result", "user_feedback_diff"].includes(message.say ?? "")
+		["tool", "command_output", "mcp_server_response", "browser_action_result", "user_feedback_diff"].includes(
+			message.say ?? "",
+		)
 	const isLiveApproval =
 		window.following &&
 		(message.chatPreview && window.liveMessage?.chatPreview

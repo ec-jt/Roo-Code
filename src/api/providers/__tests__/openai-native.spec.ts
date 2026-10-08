@@ -144,8 +144,8 @@ describe("OpenAiNativeHandler", () => {
 			})
 			global.fetch = mockFetch as any
 
-			// Mock SDK to fail so it falls back to fetch
-			mockResponsesCreate.mockRejectedValue(new Error("SDK not available"))
+			// Mock an SDK without a streaming response so it falls back to fetch
+			mockResponsesCreate.mockResolvedValue({})
 
 			const stream = handler.createMessage(systemPrompt, messages)
 			const chunks: any[] = []
@@ -169,8 +169,8 @@ describe("OpenAiNativeHandler", () => {
 			})
 			global.fetch = mockFetch as any
 
-			// Mock SDK to fail
-			mockResponsesCreate.mockRejectedValue(new Error("SDK not available"))
+			// Mock an SDK without a streaming response
+			mockResponsesCreate.mockResolvedValue({})
 
 			const stream = handler.createMessage(systemPrompt, messages)
 			await expect(async () => {
@@ -396,8 +396,8 @@ describe("OpenAiNativeHandler", () => {
 			})
 			global.fetch = mockFetch as any
 
-			// Mock SDK to fail so it uses fetch
-			mockResponsesCreate.mockRejectedValue(new Error("SDK not available"))
+			// Mock an SDK without a streaming response so it uses fetch
+			mockResponsesCreate.mockResolvedValue({})
 
 			handler = new OpenAiNativeHandler({
 				...mockOptions,
@@ -464,7 +464,7 @@ describe("OpenAiNativeHandler", () => {
 			})
 			global.fetch = mockFetch as any
 
-			mockResponsesCreate.mockRejectedValue(new Error("SDK not available"))
+			mockResponsesCreate.mockResolvedValue({})
 
 			handler = new OpenAiNativeHandler({
 				...mockOptions,
@@ -515,8 +515,8 @@ describe("OpenAiNativeHandler", () => {
 			})
 			global.fetch = mockFetch as any
 
-			// Mock SDK to fail so it uses fetch
-			mockResponsesCreate.mockRejectedValue(new Error("SDK not available"))
+			// Mock an SDK without a streaming response so it uses fetch
+			mockResponsesCreate.mockResolvedValue({})
 
 			handler = new OpenAiNativeHandler({
 				...mockOptions,
@@ -566,8 +566,8 @@ describe("OpenAiNativeHandler", () => {
 			})
 			global.fetch = mockFetch as any
 
-			// Mock SDK to fail
-			mockResponsesCreate.mockRejectedValue(new Error("SDK not available"))
+			// Mock an SDK without a streaming response
+			mockResponsesCreate.mockResolvedValue({})
 
 			handler = new OpenAiNativeHandler({
 				...mockOptions,
@@ -607,8 +607,8 @@ describe("OpenAiNativeHandler", () => {
 			})
 			global.fetch = mockFetch as any
 
-			// Mock SDK to fail
-			mockResponsesCreate.mockRejectedValue(new Error("SDK not available"))
+			// Mock an SDK without a streaming response
+			mockResponsesCreate.mockResolvedValue({})
 
 			handler = new OpenAiNativeHandler({
 				...mockOptions,
@@ -648,8 +648,8 @@ describe("OpenAiNativeHandler", () => {
 			})
 			global.fetch = mockFetch as any
 
-			// Mock SDK to fail
-			mockResponsesCreate.mockRejectedValue(new Error("SDK not available"))
+			// Mock an SDK without a streaming response
+			mockResponsesCreate.mockResolvedValue({})
 
 			handler = new OpenAiNativeHandler({
 				...mockOptions,
@@ -691,8 +691,8 @@ describe("OpenAiNativeHandler", () => {
 			})
 			global.fetch = mockFetch as any
 
-			// Mock SDK to fail
-			mockResponsesCreate.mockRejectedValue(new Error("SDK not available"))
+			// Mock an SDK without a streaming response
+			mockResponsesCreate.mockResolvedValue({})
 
 			handler = new OpenAiNativeHandler({
 				...mockOptions,
@@ -733,8 +733,8 @@ describe("OpenAiNativeHandler", () => {
 			})
 			global.fetch = mockFetch as any
 
-			// Mock SDK to fail
-			mockResponsesCreate.mockRejectedValue(new Error("SDK not available"))
+			// Mock an SDK without a streaming response
+			mockResponsesCreate.mockResolvedValue({})
 
 			handler = new OpenAiNativeHandler({
 				...mockOptions,
@@ -773,8 +773,8 @@ describe("OpenAiNativeHandler", () => {
 			})
 			global.fetch = mockFetch as any
 
-			// Mock SDK to fail
-			mockResponsesCreate.mockRejectedValue(new Error("SDK not available"))
+			// Mock an SDK without a streaming response
+			mockResponsesCreate.mockResolvedValue({})
 
 			handler = new OpenAiNativeHandler({
 				...mockOptions,
@@ -815,8 +815,8 @@ describe("OpenAiNativeHandler", () => {
 			})
 			global.fetch = mockFetch as any
 
-			// Mock SDK to fail
-			mockResponsesCreate.mockRejectedValue(new Error("SDK not available"))
+			// Mock an SDK without a streaming response
+			mockResponsesCreate.mockResolvedValue({})
 
 			const handler = new OpenAiNativeHandler({
 				...mockOptions,
@@ -853,8 +853,8 @@ describe("OpenAiNativeHandler", () => {
 			})
 			global.fetch = mockFetch as any
 
-			// Mock SDK to fail
-			mockResponsesCreate.mockRejectedValue(new Error("SDK not available"))
+			// Mock an SDK without a streaming response
+			mockResponsesCreate.mockResolvedValue({})
 
 			handler = new OpenAiNativeHandler({
 				...mockOptions,
@@ -904,8 +904,8 @@ describe("OpenAiNativeHandler", () => {
 			})
 			global.fetch = mockFetch as any
 
-			// Mock SDK to fail
-			mockResponsesCreate.mockRejectedValue(new Error("SDK not available"))
+			// Mock an SDK without a streaming response
+			mockResponsesCreate.mockResolvedValue({})
 
 			handler = new OpenAiNativeHandler({
 				...mockOptions,
@@ -982,8 +982,8 @@ describe("OpenAiNativeHandler", () => {
 			})
 			global.fetch = mockFetch as any
 
-			// Mock SDK to fail
-			mockResponsesCreate.mockRejectedValue(new Error("SDK not available"))
+			// Mock an SDK without a streaming response
+			mockResponsesCreate.mockResolvedValue({})
 
 			handler = new OpenAiNativeHandler({
 				...mockOptions,
@@ -1038,8 +1038,8 @@ describe("OpenAiNativeHandler", () => {
 			})
 			global.fetch = mockFetch as any
 
-			// Mock SDK to fail
-			mockResponsesCreate.mockRejectedValue(new Error("SDK not available"))
+			// Mock an SDK without a streaming response
+			mockResponsesCreate.mockResolvedValue({})
 
 			handler = new OpenAiNativeHandler({
 				...mockOptions,
@@ -1083,8 +1083,8 @@ describe("OpenAiNativeHandler", () => {
 			})
 			global.fetch = mockFetch as any
 
-			// Mock SDK to fail
-			mockResponsesCreate.mockRejectedValue(new Error("SDK not available"))
+			// Mock an SDK without a streaming response
+			mockResponsesCreate.mockResolvedValue({})
 
 			handler = new OpenAiNativeHandler({
 				...mockOptions,
@@ -1125,7 +1125,7 @@ describe("OpenAiNativeHandler", () => {
 				}),
 			})
 			global.fetch = mockFetch as any
-			mockResponsesCreate.mockRejectedValue(new Error("SDK not available"))
+			mockResponsesCreate.mockResolvedValue({})
 
 			const gpt5Handler = new OpenAiNativeHandler({
 				...mockOptions,
@@ -1169,8 +1169,8 @@ describe("OpenAiNativeHandler", () => {
 				})
 				global.fetch = mockFetch as any
 
-				// Mock SDK to fail
-				mockResponsesCreate.mockRejectedValue(new Error("SDK not available"))
+				// Mock an SDK without a streaming response
+				mockResponsesCreate.mockResolvedValue({})
 
 				handler = new OpenAiNativeHandler({
 					...mockOptions,
@@ -1220,8 +1220,8 @@ describe("GPT-5 streaming event coverage (additional)", () => {
 		})
 		global.fetch = mockFetch as any
 
-		// Mock SDK to fail
-		mockResponsesCreate.mockRejectedValue(new Error("SDK not available"))
+		// Mock an SDK without a streaming response
+		mockResponsesCreate.mockResolvedValue({})
 
 		const handler = new OpenAiNativeHandler({
 			apiModelId: "gpt-5.1",
@@ -1263,8 +1263,8 @@ describe("GPT-5 streaming event coverage (additional)", () => {
 		})
 		global.fetch = mockFetch as any
 
-		// Mock SDK to fail
-		mockResponsesCreate.mockRejectedValue(new Error("SDK not available"))
+		// Mock an SDK without a streaming response
+		mockResponsesCreate.mockResolvedValue({})
 
 		const handler = new OpenAiNativeHandler({
 			apiModelId: "gpt-5.1",
@@ -1312,8 +1312,8 @@ describe("GPT-5 streaming event coverage (additional)", () => {
 		})
 		global.fetch = mockFetch as any
 
-		// Mock SDK to fail
-		mockResponsesCreate.mockRejectedValue(new Error("SDK not available"))
+		// Mock an SDK without a streaming response
+		mockResponsesCreate.mockResolvedValue({})
 
 		const handler = new OpenAiNativeHandler({
 			apiModelId: "gpt-5.1",
@@ -1376,8 +1376,8 @@ describe("GPT-5 streaming event coverage (additional)", () => {
 			})
 			global.fetch = mockFetch as any
 
-			// Mock SDK to fail
-			mockResponsesCreate.mockRejectedValue(new Error("SDK not available"))
+			// Mock an SDK without a streaming response
+			mockResponsesCreate.mockResolvedValue({})
 
 			handler = new OpenAiNativeHandler({
 				...mockOptions,
@@ -1487,8 +1487,8 @@ describe("GPT-5 streaming event coverage (additional)", () => {
 			})
 			global.fetch = mockFetch as any
 
-			// Mock SDK to fail
-			mockResponsesCreate.mockRejectedValue(new Error("SDK not available"))
+			// Mock an SDK without a streaming response
+			mockResponsesCreate.mockResolvedValue({})
 
 			handler = new OpenAiNativeHandler({
 				...mockOptions,
@@ -1527,8 +1527,8 @@ describe("GPT-5 streaming event coverage (additional)", () => {
 			})
 			global.fetch = mockFetch as any
 
-			// Mock SDK to fail
-			mockResponsesCreate.mockRejectedValue(new Error("SDK not available"))
+			// Mock an SDK without a streaming response
+			mockResponsesCreate.mockResolvedValue({})
 
 			handler = new OpenAiNativeHandler({
 				...mockOptions,
@@ -1590,8 +1590,8 @@ describe("GPT-5 streaming event coverage (additional)", () => {
 			})
 			global.fetch = mockFetch as any
 
-			// Mock SDK to fail
-			mockResponsesCreate.mockRejectedValue(new Error("SDK not available"))
+			// Mock an SDK without a streaming response
+			mockResponsesCreate.mockResolvedValue({})
 
 			handler = new OpenAiNativeHandler({
 				...mockOptions,
@@ -1609,7 +1609,7 @@ describe("GPT-5 streaming event coverage (additional)", () => {
 				for await (const chunk of stream) {
 					chunks.push(chunk)
 				}
-			}).rejects.toThrow("Responses API error: Model overloaded")
+			}).rejects.toThrow("OpenAI Native response failed.")
 		})
 
 		// New tests: ensure text.verbosity is omitted for models without supportsVerbosity
@@ -1630,7 +1630,7 @@ describe("GPT-5 streaming event coverage (additional)", () => {
 				;(global as any).fetch = mockFetch as any
 
 				// Force SDK path to fail so we use fetch fallback
-				mockResponsesCreate.mockRejectedValue(new Error("SDK not available"))
+				mockResponsesCreate.mockResolvedValue({})
 
 				const handler = new OpenAiNativeHandler({
 					apiModelId: "gpt-4.1",
@@ -1669,7 +1669,7 @@ describe("GPT-5 streaming event coverage (additional)", () => {
 				;(global as any).fetch = mockFetch as any
 
 				// Force SDK path to fail so we use fetch fallback
-				mockResponsesCreate.mockRejectedValue(new Error("SDK not available"))
+				mockResponsesCreate.mockResolvedValue({})
 
 				const handler = new OpenAiNativeHandler({
 					apiModelId: "gpt-4o",

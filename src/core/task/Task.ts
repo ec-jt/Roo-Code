@@ -5097,13 +5097,18 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		}
 		const recovery = { attempted: false }
 		let emittedOutput = false
+		let producedResponse = false
 		try {
 			await this.ensureModelOperationProvenance()
 			for await (const chunk of this.attemptApiRequestPinned(retryAttempt, options, recovery)) {
 				if (chunk.type !== "usage") emittedOutput = true
+				// Empty block-start events and reasoning alone cannot satisfy the
+				// outer task loop's response check. Do not reset recovery via its grace retry.
+				if ((chunk.type === "text" && chunk.text.trim().length > 0) || chunk.type === "tool_call")
+					producedResponse = true
 				yield chunk
 			}
-			if (recovery.attempted && !emittedOutput)
+			if (recovery.attempted && !producedResponse)
 				throw new ContextRecoveryError(
 					"The retry after context compaction returned no response. Retry manually.",
 				)

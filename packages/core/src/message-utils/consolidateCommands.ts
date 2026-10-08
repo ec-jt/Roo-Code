@@ -27,6 +27,7 @@ export const COMMAND_OUTPUT_STRING = "Output:"
  * // Result: [{ type: 'ask', ask: 'command', text: 'ls\nfile1.txt\nfile2.txt', ts: 1625097600000 }]
  */
 export function consolidateCommands(messages: ClineMessage[]): ClineMessage[] {
+	// Key by row position, not timestamp, so same-millisecond rows stay distinct.
 	const consolidatedMessages = new Map<number, ClineMessage>()
 	const processedIndices = new Set<number>()
 
@@ -70,10 +71,10 @@ export function consolidateCommands(messages: ClineMessage[]): ClineMessage[] {
 				// Stringify the updated JSON object
 				const consolidatedText = JSON.stringify(jsonObj)
 
-				consolidatedMessages.set(msg.ts, { ...msg, text: consolidatedText })
+				consolidatedMessages.set(i, { ...msg, text: consolidatedText })
 			} else {
 				// If there's no response, just keep the original message
-				consolidatedMessages.set(msg.ts, { ...msg })
+				consolidatedMessages.set(i, { ...msg })
 			}
 		}
 		// Handle command sequences
@@ -122,7 +123,7 @@ export function consolidateCommands(messages: ClineMessage[]): ClineMessage[] {
 				j++
 			}
 
-			consolidatedMessages.set(msg.ts, { ...msg, text: consolidatedText })
+			consolidatedMessages.set(i, { ...msg, text: consolidatedText })
 
 			// Only skip ahead if we actually processed command outputs
 			if (lastProcessedIndex > i) {
@@ -142,13 +143,10 @@ export function consolidateCommands(messages: ClineMessage[]): ClineMessage[] {
 			continue
 		}
 
-		// Skip command_output and mcp_server_response messages
-		if (msg.ask === "command_output" || msg.say === "command_output" || msg.say === "mcp_server_response") {
-			continue
-		}
-
 		// Use consolidated version if available
-		const consolidatedMsg = consolidatedMessages.get(msg.ts)
+		// Unprocessed output may belong to a request outside this bounded page.
+		// Keep it rather than silently losing nonempty output.
+		const consolidatedMsg = consolidatedMessages.get(i)
 		if (consolidatedMsg) {
 			result.push(consolidatedMsg)
 		} else {
