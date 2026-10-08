@@ -78,8 +78,12 @@ describe("CommandExecution", () => {
 		const codeBlocks = screen.getAllByTestId("code-block")
 		expect(codeBlocks[0]).toHaveTextContent("npm install")
 
+		expect(screen.queryByTestId("terminal-output")).not.toBeInTheDocument()
+		fireEvent.click(screen.getByRole("button", { name: "Show command output" }))
 		const terminalOutput = screen.getByTestId("terminal-output")
 		expect(terminalOutput).toHaveTextContent("Installing packages...")
+		fireEvent.click(screen.getByRole("button", { name: "Hide command output" }))
+		expect(screen.queryByTestId("terminal-output")).not.toBeInTheDocument()
 	})
 
 	it("should render with custom icon and title", () => {
@@ -239,6 +243,8 @@ Suggested patterns: npm, npm install, npm run`
 		const codeBlocks = screen.getAllByTestId("code-block")
 		expect(codeBlocks[0]).toHaveTextContent("npm install")
 
+		expect(screen.queryByTestId("terminal-output")).not.toBeInTheDocument()
+		fireEvent.click(screen.getByRole("button", { name: "Show command output" }))
 		const terminalOutput = screen.getByTestId("terminal-output")
 		expect(terminalOutput).toHaveTextContent("Suggested patterns: npm, npm install, npm run")
 
@@ -284,7 +290,7 @@ Suggested patterns: npm, npm install, npm run`
 		expect(screen.queryByTestId("command-pattern-selector")).not.toBeInTheDocument()
 	})
 
-	it("should expand output when terminal shell integration is disabled", () => {
+	it("keeps output collapsed when terminal shell integration is disabled", () => {
 		const disabledState = {
 			...mockExtensionState,
 			terminalShellIntegrationDisabled: true,
@@ -300,10 +306,12 @@ Output here`
 			</ExtensionStateContext.Provider>,
 		)
 
-		// Output should be visible when shell integration is disabled
+		// The command remains visible while output starts collapsed
 		const codeBlocks = screen.getAllByTestId("code-block")
 		expect(codeBlocks).toHaveLength(1) // Only command block
 
+		expect(screen.queryByTestId("terminal-output")).not.toBeInTheDocument()
+		fireEvent.click(screen.getByRole("button", { name: "Show command output" }))
 		const terminalOutput = screen.getByTestId("terminal-output")
 		expect(terminalOutput).toHaveTextContent("Output here")
 	})
@@ -576,6 +584,8 @@ Output:
 			expect(selector.textContent).toMatch(/wc/)
 
 			// The output should still be displayed
+			expect(screen.queryByTestId("terminal-output")).not.toBeInTheDocument()
+			fireEvent.click(screen.getByRole("button", { name: "Show command output" }))
 			const terminalOutput = screen.getByTestId("terminal-output")
 			expect(terminalOutput).toBeInTheDocument()
 			expect(terminalOutput.textContent).toContain("45 total")
@@ -600,6 +610,8 @@ Output:
 			expect(selector.textContent).toMatch(/wc/)
 
 			// The output should still be displayed
+			expect(screen.queryByTestId("terminal-output")).not.toBeInTheDocument()
+			fireEvent.click(screen.getByRole("button", { name: "Show command output" }))
 			const terminalOutput = screen.getByTestId("terminal-output")
 			expect(terminalOutput).toBeInTheDocument()
 			expect(terminalOutput).toHaveTextContent("0 total")

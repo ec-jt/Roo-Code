@@ -23,9 +23,9 @@ export function ApiRequestMetrics({ info, active }: { info?: ClineApiReqInfo; ac
 	const hitPercent = info.tokensIn && info.tokensIn >= reads ? Math.round((reads / info.tokensIn) * 100) : undefined
 
 	return (
-		<div className="text-xs text-vscode-descriptionForeground mt-1 flex flex-col gap-1">
+		<div className="text-xs text-vscode-descriptionForeground flex flex-wrap items-center gap-x-3 gap-y-0.5 min-w-0">
 			{timing && end !== undefined && (
-				<div title={t("chat:apiRequest.metrics.timingHelp")}>
+				<span title={t("chat:apiRequest.metrics.timingHelp")}>
 					{t("chat:apiRequest.metrics.preparation", {
 						seconds: seconds(timing.startedAt, timing.providerStartedAt ?? end),
 					})}
@@ -47,10 +47,10 @@ export function ApiRequestMetrics({ info, active }: { info?: ClineApiReqInfo; ac
 							)}
 						</>
 					)}
-				</div>
+				</span>
 			)}
 			{reported || writes > 0 ? (
-				<div title={t("chat:apiRequest.metrics.expiryUnknown")}>
+				<span title={t("chat:apiRequest.metrics.expiryUnknown")}>
 					{reported && t("chat:apiRequest.metrics.cacheRead", { tokens: reads.toLocaleString() })}
 					{reported && hitPercent !== undefined && ` (${hitPercent}%)`}
 					{writes > 0 && (
@@ -59,11 +59,11 @@ export function ApiRequestMetrics({ info, active }: { info?: ClineApiReqInfo; ac
 							{t("chat:apiRequest.metrics.cacheWrite", { tokens: writes.toLocaleString() })}
 						</>
 					)}
-					<div>{t("chat:apiRequest.metrics.expiryUnknown")}</div>
-				</div>
+				</span>
 			) : (
-				!active && <div>{t("chat:apiRequest.metrics.cacheUnknown")}</div>
+				!active && <span>{t("chat:apiRequest.metrics.cacheUnknown")}</span>
 			)}
+			{(reported || writes > 0) && <span>{t("chat:apiRequest.metrics.expiryUnknown")}</span>}
 		</div>
 	)
 }

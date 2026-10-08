@@ -1116,7 +1116,7 @@ export const ChatRowContent = ({
 					return (
 						<>
 							<div
-								className={`group text-sm transition-opacity ${
+								className={`group text-sm transition-opacity flex-wrap gap-x-3 gap-y-1 ${
 									isApiRequestInProgress ? "opacity-100" : "opacity-40 hover:opacity-100"
 								}`}
 								style={{
@@ -1128,9 +1128,15 @@ export const ChatRowContent = ({
 											: 0,
 									justifyContent: "space-between",
 								}}>
-								<div style={{ display: "flex", alignItems: "center", gap: "10px", flexGrow: 1 }}>
+								<div className="flex shrink-0 items-center gap-2.5">
 									{icon}
 									{title}
+								</div>
+								<div className="min-w-0 flex-1">
+									<ApiRequestMetrics
+										info={safeJsonParse<ClineApiReqInfo>(message.text)}
+										active={isApiRequestInProgress}
+									/>
 								</div>
 								<div
 									className="text-xs text-vscode-dropdown-foreground border-vscode-dropdown-border/50 border px-1.5 py-0.5 rounded-lg"
@@ -1151,10 +1157,6 @@ export const ChatRowContent = ({
 									errorDetails={apiReqStreamingFailedMessage}
 								/>
 							)}
-							<ApiRequestMetrics
-								info={safeJsonParse<ClineApiReqInfo>(message.text)}
-								active={isApiRequestInProgress}
-							/>
 						</>
 					)
 				case "api_req_retry_delayed":

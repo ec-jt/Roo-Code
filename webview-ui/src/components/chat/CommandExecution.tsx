@@ -33,19 +33,12 @@ interface CommandExecutionProps {
 }
 
 export const CommandExecution = ({ executionId, text, icon, title }: CommandExecutionProps) => {
-	const {
-		terminalShellIntegrationDisabled = false,
-		allowedCommands = [],
-		deniedCommands = [],
-		setAllowedCommands,
-		setDeniedCommands,
-	} = useExtensionState()
+	const { allowedCommands = [], deniedCommands = [], setAllowedCommands, setDeniedCommands } = useExtensionState()
 
 	const { command, output: parsedOutput } = useMemo(() => parseCommandAndOutput(text), [text])
 
-	// If we aren't opening the VSCode terminal for this command then we default
-	// to expanding the command execution output.
-	const [isExpanded, setIsExpanded] = useState(terminalShellIntegrationDisabled)
+	// Keep output collapsed for both integrated and background commands.
+	const [isExpanded, setIsExpanded] = useState(false)
 	const [streamingOutput, setStreamingOutput] = useState("")
 	const [status, setStatus] = useState<CommandExecutionStatus | null>(null)
 
@@ -131,7 +124,7 @@ export const CommandExecution = ({ executionId, text, icon, title }: CommandExec
 							setStreamingOutput(data.output)
 							break
 						case "fallback":
-							setIsExpanded(true)
+							// A transport fallback must not override the user's display choice.
 							break
 						default:
 							setStatus(data)
@@ -186,7 +179,12 @@ export const CommandExecution = ({ executionId, text, icon, title }: CommandExec
 							</div>
 						)}
 						{output.length > 0 && (
-							<Button variant="ghost" size="icon" onClick={() => setIsExpanded(!isExpanded)}>
+							<Button
+								variant="ghost"
+								size="icon"
+								aria-label={isExpanded ? "Hide command output" : "Show command output"}
+								aria-expanded={isExpanded}
+								onClick={() => setIsExpanded(!isExpanded)}>
 								<ChevronDown
 									className={cn(
 										"size-4 transition-transform duration-300",
@@ -226,7 +224,7 @@ const OutputContainerInternal = ({ isExpanded, output }: { isExpanded: boolean; 
 			"max-h-0": !isExpanded,
 			"max-h-[100%] mt-1 pt-1 border-t border-border/25": isExpanded,
 		})}>
-		{output.length > 0 && <TerminalOutput content={output} />}
+		{isExpanded && output.length > 0 && <TerminalOutput content={output} />}
 	</div>
 )
 

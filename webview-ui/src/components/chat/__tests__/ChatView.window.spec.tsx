@@ -6,6 +6,7 @@ import { vscode } from "@/utils/vscode"
 import ChatView, { type ChatViewRef } from "../ChatView"
 import { getApiMetrics } from "@roo/getApiMetrics"
 import { fileChangesFromMessages } from "../utils/fileChangesFromMessages"
+import { PlainHistoryMessage } from "../ChatWindowControls"
 
 vi.mock("@/utils/vscode", () => ({ vscode: { postMessage: vi.fn() } }))
 vi.mock("@roo/getApiMetrics", () => ({
@@ -88,6 +89,23 @@ const push = (window: ChatWindowState, rows: ClineMessage[]) =>
 
 describe("bounded chat view", () => {
 	beforeEach(() => vi.clearAllMocks())
+	it("hides tool previews until explicitly expanded", () => {
+		const message: ClineMessage = { ts: 2, type: "say", say: "command_output", text: "one\ntwo\nthree" }
+		const { container } = render(<PlainHistoryMessage message={message} window={page(1)} />)
+		expect(container.querySelector("pre")).toBeNull()
+		fireEvent.click(screen.getByRole("button", { name: "Show preview" }))
+		expect(container.querySelector("pre")).toHaveTextContent("one")
+		fireEvent.click(screen.getByRole("button", { name: "Hide preview" }))
+		expect(container.querySelector("pre")).toBeNull()
+	})
+	it("does not compact a live unanswered tool approval", () => {
+		const message: ClineMessage = { ts: 2, type: "ask", ask: "tool", text: "approval details" }
+		const { container } = render(
+			<PlainHistoryMessage message={message} window={{ ...page(1), liveMessage: message }} />,
+		)
+		expect(container.querySelector("pre")).toHaveTextContent("approval details")
+		expect(screen.queryByRole("button", { name: "Show preview" })).not.toBeInTheDocument()
+	})
 	it("uses full-history summaries without scanning and requests native stored diffs", () => {
 		render(
 			<ExtensionStateContextProvider>
