@@ -776,7 +776,7 @@ export interface WebviewMessage {
 	instanceId?: string
 	chatWindowRequest?: ChatWindowRequest
 	chatWindowAck?: ChatWindowAck
-	chatMessageOpen?: { taskId: string; instanceId: string; ts: number }
+	chatMessageOpen?: { taskId: string; instanceId: string; ts: number; index?: number; revision?: number }
 	assistantMessageEdit?: AssistantMessageEdit
 	chatFileChangesOpen?: { taskId: string; instanceId: string; path: string }
 	commandActivityControl?: { id: string; action: "stop" | "show" }

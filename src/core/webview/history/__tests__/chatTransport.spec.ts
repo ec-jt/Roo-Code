@@ -64,7 +64,7 @@ describe("bounded provider transport", () => {
 		task.chatHistoryIndex.append(task.clineMessages, ask)
 		await provider.postMessageToWebview({ type: "messageUpdated", clineMessage: ask })
 		expect(postMessage).toHaveBeenCalledTimes(2)
-		expect(postMessage.mock.calls[1][0].state.chatWindow.liveMessage).toEqual(ask)
+		expect(postMessage.mock.calls[1][0].state.chatWindow.liveMessage).toMatchObject(ask)
 		dispose()
 		vi.useRealTimers()
 	})

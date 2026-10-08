@@ -269,6 +269,7 @@ describe("Anthropic dispatch admission", () => {
 				contextWindow: 1000,
 				maxTokens: 100,
 				autoCondenseContext: true,
+				contextLimitExceeded: true,
 				autoCondenseContextPercent: 50,
 				profileThresholds: {},
 				currentProfileId: "profile",

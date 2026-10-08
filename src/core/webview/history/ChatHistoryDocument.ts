@@ -1,10 +1,9 @@
 import * as vscode from "vscode"
-
-let nextProvider = 0
+import { randomUUID } from "node:crypto"
 
 /** Read-only native documents. Content never crosses the webview bridge or touches disk. */
 export class ChatHistoryDocument implements vscode.Disposable {
-	private readonly scheme = `roo-chat-history-${++nextProvider}`
+	private readonly scheme = `roo-chat-history-${randomUUID()}`
 	private readonly content = new Map<string, string>()
 	private readonly registration: vscode.Disposable
 	private readonly closeSubscription: vscode.Disposable
@@ -22,7 +21,7 @@ export class ChatHistoryDocument implements vscode.Disposable {
 
 	public async open(content: string, isCurrent: () => boolean) {
 		const uri = vscode.Uri.from({ scheme: this.scheme, path: `/message-${++this.nextDocument}.txt` })
-		this.content.set(uri.toString(), content)
+		this.content.set(uri.toString(), content.trim() ? content : "This history entry contains no stored text.")
 		// At most four editor requests are retained by this provider (each already limited to 8 MiB).
 		while (this.content.size > 4) this.content.delete(this.content.keys().next().value!)
 		const document = await vscode.workspace.openTextDocument(uri)

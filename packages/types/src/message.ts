@@ -258,6 +258,15 @@ export type ContextTruncation = z.infer<typeof contextTruncationSchema>
  */
 export const clineMessageSchema = z.object({
 	ts: z.number(),
+	/** Webview-only projection metadata; never authoritative model history. */
+	chatPreview: z
+		.object({
+			index: z.number().int().nonnegative(),
+			truncated: z.boolean(),
+			label: z.string(),
+			hasContent: z.boolean(),
+		})
+		.optional(),
 	type: z.union([z.literal("ask"), z.literal("say")]),
 	requestId: z.string().min(1).optional(),
 	ask: clineAskSchema.optional(),

@@ -10,6 +10,7 @@ export type ModelDispatchControlCode =
 	| "lease-expired"
 	| "unsupported-provider"
 	| "dispatch-failed"
+	| "context-limit"
 
 export class ModelDispatchControl extends Error {
 	constructor(readonly code: ModelDispatchControlCode) {

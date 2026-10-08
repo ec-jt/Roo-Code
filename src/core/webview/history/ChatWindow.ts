@@ -1,5 +1,6 @@
 import type { ChatWindowRequest, ChatWindowState, ClineMessage } from "@roo-code/types"
 import { ChatHistoryIndex } from "./ChatHistoryIndex"
+import { chatPreviewLabel } from "../../../shared/chat-preview"
 
 export const CHAT_WINDOW_BYTES = 1024 * 1024
 export const CHAT_WINDOW_ROWS = 100
@@ -138,10 +139,20 @@ export class ChatWindow {
 		let start = this.following ? Math.max(1, total - CHAT_WINDOW_ROWS) : Math.min(this.start, total)
 		let end = this.following ? total : Math.min(this.end, total)
 		if (total === 0) start = end = 0
-		const root = source[0] ? preview(source[0], 64 * 1024) : undefined
+		const project = (message: ClineMessage, index: number, limit?: number, keepFull = false) => {
+			const entry = keepFull ? { row: { ...message }, truncated: false } : preview(message, limit)
+			entry.row.chatPreview = {
+				index,
+				truncated: entry.truncated,
+				label: chatPreviewLabel(message),
+				hasContent: !!(message.text?.trim() || message.reasoning?.trim()),
+			}
+			return entry
+		}
+		const root = source[0] ? project(source[0], 0, 64 * 1024) : undefined
 		const last = this.following ? source.at(-1) : undefined
 		const pendingAsk = last?.type === "ask" && !last.isAnswered && !last.partial
-		const live = last ? (pendingAsk ? { row: { ...last }, truncated: false } : preview(last)) : undefined
+		const live = last ? project(last, total - 1, undefined, !!pendingAsk) : undefined
 		const liveBytes = live ? Buffer.byteLength(JSON.stringify(live.row)) : 0
 		const rows: Array<{ row: ClineMessage; truncated: boolean }> = []
 		const chatWindow: ChatWindowState = {
@@ -170,7 +181,7 @@ export class ChatWindow {
 			8192
 		const backwards = this.following || this.direction === "before"
 		for (let i = backwards ? end - 1 : start; backwards ? i >= start : i < end; i += backwards ? -1 : 1) {
-			const entry = last && source[i] === last ? live! : preview(source[i])
+			const entry = last && source[i] === last ? live! : project(source[i], i)
 			const size = Buffer.byteLength(JSON.stringify(entry.row))
 			// The latest ask is the sole exception: never hide authorization data to meet a display budget.
 			if (bytes + size > CHAT_WINDOW_BYTES && !(source[i] === last && pendingAsk)) {

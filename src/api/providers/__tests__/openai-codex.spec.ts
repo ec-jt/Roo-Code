@@ -5,6 +5,20 @@ import { openAiCodexOAuthManager } from "../../../integrations/openai-codex/oaut
 import type { ApiStreamChunk } from "../../transform/stream"
 
 describe("OpenAiCodexHandler.getModel", () => {
+	it("preserves an explicit overflow code without exposing terminal response details", async () => {
+		const handler = new OpenAiCodexHandler({})
+		await expect(
+			(handler as any)
+				.processEvent(
+					{
+						type: "response.failed",
+						response: { error: { code: "context_length_exceeded", message: "private data" } },
+					},
+					handler.getModel(),
+				)
+				.next(),
+		).rejects.toMatchObject({ code: "context_length_exceeded", message: "OpenAI Codex response failed." })
+	})
 	it("resolves Sol 6.1 without changing the subscription provider default", () => {
 		const model = new OpenAiCodexHandler({ apiModelId: "gpt-6.1-sol" }).getModel()
 		expect(model.id).toBe("gpt-6.1-sol")

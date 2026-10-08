@@ -21,13 +21,13 @@ describe("checkContextWindowExceededError", () => {
 			expect(checkContextWindowExceededError(error)).toBe(true)
 		})
 
-		it("should detect OpenAI LengthFinishReasonError", () => {
+		it("does not treat output length finish as input overflow", () => {
 			const error = {
 				name: "LengthFinishReasonError",
 				message: "The response was cut off due to length",
 			}
 
-			expect(checkContextWindowExceededError(error)).toBe(true)
+			expect(checkContextWindowExceededError(error)).toBe(false)
 		})
 
 		it("should not detect non-context OpenAI errors", () => {
@@ -83,7 +83,7 @@ describe("checkContextWindowExceededError", () => {
 		it("should detect various context error patterns", () => {
 			const patterns = [
 				"context length exceeded",
-				"maximum context window",
+				"maximum context window of 8192 tokens",
 				"input tokens exceed limit",
 				"too many tokens",
 			]
@@ -145,13 +145,7 @@ describe("checkContextWindowExceededError", () => {
 		})
 
 		it("should detect various Anthropic context error patterns", () => {
-			const patterns = [
-				"prompt is too long",
-				"maximum 200000 tokens",
-				"context is too long",
-				"exceeds the context window",
-				"token limit exceeded",
-			]
+			const patterns = ["prompt is too long", "context is too long", "exceeds the context window"]
 
 			patterns.forEach((pattern) => {
 				const error = {
@@ -194,6 +188,23 @@ describe("checkContextWindowExceededError", () => {
 	})
 
 	describe("Edge cases", () => {
+		it.each([
+			{ status: 400, message: "invalid context configuration" },
+			{ status: 400, message: "max_tokens must be less than 4096" },
+			{ status: 429, message: "too many tokens per minute" },
+			{ status: 408, message: "context length exceeded" },
+			new Error("context window exceeded"),
+			{ name: "APIConnectionError", code: "context_length_exceeded" },
+		])("rejects unrelated or transport errors: %j", (error) =>
+			expect(checkContextWindowExceededError(error)).toBe(false),
+		)
+		it.each([
+			{ code: "context_length_exceeded" },
+			{ status: 400, error: { type: "invalid_request_error", message: "prompt is too long: 200001 > 200000" } },
+			{ status: 400, message: "The input token count exceeds the maximum number of tokens allowed" },
+		])("accepts explicit provider rejections: %j", (error) =>
+			expect(checkContextWindowExceededError(error)).toBe(true),
+		)
 		it("should handle null input", () => {
 			expect(checkContextWindowExceededError(null)).toBe(false)
 		})

@@ -3,6 +3,7 @@ import type { AssistantMessageEdit, ClineMessage, ExtensionMessage } from "@roo-
 import { useExtensionState } from "@/context/ExtensionStateContext"
 import { Button } from "@/components/ui"
 import { vscode } from "@/utils/vscode"
+import { isChatPreview } from "@roo/chat-preview"
 
 /** History-only edits. Never routes through the user-message send or rewind flow. */
 export function AssistantMessageEditor({ message, isStreaming }: { message: ClineMessage; isStreaming: boolean }) {
@@ -17,7 +18,7 @@ export function AssistantMessageEditor({ message, isStreaming }: { message: Clin
 		message.say !== "text" ||
 		!message.text ||
 		clineMessages[0]?.ts === message.ts ||
-		chatWindow.truncatedTs.includes(message.ts)
+		isChatPreview(message, chatWindow)
 	)
 		return null
 	return (

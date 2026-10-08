@@ -2,26 +2,9 @@ import { Anthropic } from "@anthropic-ai/sdk"
 import crypto from "crypto"
 
 import { ApiHandler, ApiHandlerCreateMessageMetadata } from "../../api"
-import { MAX_CONDENSE_THRESHOLD, MIN_CONDENSE_THRESHOLD, summarizeConversation, SummarizeResponse } from "../condense"
+import { summarizeConversation, SummarizeResponse } from "../condense"
 import { ApiMessage } from "../task-persistence/apiMessages"
-import { ANTHROPIC_DEFAULT_MAX_TOKENS } from "@roo-code/types"
 import { RooIgnoreController } from "../ignore/RooIgnoreController"
-
-/**
- * Context Management
- *
- * This module provides Context Management for conversations, combining:
- * - Intelligent condensation of prior messages when approaching configured thresholds
- * - Sliding window truncation as a fallback when necessary
- *
- * Behavior and exports are preserved exactly from the previous sliding-window implementation.
- */
-
-/**
- * Default percentage of the context window to use as a buffer when deciding when to truncate.
- * Used by Context Management to determine when to trigger condensation or (fallback) sliding window truncation.
- */
-export const TOKEN_BUFFER_PERCENTAGE = 0.1
 
 /**
  * Counts tokens for user content using the provider's token counting implementation.
@@ -130,243 +113,88 @@ export function truncateConversation(messages: ApiMessage[], fracToRemove: numbe
 	}
 }
 
-/**
- * Options for checking if context management will likely run.
- * A subset of ContextManagementOptions with only the fields needed for threshold calculation.
- */
+/** Legacy estimates and thresholds are accepted for source/import compatibility only. */
 export type WillManageContextOptions = {
 	totalTokens: number
 	contextWindow: number
 	maxTokens?: number | null
 	autoCondenseContext: boolean
-	autoCondenseContextPercent: number
-	profileThresholds: Record<string, number>
-	currentProfileId: string
+	autoCondenseContextPercent?: number
+	profileThresholds?: Record<string, number>
+	currentProfileId?: string
 	lastMessageTokens: number
+	/** Set only after an explicit provider context-limit rejection. */
+	contextLimitExceeded?: boolean
 }
 
-/**
- * Checks whether context management (condensation or truncation) will likely run based on current token usage.
- *
- * This is useful for showing UI indicators before `manageContext` is actually called,
- * without duplicating the threshold calculation logic.
- *
- * @param {WillManageContextOptions} options - The options for threshold calculation
- * @returns {boolean} True if context management will likely run, false otherwise
- */
-export function willManageContext({
-	totalTokens,
-	contextWindow,
-	maxTokens,
-	autoCondenseContext,
-	autoCondenseContextPercent,
-	profileThresholds,
-	currentProfileId,
-	lastMessageTokens,
-}: WillManageContextOptions): boolean {
-	if (!autoCondenseContext) {
-		// When auto-condense is disabled, only truncation can occur
-		const reservedTokens = maxTokens || ANTHROPIC_DEFAULT_MAX_TOKENS
-		const prevContextTokens = totalTokens + lastMessageTokens
-		const allowedTokens = contextWindow * (1 - TOKEN_BUFFER_PERCENTAGE) - reservedTokens
-		return prevContextTokens > allowedTokens
-	}
-
-	const reservedTokens = maxTokens || ANTHROPIC_DEFAULT_MAX_TOKENS
-	const prevContextTokens = totalTokens + lastMessageTokens
-	const allowedTokens = contextWindow * (1 - TOKEN_BUFFER_PERCENTAGE) - reservedTokens
-
-	// Determine the effective threshold to use
-	let effectiveThreshold = autoCondenseContextPercent
-	const profileThreshold = profileThresholds[currentProfileId]
-	if (profileThreshold !== undefined) {
-		if (profileThreshold === -1) {
-			effectiveThreshold = autoCondenseContextPercent
-		} else if (profileThreshold >= MIN_CONDENSE_THRESHOLD && profileThreshold <= MAX_CONDENSE_THRESHOLD) {
-			effectiveThreshold = profileThreshold
-		}
-		// Invalid values fall back to global setting (effectiveThreshold already set)
-	}
-
-	const contextPercent = (100 * prevContextTokens) / contextWindow
-	return contextPercent >= effectiveThreshold || prevContextTokens > allowedTokens
+export function willManageContext(options: WillManageContextOptions): boolean {
+	return options.autoCondenseContext && options.contextLimitExceeded === true
 }
 
-/**
- * Context Management: Conditionally manages the conversation context when approaching limits.
- *
- * Attempts intelligent condensation of prior messages when thresholds are reached.
- * Falls back to sliding window truncation if condensation is unavailable or fails.
- *
- * @param {ContextManagementOptions} options - The options for truncation/condensation
- * @returns {Promise<ApiMessage[]>} The original, condensed, or truncated conversation messages.
- */
-
-export type ContextManagementOptions = {
+export type ContextManagementOptions = Omit<WillManageContextOptions, "lastMessageTokens"> & {
 	messages: ApiMessage[]
-	totalTokens: number
-	contextWindow: number
-	maxTokens?: number | null
 	apiHandler: ApiHandler
-	autoCondenseContext: boolean
-	autoCondenseContextPercent: number
 	systemPrompt: string
 	taskId: string
 	customCondensingPrompt?: string
-	profileThresholds: Record<string, number>
-	currentProfileId: string
-	/** Optional metadata to pass through to the condensing API call (tools, taskId, etc.) */
 	metadata?: ApiHandlerCreateMessageMetadata
-	/** Optional environment details string to include in the condensed summary */
 	environmentDetails?: string
-	/** Optional array of file paths read by Roo during the task (will be folded via tree-sitter) */
 	filesReadByRoo?: string[]
-	/** Optional current working directory for resolving file paths (required if filesReadByRoo is provided) */
 	cwd?: string
-	/** Optional controller for file access validation */
 	rooIgnoreController?: RooIgnoreController
 }
 
-export type ContextManagementResult = SummarizeResponse & {
-	prevContextTokens: number
-	truncationId?: string
-	messagesRemoved?: number
-	newContextTokensAfterTruncation?: number
-}
+export type ContextManagementResult = SummarizeResponse & { prevContextTokens: number }
 
-/**
- * Conditionally manages conversation context (condense and fallback truncation).
- *
- * @param {ContextManagementOptions} options - The options for truncation/condensation
- * @returns {Promise<ApiMessage[]>} The original, condensed, or truncated conversation messages.
- */
-export async function manageContext({
-	messages,
-	totalTokens,
-	contextWindow,
-	maxTokens,
-	apiHandler,
-	autoCondenseContext,
-	autoCondenseContextPercent,
-	systemPrompt,
-	taskId,
-	customCondensingPrompt,
-	profileThresholds,
-	currentProfileId,
-	metadata,
-	environmentDetails,
-	filesReadByRoo,
-	cwd,
-	rooIgnoreController,
-}: ContextManagementOptions): Promise<ContextManagementResult> {
-	let error: string | undefined
-	let errorDetails: string | undefined
-	let cost = 0
-	// Calculate the maximum tokens reserved for response
-	const reservedTokens = maxTokens || ANTHROPIC_DEFAULT_MAX_TOKENS
+/** Summarize only on explicit overflow. Never truncate, including on failure. */
+export async function manageContext(options: ContextManagementOptions): Promise<ContextManagementResult> {
+	const { messages, totalTokens: prevContextTokens } = options
+	const unchanged = { messages, summary: "", cost: 0, prevContextTokens }
+	if (!willManageContext({ ...options, lastMessageTokens: 0 })) return unchanged
 
-	// Estimate tokens for the last message (which is always a user message)
-	const lastMessage = messages[messages.length - 1]
-	const lastMessageContent = lastMessage.content
-	const lastMessageTokens = Array.isArray(lastMessageContent)
-		? await estimateTokenCount(lastMessageContent, apiHandler)
-		: await estimateTokenCount([{ type: "text", text: lastMessageContent as string }], apiHandler)
+	// Preserve the latest input verbatim. Keep its tool-call exchange too, so no
+	// tool result loses its matching assistant call when the prefix is summarized.
+	let preserveFrom = messages.length - 1
+	while (preserveFrom > 0 && messages[preserveFrom - 1].role === "user") preserveFrom--
+	const latestInput = messages.slice(preserveFrom)
+	const hasToolResults = latestInput.some(
+		(message) => Array.isArray(message.content) && message.content.some((block) => block.type === "tool_result"),
+	)
+	if (hasToolResults && preserveFrom > 0) preserveFrom--
+	if (preserveFrom < 2)
+		return { ...unchanged, error: "Not enough earlier history to compact. Use manual context management." }
 
-	// Calculate total effective tokens (totalTokens never includes the last message)
-	const prevContextTokens = totalTokens + lastMessageTokens
-
-	// Calculate available tokens for conversation history
-	// Truncate if we're within TOKEN_BUFFER_PERCENTAGE of the context window
-	const allowedTokens = contextWindow * (1 - TOKEN_BUFFER_PERCENTAGE) - reservedTokens
-
-	// Determine the effective threshold to use
-	let effectiveThreshold = autoCondenseContextPercent
-	const profileThreshold = profileThresholds[currentProfileId]
-	if (profileThreshold !== undefined) {
-		if (profileThreshold === -1) {
-			// Special case: -1 means inherit from global setting
-			effectiveThreshold = autoCondenseContextPercent
-		} else if (profileThreshold >= MIN_CONDENSE_THRESHOLD && profileThreshold <= MAX_CONDENSE_THRESHOLD) {
-			// Valid custom threshold
-			effectiveThreshold = profileThreshold
-		} else {
-			// Invalid threshold value, fall back to global setting
-			console.warn(
-				`Invalid profile threshold ${profileThreshold} for profile "${currentProfileId}". Using global default of ${autoCondenseContextPercent}%`,
-			)
-			effectiveThreshold = autoCondenseContextPercent
-		}
-	}
-	// If no specific threshold is found for the profile, fall back to global setting
-
-	if (autoCondenseContext) {
-		const contextPercent = (100 * prevContextTokens) / contextWindow
-		if (contextPercent >= effectiveThreshold || prevContextTokens > allowedTokens) {
-			// Attempt to intelligently condense the context
-			const result = await summarizeConversation({
-				messages,
-				apiHandler,
-				systemPrompt,
-				taskId,
-				isAutomaticTrigger: true,
-				customCondensingPrompt,
-				metadata,
-				environmentDetails,
-				filesReadByRoo,
-				cwd,
-				rooIgnoreController,
-			})
-			if (result.error) {
-				error = result.error
-				errorDetails = result.errorDetails
-				cost = result.cost
-			} else {
-				return { ...result, prevContextTokens }
-			}
-		}
-	}
-
-	// Fall back to sliding window truncation if needed
-	if (prevContextTokens > allowedTokens) {
-		const truncationResult = truncateConversation(messages, 0.5, taskId)
-
-		// Calculate new context tokens after truncation by counting non-truncated messages
-		// Messages with truncationParent are hidden, so we count only those without it
-		const effectiveMessages = truncationResult.messages.filter(
-			(msg) => !msg.truncationParent && !msg.isTruncationMarker,
-		)
-
-		// Include system prompt tokens so this value matches what we send to the API.
-		// Note: `prevContextTokens` is computed locally here (totalTokens + lastMessageTokens).
-		let newContextTokensAfterTruncation = await estimateTokenCount(
-			[{ type: "text", text: systemPrompt }],
-			apiHandler,
-		)
-
-		for (const msg of effectiveMessages) {
-			const content = msg.content
-			if (Array.isArray(content)) {
-				newContextTokensAfterTruncation += await estimateTokenCount(content, apiHandler)
-			} else if (typeof content === "string") {
-				newContextTokensAfterTruncation += await estimateTokenCount(
-					[{ type: "text", text: content }],
-					apiHandler,
-				)
-			}
-		}
-
+	const result = await summarizeConversation({
+		messages: structuredClone(messages.slice(0, preserveFrom)),
+		apiHandler: options.apiHandler,
+		systemPrompt: options.systemPrompt,
+		taskId: options.taskId,
+		isAutomaticTrigger: true,
+		customCondensingPrompt: options.customCondensingPrompt,
+		metadata: options.metadata,
+		environmentDetails: options.environmentDetails,
+		filesReadByRoo: options.filesReadByRoo,
+		cwd: options.cwd,
+		rooIgnoreController: options.rooIgnoreController,
+	})
+	if (result.error || !result.summary)
 		return {
-			messages: truncationResult.messages,
-			prevContextTokens,
-			summary: "",
-			cost,
-			error,
-			errorDetails,
-			truncationId: truncationResult.truncationId,
-			messagesRemoved: truncationResult.messagesRemoved,
-			newContextTokensAfterTruncation,
+			...unchanged,
+			cost: result.cost,
+			error: result.error || "Context compaction produced no summary.",
+			errorDetails: result.errorDetails,
 		}
+	const retained = messages.slice(preserveFrom)
+	const retainedTokens = await estimateTokenCount(
+		retained.flatMap((message) =>
+			typeof message.content === "string" ? [{ type: "text" as const, text: message.content }] : message.content,
+		),
+		options.apiHandler,
+	)
+	return {
+		...result,
+		messages: [...result.messages, ...retained],
+		prevContextTokens,
+		newContextTokens: (result.newContextTokens ?? 0) + retainedTokens,
 	}
-	// No truncation or condensation needed
-	return { messages, summary: "", cost, prevContextTokens, error, errorDetails }
 }

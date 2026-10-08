@@ -1,6 +1,7 @@
 import * as os from "os"
 import { v7 as uuidv7 } from "uuid"
 import { Anthropic } from "@anthropic-ai/sdk"
+import { checkContextWindowExceededError } from "../../core/context/context-management/context-error-handling"
 import OpenAI from "openai"
 
 import { Package } from "../../shared/package"
@@ -449,6 +450,7 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 				}
 			}
 		} catch (sdkErr: any) {
+			if (checkContextWindowExceededError(sdkErr)) throw sdkErr
 			// For errors, fallback to manual SSE via fetch
 			yield* this.makeResponsesApiRequest(requestBody, model, metadata, systemPrompt, messages)
 		} finally {
@@ -584,6 +586,17 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 
 			if (!response.ok) {
 				const errorText = await response.text()
+				let contextError: unknown
+				try {
+					contextError = { status: response.status, error: JSON.parse(errorText).error }
+				} catch {
+					/* Not structured JSON. */
+				}
+				if (checkContextWindowExceededError(contextError))
+					throw Object.assign(new Error("Responses API context limit exceeded."), {
+						code: "context_length_exceeded",
+						status: response.status,
+					})
 
 				let errorMessage = `OpenAI Responses API request failed (${response.status})`
 				let errorDetails = ""
@@ -649,6 +662,7 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 			const errorMessage = error instanceof Error ? error.message : String(error)
 
 			if (error instanceof Error) {
+				if (checkContextWindowExceededError(error)) throw error
 				// Re-throw with the original error message if it's already formatted
 				if (error.message.includes("Responses API")) {
 					throw error
@@ -985,6 +999,10 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 							}
 							// Handle error events
 							else if (parsed.type === "response.error" || parsed.type === "error") {
+								if (checkContextWindowExceededError(parsed))
+									throw Object.assign(new Error("Responses API context limit exceeded."), {
+										code: "context_length_exceeded",
+									})
 								// Error event from the API
 								if (parsed.error || parsed.message) {
 									throw new Error(
@@ -1006,6 +1024,10 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 							}
 							// Handle failed event
 							else if (parsed.type === "response.failed") {
+								if (checkContextWindowExceededError({ error: parsed.response?.error ?? parsed.error }))
+									throw Object.assign(new Error("Responses API context limit exceeded."), {
+										code: "context_length_exceeded",
+									})
 								// Response failed
 								if (parsed.error || parsed.message) {
 									throw new Error(
@@ -1129,6 +1151,7 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 			const errorMessage = error instanceof Error ? error.message : String(error)
 
 			if (error instanceof Error) {
+				if (checkContextWindowExceededError(error)) throw error
 				throw new Error(`Error processing response stream: ${error.message}`)
 			}
 			throw new Error("Unexpected error processing response stream")
@@ -1141,6 +1164,11 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 	 * Shared processor for Responses API events.
 	 */
 	private async *processEvent(event: any, model: OpenAiNativeModel): ApiStream {
+		if (
+			["response.failed", "response.error", "error"].includes(event?.type) &&
+			checkContextWindowExceededError({ ...event, error: event.response?.error ?? event.error })
+		)
+			throw Object.assign(new Error("Responses API context limit exceeded."), { code: "context_length_exceeded" })
 		// Capture resolved service tier when available
 		if (event?.response?.service_tier) {
 			this.lastServiceTier = event.response.service_tier as ServiceTier

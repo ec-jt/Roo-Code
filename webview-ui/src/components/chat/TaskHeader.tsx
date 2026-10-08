@@ -212,6 +212,12 @@ const TaskHeader = ({
 										<Table className="text-base ml-1.5">
 											<TableBody>
 												<TableRow>
+													<TableCell colSpan={2} className="text-xs">
+														Percentage of the full context window. Informational only; no
+														automatic percentage trigger.
+													</TableCell>
+												</TableRow>
+												<TableRow>
 													<TableCell className="font-medium whitespace-nowrap">
 														{t("chat:tokenProgress.tokensUsedLabel")}
 													</TableCell>
@@ -248,9 +254,8 @@ const TaskHeader = ({
 								sideOffset={8}>
 								<span className="flex items-center gap-1.5">
 									{(() => {
-										// Calculate percentage of available input space used
-										// Available input space = context window - reserved for output
-										const availableInputSpace = contextWindow - reservedForOutput
+										// Report use of the full advertised window, not a compaction threshold.
+										const availableInputSpace = contextWindow
 										const percentage =
 											availableInputSpace > 0
 												? Math.round(((contextTokens || 0) / availableInputSpace) * 100)

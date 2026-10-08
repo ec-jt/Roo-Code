@@ -31,6 +31,10 @@ export const ContextWindowProgress = ({ contextWindow, contextTokens, maxTokens 
 	const tooltipContent = (
 		<div className="space-y-1">
 			<div>
+				Context usage is informational. Compaction is manual or follows an explicit provider context-limit
+				rejection.
+			</div>
+			<div>
 				{t("chat:tokenProgress.tokensUsed", {
 					used: formatLargeNumber(safeContextTokens),
 					total: formatLargeNumber(safeContextWindow),

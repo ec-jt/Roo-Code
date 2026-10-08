@@ -222,10 +222,7 @@ describe("TaskHeader", () => {
 	})
 
 	describe("Context window percentage calculation", () => {
-		// The percentage should be calculated as:
-		// contextTokens / (contextWindow - reservedForOutput) * 100
-		// This represents the percentage of AVAILABLE input space used,
-		// not the percentage of the total context window.
+		// Informational use of the full advertised window, independent of output reservation.
 
 		beforeEach(() => {
 			// Set up mock model with known contextWindow
@@ -240,32 +237,16 @@ describe("TaskHeader", () => {
 			mockMaxOutputTokens = 0
 		})
 
-		it("should calculate percentage based on available input space, not total context window", () => {
-			// With the formula: contextTokens / (contextWindow - reservedForOutput) * 100
-			// If contextTokens = 200, contextWindow = 1000, reservedForOutput = 200
-			// Then available input space = 1000 - 200 = 800
-			// Percentage = 200 / 800 * 100 = 25%
-			//
-			// Old (incorrect) formula would have been: (200 + 200) / 1000 * 100 = 40%
-
+		it("shows full-window usage without subtracting output reserve", () => {
 			renderTaskHeader({ contextTokens: 200 })
-
-			// The percentage should be rendered in the collapsed header state
-			// Verify that 25% is displayed (correct formula) and NOT 40% (old incorrect formula)
-			expect(screen.getByText("25%")).toBeInTheDocument()
-			expect(screen.queryByText("40%")).not.toBeInTheDocument()
+			expect(screen.getByText("20%")).toBeInTheDocument()
+			expect(screen.queryByText("25%")).not.toBeInTheDocument()
 		})
-
-		it("should handle edge case when available input space is zero", () => {
-			// When contextWindow equals reservedForOutput, available space is 0
-			// The percentage should be 0 to avoid division by zero
+		it("does not reduce the denominator when output reserve equals the window", () => {
 			mockModelInfo = { contextWindow: 200, maxTokens: 200 }
 			mockMaxOutputTokens = 200
-
 			renderTaskHeader({ contextTokens: 100 })
-
-			// Should show 0% when available input space is 0
-			expect(screen.getByText("0%")).toBeInTheDocument()
+			expect(screen.getByText("50%")).toBeInTheDocument()
 		})
 	})
 })

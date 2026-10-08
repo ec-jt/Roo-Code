@@ -89,6 +89,39 @@ const push = (window: ChatWindowState, rows: ClineMessage[]) =>
 
 describe("bounded chat view", () => {
 	beforeEach(() => vi.clearAllMocks())
+	it("hides empty command status entries instead of offering a blank document", () => {
+		const { container } = render(
+			<PlainHistoryMessage message={{ ts: 2, type: "ask", ask: "command_output", text: "" }} window={page(1)} />,
+		)
+		expect(container).toBeEmptyDOMElement()
+	})
+	it("labels truncated tools without parsing incomplete JSON and opens the exact indexed row", () => {
+		const row: ClineMessage = {
+			ts: 2,
+			type: "ask",
+			ask: "tool",
+			text: '{"tool":"readFile","content":"unfinished',
+			chatPreview: { index: 12, truncated: true, label: "readFile", hasContent: true },
+		}
+		render(<PlainHistoryMessage message={row} window={page(1)} />)
+		expect(screen.getByText("readFile (preview)")).toBeInTheDocument()
+		fireEvent.click(screen.getByRole("button", { name: "Open full message" }))
+		expect(vscode.postMessage).toHaveBeenCalledWith({
+			type: "chatMessageOpen",
+			chatMessageOpen: { taskId: "task", instanceId: "instance", ts: 2, index: 12, revision: 8 },
+		})
+	})
+	it("keeps nonempty command-output asks collapsed and expandable", () => {
+		render(
+			<PlainHistoryMessage
+				message={{ ts: 2, type: "ask", ask: "command_output", text: "stored output" }}
+				window={page(1)}
+			/>,
+		)
+		expect(screen.queryByText("stored output")).not.toBeInTheDocument()
+		fireEvent.click(screen.getByRole("button", { name: "Show preview" }))
+		expect(screen.getByText("stored output")).toBeInTheDocument()
+	})
 	it("hides tool previews until explicitly expanded", () => {
 		const message: ClineMessage = { ts: 2, type: "say", say: "command_output", text: "one\ntwo\nthree" }
 		const { container } = render(<PlainHistoryMessage message={message} window={page(1)} />)

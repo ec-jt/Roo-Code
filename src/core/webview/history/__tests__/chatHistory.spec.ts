@@ -52,8 +52,8 @@ describe("bounded chat history", () => {
 		const window = new ChatWindow()
 		const result = window.snapshot(source)
 		expect(result.chatWindow.oversizedLiveAsk).toBe(true)
-		expect(result.chatWindow.liveMessage).toEqual(ask)
-		expect(result.clineMessages.at(-1)).toEqual(ask)
+		expect(result.chatWindow.liveMessage).toMatchObject(ask)
+		expect(result.clineMessages.at(-1)).toMatchObject(ask)
 		expect(result.chatWindow.truncatedTs).not.toContain(ask.ts)
 		ask.isAnswered = true
 		source.chatHistoryIndex.update(source.clineMessages, ask)

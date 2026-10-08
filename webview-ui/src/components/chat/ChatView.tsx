@@ -21,6 +21,7 @@ import { getApiMetrics } from "@roo/getApiMetrics"
 import { getAllModes } from "@roo/modes"
 import { ProfileValidator } from "@roo/ProfileValidator"
 import { getLatestTodo } from "@roo/todo"
+import { isChatPreview, isEmptyCommandStatus } from "@roo/chat-preview"
 
 import { vscode } from "@src/utils/vscode"
 import { RunningTaskMonitor } from "./RunningTaskMonitor"
@@ -94,24 +95,26 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 	const historical = chatWindow?.following === false
 	const historicalRef = useRef(historical)
 	historicalRef.current = historical
-	const truncatedTs = useMemo(() => new Set(chatWindow?.truncatedTs ?? []), [chatWindow?.truncatedTs])
 	// Previews never enter tool JSON parsers, command merging, or browser grouping.
 	const renderMessages = useMemo(
 		() =>
-			messages.map(
-				(message): ClineMessage =>
-					truncatedTs.has(message.ts)
-						? {
-								ts: message.ts,
-								type: "say",
-								say: "text",
-								text: message.text,
-								reasoning: message.reasoning,
-								partial: message.partial,
-							}
-						: message,
-			),
-		[messages, truncatedTs],
+			messages
+				.filter((message, index) => index === 0 || !isEmptyCommandStatus(message))
+				.map(
+					(message): ClineMessage =>
+						isChatPreview(message, chatWindow)
+							? {
+									ts: message.ts,
+									type: "say",
+									say: "text",
+									text: message.text,
+									reasoning: message.reasoning,
+									chatPreview: message.chatPreview,
+									partial: message.partial,
+								}
+							: message,
+				),
+		[messages, chatWindow],
 	)
 
 	// Show a WarningRow when the user sends a message with a retired provider.
@@ -244,8 +247,8 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 	const lastMessage = useMemo(() => {
 		if (historical) return undefined
 		const live = chatWindow ? chatWindow.liveMessage : renderMessages.at(-1)
-		return live && !truncatedTs.has(live.ts) ? live : undefined
-	}, [chatWindow, historical, renderMessages, truncatedTs])
+		return live && !isChatPreview(live, chatWindow) ? live : undefined
+	}, [chatWindow, historical, renderMessages])
 	const secondLastMessage = useMemo(
 		() => (historical ? undefined : renderMessages.at(-2)),
 		[renderMessages, historical],
@@ -1024,7 +1027,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 		// Remove the 500-message limit to prevent array index shifting
 		// Virtuoso is designed to efficiently handle large lists through virtualization
 		const newVisibleMessages = modifiedMessages.filter((message) => {
-			if (truncatedTs.has(message.ts)) return true
+			if (isChatPreview(message, chatWindow)) return true
 			// Filter out checkpoint_saved messages that should be suppressed
 			if (message.say === "checkpoint_saved") {
 				// Check if this checkpoint has the suppressMessage flag set
@@ -1101,7 +1104,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 			.forEach((msg: ClineMessage) => everVisibleMessagesTsRef.current.set(msg.ts, true))
 
 		return newVisibleMessages
-	}, [modifiedMessages, truncatedTs])
+	}, [modifiedMessages, chatWindow])
 
 	useEffect(() => {
 		const cleanupInterval = setInterval(() => {
@@ -1497,10 +1500,17 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 
 	const itemContent = useCallback(
 		(index: number, messageOrGroup: ClineMessage) => {
-			if (chatWindow && (historical || truncatedTs.has(messageOrGroup.ts))) {
+			if (chatWindow && (historical || isChatPreview(messageOrGroup, chatWindow))) {
 				return (
 					<PlainHistoryMessage
-						message={messages.find((row) => row.ts === messageOrGroup.ts) ?? messageOrGroup}
+						key={`${chatWindow.instanceId}:${messageOrGroup.chatPreview?.index ?? messageOrGroup.ts}`}
+						message={
+							messages.find((row) =>
+								messageOrGroup.chatPreview
+									? row.chatPreview?.index === messageOrGroup.chatPreview.index
+									: row.ts === messageOrGroup.ts,
+							) ?? messageOrGroup
+						}
 						window={chatWindow}
 					/>
 				)
@@ -1572,7 +1582,6 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 			chatWindow,
 			messages,
 			historical,
-			truncatedTs,
 			expandedRows,
 			toggleRowExpansion,
 			modifiedMessages,
@@ -1685,7 +1694,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 				<>
 					<TaskHeader
 						task={task}
-						previewWindow={chatWindow && truncatedTs.has(task.ts) ? chatWindow : undefined}
+						previewWindow={chatWindow && isChatPreview(task, chatWindow) ? chatWindow : undefined}
 						tokensIn={apiMetrics.totalTokensIn}
 						tokensOut={apiMetrics.totalTokensOut}
 						cacheWrites={apiMetrics.totalCacheWrites}
@@ -1753,7 +1762,11 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 							key={task.ts}
 							className="scrollable grow overflow-y-scroll mb-1"
 							increaseViewportBy={{ top: 3_000, bottom: 1000 }}
-							data={historical ? messages.slice(1) : groupedMessages}
+							data={
+								historical
+									? messages.slice(1).filter((message) => !isEmptyCommandStatus(message))
+									: groupedMessages
+							}
 							itemContent={itemContent}
 							followOutput={historical ? false : followOutputCallback}
 							atBottomStateChange={atBottomStateChangeCallback}

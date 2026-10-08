@@ -379,12 +379,12 @@ describe("Task opt-in model dispatch", () => {
 				path === "manual" ? task.condenseContext() : task.attemptApiRequest().next(),
 			).rejects.toMatchObject({ code: "budget-denied" })
 			expect(admit).toHaveBeenCalledOnce()
-			expect(admit.mock.calls[0][0].purpose).toBe(path === "chat" ? "chat" : "condensation")
+			expect(admit.mock.calls[0][0].purpose).toBe(path === "manual" ? "condensation" : "chat")
 			expect(create).not.toHaveBeenCalled()
 			expect(backoff).not.toHaveBeenCalled()
 			expect(repair).not.toHaveBeenCalled()
 			expect(task.apiConversationHistory).toEqual(before)
-			if (path !== "chat") expect(saveApiMessages).not.toHaveBeenCalled()
+			if (path === "manual") expect(saveApiMessages).not.toHaveBeenCalled()
 			expect(task.modelDispatchOutcome?.code).toBe("budget-denied")
 		},
 	)
@@ -422,7 +422,7 @@ describe("Task opt-in model dispatch", () => {
 			grant({ outcome: "granted", settle })
 			await vi.waitFor(() => expect(settle).toHaveBeenCalledExactlyOnceWith("not-dispatched"))
 			expect(create).not.toHaveBeenCalled()
-			if (path !== "chat") expect(saveApiMessages).not.toHaveBeenCalled()
+			if (path === "manual") expect(saveApiMessages).not.toHaveBeenCalled()
 		},
 	)
 
@@ -435,11 +435,231 @@ describe("Task opt-in model dispatch", () => {
 		expect(settle).toHaveBeenCalledExactlyOnceWith("unresolved")
 	})
 
-	it("rejects legacy context repair while mediation is enabled", async () => {
-		await expect((task as any).handleContextWindowExceededError()).rejects.toBeInstanceOf(ModelDispatchControl)
-		expect(admit).not.toHaveBeenCalled()
+	const overflow = () =>
+		Object.assign(new Error("prompt is too long: 200001 tokens > 200000 maximum"), { status: 400 })
+	const response = (text = "summary") =>
+		(async function* () {
+			yield { type: "content_block_start", index: 0, content_block: { type: "text", text } }
+			yield { type: "message_stop" }
+		})()
+	const consume = async (stream: ReturnType<Task["attemptApiRequest"]>) => {
+		const chunks = []
+		for await (const chunk of stream) chunks.push(chunk)
+		return chunks
+	}
+	const enableOverflow = async (mediated: boolean) => {
+		provider.getState.mockResolvedValue({ ...(await provider.getState()), autoCondenseContext: undefined })
+		if (!mediated) (task as any).modelDispatchRuntime = undefined
+		admit.mockResolvedValue({ outcome: "granted", settle })
+	}
+	it.each([false, true])("high usage never dispatches a preflight summary, mediated=%s", async (mediated) => {
+		await enableOverflow(mediated)
+		vi.mocked(task.getTokenUsage).mockReturnValue({ contextTokens: 999999 } as any)
+		create.mockResolvedValueOnce(response("answer"))
+		await consume(task.attemptApiRequest())
+		expect(create).toHaveBeenCalledOnce()
+		if (mediated) expect(admit.mock.calls[0][0].purpose).toBe("chat")
 	})
-
+	it.each([false, true])(
+		"compacts once, persists, and retries once on explicit rejection, mediated=%s",
+		async (mediated) => {
+			await enableOverflow(mediated)
+			const last = structuredClone(task.apiConversationHistory.at(-1))
+			create
+				.mockRejectedValueOnce(overflow())
+				.mockResolvedValueOnce(response())
+				.mockResolvedValueOnce(response("answer"))
+			await consume(task.attemptApiRequest(8))
+			expect(create).toHaveBeenCalledTimes(3)
+			expect(task.apiConversationHistory.at(-1)).toEqual(last)
+			expect(task.apiConversationHistory.some((message) => message.isSummary)).toBe(true)
+			expect(saveApiMessages).toHaveBeenCalled()
+			if (mediated)
+				expect(admit.mock.calls.map(([descriptor]) => descriptor.purpose)).toEqual([
+					"chat",
+					"condensation",
+					"chat",
+				])
+		},
+	)
+	it.each([false, true])("stops after second rejection despite auto approval, mediated=%s", async (mediated) => {
+		await enableOverflow(mediated)
+		const backoff = vi.spyOn(task as any, "backoffAndAnnounce")
+		create.mockRejectedValueOnce(overflow()).mockResolvedValueOnce(response()).mockRejectedValueOnce(overflow())
+		await expect(consume(task.attemptApiRequest())).rejects.toThrow("Compact manually")
+		expect(create).toHaveBeenCalledTimes(3)
+		expect(backoff).not.toHaveBeenCalled()
+	})
+	it.each([false, true])("stops on unrelated retry failure after compaction, mediated=%s", async (mediated) => {
+		await enableOverflow(mediated)
+		const backoff = vi.spyOn(task as any, "backoffAndAnnounce")
+		create
+			.mockRejectedValueOnce(overflow())
+			.mockResolvedValueOnce(response())
+			.mockRejectedValueOnce(new Error("network down"))
+		await expect(consume(task.attemptApiRequest())).rejects.toThrow()
+		expect(create).toHaveBeenCalledTimes(3)
+		expect(backoff).not.toHaveBeenCalled()
+	})
+	it.each([false, true])("summary rejection does not truncate or retry, mediated=%s", async (mediated) => {
+		await enableOverflow(mediated)
+		const before = structuredClone(task.apiConversationHistory)
+		create.mockRejectedValueOnce(overflow()).mockRejectedValueOnce(overflow())
+		await expect(consume(task.attemptApiRequest())).rejects.toThrow()
+		expect(create).toHaveBeenCalledTimes(2)
+		expect(task.apiConversationHistory).toEqual(before)
+	})
+	it.each(["cancel", "stale"])("%s during summary does not persist or retry", async (stop) => {
+		await enableOverflow(false)
+		const before = structuredClone(task.apiConversationHistory)
+		create.mockRejectedValueOnce(overflow()).mockImplementationOnce(async () => {
+			if (stop === "cancel") task.cancelCurrentRequest()
+			else (task as any).modelOperationRevision++
+			return response()
+		})
+		await expect(consume(task.attemptApiRequest())).rejects.toThrow()
+		expect(create).toHaveBeenCalledTimes(2)
+		expect(task.apiConversationHistory).toEqual(before)
+	})
+	it("disabled automatic compaction leaves history intact; manual compaction remains available", async () => {
+		const before = structuredClone(task.apiConversationHistory)
+		admit.mockResolvedValue({ outcome: "granted", settle })
+		create.mockRejectedValueOnce(overflow())
+		await expect(consume(task.attemptApiRequest())).rejects.toThrow("Compact manually")
+		expect(task.apiConversationHistory).toEqual(before)
+		create.mockResolvedValueOnce(response())
+		await task.condenseContext()
+		expect(task.apiConversationHistory.some((message) => message.isSummary)).toBe(true)
+	})
+	it("does not repair after text or tool output", async () => {
+		await enableOverflow(false)
+		const repair = vi.spyOn(task as any, "handleContextWindowExceededError")
+		create.mockResolvedValueOnce(
+			(async function* () {
+				yield { type: "content_block_start", index: 0, content_block: { type: "text", text: "started" } }
+				throw overflow()
+			})(),
+		)
+		await expect(consume(task.attemptApiRequest())).rejects.toThrow()
+		expect(repair).not.toHaveBeenCalled()
+		expect(create).toHaveBeenCalledOnce()
+	})
+	it("prepared requests never repair", async () => {
+		await enableOverflow(false)
+		;(task as any).modelOperationPrepared = true
+		const repair = vi.spyOn(task as any, "handleContextWindowExceededError")
+		create.mockRejectedValueOnce(overflow())
+		await expect(consume(task.attemptApiRequest())).rejects.toThrow()
+		expect(repair).not.toHaveBeenCalled()
+	})
+	it.each(["overflow", "network", "summary"])(
+		"outer loop does not restart after %s recovery failure",
+		async (failure) => {
+			await enableOverflow(false)
+			create.mockRejectedValueOnce(overflow())
+			if (failure === "summary") create.mockRejectedValueOnce(overflow())
+			else
+				create
+					.mockResolvedValueOnce(response())
+					.mockRejectedValueOnce(failure === "overflow" ? overflow() : new Error("network down"))
+			const backoff = vi.spyOn(task as any, "backoffAndAnnounce")
+			await expect(task.recursivelyMakeClineRequests([])).resolves.toBe(true)
+			expect(create).toHaveBeenCalledTimes(failure === "summary" ? 2 : 3)
+			expect(backoff).not.toHaveBeenCalled()
+		},
+	)
+	it("requires a fresh admission for recovery and does not mutate history on denial", async () => {
+		await enableOverflow(true)
+		const before = structuredClone(task.apiConversationHistory)
+		admit.mockResolvedValueOnce({ outcome: "granted", settle }).mockResolvedValueOnce({ outcome: "budget-denied" })
+		create.mockRejectedValueOnce(overflow())
+		await expect(consume(task.attemptApiRequest())).rejects.toMatchObject({ code: "budget-denied" })
+		expect(create).toHaveBeenCalledOnce()
+		expect(task.apiConversationHistory).toEqual(before)
+	})
+	it("does not retry if repaired history cannot be persisted", async () => {
+		await enableOverflow(false)
+		create.mockRejectedValueOnce(overflow()).mockResolvedValueOnce(response())
+		vi.spyOn(task, "overwriteApiConversationHistory").mockRejectedValueOnce(new Error("disk full"))
+		await expect(consume(task.attemptApiRequest())).rejects.toThrow("disk full")
+		expect(create).toHaveBeenCalledTimes(2)
+	})
+	it("suppresses response ID chaining on the repaired retry", async () => {
+		await enableOverflow(false)
+		const send = vi.spyOn(task.api, "createMessage")
+		create
+			.mockRejectedValueOnce(overflow())
+			.mockResolvedValueOnce(response())
+			.mockResolvedValueOnce(response("answer"))
+		await consume(task.attemptApiRequest())
+		expect(send.mock.calls.at(-1)?.[2]?.suppressPreviousResponseId).toBe(true)
+	})
+	it.each(["text", "tool_call"])("request does not repair after emitted %s", async (type) => {
+		await enableOverflow(false)
+		vi.spyOn(task.api, "createMessage").mockImplementation(async function* () {
+			yield type === "text"
+				? { type: "text", text: "started" }
+				: { type: "tool_call", id: "id", name: "read_file", arguments: "{}" }
+			throw overflow()
+		})
+		const repair = vi.spyOn(task as any, "handleContextWindowExceededError")
+		await expect(consume(task.attemptApiRequest())).rejects.toThrow()
+		expect(repair).not.toHaveBeenCalled()
+	})
+	it.each(["invalid", "rate-limit", "timeout"])("does not compact unrelated %s errors", async (kind) => {
+		await enableOverflow(true)
+		create.mockRejectedValueOnce(
+			Object.assign(new Error("context configuration failed"), {
+				status: kind === "invalid" ? 400 : kind === "rate-limit" ? 429 : 408,
+			}),
+		)
+		const repair = vi.spyOn(task as any, "handleContextWindowExceededError")
+		await expect(consume(task.attemptApiRequest())).rejects.toThrow()
+		expect(repair).not.toHaveBeenCalled()
+		expect(create).toHaveBeenCalledOnce()
+	})
+	it("recognizes explicit structured stream rejection before output", async () => {
+		await enableOverflow(false)
+		vi.spyOn(task.api, "createMessage").mockImplementationOnce(async function* () {
+			yield { type: "usage", inputTokens: 0, outputTokens: 0 }
+			yield { type: "error", error: "context_length_exceeded", message: "input rejected" }
+		})
+		create.mockResolvedValueOnce(response()).mockResolvedValueOnce(response("answer"))
+		await consume(task.attemptApiRequest())
+		expect(create).toHaveBeenCalledTimes(2)
+		expect(task.apiConversationHistory.some((message) => message.isSummary)).toBe(true)
+	})
+	it("cancellation releases a stalled summary and ignores its late result", async () => {
+		await enableOverflow(false)
+		const before = structuredClone(task.apiConversationHistory)
+		let finish!: (value: any) => void
+		create.mockRejectedValueOnce(overflow()).mockImplementationOnce(
+			() =>
+				new Promise((resolve) => {
+					finish = resolve
+				}),
+		)
+		const pending = consume(task.attemptApiRequest())
+		await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(2))
+		task.cancelCurrentRequest()
+		await expect(pending).rejects.toThrow("cancelled")
+		finish(response())
+		await new Promise((resolve) => setImmediate(resolve))
+		expect(task.apiConversationHistory).toEqual(before)
+		expect(create).toHaveBeenCalledTimes(2)
+	})
+	it("retry admission denial stops after persisted compaction without a new dispatch", async () => {
+		await enableOverflow(true)
+		admit
+			.mockResolvedValueOnce({ outcome: "granted", settle })
+			.mockResolvedValueOnce({ outcome: "granted", settle })
+			.mockResolvedValueOnce({ outcome: "budget-denied" })
+		create.mockRejectedValueOnce(overflow()).mockResolvedValueOnce(response())
+		await expect(consume(task.attemptApiRequest())).rejects.toMatchObject({ code: "budget-denied" })
+		expect(create).toHaveBeenCalledTimes(2)
+		expect(admit).toHaveBeenCalledTimes(3)
+		expect(task.apiConversationHistory.some((message) => message.isSummary)).toBe(true)
+	})
 	it("presents the first chunk without waiting for the next provider chunk", async () => {
 		;(task as any).modelOperationPrepared = true
 		;(task as any).modelOperationSystemPrompt = "system"

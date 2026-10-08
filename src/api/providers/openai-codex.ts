@@ -35,6 +35,7 @@ class CodexSdkCompatibilityError extends Error {}
 // A terminal event belongs to an accepted generation, not a rejected auth request.
 // Keep this identity through the manual SSE wrappers so it can never trigger replay.
 class CodexTerminalResponseError extends Error {
+	readonly code?: string
 	constructor(status: "failed" | "incomplete", detail: unknown) {
 		// Provider messages and arbitrary codes can contain credentials or request data.
 		// Report only known protocol codes/reasons, never the raw response payload.
@@ -63,6 +64,7 @@ class CodexTerminalResponseError extends Error {
 		])
 		const reason = typeof detail === "string" && safeDetails.has(detail) ? ` (${detail})` : ""
 		super(`OpenAI Codex response ${status}${reason}.`)
+		if (status === "failed" && detail === "context_length_exceeded") this.code = "context_length_exceeded"
 	}
 }
 
@@ -602,6 +604,14 @@ export class OpenAiCodexHandler extends BaseProvider implements SingleCompletion
 
 			if (!response.ok) {
 				const errorText = await response.text()
+				let code: unknown
+				try {
+					code = JSON.parse(errorText).error?.code
+				} catch {
+					/* Not structured JSON. */
+				}
+				if ([400, 413, 422].includes(response.status) && code === "context_length_exceeded")
+					throw new CodexTerminalResponseError("failed", code)
 
 				let errorMessage = t("common:errors.api.apiRequestFailed", { status: response.status })
 				let errorDetails = ""

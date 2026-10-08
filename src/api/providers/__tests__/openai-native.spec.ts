@@ -54,6 +54,35 @@ describe("OpenAiNativeHandler", () => {
 	})
 
 	describe("constructor", () => {
+		it("passes explicit context rejection through without an adapter fallback request", async () => {
+			const error = Object.assign(new Error("too much input"), { status: 400, code: "context_length_exceeded" })
+			mockResponsesCreate.mockRejectedValueOnce(error)
+			const fallback = vi.spyOn(handler as any, "makeResponsesApiRequest")
+			await expect(handler.createMessage(systemPrompt, messages).next()).rejects.toBe(error)
+			expect(fallback).not.toHaveBeenCalled()
+		})
+		it.each(["response.failed", "response.error", "error"])(
+			"preserves structured overflow in %s events",
+			async (type) => {
+				const event = {
+					type,
+					error: { code: "context_length_exceeded" },
+					response: { error: { code: "context_length_exceeded" } },
+				}
+				await expect((handler as any).processEvent(event, handler.getModel()).next()).rejects.toMatchObject({
+					code: "context_length_exceeded",
+				})
+				const body = new ReadableStream({
+					start(controller) {
+						controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`))
+						controller.close()
+					},
+				})
+				await expect(
+					(handler as any).handleStreamResponse(body, handler.getModel()).next(),
+				).rejects.toMatchObject({ code: "context_length_exceeded" })
+			},
+		)
 		it("should initialize with provided options", () => {
 			expect(handler).toBeInstanceOf(OpenAiNativeHandler)
 			expect(handler.getModel().id).toBe(mockOptions.apiModelId)

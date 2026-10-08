@@ -1,4 +1,5 @@
 import fs from "fs"
+import { checkContextWindowExceededError } from "../../core/context/context-management/context-error-handling"
 
 import { Anthropic } from "@anthropic-ai/sdk"
 import { CacheControlEphemeral } from "@anthropic-ai/sdk/resources"
@@ -37,6 +38,12 @@ import {
 	convertOpenAIToolsToAnthropic,
 	convertOpenAIToolChoiceToAnthropic,
 } from "../../core/prompts/tools/native-tools/converters"
+
+function dispatchError(error: unknown): ModelDispatchControl {
+	return error instanceof ModelDispatchControl
+		? error
+		: new ModelDispatchControl(checkContextWindowExceededError(error) ? "context-limit" : "dispatch-failed")
+}
 
 const DEBUG_LOG = "/tmp/roo-cli-debug.log"
 
@@ -130,9 +137,7 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 					try {
 						yield* pinned.createMessage(systemPrompt, inputs.messages, inputs.metadata)
 					} catch (error) {
-						throw error instanceof ModelDispatchControl
-							? error
-							: new ModelDispatchControl("dispatch-failed")
+						throw dispatchError(error)
 					}
 				})()
 			},
@@ -172,7 +177,7 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 					}
 					if (!completed) throw new ModelDispatchControl("dispatch-failed")
 				} catch (error) {
-					throw error instanceof ModelDispatchControl ? error : new ModelDispatchControl("dispatch-failed")
+					throw dispatchError(error)
 				} finally {
 					settle(completed ? "completed" : "unresolved")
 					void iterator.return?.().catch(() => {})
@@ -180,7 +185,7 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 			})()
 		} catch (error) {
 			settle("unresolved")
-			throw error instanceof ModelDispatchControl ? error : new ModelDispatchControl("dispatch-failed")
+			throw dispatchError(error)
 		}
 	}
 

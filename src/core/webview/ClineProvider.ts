@@ -1522,7 +1522,31 @@ export class ClineProvider
 		if (!request || request.taskId !== task.taskId || request.instanceId !== task.instanceId) return
 		let content = ""
 		if (message.type === "chatMessageOpen" && message.chatMessageOpen) {
-			const row = task.clineMessages.find((row) => row.ts === message.chatMessageOpen!.ts)
+			const requested = message.chatMessageOpen
+			let row: ClineMessage | undefined
+			if (requested.index !== undefined) {
+				if (
+					!Number.isSafeInteger(requested.index) ||
+					requested.index < 0 ||
+					requested.revision !== task.chatHistoryIndex.ensure(task.clineMessages).revision
+				) {
+					void vscode.window.showWarningMessage(
+						"History changed. Open the message again from the refreshed chat.",
+					)
+					return
+				}
+				row = task.clineMessages[requested.index]
+				if (row?.ts !== requested.ts) return
+			} else {
+				const matches = task.clineMessages.filter((entry) => entry.ts === requested.ts)
+				if (matches.length !== 1) {
+					void vscode.window.showWarningMessage(
+						"This message reference is ambiguous. Refresh the chat and try again.",
+					)
+					return
+				}
+				row = matches[0]
+			}
 			if (!row) return
 			// Do not serialize images or huge message objects to obtain an editor preview.
 			if ((row.text?.length ?? 0) + (row.reasoning?.length ?? 0) > CHAT_EDITOR_BYTES) {
@@ -1550,6 +1574,12 @@ export class ClineProvider
 			}
 			content = chunks.join("\n\n")
 		} else return
+		if (!content.trim()) {
+			void vscode.window.showInformationMessage(
+				"This history entry contains no stored text. Command status entries can be empty; inspect the command output or its output artifact instead.",
+			)
+			return
+		}
 		if (content.length > CHAT_EDITOR_BYTES || Buffer.byteLength(content) > CHAT_EDITOR_BYTES) {
 			void vscode.window.showWarningMessage(
 				"This history entry is too large to open. Export the task to inspect the full content.",

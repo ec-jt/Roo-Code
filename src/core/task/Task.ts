@@ -125,7 +125,7 @@ import { RooProtectedController } from "../protect/RooProtectedController"
 import { type AssistantMessageContent, presentAssistantMessage } from "../assistant-message"
 import { NativeToolCallParser } from "../assistant-message/NativeToolCallParser"
 import { finalizeNativeToolCall } from "./finalizeNativeToolCall"
-import { manageContext, willManageContext } from "../context-management"
+import { manageContext } from "../context-management"
 import { mediateModelHandler } from "../../api/mediated-handler"
 import { ModelDispatchControl, type ModelDispatchRuntime } from "../../api/dispatch-admission"
 import { ClineProvider } from "../webview/ClineProvider"
@@ -146,7 +146,10 @@ import {
 	needsTaskMemoryContext,
 	assertTaskMemoryDispatch,
 } from "../../services/memory/taskMemory"
-import { checkContextWindowExceededError } from "../context/context-management/context-error-handling"
+import {
+	checkContextWindowExceededError,
+	ContextRecoveryError,
+} from "../context/context-management/context-error-handling"
 import {
 	type CheckpointDiffOptions,
 	type CheckpointRestoreOptions,
@@ -178,8 +181,6 @@ import { ProfileValidator } from "../../shared/ProfileValidator"
 
 const MAX_EXPONENTIAL_BACKOFF_SECONDS = 600 // 10 minutes
 const DEFAULT_USAGE_COLLECTION_TIMEOUT_MS = 5000 // 5 seconds
-const FORCED_CONTEXT_REDUCTION_PERCENT = 75 // Keep 75% of context (remove 25%) on context window errors
-const MAX_CONTEXT_WINDOW_RETRIES = 3 // Maximum retries for context window errors
 const MAX_EMPTY_RESPONSE_RETRIES = 3 // Maximum auto-retries for consecutive empty API responses before prompting user
 const DEBUG_LOG = "/tmp/roo-cli-debug.log"
 
@@ -3772,7 +3773,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 			try {
 				if (this.modelOperationClosed) return true
-				const streamEpoch = this.modelOperationRevision
+				let streamEpoch = this.modelOperationRevision
 				let cacheWriteTokens = 0
 				let cacheReadTokens = 0
 				let cacheReadTokensReported = false
@@ -3941,6 +3942,9 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 					let currentChunkProcessed = false
 					while (!item.done) {
 						const chunk = item.value
+						// Overflow recovery can advance the revision after initial usage metadata.
+						// Fence background usage against the response that actually supplied this chunk.
+						streamEpoch = this.modelOperationRevision - 1
 						currentChunkProcessed = true
 						if (this.modelOperationClosed) return true
 						if (!chunk) {
@@ -4323,6 +4327,11 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 							this.modelOperationUsageCollectors--
 						})
 				} catch (error) {
+					if (error instanceof ContextRecoveryError) {
+						await abortStream(this.abort ? "user_cancelled" : "streaming_failed", error.message)
+						if (!this.abort && !this.abandoned) await this.say("error", error.message)
+						return true
+					}
 					if (error instanceof ModelDispatchControl) {
 						if (!this.abandoned && !this.modelOperationClosed) {
 							await abortStream(this.abort ? "user_cancelled" : "streaming_failed", error.message)
@@ -4949,139 +4958,89 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		})()
 	}
 
-	private getCurrentProfileId(state: any): string {
-		return (
-			state?.listApiConfigMeta?.find((profile: any) => profile.name === state?.currentApiConfigName)?.id ??
-			"default"
-		)
-	}
-
-	private async handleContextWindowExceededError(): Promise<void> {
-		// The opt-in coordinator owns retries and context repair, never this legacy path.
-		if (this.modelDispatchRuntime) throw new ModelDispatchControl("policy-denied")
+	private async handleContextWindowExceededError(
+		requestRevision: number,
+		handler: ApiHandler,
+		signal: AbortSignal,
+	): Promise<void> {
+		const assertCurrent = () => {
+			if (
+				this.abort ||
+				this.abandoned ||
+				signal.aborted ||
+				this.currentRequestAbortController?.signal.aborted ||
+				this.modelDispatchAbortController?.signal.aborted
+			)
+				throw new ContextRecoveryError("Context recovery cancelled.")
+			if (
+				this.modelOperationClosed ||
+				this.persistenceClosed ||
+				this.isAssistantMessageEditing ||
+				requestRevision !== this.modelOperationRevision
+			)
+				throw new ContextRecoveryError("Context recovery is stale.")
+			if (this.modelOperationPrepared) throw new ContextRecoveryError("Prepared requests cannot be compacted.")
+		}
+		assertCurrent()
 		const state = await this.providerRef.deref()?.getState()
-		const { profileThresholds = {}, mode, apiConfiguration } = state ?? {}
-
-		const { contextTokens } = this.getTokenUsage()
-		const modelInfo = this.api.getModel().info
-
-		const maxTokens = getModelMaxOutputTokens({
-			modelId: this.api.getModel().id,
-			model: modelInfo,
-			settings: this.apiConfiguration,
-		})
-
-		const contextWindow = modelInfo.contextWindow
-
-		// Get the current profile ID using the helper method
-		const currentProfileId = this.getCurrentProfileId(state)
-
-		// Log the context window error for debugging
-		console.warn(
-			`[Task#${this.taskId}] Context window exceeded for model ${this.api.getModel().id}. ` +
-				`Current tokens: ${contextTokens}, Context window: ${contextWindow}. ` +
-				`Forcing truncation to ${FORCED_CONTEXT_REDUCTION_PERCENT}% of current context.`,
-		)
-		// Send condenseTaskContextStarted to show in-progress indicator
+		if (state?.autoCondenseContext === false)
+			throw new ContextRecoveryError(
+				"Automatic context compaction is disabled. Compact manually before retrying.",
+			)
+		const originalHistory = JSON.stringify(this.apiConversationHistory)
+		const messages = structuredClone(this.apiConversationHistory)
 		await this.providerRef.deref()?.postMessageToWebview({ type: "condenseTaskContextStarted", text: this.taskId })
-
-		// Build tools for condensing metadata (same tools used for normal API calls)
-		const provider = this.providerRef.deref()
-		let allTools: import("openai").default.Chat.ChatCompletionTool[] = []
-		if (provider) {
-			const toolsResult = await buildNativeToolsArrayWithRestrictions({
-				provider,
-				cwd: this.cwd,
-				mode,
-				customModes: state?.customModes,
-				experiments: state?.experiments,
-				apiConfiguration,
-				browserToolEnabled: state?.browserToolEnabled ?? true,
-				disabledTools: state?.disabledTools,
-				modelInfo,
-				includeAllToolsWithRestrictions: false,
-			})
-			allTools = toolsResult.tools
-		}
-
-		// Build metadata with tools and taskId for the condensing API call
-		const metadata: ApiHandlerCreateMessageMetadata = {
-			mode,
-			taskId: this.taskId,
-			...(allTools.length > 0
-				? {
-						tools: allTools,
-						tool_choice: "auto",
-						parallelToolCalls: true,
-					}
-				: {}),
-		}
-
 		try {
-			// Generate environment details to include in the condensed summary
+			const systemPrompt = await this.getSystemPrompt()
 			const environmentDetails = await getEnvironmentDetails(this, true)
-
-			// Force aggressive truncation by keeping only 75% of the conversation history
-			const truncateResult = await manageContext({
-				messages: this.apiConversationHistory,
-				totalTokens: contextTokens || 0,
-				maxTokens,
-				contextWindow,
-				apiHandler: this.api,
-				autoCondenseContext: true,
-				autoCondenseContextPercent: FORCED_CONTEXT_REDUCTION_PERCENT,
-				systemPrompt: await this.getSystemPrompt(),
-				taskId: this.taskId,
-				profileThresholds,
-				currentProfileId,
-				metadata,
-				environmentDetails,
-			})
-
-			if (truncateResult.messages !== this.apiConversationHistory) {
-				await this.overwriteApiConversationHistory(truncateResult.messages)
-			}
-
-			if (truncateResult.summary) {
-				const { summary, cost, prevContextTokens, newContextTokens = 0 } = truncateResult
-				const contextCondense: ContextCondense = { summary, cost, newContextTokens, prevContextTokens }
-				await this.say(
-					"condense_context",
-					undefined /* text */,
-					undefined /* images */,
-					false /* partial */,
-					undefined /* checkpoint */,
-					undefined /* progressStatus */,
-					{ isNonInteractive: true } /* options */,
-					contextCondense,
+			assertCurrent()
+			const result = await abortable(
+				signal,
+				() =>
+					manageContext({
+						messages,
+						totalTokens: this.getTokenUsage().contextTokens ?? 0,
+						contextWindow: handler.getModel().info.contextWindow,
+						apiHandler: handler,
+						autoCondenseContext: true,
+						contextLimitExceeded: true,
+						systemPrompt,
+						taskId: this.taskId,
+						customCondensingPrompt: state?.customSupportPrompts?.CONDENSE,
+						metadata: { taskId: this.taskId, mode: state?.mode, suppressPreviousResponseId: true },
+						environmentDetails,
+					}),
+				"Context recovery cancelled.",
+			)
+			assertCurrent()
+			if (originalHistory !== JSON.stringify(this.apiConversationHistory))
+				throw new ContextRecoveryError("History changed during context recovery.")
+			if (result.error || !result.summary)
+				throw new ContextRecoveryError(
+					result.error || "Context compaction produced no summary. Compact manually before retrying.",
 				)
-			} else if (truncateResult.truncationId) {
-				// Sliding window truncation occurred (fallback when condensing fails or is disabled)
-				const contextTruncation: ContextTruncation = {
-					truncationId: truncateResult.truncationId,
-					messagesRemoved: truncateResult.messagesRemoved ?? 0,
-					prevContextTokens: truncateResult.prevContextTokens,
-					newContextTokens: truncateResult.newContextTokensAfterTruncation ?? 0,
-				}
-				await this.say(
-					"sliding_window_truncation",
-					undefined /* text */,
-					undefined /* images */,
-					false /* partial */,
-					undefined /* checkpoint */,
-					undefined /* progressStatus */,
-					{ isNonInteractive: true } /* options */,
-					undefined /* contextCondense */,
-					contextTruncation,
-				)
-			}
+			await this.overwriteApiConversationHistory(result.messages)
+			assertCurrent()
+			this.skipPrevResponseIdOnce = true
+			const { summary, cost, prevContextTokens, newContextTokens = 0, condenseId } = result
+			await this.say(
+				"condense_context",
+				undefined,
+				undefined,
+				false,
+				undefined,
+				undefined,
+				{ isNonInteractive: true },
+				{ summary, cost, prevContextTokens, newContextTokens, condenseId },
+			)
+			assertCurrent()
 		} finally {
-			// Notify webview that context management is complete (removes in-progress spinner)
-			// IMPORTANT: Must always be sent to dismiss the spinner, even on error
 			await this.providerRef
 				.deref()
 				?.postMessageToWebview({ type: "condenseTaskContextResponse", text: this.taskId })
 		}
+
+		assertCurrent()
 	}
 
 	/**
@@ -5136,10 +5095,28 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			this.modelDispatchAbortController = dispatchController
 			this.modelDispatchControllers.add(dispatchController)
 		}
+		const recovery = { attempted: false }
+		let emittedOutput = false
 		try {
 			await this.ensureModelOperationProvenance()
-			yield* this.attemptApiRequestPinned(retryAttempt, options)
+			for await (const chunk of this.attemptApiRequestPinned(retryAttempt, options, recovery)) {
+				if (chunk.type !== "usage") emittedOutput = true
+				yield chunk
+			}
+			if (recovery.attempted && !emittedOutput)
+				throw new ContextRecoveryError(
+					"The retry after context compaction returned no response. Retry manually.",
+				)
 		} catch (error) {
+			if (dispatchController?.signal.aborted) throw new ModelDispatchControl("cancelled")
+			if (error instanceof ContextRecoveryError) throw error
+			if (recovery.attempted || emittedOutput || checkContextWindowExceededError(error)) {
+				throw error instanceof ModelDispatchControl || error instanceof ContextRecoveryError
+					? error
+					: new ContextRecoveryError(
+							error instanceof Error ? error.message : "Request failed. Retry manually.",
+						)
+			}
 			if (this.modelDispatchRuntime) {
 				const control =
 					error instanceof ModelDispatchControl ? error : new ModelDispatchControl("dispatch-failed")
@@ -5172,6 +5149,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	private async *attemptApiRequestPinned(
 		retryAttempt: number,
 		options: { skipProviderRateLimit?: boolean; onProviderStart?: () => void },
+		recovery: { attempted: boolean },
 	): ApiStream {
 		if (this.modelOperationClosed || this.abort) throw new Error("Task dispatch is closed")
 		if (
@@ -5196,18 +5174,9 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		const pinnedConfiguration = this.modelDispatchRuntime ? structuredClone(this.apiConfiguration) : undefined
 		const state = await this.providerRef.deref()?.getState()
 
-		const {
-			autoApprovalEnabled,
-			requestDelaySeconds,
-			mode,
-			autoCondenseContext = true,
-			autoCondenseContextPercent = 100,
-			profileThresholds = {},
-		} = state ?? {}
+		const { autoApprovalEnabled, mode, autoCondenseContext = true } = state ?? {}
 		const apiConfiguration = pinnedConfiguration ?? this.apiConfiguration
 
-		// Get condensing configuration for automatic triggers.
-		const customCondensingPrompt = state?.customSupportPrompts?.CONDENSE
 		const resolvedModel = requestHandler.getModel()
 		const shouldDebugAnthropicRequest =
 			apiConfiguration?.apiProvider === "anthropic" || resolvedModel.id.toLowerCase().includes("claude")
@@ -5229,7 +5198,6 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				reasoning: (resolvedModel as any).reasoning,
 				reasoningEffort: (resolvedModel as any).reasoningEffort,
 				autoCondenseContext,
-				autoCondenseContextPercent,
 				storedHistoryCount: this.apiConversationHistory.length,
 			})
 		}
@@ -5248,203 +5216,6 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		Task.lastGlobalApiRequestTime = performance.now()
 
 		const systemPrompt = await this.getSystemPrompt()
-		const { contextTokens } = this.getTokenUsage()
-
-		if (contextTokens && !this.modelOperationPrepared) {
-			const modelInfo = requestHandler.getModel().info
-
-			const maxTokens = getModelMaxOutputTokens({
-				modelId: requestHandler.getModel().id,
-				model: modelInfo,
-				settings: apiConfiguration,
-			})
-
-			const contextWindow = modelInfo.contextWindow
-
-			// Get the current profile ID using the helper method
-			const currentProfileId = this.getCurrentProfileId(state)
-			// Check if context management will likely run (threshold check)
-			// This allows us to show an in-progress indicator to the user
-			// We use the centralized willManageContext helper to avoid duplicating threshold logic
-			const lastMessage = this.apiConversationHistory[this.apiConversationHistory.length - 1]
-			const lastMessageContent = lastMessage?.content
-			let lastMessageTokens = 0
-			if (lastMessageContent) {
-				lastMessageTokens = Array.isArray(lastMessageContent)
-					? await requestHandler.countTokens(lastMessageContent)
-					: await requestHandler.countTokens([{ type: "text", text: lastMessageContent as string }])
-			}
-
-			const contextManagementWillRun = willManageContext({
-				totalTokens: contextTokens,
-				contextWindow,
-				maxTokens,
-				autoCondenseContext,
-				autoCondenseContextPercent,
-				profileThresholds,
-				currentProfileId,
-				lastMessageTokens,
-			})
-
-			if (shouldDebugAnthropicRequest) {
-				debugTrace("[ANTHROPIC][Task] attemptApiRequest:context-check", {
-					taskId: this.taskId,
-					currentApiConfigName: state?.currentApiConfigName,
-					resolvedModelId: requestHandler.getModel().id,
-					contextTokens,
-					lastMessageTokens,
-					contextWindow,
-					maxTokens,
-					currentProfileId,
-					contextManagementWillRun,
-					autoCondenseContext,
-					autoCondenseContextPercent,
-					historyCount: this.apiConversationHistory.length,
-				})
-			}
-
-			// Send condenseTaskContextStarted BEFORE manageContext to show in-progress indicator
-			// This notification must be sent here (not earlier) because the early check uses stale token count
-			// (before user message is added to history), which could incorrectly skip showing the indicator
-			if (contextManagementWillRun && autoCondenseContext) {
-				await this.providerRef
-					.deref()
-					?.postMessageToWebview({ type: "condenseTaskContextStarted", text: this.taskId })
-			}
-
-			// Build tools for condensing metadata (same tools used for normal API calls)
-			// This ensures the condensing API call includes tool definitions for providers that need them
-			let contextMgmtTools: import("openai").default.Chat.ChatCompletionTool[] = []
-			{
-				const provider = this.providerRef.deref()
-				if (provider) {
-					const toolsResult = await buildNativeToolsArrayWithRestrictions({
-						provider,
-						cwd: this.cwd,
-						mode,
-						customModes: state?.customModes,
-						experiments: state?.experiments,
-						apiConfiguration,
-						browserToolEnabled: state?.browserToolEnabled ?? true,
-						disabledTools: state?.disabledTools,
-						modelInfo,
-						includeAllToolsWithRestrictions: false,
-					})
-					contextMgmtTools = toolsResult.tools
-				}
-			}
-
-			// Build metadata with tools and taskId for the condensing API call
-			const contextMgmtMetadata: ApiHandlerCreateMessageMetadata = {
-				mode,
-				taskId: this.taskId,
-				...(contextMgmtTools.length > 0
-					? {
-							tools: contextMgmtTools,
-							tool_choice: "auto",
-							parallelToolCalls: true,
-						}
-					: {}),
-			}
-
-			// Only generate environment details when context management will actually run.
-			// getEnvironmentDetails(this, true) triggers a recursive workspace listing which
-			// adds overhead - avoid this for the common case where context is below threshold.
-			const contextMgmtEnvironmentDetails = contextManagementWillRun
-				? await getEnvironmentDetails(this, true)
-				: undefined
-
-			// Get files read by Roo for code folding - only when context management will run
-			const contextMgmtFilesReadByRoo =
-				contextManagementWillRun && autoCondenseContext
-					? await this.getFilesReadByRooSafely("attemptApiRequest")
-					: undefined
-
-			const contextMessages = this.modelDispatchRuntime
-				? structuredClone(this.apiConversationHistory)
-				: this.apiConversationHistory
-			try {
-				const truncateResult = await manageContext({
-					messages: contextMessages,
-					totalTokens: contextTokens,
-					maxTokens,
-					contextWindow,
-					apiHandler: condensationHandler,
-					autoCondenseContext,
-					autoCondenseContextPercent,
-					systemPrompt,
-					taskId: this.taskId,
-					customCondensingPrompt,
-					profileThresholds,
-					currentProfileId,
-					metadata: contextMgmtMetadata,
-					environmentDetails: contextMgmtEnvironmentDetails,
-					filesReadByRoo: contextMgmtFilesReadByRoo,
-					cwd: this.cwd,
-					rooIgnoreController: this.rooIgnoreController,
-				})
-				if (this.modelDispatchRuntime) {
-					if (this.abort || this.abandoned || this.modelDispatchAbortController?.signal.aborted)
-						throw new ModelDispatchControl("cancelled")
-					if (this.modelOperationClosed || requestRevision !== this.modelOperationRevision)
-						throw new ModelDispatchControl("stale")
-				}
-				if (truncateResult.messages !== contextMessages) {
-					await this.overwriteApiConversationHistory(truncateResult.messages)
-				}
-				if (truncateResult.error) {
-					await this.say("condense_context_error", truncateResult.error)
-				}
-				if (truncateResult.summary) {
-					const { summary, cost, prevContextTokens, newContextTokens = 0, condenseId } = truncateResult
-					const contextCondense: ContextCondense = {
-						summary,
-						cost,
-						newContextTokens,
-						prevContextTokens,
-						condenseId,
-					}
-					await this.say(
-						"condense_context",
-						undefined /* text */,
-						undefined /* images */,
-						false /* partial */,
-						undefined /* checkpoint */,
-						undefined /* progressStatus */,
-						{ isNonInteractive: true } /* options */,
-						contextCondense,
-					)
-				} else if (truncateResult.truncationId) {
-					// Sliding window truncation occurred (fallback when condensing fails or is disabled)
-					const contextTruncation: ContextTruncation = {
-						truncationId: truncateResult.truncationId,
-						messagesRemoved: truncateResult.messagesRemoved ?? 0,
-						prevContextTokens: truncateResult.prevContextTokens,
-						newContextTokens: truncateResult.newContextTokensAfterTruncation ?? 0,
-					}
-					await this.say(
-						"sliding_window_truncation",
-						undefined /* text */,
-						undefined /* images */,
-						false /* partial */,
-						undefined /* checkpoint */,
-						undefined /* progressStatus */,
-						{ isNonInteractive: true } /* options */,
-						undefined /* contextCondense */,
-						contextTruncation,
-					)
-				}
-			} finally {
-				// Notify webview that context management is complete (sets isCondensing = false)
-				// This removes the in-progress spinner and allows the completed result to show
-				// IMPORTANT: Must always be sent to dismiss the spinner, even on error
-				if (contextManagementWillRun && autoCondenseContext) {
-					await this.providerRef
-						.deref()
-						?.postMessageToWebview({ type: "condenseTaskContextResponse", text: this.taskId })
-				}
-			}
-		}
 
 		// Get the effective API history by filtering out condensed messages
 		// This allows non-destructive condensing where messages are tagged but not deleted,
@@ -5677,18 +5448,10 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			throw new Error("Stale request dispatch")
 		this.modelOperationRequestPreparing = false
 		options.onProviderStart?.()
-		if (this.modelDispatchRuntime) {
-			// Provider owns cancellation and physical admission; no legacy retry owner.
-			yield* requestHandler.createMessage(
-				systemPrompt,
-				cleanConversationHistory as Anthropic.Messages.MessageParam[],
-				metadata,
-			)
-			return
-		}
 		// Create an AbortController to allow cancelling the request mid-stream
-		this.currentRequestAbortController = new AbortController()
-		const abortSignal = this.currentRequestAbortController.signal
+		const requestController = this.modelDispatchAbortController ?? new AbortController()
+		if (!this.modelDispatchRuntime) this.currentRequestAbortController = requestController
+		const abortSignal = requestController.signal
 		// Reset the flag after using it
 		this.skipPrevResponseIdOnce = false
 
@@ -5701,32 +5464,50 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		const iterator = stream[Symbol.asyncIterator]()
 
 		// Set up abort handling - when the signal is aborted, clean up the controller reference
-		abortSignal.addEventListener("abort", () => {
-			console.log(`[Task#${this.taskId}.${this.instanceId}] AbortSignal triggered for current request`)
-			this.currentRequestAbortController = undefined
-		})
+		if (!this.modelDispatchRuntime)
+			abortSignal.addEventListener("abort", () => {
+				console.log(`[Task#${this.taskId}.${this.instanceId}] AbortSignal triggered for current request`)
+				this.currentRequestAbortController = undefined
+			})
 
 		try {
 			// Awaiting first chunk to see if it will throw an error.
 			this.isWaitingForFirstChunk = true
 
 			// Race between the first chunk and the abort signal
-			const firstChunk = await abortable(abortSignal, () => iterator.next(), "Request cancelled by user")
+			let firstChunk = await abortable(abortSignal, () => iterator.next(), "Request cancelled by user")
+			// Usage metadata is not assistant output. A subsequent explicit rejection
+			// may still be repaired until the first content/tool chunk is published.
+			while (!firstChunk.done && firstChunk.value.type === "usage") {
+				yield firstChunk.value
+				firstChunk = await abortable(abortSignal, () => iterator.next(), "Request cancelled by user")
+			}
 			this.isWaitingForFirstChunk = false
 			if (this.modelOperationClosed || this.abort || requestRevision !== this.modelOperationRevision) return
-			yield firstChunk.value
+			if (firstChunk.value?.type === "error")
+				throw Object.assign(new Error(firstChunk.value.message), { code: firstChunk.value.error })
+			if (!firstChunk.done) yield firstChunk.value
 			this.isWaitingForFirstChunk = false
 		} catch (error) {
 			this.isWaitingForFirstChunk = false
-			this.currentRequestAbortController = undefined
 			void iterator.return?.(undefined).catch(() => {})
-			if (this.modelOperationClosed || this.abort) throw error
+			if (this.modelDispatchRuntime && abortSignal.aborted) throw new ModelDispatchControl("cancelled")
+			if (abortSignal.aborted) throw new ContextRecoveryError("Request cancelled.")
+			if (
+				this.modelOperationClosed ||
+				this.abort ||
+				this.abandoned ||
+				requestRevision !== this.modelOperationRevision
+			)
+				throw new ContextRecoveryError("Request cancelled or stale.")
 			if (this.modelOperationPrepared) {
 				this.modelOperationFailure = "Prepared request failed; automatic compaction and retry are disabled."
 				this.modelOperationClosed = true
 				throw error
 			}
-			const isContextWindowExceededError = checkContextWindowExceededError(error)
+			const isContextWindowExceededError =
+				checkContextWindowExceededError(error) ||
+				(error instanceof ModelDispatchControl && error.code === "context-limit")
 
 			if (shouldDebugAnthropicRequest) {
 				debugTrace("[ANTHROPIC][Task] attemptApiRequest:first-chunk-error", {
@@ -5742,18 +5523,17 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				})
 			}
 
-			// If it's a context window error and we haven't exceeded max retries for this error type
-			if (isContextWindowExceededError && retryAttempt < MAX_CONTEXT_WINDOW_RETRIES) {
-				console.warn(
-					`[Task#${this.taskId}] Context window exceeded for model ${requestHandler.getModel().id}. ` +
-						`Retry attempt ${retryAttempt + 1}/${MAX_CONTEXT_WINDOW_RETRIES}. ` +
-						`Attempting automatic truncation...`,
-				)
-				await this.handleContextWindowExceededError()
-				// Retry the request after handling the context window error
-				yield* this.attemptApiRequestPinned(retryAttempt + 1, {})
+			if (isContextWindowExceededError) {
+				if (!autoCondenseContext || recovery.attempted)
+					throw new ContextRecoveryError(
+						"Provider context limit exceeded. Compact manually or change models before retrying.",
+					)
+				recovery.attempted = true
+				await this.handleContextWindowExceededError(requestRevision, condensationHandler, abortSignal)
+				yield* this.attemptApiRequestPinned(retryAttempt + 1, {}, recovery)
 				return
 			}
+			if (recovery.attempted || this.modelDispatchRuntime) throw error
 
 			// note that this api_req_failed ask is unique in that we only present this option if the api hasn't streamed any content yet (ie it fails on the first chunk due), as it would allow them to hit a retry button. However if the api failed mid-stream, it could be in any arbitrary state where some tools may have executed, so that error is handled differently and requires cancelling the task entirely.
 			if (autoApprovalEnabled) {
@@ -5771,7 +5551,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 				// Delegate generator output from the recursive call with
 				// incremented retry count.
-				yield* this.attemptApiRequestPinned(retryAttempt + 1, {})
+				yield* this.attemptApiRequestPinned(retryAttempt + 1, {}, recovery)
 
 				return
 			} else {
@@ -5789,7 +5569,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				await this.say("api_req_retried")
 
 				// Delegate generator output from the recursive call.
-				yield* this.attemptApiRequestPinned(0, {})
+				yield* this.attemptApiRequestPinned(0, {}, recovery)
 				return
 			}
 		}
@@ -5812,6 +5592,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 					next.done
 				)
 					return
+				if (next.value.type === "error")
+					throw Object.assign(new Error(next.value.message), { code: next.value.error })
 				yield next.value
 			}
 		} finally {

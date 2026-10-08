@@ -17,6 +17,7 @@ import { Mode } from "@roo/modes"
 
 import { COMMAND_OUTPUT_STRING } from "@roo/combineCommandSequences"
 import { safeJsonParse } from "@roo/core"
+import { isChatPreview } from "@roo/chat-preview"
 
 import { useExtensionState } from "@src/context/ExtensionStateContext"
 import { findMatchingResourceOrTemplate } from "@src/utils/mcp"
@@ -196,9 +197,8 @@ export const ChatRowContent = ({
 		chatWindow,
 	} = useExtensionState()
 	const clineMessages = useMemo(() => {
-		const previews = new Set(chatWindow?.truncatedTs ?? [])
-		return (windowMessages ?? []).filter((row) => !previews.has(row.ts))
-	}, [windowMessages, chatWindow?.truncatedTs])
+		return (windowMessages ?? []).filter((row) => !isChatPreview(row, chatWindow))
+	}, [windowMessages, chatWindow])
 	const { info: model } = useSelectedModel(apiConfiguration)
 	const [isEditing, setIsEditing] = useState(false)
 	const [editedContent, setEditedContent] = useState("")

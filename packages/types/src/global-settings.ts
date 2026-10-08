@@ -137,7 +137,9 @@ export const globalSettingsSchema = z.object({
 	preventCompletionWithOpenTodos: z.boolean().optional(),
 	allowedMaxRequests: z.number().nullish(),
 	allowedMaxCost: z.number().nullish(),
+	/** When enabled (default), compact and retry once on an explicit provider context-limit rejection. */
 	autoCondenseContext: z.boolean().optional(),
+	/** @deprecated Retained for settings import compatibility; no proactive percentage trigger. */
 	autoCondenseContextPercent: z.number().optional(),
 
 	/**

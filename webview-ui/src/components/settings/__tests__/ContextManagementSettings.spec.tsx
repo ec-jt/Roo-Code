@@ -329,13 +329,9 @@ describe("ContextManagementSettings", () => {
 		const autoCondenseCheckbox = screen.getByTestId("auto-condense-context-checkbox")
 		expect(autoCondenseCheckbox).toBeInTheDocument()
 
-		// Should render the threshold slider with correct value
-		const slider = screen.getByTestId("condense-threshold-slider")
-		expect(slider).toBeInTheDocument()
-
-		// Should render the profile select dropdown
-		const selects = screen.getAllByRole("combobox")
-		expect(selects).toHaveLength(1)
+		expect(screen.queryByTestId("condense-threshold-slider")).not.toBeInTheDocument()
+		expect(screen.queryByRole("combobox")).not.toBeInTheDocument()
+		expect(screen.getByText("Compact on context overflow")).toBeInTheDocument()
 	})
 
 	describe("Auto Condense Context functionality", () => {
@@ -363,33 +359,11 @@ describe("ContextManagementSettings", () => {
 			expect(mockSetCachedStateField).toHaveBeenCalledWith("autoCondenseContext", false)
 		})
 
-		it("shows threshold settings when auto condense is enabled", () => {
+		it("explains once-only overflow recovery instead of proactive thresholds", () => {
 			render(<ContextManagementSettings {...autoCondenseProps} />)
-
-			// Threshold settings should be visible
-			expect(screen.getByTestId("condense-threshold-slider")).toBeInTheDocument()
-			// One combobox for profile selection
-			expect(screen.getAllByRole("combobox")).toHaveLength(1)
-		})
-
-		it("updates auto condense context percent", () => {
-			const mockSetCachedStateField = vitest.fn()
-			const props = { ...autoCondenseProps, setCachedStateField: mockSetCachedStateField }
-			render(<ContextManagementSettings {...props} />)
-
-			// Find the condense threshold slider
-			const slider = screen.getByTestId("condense-threshold-slider")
-
-			// Test slider interaction
-			slider.focus()
-			fireEvent.keyDown(slider, { key: "ArrowRight" })
-
-			expect(mockSetCachedStateField).toHaveBeenCalledWith("autoCondenseContextPercent", 76)
-		})
-
-		it("displays correct auto condense context percent value", () => {
-			render(<ContextManagementSettings {...autoCondenseProps} />)
-			expect(screen.getByText("75%")).toBeInTheDocument()
+			expect(screen.queryByTestId("condense-threshold-slider")).not.toBeInTheDocument()
+			expect(screen.queryByText("75%")).not.toBeInTheDocument()
+			expect(screen.getByText(/compact and retry once only after/)).toBeInTheDocument()
 		})
 	})
 

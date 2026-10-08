@@ -1,29 +1,16 @@
 import { HTMLAttributes } from "react"
-import React from "react"
 import { useAppTranslation } from "@/i18n/TranslationContext"
 import { VSCodeCheckbox, VSCodeTextArea } from "@vscode/webview-ui-toolkit/react"
-import { FoldVertical } from "lucide-react"
 
 import { supportPrompt } from "@roo/support-prompt"
 
 import { cn } from "@/lib/utils"
-import {
-	Input,
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-	Slider,
-	Button,
-	StandardTooltip,
-} from "@/components/ui"
+import { Input, Slider, Button, StandardTooltip } from "@/components/ui"
 
 import { SetCachedStateField } from "./types"
 import { SectionHeader } from "./SectionHeader"
 import { Section } from "./Section"
 import { SearchableSetting } from "./SearchableSetting"
-import { vscode } from "@/utils/vscode"
 
 type ContextManagementSettingsProps = HTMLAttributes<HTMLDivElement> & {
 	autoCondenseContext: boolean
@@ -65,8 +52,9 @@ type ContextManagementSettingsProps = HTMLAttributes<HTMLDivElement> & {
 
 export const ContextManagementSettings = ({
 	autoCondenseContext,
-	autoCondenseContextPercent,
-	listApiConfigMeta,
+	autoCondenseContextPercent: _legacyPercent,
+	profileThresholds: _legacyProfileThresholds,
+	listApiConfigMeta: _legacyProfiles,
 	maxOpenTabsContext,
 	maxWorkspaceFiles,
 	showRooIgnoredFiles,
@@ -74,7 +62,6 @@ export const ContextManagementSettings = ({
 	setCachedStateField,
 	maxImageFileSize,
 	maxTotalImageSize,
-	profileThresholds = {},
 	includeDiagnosticMessages,
 	maxDiagnosticMessages,
 	writeDelayMs,
@@ -87,7 +74,6 @@ export const ContextManagementSettings = ({
 	...props
 }: ContextManagementSettingsProps) => {
 	const { t } = useAppTranslation()
-	const [selectedThresholdProfile, setSelectedThresholdProfile] = React.useState<string>("default")
 
 	// Helper function to get the CONDENSE prompt value
 	const getCondensePromptValue = (): string => {
@@ -112,32 +98,6 @@ export const ContextManagementSettings = ({
 		setCustomSupportPrompts(updatedPrompts)
 	}
 
-	// Helper function to get the current threshold value based on selected profile
-	const getCurrentThresholdValue = () => {
-		if (selectedThresholdProfile === "default") {
-			return autoCondenseContextPercent
-		}
-		const profileThreshold = profileThresholds[selectedThresholdProfile]
-		if (profileThreshold === undefined || profileThreshold === -1) {
-			return autoCondenseContextPercent // Use default if profile not configured or set to -1
-		}
-		return profileThreshold
-	}
-
-	// Helper function to handle threshold changes
-	const handleThresholdChange = (value: number) => {
-		if (selectedThresholdProfile === "default") {
-			setCachedStateField("autoCondenseContextPercent", value)
-		} else {
-			const newThresholds = {
-				...profileThresholds,
-				[selectedThresholdProfile]: value,
-			}
-
-			setCachedStateField("profileThresholds", newThresholds)
-			vscode.postMessage({ type: "updateSettings", updatedSettings: { profileThresholds: newThresholds } })
-		}
-	}
 	return (
 		<div className={cn("flex flex-col gap-2", className)} {...props}>
 			<SectionHeader description={t("settings:contextManagement.description")}>
@@ -476,87 +436,20 @@ export const ContextManagementSettings = ({
 				<SearchableSetting
 					settingId="context-auto-condense"
 					section="contextManagement"
-					label={t("settings:contextManagement.autoCondenseContext.name")}>
+					label="Compact on context overflow">
 					<VSCodeCheckbox
 						checked={autoCondenseContext}
 						onChange={(e: any) => setCachedStateField("autoCondenseContext", e.target.checked)}
 						data-testid="auto-condense-context-checkbox">
-						<span className="font-medium">{t("settings:contextManagement.autoCondenseContext.name")}</span>
+						<span className="font-medium">Compact on context overflow</span>
 					</VSCodeCheckbox>
 				</SearchableSetting>
-				{autoCondenseContext && (
-					<div className="flex flex-col gap-3 pl-3 border-l-2 border-vscode-button-background">
-						<div className="flex items-center gap-4 font-bold">
-							<FoldVertical size={16} />
-							<div>{t("settings:contextManagement.condensingThreshold.label")}</div>
-						</div>
-						<div>
-							<Select
-								value={selectedThresholdProfile || "default"}
-								onValueChange={(value) => {
-									setSelectedThresholdProfile(value)
-								}}
-								data-testid="threshold-profile-select">
-								<SelectTrigger className="w-full">
-									<SelectValue
-										placeholder={
-											t("settings:contextManagement.condensingThreshold.selectProfile") ||
-											"Select profile for threshold"
-										}
-									/>
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value="default">
-										{t("settings:contextManagement.condensingThreshold.defaultProfile") ||
-											"Default (applies to all unconfigured profiles)"}
-									</SelectItem>
-									{(listApiConfigMeta || []).map((config) => {
-										const profileThreshold = profileThresholds[config.id]
-										const thresholdDisplay =
-											profileThreshold !== undefined
-												? profileThreshold === -1
-													? ` ${t(
-															"settings:contextManagement.condensingThreshold.usesGlobal",
-															{
-																threshold: autoCondenseContextPercent,
-															},
-														)}`
-													: ` (${profileThreshold}%)`
-												: ""
-										return (
-											<SelectItem key={config.id} value={config.id}>
-												{config.name}
-												{thresholdDisplay}
-											</SelectItem>
-										)
-									})}
-								</SelectContent>
-							</Select>
-						</div>
-
-						{/* Threshold Slider */}
-						<div>
-							<div className="flex items-center gap-2">
-								<Slider
-									min={10}
-									max={100}
-									step={1}
-									value={[getCurrentThresholdValue()]}
-									onValueChange={([value]) => handleThresholdChange(value)}
-									data-testid="condense-threshold-slider"
-								/>
-								<span className="w-20">{getCurrentThresholdValue()}%</span>
-							</div>
-							<div className="text-vscode-descriptionForeground text-sm mt-1">
-								{selectedThresholdProfile === "default"
-									? t("settings:contextManagement.condensingThreshold.defaultDescription", {
-											threshold: autoCondenseContextPercent,
-										})
-									: t("settings:contextManagement.condensingThreshold.profileDescription")}
-							</div>
-						</div>
-					</div>
-				)}
+				<p className="text-sm text-vscode-descriptionForeground">
+					When enabled, compact and retry once only after the provider explicitly rejects a request for
+					exceeding its context limit. When disabled, compaction is manual only. No percentage threshold or
+					output reserve triggers automatic compaction or truncation. The context percentage is informational.
+					You can still use Compact now at any time when the task is idle.
+				</p>
 			</Section>
 		</div>
 	)
