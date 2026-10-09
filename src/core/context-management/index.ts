@@ -5,6 +5,7 @@ import { ApiHandler, ApiHandlerCreateMessageMetadata } from "../../api"
 import { summarizeConversation, SummarizeResponse } from "../condense"
 import { ApiMessage } from "../task-persistence/apiMessages"
 import { RooIgnoreController } from "../ignore/RooIgnoreController"
+import { truncateAfterOverflow } from "./overflow-truncation"
 
 /**
  * Counts tokens for user content using the provider's token counting implementation.
@@ -144,9 +145,14 @@ export type ContextManagementOptions = Omit<WillManageContextOptions, "lastMessa
 	rooIgnoreController?: RooIgnoreController
 }
 
-export type ContextManagementResult = SummarizeResponse & { prevContextTokens: number }
+export type ContextManagementResult = SummarizeResponse & {
+	prevContextTokens: number
+	truncationId?: string
+	messagesRemoved?: number
+	fallbackReason?: "context-limit" | "empty-summary"
+}
 
-/** Summarize only on explicit overflow. Never truncate, including on failure. */
+/** Summarize only on explicit overflow; truncate only for an eligible summary failure. */
 export async function manageContext(options: ContextManagementOptions): Promise<ContextManagementResult> {
 	const { messages, totalTokens: prevContextTokens } = options
 	const unchanged = { messages, summary: "", cost: 0, prevContextTokens }
@@ -177,6 +183,10 @@ export async function manageContext(options: ContextManagementOptions): Promise<
 		cwd: options.cwd,
 		rooIgnoreController: options.rooIgnoreController,
 	})
+	if (result.failureKind) {
+		const fallback = await truncateAfterOverflow({ ...options, tools: options.metadata?.tools })
+		return { ...unchanged, ...fallback, cost: result.cost, fallbackReason: result.failureKind }
+	}
 	if (result.error || !result.summary)
 		return {
 			...unchanged,

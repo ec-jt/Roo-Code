@@ -5,6 +5,24 @@ import type { ClineMessage } from "@roo-code/types"
 import { consolidateTokenUsage, hasTokenUsageChanged, hasToolUsageChanged } from "../consolidateTokenUsage.js"
 
 describe("consolidateTokenUsage", () => {
+	it("accounts for a paid failed compaction followed by truncation", () => {
+		const result = consolidateTokenUsage([
+			{
+				ts: 1,
+				type: "say",
+				say: "sliding_window_truncation",
+				contextTruncation: {
+					truncationId: "id",
+					messagesRemoved: 2,
+					prevContextTokens: 100,
+					newContextTokens: 40,
+					cost: 0.02,
+					fallbackReason: "empty-summary",
+				},
+			},
+		])
+		expect(result).toMatchObject({ totalCost: 0.02, contextTokens: 40 })
+	})
 	// Helper function to create a basic api_req_started message
 	const createApiReqMessage = (
 		ts: number,

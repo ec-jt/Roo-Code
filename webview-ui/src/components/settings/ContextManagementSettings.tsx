@@ -450,6 +450,11 @@ export const ContextManagementSettings = ({
 					output reserve triggers automatic compaction or truncation. The context percentage is informational.
 					You can still use Compact now at any time when the task is idle.
 				</p>
+				<p className="text-sm text-vscode-descriptionForeground">
+					If compaction also exceeds the provider limit or returns an empty summary, Roo can exclude complete
+					older exchanges before that same single retry. Original history stays stored. Other compaction
+					failures stop recovery.
+				</p>
 			</Section>
 		</div>
 	)

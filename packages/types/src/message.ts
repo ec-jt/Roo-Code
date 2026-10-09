@@ -240,6 +240,8 @@ export const contextTruncationSchema = z.object({
 	messagesRemoved: z.number(),
 	prevContextTokens: z.number(),
 	newContextTokens: z.number(),
+	fallbackReason: z.enum(["context-limit", "empty-summary"]).optional(),
+	cost: z.number().optional(),
 })
 
 export type ContextTruncation = z.infer<typeof contextTruncationSchema>

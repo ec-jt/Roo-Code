@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk"
 import crypto from "crypto"
 import { ModelDispatchControl } from "../../api/dispatch-admission"
+import { checkContextWindowExceededError } from "../context/context-management/context-error-handling"
 
 import { t } from "../../i18n"
 import { ApiHandler, ApiHandlerCreateMessageMetadata } from "../../api"
@@ -211,6 +212,8 @@ export function extractCommandBlocks(message: ApiMessage): string {
 }
 
 export type SummarizeResponse = {
+	/** Only these failures may permit the explicit overflow truncation fallback. */
+	failureKind?: "context-limit" | "empty-summary"
 	messages: ApiMessage[] // The messages after summarization
 	summary: string // The summary text; empty string for no summary
 	cost: number // The cost of the summarization operation
@@ -329,7 +332,9 @@ export async function summarizeConversation(options: SummarizeConversationOption
 		const stream = apiHandler.createMessage(promptToUse, requestMessages, metadata)
 
 		for await (const chunk of stream) {
-			if (chunk.type === "text") {
+			if (chunk.type === "error") {
+				throw Object.assign(new Error(chunk.message), { code: chunk.error })
+			} else if (chunk.type === "text") {
 				summary += chunk.text
 			} else if (chunk.type === "usage") {
 				// Record final usage chunk only
@@ -338,6 +343,16 @@ export async function summarizeConversation(options: SummarizeConversationOption
 			}
 		}
 	} catch (error) {
+		if (
+			checkContextWindowExceededError(error) ||
+			(error instanceof ModelDispatchControl && error.code === "context-limit")
+		)
+			return {
+				...response,
+				cost,
+				error: "Compaction exceeded the provider context limit.",
+				failureKind: "context-limit",
+			}
 		if (error instanceof ModelDispatchControl) throw error
 		console.error("Error during condensing API call:", error)
 		const errorMessage = error instanceof Error ? error.message : String(error)
@@ -384,7 +399,7 @@ export async function summarizeConversation(options: SummarizeConversationOption
 
 	if (summary.length === 0) {
 		const error = t("common:errors.condense_failed")
-		return { ...response, cost, error }
+		return { ...response, cost, error, failureKind: "empty-summary" }
 	}
 
 	// Extract command blocks from the first message (original task)

@@ -156,6 +156,9 @@ export class ChatHistoryIndex {
 		} else if (message.say === "condense_context") {
 			result.cost = message.contextCondense?.cost ?? 0
 			result.context = message.contextCondense?.newContextTokens ?? 0
+		} else if (message.say === "sliding_window_truncation") {
+			result.cost = message.contextTruncation?.cost ?? 0
+			result.context = message.contextTruncation?.newContextTokens ?? 0
 		}
 		return result
 	}
@@ -187,7 +190,8 @@ export class ChatHistoryIndex {
 			this.setContext(position, sign === 1 ? (api.tokensIn ?? 0) + (api.tokensOut ?? 0) : 0)
 		} else {
 			this.totals.totalCost += sign * row.cost
-			if (row.kind === "condense_context") this.setContext(position, sign === 1 ? row.context : 0)
+			if (row.kind === "condense_context" || row.kind === "sliding_window_truncation")
+				this.setContext(position, sign === 1 ? row.context : 0)
 		}
 		for (const file of row.files) {
 			const total = this.files.get(file.path) ?? { path: file.path, added: 0, removed: 0, changes: 0 }

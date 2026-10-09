@@ -509,6 +509,33 @@ describe("Task opt-in model dispatch", () => {
 		expect(create).toHaveBeenCalledTimes(2)
 		expect(task.apiConversationHistory).toEqual(before)
 	})
+	it.each([false, true])("truncation after compaction overflow shares one retry, mediated=%s", async (mediated) => {
+		await enableOverflow(mediated)
+		task.apiConversationHistory = [
+			{ role: "user", content: "original" },
+			{ role: "assistant", content: "first answer" },
+			{ role: "user", content: "old input" },
+			{ role: "assistant", content: "old answer" },
+			{ role: "user", content: "latest input" },
+		]
+		create.mockRejectedValueOnce(overflow()).mockRejectedValueOnce(overflow()).mockRejectedValueOnce(overflow())
+		const backoff = vi.spyOn(task as any, "backoffAndAnnounce")
+		await expect(consume(task.attemptApiRequest())).rejects.toThrow("Compact manually")
+		expect(create).toHaveBeenCalledTimes(3)
+		expect(backoff).not.toHaveBeenCalled()
+		expect(task.apiConversationHistory.filter((message) => message.truncationParent)).toHaveLength(2)
+		expect(task.say).toHaveBeenCalledWith(
+			"sliding_window_truncation",
+			undefined,
+			undefined,
+			false,
+			undefined,
+			undefined,
+			expect.any(Object),
+			undefined,
+			expect.objectContaining({ messagesRemoved: 2, fallbackReason: "context-limit" }),
+		)
+	})
 	it.each(["cancel", "stale"])("%s during summary does not persist or retry", async (stop) => {
 		await enableOverflow(false)
 		const before = structuredClone(task.apiConversationHistory)

@@ -67,6 +67,8 @@ export function consolidateTokenUsage(messages: ClineMessage[]): TokenUsage {
 			}
 		} else if (message.type === "say" && message.say === "condense_context") {
 			result.totalCost += message.contextCondense?.cost ?? 0
+		} else if (message.type === "say" && message.say === "sliding_window_truncation") {
+			result.totalCost += message.contextTruncation?.cost ?? 0
 		}
 	})
 
@@ -93,6 +95,8 @@ export function consolidateTokenUsage(messages: ClineMessage[]): TokenUsage {
 			}
 		} else if (message.type === "say" && message.say === "condense_context") {
 			result.contextTokens = message.contextCondense?.newContextTokens ?? 0
+		} else if (message.type === "say" && message.say === "sliding_window_truncation") {
+			result.contextTokens = message.contextTruncation?.newContextTokens ?? 0
 		}
 		if (result.contextTokens) {
 			break

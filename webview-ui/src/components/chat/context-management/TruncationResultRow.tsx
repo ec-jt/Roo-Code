@@ -45,6 +45,15 @@ export function TruncationResultRow({ data }: TruncationResultRowProps) {
 				<span className={`codicon codicon-chevron-${isExpanded ? "up" : "down"}`}></span>
 			</div>
 
+			{data.fallbackReason && (
+				<p className="text-xs text-vscode-descriptionForeground mt-1">
+					Compaction{" "}
+					{data.fallbackReason === "context-limit"
+						? "exceeded the provider limit"
+						: "returned no usable summary"}
+					; excluded {removedCount} older messages before the single retry. Original history remains stored.
+				</p>
+			)}
 			{isExpanded && (
 				<div className="mt-2 ml-0 p-4 bg-vscode-editor-background rounded text-vscode-foreground text-sm">
 					<div className="flex flex-col gap-2">

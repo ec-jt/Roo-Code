@@ -4962,6 +4962,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		requestRevision: number,
 		handler: ApiHandler,
 		signal: AbortSignal,
+		requestMetadata?: ApiHandlerCreateMessageMetadata,
 	): Promise<void> {
 		const assertCurrent = () => {
 			if (
@@ -5001,13 +5002,23 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 						messages,
 						totalTokens: this.getTokenUsage().contextTokens ?? 0,
 						contextWindow: handler.getModel().info.contextWindow,
+						maxTokens: getModelMaxOutputTokens({
+							modelId: handler.getModel().id,
+							model: handler.getModel().info,
+							settings: this.apiConfiguration,
+						}),
 						apiHandler: handler,
 						autoCondenseContext: true,
 						contextLimitExceeded: true,
 						systemPrompt,
 						taskId: this.taskId,
 						customCondensingPrompt: state?.customSupportPrompts?.CONDENSE,
-						metadata: { taskId: this.taskId, mode: state?.mode, suppressPreviousResponseId: true },
+						metadata: {
+							...requestMetadata,
+							taskId: this.taskId,
+							mode: state?.mode,
+							suppressPreviousResponseId: true,
+						},
 						environmentDetails,
 					}),
 				"Context recovery cancelled.",
@@ -5015,13 +5026,35 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			assertCurrent()
 			if (originalHistory !== JSON.stringify(this.apiConversationHistory))
 				throw new ContextRecoveryError("History changed during context recovery.")
-			if (result.error || !result.summary)
+			if (result.error || (!result.summary && !result.truncationId))
 				throw new ContextRecoveryError(
 					result.error || "Context compaction produced no summary. Compact manually before retrying.",
 				)
 			await this.overwriteApiConversationHistory(result.messages)
 			assertCurrent()
 			this.skipPrevResponseIdOnce = true
+			if (result.truncationId) {
+				await this.say(
+					"sliding_window_truncation",
+					undefined,
+					undefined,
+					false,
+					undefined,
+					undefined,
+					{ isNonInteractive: true },
+					undefined,
+					{
+						truncationId: result.truncationId,
+						messagesRemoved: result.messagesRemoved ?? 0,
+						prevContextTokens: result.prevContextTokens,
+						newContextTokens: result.newContextTokens ?? 0,
+						fallbackReason: result.fallbackReason,
+						cost: result.cost,
+					},
+				)
+				assertCurrent()
+				return
+			}
 			const { summary, cost, prevContextTokens, newContextTokens = 0, condenseId } = result
 			await this.say(
 				"condense_context",
@@ -5534,7 +5567,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 						"Provider context limit exceeded. Compact manually or change models before retrying.",
 					)
 				recovery.attempted = true
-				await this.handleContextWindowExceededError(requestRevision, condensationHandler, abortSignal)
+				await this.handleContextWindowExceededError(requestRevision, condensationHandler, abortSignal, metadata)
 				yield* this.attemptApiRequestPinned(retryAttempt + 1, {}, recovery)
 				return
 			}

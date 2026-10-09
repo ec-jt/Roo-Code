@@ -19,6 +19,25 @@ const task = (messages: ClineMessage[]) => ({
 })
 
 describe("bounded chat history", () => {
+	it("updates context and failed-summary cost for overflow truncation", () => {
+		const index = new ChatHistoryIndex().ensure([
+			say(0),
+			{
+				ts: 1,
+				type: "say",
+				say: "sliding_window_truncation",
+				contextTruncation: {
+					truncationId: "id",
+					messagesRemoved: 2,
+					prevContextTokens: 100,
+					newContextTokens: 40,
+					cost: 0.02,
+					fallbackReason: "empty-summary",
+				},
+			},
+		])
+		expect(index.tokenUsage).toMatchObject({ totalCost: 0.02, contextTokens: 40 })
+	})
 	it.each([20, 50, 100])("bounds a synthetic %i MiB hydration without mutating authoritative history", (mib) => {
 		const messages = [
 			say(0, "root"),
