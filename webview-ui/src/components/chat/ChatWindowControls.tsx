@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { ContextRecoveryButton } from "./context-management/ContextRecoveryButton"
 import type { ChatWindowState, ClineMessage } from "@roo-code/types"
 import { Button } from "@/components/ui"
 import { vscode } from "@/utils/vscode"
@@ -122,6 +123,9 @@ export function PlainHistoryMessage({ message, window }: { message: ClineMessage
 					)}
 				</div>
 			</div>
+			<ContextRecoveryButton
+				eventId={message.contextCondense?.condenseId ?? message.contextTruncation?.truncationId}
+			/>
 			{(!compact || expanded) && hasPreview && (
 				<pre className="whitespace-pre-wrap break-words text-xs font-mono max-h-80 overflow-auto">
 					{message.text}

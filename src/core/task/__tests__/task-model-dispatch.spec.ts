@@ -6,6 +6,12 @@ import { ModelDispatchControl, type DispatchAdmission } from "../../../api/dispa
 import { saveApiMessages } from "../../task-persistence"
 import { readBranchProvenance, saveRequestSnapshot } from "../model-operation/storage"
 import { attemptCompletionTool } from "../../tools/AttemptCompletionTool"
+import { saveContextRecoverySnapshot } from "../../context-management/context-recovery"
+
+vi.mock("../../context-management/context-recovery", async (original) => ({
+	...(await original<typeof import("../../context-management/context-recovery")>()),
+	saveContextRecoverySnapshot: vi.fn().mockResolvedValue(undefined),
+}))
 
 const { create } = vi.hoisted(() => ({ create: vi.fn() }))
 vi.mock("@anthropic-ai/sdk", () => ({ Anthropic: vi.fn(() => ({ messages: { create } })) }))
@@ -474,6 +480,14 @@ describe("Task opt-in model dispatch", () => {
 			expect(task.apiConversationHistory.at(-1)).toEqual(last)
 			expect(task.apiConversationHistory.some((message) => message.isSummary)).toBe(true)
 			expect(saveApiMessages).toHaveBeenCalled()
+			expect(saveContextRecoverySnapshot).toHaveBeenCalledWith(
+				"/storage",
+				expect.objectContaining({
+					version: 1,
+					taskId: task.taskId,
+					apiMessages: expect.arrayContaining([last]),
+				}),
+			)
 			if (mediated)
 				expect(admit.mock.calls.map(([descriptor]) => descriptor.purpose)).toEqual([
 					"chat",

@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { ContextRecoveryButton } from "./ContextRecoveryButton"
 import { useTranslation } from "react-i18next"
 import { VSCodeBadge } from "@vscode/webview-ui-toolkit/react"
 import { FoldVertical } from "lucide-react"
@@ -47,6 +48,7 @@ export function CondensationResultRow({ data }: CondensationResultRowProps) {
 				<span className={`codicon codicon-chevron-${isExpanded ? "up" : "down"}`}></span>
 			</div>
 
+			<ContextRecoveryButton eventId={data.condenseId} />
 			{isExpanded && (
 				<div className="mt-2 ml-0 p-4 bg-vscode-editor-background rounded text-vscode-foreground text-sm">
 					<Markdown markdown={summary} />

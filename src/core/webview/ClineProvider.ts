@@ -86,6 +86,7 @@ import { ContextProxy } from "../config/ContextProxy"
 import { ProviderSettingsManager } from "../config/ProviderSettingsManager"
 import { CustomModesManager } from "../config/CustomModesManager"
 import { Task } from "../task/Task"
+import { readContextRecoverySnapshot } from "../context-management/context-recovery"
 import { formatSubtaskHandoff } from "../task/subtask-handoff"
 import { ModelOperationCoordinator, ModelOperationBlocked } from "../task/model-operation/coordinator"
 import { authorizeDelegation, DelegationPolicyError, type DelegationRequest } from "../task/delegation-policy"
@@ -2278,6 +2279,107 @@ export class ClineProvider
 			void vscode.window.showErrorMessage(`Context condensation stopped: ${message}`)
 		} finally {
 			await this.postMessageToWebview({ type: "condenseTaskContextResponse", text: taskId })
+		}
+	}
+
+	/** Save a separate, inert branch. Never replace or modify the source task graph. */
+	public async createContextRecoveryBranch(request: WebviewMessage["contextRecoveryBranch"]): Promise<void> {
+		let branch: Task | undefined
+		if (this.modelOperationInProgress) return
+		this.modelOperationInProgress = true
+		try {
+			const source = this.getCurrentTask()
+			const assertCurrent = () => {
+				if (
+					!request ||
+					!source ||
+					this._disposed ||
+					this.isTaskBackgrounded ||
+					this.getCurrentTask() !== source ||
+					source.taskId !== request.taskId ||
+					source.instanceId !== request.instanceId ||
+					source.abort ||
+					source.abandoned
+				) {
+					throw new Error("Recovery source changed. Reopen the task from History without resuming.")
+				}
+			}
+			assertCurrent()
+			if (!source || !request) return
+			source.assertContextRecoveryAllowed()
+			if (
+				!source.clineMessages.some(
+					(message) =>
+						message.contextCondense?.condenseId === request.eventId ||
+						message.contextTruncation?.truncationId === request.eventId,
+				)
+			) {
+				throw new Error("Context event is no longer available in this task")
+			}
+			const snapshot = await readContextRecoverySnapshot(
+				this.context.globalStorageUri.fsPath,
+				source.taskId,
+				request.eventId,
+			)
+			const profiles = await this.providerSettingsManager.listConfig()
+			const selection = await vscode.window.showQuickPick(
+				profiles.map((profile) => ({
+					label: profile.name,
+					description: `${profile.apiProvider ?? ""} / ${profile.modelId ?? ""}`,
+					profileId: profile.id,
+				})),
+				{ title: "Recovery branch: choose a saved model profile", ignoreFocusOut: true },
+			)
+			if (!selection?.profileId) return
+			const action = await vscode.window.showQuickPick(
+				[
+					{ label: "Compact restored context", compact: true },
+					{ label: "Keep restored context uncompressed", compact: false },
+				],
+				{ title: "Create branch only; do not continue execution", ignoreFocusOut: true },
+			)
+			if (!action) return
+			assertCurrent()
+			await source.withContextRecoveryLock(async () => {
+				const profile = await this.providerSettingsManager.getProfile({ id: selection.profileId })
+				const state = await this.getState()
+				assertCurrent()
+				if (!ProfileValidator.isProfileAllowed(profile, state.organizationAllowList))
+					throw new Error("The selected profile is blocked by organization policy")
+				branch = new Task({
+					provider: this,
+					apiConfiguration: profile,
+					enableCheckpoints: false,
+					experiments: state.experiments,
+					workspacePath: source.cwd,
+					startTask: false,
+				})
+				await vscode.window.withProgress(
+					{ location: vscode.ProgressLocation.Notification, title: "Creating context recovery branch" },
+					() =>
+						branch!.prepareContextRecoveryBranch(
+							snapshot,
+							selection.profileId!,
+							action.compact,
+							source.taskMode,
+						),
+				)
+				assertCurrent()
+			})
+			await this.postStateToWebview()
+			void vscode.window.showInformationMessage(
+				"Recovery branch saved in History with the '[Context recovery]' prefix. Open it when ready. The original task and completed child are unchanged; execution has not resumed.",
+			)
+		} catch (error) {
+			void vscode.window.showErrorMessage(
+				`Context recovery stopped: ${error instanceof Error ? error.message : String(error)}`,
+			)
+		} finally {
+			try {
+				if (branch) await branch.dispose({ preserveArtifacts: true })
+			} finally {
+				this.modelOperationInProgress = false
+			}
 		}
 	}
 

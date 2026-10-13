@@ -108,6 +108,13 @@ import { calculateApiCostAnthropic, calculateApiCostOpenAI } from "../../shared/
 import { getWorkspacePath } from "../../utils/path"
 import { sanitizeToolUseId } from "../../utils/tool-id"
 import { getTaskDirectoryPath } from "../../utils/storage"
+import {
+	saveContextRecoverySnapshot,
+	prepareContextRecovery,
+	type ContextRecoverySnapshot,
+} from "../context-management/context-recovery"
+import { safeWriteJson } from "../../utils/safeWriteJson"
+import { fileExistsAtPath } from "../../utils/fs"
 import { abortable } from "../../utils/abortable"
 
 // prompts
@@ -381,8 +388,13 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	private assistantEditPromise?: Promise<void>
 	private assistantEditWaitingForResume = false
 	private assistantEditContextOperation = false
+	private contextRecoveryActive = false
+	private contextRecoveryPreparing = false
+	public get isContextRecoveryActive(): boolean {
+		return this.contextRecoveryActive
+	}
 	public get isAssistantMessageEditing(): boolean {
-		return this.assistantEditPromise !== undefined
+		return this.assistantEditPromise !== undefined || this.contextRecoveryActive
 	}
 
 	providerRef: WeakRef<ClineProvider>
@@ -761,6 +773,19 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		return (this.modelOperationProvenanceReady ??= (async () => {
 			try {
 				await assertNoInterruptedAssistantEdit(this.globalStoragePath, this.taskId)
+				const recoveryOriginPath = path.join(
+					await getStorageBasePath(this.globalStoragePath),
+					"tasks",
+					this.taskId,
+					"context-recovery-origin.json",
+				)
+				if (await fileExistsAtPath(recoveryOriginPath)) {
+					const origin = JSON.parse(await fs.promises.readFile(recoveryOriginPath, "utf8"))
+					if (origin.version !== 1 || origin.ready !== true || typeof origin.profileId !== "string")
+						throw new Error("Recovery branch preparation did not finish safely")
+					this.enableCheckpoints = false
+					await this.pinModelOperationProfile(origin.profileId)
+				}
 				const root = await getStorageBasePath(this.globalStoragePath)
 				const provenance = await readBranchProvenance(root, this.taskId)
 				if (!provenance) return
@@ -2546,6 +2571,93 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		}
 	}
 
+	/** Context-only branching may copy a completed delegation, but never an active exchange. */
+	public assertContextRecoveryAllowed(): void {
+		if (
+			!this.isInitialized ||
+			this.isAssistantMessageEditing ||
+			this.assistantEditContextOperation ||
+			this.modelOperationClosed ||
+			this.persistenceClosed ||
+			this.abandoned ||
+			this.modelOperationPrepared ||
+			this.isPaused ||
+			this.pendingNewTaskToolCallId ||
+			this.modelOperationPreparing ||
+			this.modelOperationLoops ||
+			this.modelOperationRequests ||
+			this.modelOperationUsageCollectors ||
+			this.modelDispatchControllers.size ||
+			this.isStreaming ||
+			this.isWaitingForFirstChunk ||
+			this.presentAssistantMessageLocked ||
+			this.diffViewProvider.isEditing ||
+			this.modelOperationAdmission.pending ||
+			this.terminalProcess ||
+			TerminalRegistry.getTerminals(true).length
+		) {
+			throw new Error(
+				"Stop execution, then reopen the source from History without resuming before creating a recovery branch.",
+			)
+		}
+	}
+
+	public async withContextRecoveryLock<T>(operation: () => Promise<T>): Promise<T> {
+		this.assertContextRecoveryAllowed()
+		this.contextRecoveryActive = true
+		try {
+			await this.flushPersistence()
+			return await operation()
+		} finally {
+			this.contextRecoveryActive = false
+		}
+	}
+
+	/** Persist an inert standalone task. No loop, tools, file restore, or queue processing. */
+	public async prepareContextRecoveryBranch(
+		snapshot: ContextRecoverySnapshot,
+		profileId: string,
+		compact: boolean,
+		mode: string,
+	): Promise<void> {
+		if (this._started || this.clineMessages.length || this.apiConversationHistory.length)
+			throw new Error("Recovery requires a new inert task")
+		const copy = prepareContextRecovery(snapshot)
+		this.contextRecoveryPreparing = true
+		await this.pinModelOperationProfile(profileId)
+		await this.taskModeReady
+		this._taskMode = mode
+		this.enableCheckpoints = false
+		this.skipPrevResponseIdOnce = true
+		this.apiConversationHistory = copy.apiMessages
+		this.clineMessages = copy.clineMessages
+		if (!this.clineMessages.length) throw new Error("Recovery snapshot has no task message")
+		this.clineMessages[0].text = `[Context recovery] ${this.clineMessages[0].text ?? ""}`
+		const directory = await getTaskDirectoryPath(this.globalStoragePath, this.taskId)
+		await safeWriteJson(path.join(directory, "context-recovery-origin.json"), {
+			version: 1,
+			sourceTaskId: snapshot.taskId,
+			eventId: snapshot.eventId,
+			profileId,
+			ready: false,
+		})
+		await this.overwriteApiConversationHistory(this.apiConversationHistory)
+		await this.saveClineMessages(true)
+		if (compact) await this.condenseContextOperation()
+		await this.say(
+			"text",
+			`Recovery branch from task ${snapshot.taskId}, before context event ${snapshot.eventId}. Completed subtask results are historical data, not tasks to rerun. Files were not restored. Review current workspace changes before continuing.`,
+		)
+		await this.saveClineMessages(true)
+		await safeWriteJson(path.join(directory, "context-recovery-origin.json"), {
+			version: 1,
+			sourceTaskId: snapshot.taskId,
+			eventId: snapshot.eventId,
+			profileId,
+			ready: true,
+		})
+	}
+
 	private async condenseContextOperation(): Promise<void> {
 		if (!this.modelDispatchRuntime) return this.condenseContextWithHandler(this.api)
 		if (this.modelDispatchControllers.size || this.modelOperationLoops)
@@ -2593,6 +2705,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		// The summarizer injects missing results into its detached input. Do not mutate
 		// live history before mediated condensation has been authorized and completed.
 		if (!this.modelDispatchRuntime) await this.flushPendingToolResultsToHistory()
+		const recoveryHistory = structuredClone(this.apiConversationHistory)
+		const recoveryUi = structuredClone(this.clineMessages)
 
 		const systemPrompt = await this.getSystemPrompt()
 
@@ -2680,6 +2794,15 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			)
 			return
 		}
+		await saveContextRecoverySnapshot(this.globalStoragePath, {
+			version: 1,
+			taskId: this.taskId,
+			eventId: condenseId!,
+			apiMessages: recoveryHistory,
+			clineMessages: recoveryUi,
+		})
+		if (this.abort || this.abandoned || signal?.aborted || revision !== this.modelOperationRevision)
+			throw new Error("Context compaction became stale")
 		await this.overwriteApiConversationHistory(messages)
 
 		const contextCondense: ContextCondense = {
@@ -2701,7 +2824,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		)
 
 		// Process any queued messages after condensing completes
-		this.processQueuedMessages()
+		if (!this.contextRecoveryPreparing) this.processQueuedMessages()
 	}
 
 	async say(
@@ -4990,6 +5113,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			)
 		const originalHistory = JSON.stringify(this.apiConversationHistory)
 		const messages = structuredClone(this.apiConversationHistory)
+		const recoveryUi = structuredClone(this.clineMessages)
 		await this.providerRef.deref()?.postMessageToWebview({ type: "condenseTaskContextStarted", text: this.taskId })
 		try {
 			const systemPrompt = await this.getSystemPrompt()
@@ -5030,6 +5154,14 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				throw new ContextRecoveryError(
 					result.error || "Context compaction produced no summary. Compact manually before retrying.",
 				)
+			await saveContextRecoverySnapshot(this.globalStoragePath, {
+				version: 1,
+				taskId: this.taskId,
+				eventId: (result.truncationId ?? result.condenseId)!,
+				apiMessages: JSON.parse(originalHistory),
+				clineMessages: recoveryUi,
+			})
+			assertCurrent()
 			await this.overwriteApiConversationHistory(result.messages)
 			assertCurrent()
 			this.skipPrevResponseIdOnce = true

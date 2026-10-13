@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { ContextRecoveryButton } from "./ContextRecoveryButton"
 import { useTranslation } from "react-i18next"
 import { FoldVertical } from "lucide-react"
 
@@ -54,6 +55,7 @@ export function TruncationResultRow({ data }: TruncationResultRowProps) {
 					; excluded {removedCount} older messages before the single retry. Original history remains stored.
 				</p>
 			)}
+			<ContextRecoveryButton eventId={data.truncationId} />
 			{isExpanded && (
 				<div className="mt-2 ml-0 p-4 bg-vscode-editor-background rounded text-vscode-foreground text-sm">
 					<div className="flex flex-col gap-2">

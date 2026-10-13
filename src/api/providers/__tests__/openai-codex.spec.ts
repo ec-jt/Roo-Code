@@ -248,3 +248,78 @@ describe("OpenAiCodexHandler SDK fallback", () => {
 		expect(openAiCodexOAuthManager.forceRefreshAccessToken).toHaveBeenCalledTimes(1)
 	})
 })
+
+describe("OpenAiCodexHandler Responses input tool pairing", () => {
+	let handler: OpenAiCodexHandler
+	let create: ReturnType<typeof vi.fn>
+
+	beforeEach(() => {
+		vi.spyOn(openAiCodexOAuthManager, "getAccessToken").mockResolvedValue("test-token")
+		vi.spyOn(openAiCodexOAuthManager, "getAccountId").mockResolvedValue("acct_test")
+		handler = new OpenAiCodexHandler({ apiModelId: "gpt-5.5" })
+		create = vi.fn().mockImplementation(async function* () {
+			yield { type: "response.output_text.delta", delta: "ok" }
+		})
+		;(handler as unknown as { client: unknown }).client = { responses: { create } }
+	})
+
+	afterEach(() => {
+		vi.restoreAllMocks()
+	})
+
+	// Drain the stream so the request body is captured, then return its input array.
+	async function sentInput(messages: any[]): Promise<any[]> {
+		for await (const _chunk of handler.createMessage("system", messages)) {
+			void _chunk
+		}
+		return create.mock.calls[0][0].input as any[]
+	}
+
+	it("drops a function_call_output whose call_id has no matching function_call", async () => {
+		const input = await sentInput([
+			{
+				role: "user",
+				content: [
+					{ type: "text", text: "continue" },
+					{ type: "tool_result", tool_use_id: "call_orphan", content: "stale output" },
+				],
+			},
+		])
+
+		expect(input.some((item) => item.type === "function_call_output" && item.call_id === "call_orphan")).toBe(false)
+		// Unrelated user text from the same message is preserved.
+		expect(input).toContainEqual({ role: "user", content: [{ type: "input_text", text: "continue" }] })
+	})
+
+	it("keeps paired function_call and function_call_output items", async () => {
+		const input = await sentInput([
+			{
+				role: "assistant",
+				content: [{ type: "tool_use", id: "call_keep", name: "read_file", input: { path: "a.ts" } }],
+			},
+			{ role: "user", content: [{ type: "tool_result", tool_use_id: "call_keep", content: "file contents" }] },
+		])
+
+		expect(input).toContainEqual(
+			expect.objectContaining({ type: "function_call", call_id: "call_keep", name: "read_file" }),
+		)
+		expect(input).toContainEqual(
+			expect.objectContaining({ type: "function_call_output", call_id: "call_keep", output: "file contents" }),
+		)
+	})
+
+	it("matches sanitized call ids so long paired ids are retained", async () => {
+		const longId = `call_${"a".repeat(80)}`
+		const input = await sentInput([
+			{ role: "assistant", content: [{ type: "tool_use", id: longId, name: "read_file", input: {} }] },
+			{ role: "user", content: [{ type: "tool_result", tool_use_id: longId, content: "contents" }] },
+		])
+
+		const call = input.find((item) => item.type === "function_call")
+		const output = input.find((item) => item.type === "function_call_output")
+		expect(call).toBeDefined()
+		expect(output).toBeDefined()
+		expect(output.call_id).toBe(call.call_id)
+		expect(output.call_id.length).toBeLessThanOrEqual(64)
+	})
+})

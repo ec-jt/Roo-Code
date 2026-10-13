@@ -17,6 +17,10 @@ vi.mock("../assistant-message-edit", async (original) => ({
 import { Task } from "../Task"
 import { ClineProvider } from "../../webview/ClineProvider"
 import { ContextProxy } from "../../config/ContextProxy"
+import { safeWriteJson } from "../../../utils/safeWriteJson"
+import fs from "fs"
+import { fileExistsAtPath } from "../../../utils/fs"
+vi.mock("../../../utils/safeWriteJson", () => ({ safeWriteJson: vi.fn().mockResolvedValue(undefined) }))
 
 // ─── Hoisted mocks ───────────────────────────────────────────────────────────
 
@@ -272,6 +276,93 @@ describe("Task persistence", () => {
 		mockProvider.postStateToWebview = vi.fn().mockResolvedValue(undefined)
 		mockProvider.postStateToWebviewWithoutTaskHistory = vi.fn().mockResolvedValue(undefined)
 		mockProvider.updateTaskHistory = vi.fn().mockResolvedValue(undefined)
+	})
+
+	describe("context recovery branch", () => {
+		it("restores the selected profile and disables checkpoints on reload without dispatching", async () => {
+			const task = new Task({ provider: mockProvider, apiConfiguration: mockApiConfig, startTask: false })
+			vi.mocked(fileExistsAtPath).mockImplementation(async (filePath) =>
+				filePath.endsWith("context-recovery-origin.json"),
+			)
+			const read = vi
+				.spyOn(fs.promises, "readFile")
+				.mockResolvedValueOnce(JSON.stringify({ version: 1, ready: true, profileId: "chosen-profile" }))
+			const pin = vi.spyOn(task as any, "pinModelOperationProfile").mockResolvedValue(undefined)
+			const start = vi.spyOn(task as any, "initiateTaskLoop").mockResolvedValue(undefined)
+			await (task as any).ensureModelOperationProvenance()
+			expect(pin).toHaveBeenCalledWith("chosen-profile")
+			expect(task.enableCheckpoints).toBe(false)
+			expect(start).not.toHaveBeenCalled()
+			read.mockRestore()
+			vi.mocked(fileExistsAtPath).mockResolvedValue(false)
+		})
+
+		it("blocks an interrupted branch preparation on reload", async () => {
+			const task = new Task({ provider: mockProvider, apiConfiguration: mockApiConfig, startTask: false })
+			vi.mocked(fileExistsAtPath).mockImplementation(async (filePath) =>
+				filePath.endsWith("context-recovery-origin.json"),
+			)
+			const read = vi
+				.spyOn(fs.promises, "readFile")
+				.mockResolvedValueOnce(JSON.stringify({ version: 1, ready: false, profileId: "chosen-profile" }))
+			await expect((task as any).ensureModelOperationProvenance()).rejects.toThrow("did not finish safely")
+			expect(task.modelOperationDispatchClosed).toBe(true)
+			read.mockRestore()
+			vi.mocked(fileExistsAtPath).mockResolvedValue(false)
+		})
+
+		it("writes an inert branch with the selected profile and preserves the completed child result", async () => {
+			const task = new Task({ provider: mockProvider, apiConfiguration: mockApiConfig, startTask: false })
+			const pin = vi.spyOn(task as any, "pinModelOperationProfile").mockResolvedValue(undefined)
+			const compact = vi.spyOn(task as any, "condenseContextOperation").mockResolvedValue(undefined)
+			const start = vi.spyOn(task as any, "initiateTaskLoop").mockResolvedValue(undefined)
+			vi.spyOn(task, "say").mockResolvedValue(undefined)
+			const snapshot = {
+				version: 1 as const,
+				taskId: "original-parent",
+				eventId: "event-1",
+				apiMessages: [
+					{ role: "user" as const, content: "task" },
+					{
+						role: "assistant" as const,
+						content: [{ type: "tool_use" as const, id: "child", name: "new_task", input: {} }],
+					},
+					{
+						role: "user" as const,
+						content: [{ type: "tool_result" as const, tool_use_id: "child", content: "child completed" }],
+					},
+				],
+				clineMessages: [{ ts: 1, type: "say" as const, say: "text" as const, text: "original task" }],
+			}
+			const before = structuredClone(snapshot)
+			await task.prepareContextRecoveryBranch(snapshot, "chosen-profile", true, "architect")
+			expect(snapshot).toEqual(before)
+			expect(pin).toHaveBeenCalledWith("chosen-profile")
+			expect(compact).toHaveBeenCalledOnce()
+			expect(start).not.toHaveBeenCalled()
+			expect(task.taskMode).toBe("architect")
+			expect(task.parentTaskId).toBeUndefined()
+			expect(task.rootTaskId).toBeUndefined()
+			expect(task.apiConversationHistory.at(-1)).toEqual(snapshot.apiMessages.at(-1))
+			expect(mockSaveApiMessages.mock.calls.every(([options]) => options.taskId === task.taskId)).toBe(true)
+			expect(safeWriteJson).toHaveBeenLastCalledWith(
+				expect.stringContaining("context-recovery-origin.json"),
+				expect.objectContaining({ ready: true, sourceTaskId: "original-parent" }),
+			)
+		})
+
+		it("releases the source lock after failure and blocks dispatch while held", async () => {
+			const task = new Task({ provider: mockProvider, apiConfiguration: mockApiConfig, startTask: false })
+			vi.spyOn(task, "assertContextRecoveryAllowed").mockImplementation(() => {})
+			await expect(
+				task.withContextRecoveryLock(async () => {
+					expect(task.isContextRecoveryActive).toBe(true)
+					expect(task.isAssistantMessageEditing).toBe(true)
+					throw new Error("failed save")
+				}),
+			).rejects.toThrow("failed save")
+			expect(task.isContextRecoveryActive).toBe(false)
+		})
 	})
 
 	// ── saveApiConversationHistory (via retrySaveApiConversationHistory) ──

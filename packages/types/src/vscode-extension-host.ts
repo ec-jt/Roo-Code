@@ -700,6 +700,7 @@ export interface WebviewMessage {
 		| "openAiCodexSignOut"
 		| "openAiCodexSubmitCallbackUrl"
 		| "condenseTaskContextRequest"
+		| "contextRecoveryBranch"
 		| "requestIndexingStatus"
 		| "startIndexing"
 		| "stopIndexing"
@@ -777,6 +778,7 @@ export interface WebviewMessage {
 	chatWindowRequest?: ChatWindowRequest
 	chatWindowAck?: ChatWindowAck
 	chatMessageOpen?: { taskId: string; instanceId: string; ts: number; index?: number; revision?: number }
+	contextRecoveryBranch?: { taskId: string; instanceId: string; eventId: string }
 	assistantMessageEdit?: AssistantMessageEdit
 	chatFileChangesOpen?: { taskId: string; instanceId: string; path: string }
 	commandActivityControl?: { id: string; action: "stop" | "show" }

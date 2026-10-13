@@ -562,7 +562,33 @@ export class OpenAiCodexHandler extends BaseProvider implements SingleCompletion
 			}
 		}
 
-		return formattedInput
+		return this.pruneOrphanedCallOutputs(formattedInput)
+	}
+
+	/**
+	 * Enforce the Responses API pairing invariant before dispatch.
+	 *
+	 * The API rejects a `function_call_output` whose `call_id` has no matching
+	 * `function_call` in the same request with
+	 * "No tool call found for function call output with call_id ...". Condensation,
+	 * truncation, and history repair can remove an assistant tool_use while leaving
+	 * its tool_result behind, so drop any orphaned output here as the last line of
+	 * defense. Paired items and unrelated user text content are preserved.
+	 */
+	private pruneOrphanedCallOutputs(items: any[]): any[] {
+		const callIds = new Set<string>()
+
+		for (const item of items) {
+			if (item?.type === "function_call" && typeof item.call_id === "string" && item.call_id.length > 0) {
+				callIds.add(item.call_id)
+			}
+		}
+
+		return items.filter(
+			(item) =>
+				item?.type !== "function_call_output" ||
+				(typeof item.call_id === "string" && callIds.has(item.call_id)),
+		)
 	}
 
 	private async *makeCodexRequest(

@@ -99,6 +99,9 @@ export const webviewMessageHandler = async (
 	message: WebviewMessage,
 	marketplaceManager?: MarketplaceManager,
 ) => {
+	// Recovery freezes the source while an inert branch is written. Do not navigate,
+	// delete history, change profiles, or dispatch an ask until that operation settles.
+	if (provider.getCurrentTask()?.isContextRecoveryActive && !["chatWindowAck"].includes(message.type)) return
 	// Handle before the generic read-only/background guards: editors require a correlated result.
 	if (message.type === "editAssistantMessage") {
 		const payload = message.assistantMessageEdit
@@ -982,6 +985,9 @@ export const webviewMessageHandler = async (
 			break
 		case "condenseTaskContextRequest":
 			await provider.condenseTaskContext(message.text!)
+			break
+		case "contextRecoveryBranch":
+			await provider.createContextRecoveryBranch(message.contextRecoveryBranch)
 			break
 		case "deleteTaskWithId":
 			provider.deleteTaskWithId(message.text!)
