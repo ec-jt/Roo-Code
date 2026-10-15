@@ -118,6 +118,64 @@ Line 2
 	})
 
 	describe("summarizeConversation", () => {
+		it.each([false, true])(
+			"does not send truncated exchanges to the summarizer, with earlier summary=%s",
+			async (withSummary) => {
+				const messages: ApiMessage[] = [
+					...(withSummary
+						? [{ role: "user" as const, content: "ARCHIVED_BEFORE_SUMMARY", condenseParent: "summary-1" }]
+						: []),
+					{
+						role: "user",
+						content: "ACTIVE_ROOT",
+						...(withSummary ? { isSummary: true, condenseId: "summary-1" } : {}),
+					},
+					{ role: "assistant", content: "ACTIVE_ROOT_ANSWER" },
+					{ role: "user", content: "EXCLUDED_LARGE_REQUEST", truncationParent: "cut-1" },
+					{ role: "assistant", content: "EXCLUDED_LARGE_ANSWER", truncationParent: "cut-1" },
+					{
+						role: "user",
+						content: "Earlier exchanges excluded",
+						isTruncationMarker: true,
+						truncationId: "cut-1",
+					},
+					{ role: "user", content: "ACTIVE_LATEST_INPUT" },
+				]
+				const before = structuredClone(messages)
+				const handler = new MockApiHandler()
+				const create = vi.spyOn(handler, "createMessage")
+				const result = await summarizeConversation({
+					messages,
+					apiHandler: handler,
+					systemPrompt: "system",
+					taskId,
+				})
+				const sent = JSON.stringify(create.mock.calls[0])
+				expect(sent).toContain("ACTIVE_ROOT")
+				expect(sent).toContain("ACTIVE_LATEST_INPUT")
+				expect(sent).not.toContain("EXCLUDED_LARGE")
+				expect(sent).not.toContain("ARCHIVED_BEFORE_SUMMARY")
+				expect(result.error).toBeUndefined()
+				expect(messages).toEqual(before)
+				expect(result.messages).toHaveLength(messages.length + 1)
+				expect(result.messages.find((message) => message.content === "EXCLUDED_LARGE_REQUEST")).toMatchObject({
+					truncationParent: "cut-1",
+				})
+			},
+		)
+
+		it("includes history again when its truncation marker was removed", async () => {
+			const messages: ApiMessage[] = [
+				{ role: "user", content: "root" },
+				{ role: "assistant", content: "RESTORED_EXCHANGE", truncationParent: "removed-marker" },
+				{ role: "user", content: "latest" },
+			]
+			const handler = new MockApiHandler()
+			const create = vi.spyOn(handler, "createMessage")
+			await summarizeConversation({ messages, apiHandler: handler, systemPrompt: "system", taskId })
+			expect(JSON.stringify(create.mock.calls[0])).toContain("RESTORED_EXCHANGE")
+		})
+
 		it("should create a summary message with role user (fresh start model)", async () => {
 			const messages: ApiMessage[] = [
 				{ role: "user", content: "First message with /prr command content" },

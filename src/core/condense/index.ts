@@ -272,8 +272,10 @@ export async function summarizeConversation(options: SummarizeConversationOption
 
 	const response: SummarizeResponse = { messages, cost: 0, summary: "" }
 
-	// Get messages to summarize (all messages since the last summary, if any)
-	const messagesToSummarize = getMessagesSinceLastSummary(messages)
+	// Summarize the same effective history used for chat. Stored history also
+	// contains non-destructively excluded exchanges; including them would undo
+	// truncation and can overflow even when the working context fits the model.
+	const messagesToSummarize = getEffectiveApiHistory(messages)
 
 	if (messagesToSummarize.length <= 1) {
 		const error =
