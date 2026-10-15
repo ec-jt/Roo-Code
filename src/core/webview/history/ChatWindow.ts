@@ -5,6 +5,7 @@ import { chatMessageText, chatPreviewLabel } from "../../../shared/chat-preview"
 export const CHAT_WINDOW_BYTES = 1024 * 1024
 export const CHAT_WINDOW_ROWS = 100
 export const CHAT_PREVIEW_BYTES = 16 * 1024
+export const CHAT_REASONING_TAIL_BYTES = 4 * 1024
 export const CHAT_EDITOR_BYTES = 8 * 1024 * 1024
 
 /** Slice before encoding so previewing a large source does not allocate another full-size buffer. */
@@ -17,9 +18,29 @@ export function utf8Preview(text: string, bytes: number): string {
 	return encoded.subarray(0, end).toString("utf8")
 }
 
+/** Read only a bounded suffix and avoid splitting UTF-8 code points at its start. */
+export function utf8Tail(text: string, bytes: number): string {
+	const candidate = text.slice(-bytes).replace(/^[\uDC00-\uDFFF]/, "")
+	const encoded = Buffer.from(candidate)
+	let start = Math.max(0, encoded.length - bytes)
+	while (start < encoded.length && (encoded[start] & 0xc0) === 0x80) start++
+	return encoded
+		.subarray(start)
+		.toString("utf8")
+		.replace(/[\uD800-\uDBFF]$/, "")
+}
+
 function preview(message: ClineMessage, limit = CHAT_PREVIEW_BYTES) {
-	const text = message.text === undefined ? undefined : utf8Preview(message.text, limit)
-	const reasoning = message.reasoning === undefined ? undefined : utf8Preview(message.reasoning, limit)
+	const text =
+		message.text === undefined
+			? undefined
+			: message.say === "reasoning"
+				? utf8Tail(message.text, Math.min(limit, CHAT_REASONING_TAIL_BYTES))
+				: utf8Preview(message.text, limit)
+	const reasoning =
+		message.reasoning === undefined
+			? undefined
+			: utf8Tail(message.reasoning, Math.min(limit, CHAT_REASONING_TAIL_BYTES))
 	let truncated = text !== message.text || reasoning !== message.reasoning
 	const images: string[] = []
 	for (const image of message.images?.slice(0, 2) ?? []) {
@@ -71,7 +92,10 @@ function preview(message: ClineMessage, limit = CHAT_PREVIEW_BYTES) {
 				type: message.type,
 				say: message.say,
 				ask: message.ask,
-				text: utf8Preview(chatMessageText(message) ?? "", Math.floor(limit / 6)),
+				text:
+					message.say === "reasoning"
+						? utf8Tail(message.text ?? "", Math.min(CHAT_REASONING_TAIL_BYTES, Math.floor(limit / 6)))
+						: utf8Preview(chatMessageText(message) ?? "", Math.floor(limit / 6)),
 				partial: message.partial,
 				isAnswered: message.isAnswered,
 			},

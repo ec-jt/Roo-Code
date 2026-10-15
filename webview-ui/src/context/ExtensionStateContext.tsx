@@ -282,7 +282,7 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 		terminalZshP10k: false, // Default Powerlevel10k integration setting
 		terminalZdotdir: false, // Default ZDOTDIR handling setting
 		historyPreviewCollapsed: false, // Initialize the new state (default to expanded)
-		reasoningBlockCollapsed: false, // Default to expanded
+		reasoningBlockCollapsed: true, // Compact by default; explicit saved preferences still apply.
 		enterBehavior: "send", // Default: Enter sends, Shift+Enter creates newline
 		organizationAllowList: ORGANIZATION_ALLOW_ALL,
 		autoCondenseContext: true,
@@ -600,7 +600,7 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 
 	const contextValue: ExtensionStateContextType = {
 		...state,
-		reasoningBlockCollapsed: state.reasoningBlockCollapsed ?? false,
+		reasoningBlockCollapsed: state.reasoningBlockCollapsed ?? true,
 		didHydrateState,
 		hydrationFailed,
 		showWelcome,

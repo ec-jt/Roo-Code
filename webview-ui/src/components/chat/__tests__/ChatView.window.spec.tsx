@@ -89,6 +89,34 @@ const push = (window: ChatWindowState, rows: ClineMessage[]) =>
 
 describe("bounded chat view", () => {
 	beforeEach(() => vi.clearAllMocks())
+	it("keeps large reasoning in its dedicated collapsed tail renderer", () => {
+		render(
+			<ExtensionStateContextProvider>
+				<ChatView isHidden={false} showAnnouncement={false} hideAnnouncement={() => {}} />
+			</ExtensionStateContextProvider>,
+		)
+		const row: ClineMessage = {
+			ts: 150,
+			type: "say",
+			say: "reasoning",
+			text: "latest thought",
+			partial: true,
+			chatPreview: { index: 149, truncated: true, label: "reasoning", hasContent: true },
+		}
+		push({ ...page(1), liveMessage: row }, [row])
+		expect(screen.queryByTestId("plain-history-message")).not.toBeInTheDocument()
+		expect(screen.getByTestId("reasoning-block")).toBeInTheDocument()
+		expect(screen.queryByText("latest thought")).not.toBeInTheDocument()
+		fireEvent.click(screen.getByRole("button", { name: /Reasoning/ }))
+		expect(screen.getByTestId("reasoning-tail")).toHaveTextContent("latest thought")
+		push({ ...page(2), liveMessage: { ...row, text: "newer thought" } }, [{ ...row, text: "newer thought" }])
+		expect(screen.getByTestId("reasoning-tail")).toHaveTextContent("newer thought")
+		fireEvent.click(screen.getByRole("button", { name: "Open full reasoning" }))
+		expect(vscode.postMessage).toHaveBeenCalledWith({
+			type: "chatMessageOpen",
+			chatMessageOpen: { taskId: "task", instanceId: "instance", ts: 150, index: 149, revision: 8 },
+		})
+	})
 	it.each([true, false])(
 		"renders structured context summaries rather than empty previews, following=%s",
 		(following) => {

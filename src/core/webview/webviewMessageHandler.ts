@@ -27,6 +27,7 @@ import { validateAssistantMessageEdit } from "../task/assistant-message-edit"
 import { ClineProvider } from "./ClineProvider"
 import { BrowserSessionPanelManager } from "./BrowserSessionPanelManager"
 import { handleCheckpointRestoreOperation } from "./checkpointRestoreHandler"
+import { getReleaseUpdater } from "../../services/updates/ReleaseUpdater"
 import { handleAlwaysAllowReadOnlyAsk } from "./alwaysAllowReadOnlyHandler"
 import { generateErrorDiagnostics } from "./diagnosticsHandler"
 import {
@@ -99,6 +100,21 @@ export const webviewMessageHandler = async (
 	message: WebviewMessage,
 	marketplaceManager?: MarketplaceManager,
 ) => {
+	// Updater controls are not model tools. URLs and local paths never come from the webview.
+	if (message.type === "releaseUpdateAction") {
+		const action = message.releaseUpdateAction
+		if (
+			action &&
+			["status", "check", "install", "enableAutomatic", "disableAutomatic", "cancel", "reload"].includes(action)
+		) {
+			try {
+				await getReleaseUpdater()?.handle(action)
+			} catch {
+				void vscode.window.showErrorMessage("Unable to change Roo release update settings. Try again.")
+			}
+		}
+		return
+	}
 	// Recovery freezes the source while an inert branch is written. Do not navigate,
 	// delete history, change profiles, or dispatch an ask until that operation settles.
 	if (provider.getCurrentTask()?.isContextRecoveryActive && !["chatWindowAck"].includes(message.type)) return

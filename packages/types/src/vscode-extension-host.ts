@@ -161,6 +161,17 @@ export interface AssistantMessageEditResult {
 	error?: string
 }
 
+export interface ReleaseUpdateState {
+	phase: "idle" | "checking" | "available" | "downloading" | "installing" | "installed" | "error"
+	currentVersion: string
+	automatic: boolean
+	host: string
+	message?: string
+	availableVersion?: string
+	releaseUrl?: string
+	installedVersion?: string
+}
+
 export interface ExtensionMessage {
 	type:
 		| "assistantMessageEditResult"
@@ -249,6 +260,8 @@ export interface ExtensionMessage {
 		| "folderSelected"
 		| "skills"
 		| "fileContent"
+		| "releaseUpdateState"
+	releaseUpdateState?: ReleaseUpdateState
 	text?: string
 	/** For fileContent: { path, content, error? } */
 	fileContent?: { path: string; content: string | null; error?: string }
@@ -685,6 +698,7 @@ export interface WebviewMessage {
 		| "openCustomModesSettings"
 		| "checkpointDiff"
 		| "checkpointRestore"
+		| "releaseUpdateAction"
 		| "deleteMcpServer"
 		| "codebaseIndexEnabled"
 		| "testBrowserConnection"
@@ -775,6 +789,7 @@ export interface WebviewMessage {
 		| "openSkillFile"
 	text?: string
 	taskId?: string
+	releaseUpdateAction?: "status" | "check" | "install" | "enableAutomatic" | "disableAutomatic" | "cancel" | "reload"
 	instanceId?: string
 	chatWindowRequest?: ChatWindowRequest
 	chatWindowAck?: ChatWindowAck

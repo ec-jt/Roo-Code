@@ -1,11 +1,42 @@
 import * as vscode from "vscode"
 import type { ClineMessage } from "@roo-code/types"
-import { ChatWindow, CHAT_PREVIEW_BYTES, CHAT_EDITOR_BYTES, CHAT_WINDOW_BYTES } from "../ChatWindow"
+import {
+	ChatWindow,
+	CHAT_PREVIEW_BYTES,
+	CHAT_EDITOR_BYTES,
+	CHAT_WINDOW_BYTES,
+	CHAT_REASONING_TAIL_BYTES,
+	utf8Tail,
+} from "../ChatWindow"
 import { ChatHistoryIndex } from "../ChatHistoryIndex"
 import { ClineProvider } from "../../ClineProvider"
 import { isChatPreview } from "../../../../shared/chat-preview"
 
 describe("history preview identity and empty content", () => {
+	it("keeps streaming reasoning tails moving after the preview limit without changing source history", () => {
+		const task = source()
+		const original = "old prefix " + "x".repeat(30_000) + " newest thought"
+		const message: ClineMessage = { ts: 4, type: "say", say: "reasoning", partial: true, text: original }
+		task.clineMessages.push(message)
+		const window = new ChatWindow()
+		const first = window.snapshot(task).clineMessages.at(-1)!
+		expect(first.text?.endsWith("newest thought")).toBe(true)
+		expect(first.text).not.toContain("old prefix")
+		expect(Buffer.byteLength(first.text!)).toBeLessThanOrEqual(CHAT_REASONING_TAIL_BYTES)
+		expect(first.partial).toBe(true)
+		expect(first.chatPreview?.truncated).toBe(true)
+		message.text += " updated thought"
+		const next = window.snapshot(task).clineMessages.at(-1)!
+		expect(next.text?.endsWith("updated thought")).toBe(true)
+		expect(message.text).toBe(original + " updated thought")
+	})
+	it("does not split Unicode code points at a reasoning tail boundary", () => {
+		const text = "😀漢".repeat(5000) + " end"
+		const tail = utf8Tail(text, CHAT_REASONING_TAIL_BYTES)
+		expect(Buffer.byteLength(tail)).toBeLessThanOrEqual(CHAT_REASONING_TAIL_BYTES)
+		expect(tail).not.toContain("\uFFFD")
+		expect(text.endsWith(tail)).toBe(true)
+	})
 	it.each(["summary text", 'summary\n"'.repeat(10_000)])(
 		"keeps structured summary previews bounded and opens the full stored summary",
 		async (summary) => {

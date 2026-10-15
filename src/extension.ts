@@ -23,6 +23,7 @@ import "./utils/path" // Necessary to have access to String.prototype.toPosix.
 import { initializeNetworkProxy } from "./utils/networkProxy"
 
 import { Package } from "./shared/package"
+import { initializeReleaseUpdater } from "./services/updates/ReleaseUpdater"
 import { formatLanguage } from "./shared/language"
 import { ContextProxy } from "./core/config/ContextProxy"
 import { ClineProvider } from "./core/webview/ClineProvider"
@@ -191,6 +192,11 @@ export async function activate(context: vscode.ExtensionContext) {
 	}
 
 	registerCommands({ context, outputChannel, provider })
+	initializeReleaseUpdater(
+		context,
+		() => ClineProvider.hasLoadedTasks(),
+		(state) => ClineProvider.postReleaseUpdateState(state),
+	)
 
 	/**
 	 * We use the text document content provider API to show the left side for diff

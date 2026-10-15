@@ -527,7 +527,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 					alwaysAllowFollowupQuestions: alwaysAllowFollowupQuestions ?? false,
 					followupAutoApproveTimeoutMs,
 					includeTaskHistoryInEnhance: includeTaskHistoryInEnhance ?? true,
-					reasoningBlockCollapsed: reasoningBlockCollapsed ?? false,
+					reasoningBlockCollapsed: reasoningBlockCollapsed ?? true,
 					enterBehavior: enterBehavior ?? "send",
 					includeCurrentTime: includeCurrentTime ?? true,
 					includeCurrentCost: includeCurrentCost ?? true,
@@ -1035,7 +1035,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 						{/* UI Section */}
 						{renderTab === "ui" && (
 							<UISettings
-								reasoningBlockCollapsed={reasoningBlockCollapsed ?? false}
+								reasoningBlockCollapsed={reasoningBlockCollapsed ?? true}
 								enterBehavior={enterBehavior ?? "send"}
 								setCachedStateField={setCachedStateField}
 							/>

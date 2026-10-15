@@ -48,6 +48,7 @@ import { QueuedMessages } from "./QueuedMessages"
 import { WorktreeSelector } from "./WorktreeSelector"
 import FileChangesPanel from "./FileChangesPanel"
 import { ChatWindowControls, PlainHistoryMessage } from "./ChatWindowControls"
+import { ReasoningBlock } from "./ReasoningBlock"
 import { useScrollLifecycle } from "@src/hooks/useScrollLifecycle"
 
 export interface ChatViewProps {
@@ -102,7 +103,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 				.filter((message, index) => index === 0 || !isEmptyCommandStatus(message))
 				.map(
 					(message): ClineMessage =>
-						isChatPreview(message, chatWindow)
+						isChatPreview(message, chatWindow) && message.say !== "reasoning"
 							? {
 									ts: message.ts,
 									type: "say",
@@ -1500,6 +1501,39 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 
 	const itemContent = useCallback(
 		(index: number, messageOrGroup: ClineMessage) => {
+			// Keep the same component before/after the wire preview limit. Otherwise
+			// long reasoning loses its activity state and freezes on a prefix preview.
+			if (messageOrGroup.say === "reasoning") {
+				return (
+					<ReasoningBlock
+						key={`${chatWindow?.instanceId ?? "legacy"}:${messageOrGroup.chatPreview?.index ?? messageOrGroup.ts}`}
+						content={messageOrGroup.text ?? messageOrGroup.reasoning ?? ""}
+						ts={messageOrGroup.ts}
+						isStreaming={!historical && isStreaming && messageOrGroup.partial === true}
+						isLast={index === groupedMessages.length - 1}
+						truncated={isChatPreview(messageOrGroup, chatWindow)}
+						onOpenFull={
+							chatWindow
+								? () =>
+										vscode.postMessage({
+											type: "chatMessageOpen",
+											chatMessageOpen: {
+												taskId: chatWindow.taskId,
+												instanceId: chatWindow.instanceId,
+												ts: messageOrGroup.ts,
+												...(messageOrGroup.chatPreview
+													? {
+															index: messageOrGroup.chatPreview.index,
+															revision: chatWindow.revision,
+														}
+													: {}),
+											},
+										})
+								: undefined
+						}
+					/>
+				)
+			}
 			if (
 				chatWindow &&
 				(historical ||

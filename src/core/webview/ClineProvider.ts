@@ -145,6 +145,14 @@ export class ClineProvider
 	public static readonly sideBarId = `${Package.name}.SidebarProvider`
 	public static readonly tabPanelId = `${Package.name}.TabPanelProvider`
 	private static activeInstances: Set<ClineProvider> = new Set()
+	public static hasLoadedTasks(): boolean {
+		return [...ClineProvider.activeInstances].some((provider) => !!provider.getCurrentTask())
+	}
+	public static postReleaseUpdateState(state: import("@roo-code/types").ReleaseUpdateState): void {
+		for (const provider of ClineProvider.activeInstances) {
+			void provider.postMessageToWebview({ type: "releaseUpdateState", releaseUpdateState: state })
+		}
+	}
 	private disposables: vscode.Disposable[] = []
 	private webviewDisposables: vscode.Disposable[] = []
 	private view?: vscode.WebviewView | vscode.WebviewPanel
@@ -2861,7 +2869,7 @@ export class ClineProvider
 			maxTotalImageSize: maxTotalImageSize ?? 20,
 			settingsImportedAt: this.settingsImportedAt,
 			historyPreviewCollapsed: historyPreviewCollapsed ?? false,
-			reasoningBlockCollapsed: reasoningBlockCollapsed ?? false,
+			reasoningBlockCollapsed: reasoningBlockCollapsed ?? true,
 			enterBehavior: enterBehavior ?? "send",
 			organizationAllowList,
 			customCondensingPrompt,
@@ -3030,7 +3038,7 @@ export class ClineProvider
 			maxImageFileSize: stateValues.maxImageFileSize ?? 5,
 			maxTotalImageSize: stateValues.maxTotalImageSize ?? 20,
 			historyPreviewCollapsed: stateValues.historyPreviewCollapsed ?? false,
-			reasoningBlockCollapsed: stateValues.reasoningBlockCollapsed ?? false,
+			reasoningBlockCollapsed: stateValues.reasoningBlockCollapsed ?? true,
 			enterBehavior: stateValues.enterBehavior ?? "send",
 			organizationAllowList,
 			customCondensingPrompt: stateValues.customCondensingPrompt,

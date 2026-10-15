@@ -12,6 +12,7 @@ import { Button } from "@/components/ui"
 import { SectionHeader } from "./SectionHeader"
 import { Section } from "./Section"
 import { SearchableSetting } from "./SearchableSetting"
+import { ReleaseUpdates } from "./ReleaseUpdates"
 
 type AboutProps = HTMLAttributes<HTMLDivElement> & {
 	debug?: boolean
@@ -31,6 +32,10 @@ export const About = ({ debug, setDebug, className, ...props }: AboutProps) => {
 						? `Version: ${Package.version} (${Package.sha.slice(0, 8)})`
 						: `Version: ${Package.version}`}
 				</p>
+			</Section>
+
+			<Section>
+				<ReleaseUpdates />
 			</Section>
 
 			<Section className="space-y-0">
