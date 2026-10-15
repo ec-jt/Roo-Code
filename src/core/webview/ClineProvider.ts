@@ -27,6 +27,7 @@ import {
 	type ToolUsage,
 	type ExtensionMessage,
 	type ExtensionState,
+	type ChatMessageEditData,
 	type MarketplaceInstalledMetadata,
 	RooCodeEventName,
 	requestyDefaultModelId,
@@ -39,7 +40,7 @@ import {
 	isRetiredProvider,
 } from "@roo-code/types"
 import { aggregateTaskCostsRecursive, type AggregatedCosts } from "./aggregateTaskCosts"
-import { ChatWindow, CHAT_EDITOR_BYTES, utf8Preview } from "./history/ChatWindow"
+import { ChatWindow, CHAT_EDITOR_BYTES, CHAT_EDIT_IMAGES_BYTES, utf8Preview } from "./history/ChatWindow"
 import { ChatWindowDiagnostics } from "./history/ChatWindowDiagnostics"
 import { ChatHistoryDocument } from "./history/ChatHistoryDocument"
 import { fileDiffs } from "./history/ChatHistoryIndex"
@@ -1516,6 +1517,31 @@ export class ClineProvider
 		return !task || this.chatWindow.isFollowing(task)
 	}
 
+	public validateChatMessageEdit(request: NonNullable<WebviewMessage["chatMessageEdit"]>): boolean {
+		const task = this.getCurrentTask()
+		if (
+			!task ||
+			task.taskId !== request.taskId ||
+			task.instanceId !== request.instanceId ||
+			!this.isChatWindowFollowing() ||
+			this.isTaskBackgrounded
+		)
+			return false
+		if (
+			!Number.isSafeInteger(request.index) ||
+			request.index! <= 0 ||
+			task.chatHistoryIndex.ensure(task.clineMessages).revision !== request.revision
+		)
+			return false
+		const row = task.clineMessages[request.index!]
+		return (
+			row?.ts === request.ts &&
+			row.type === "say" &&
+			row.say === "user_feedback" &&
+			task.clineMessages.filter((message) => message.ts === request.ts).length === 1
+		)
+	}
+
 	public async handleChatWindowMessage(message: WebviewMessage) {
 		if (message.type === "chatWindowAck") {
 			if (message.chatWindowAck) this.chatWindowDiagnostics.acknowledge(message.chatWindowAck)
@@ -1526,6 +1552,69 @@ export class ClineProvider
 		if (message.type === "chatWindowRequest") {
 			if (message.chatWindowRequest && this.chatWindow.request(task, message.chatWindowRequest))
 				await this.postChatWindow()
+			return
+		}
+		// Correlated full-content retrieval for the explicit user-message edit flow. The
+		// bounded snapshot only carries a truncated prefix, so the editor must never treat
+		// that prefix as the whole message. Reply with the authoritative indexed row or a
+		// bounded error, and never mutate history here.
+		if (message.type === "chatMessageEdit" && message.chatMessageEdit) {
+			const requested = message.chatMessageEdit
+			const reply = (data: Omit<ChatMessageEditData, "taskId" | "instanceId" | "ts">) =>
+				this.postMessageToWebview({
+					type: "chatMessageEditData",
+					chatMessageEditData: {
+						taskId: requested.taskId,
+						instanceId: requested.instanceId,
+						ts: requested.ts,
+						...(requested.index !== undefined ? { index: requested.index } : {}),
+						...(requested.revision !== undefined ? { revision: requested.revision } : {}),
+						...data,
+					},
+				})
+			if (requested.taskId !== task.taskId || requested.instanceId !== task.instanceId) {
+				await reply({ error: "The task instance changed. Reopen the task and try again." })
+				return
+			}
+			if (!this.chatWindow.isFollowing(task)) {
+				await reply({ error: "Return to the latest page to edit your message." })
+				return
+			}
+			const revision = task.chatHistoryIndex.ensure(task.clineMessages).revision
+			if (
+				typeof requested.index !== "number" ||
+				!Number.isSafeInteger(requested.index) ||
+				requested.index < 0 ||
+				requested.revision !== revision
+			) {
+				await reply({ error: "History changed. Reopen the editor from the refreshed chat." })
+				return
+			}
+			const row = task.clineMessages[requested.index]
+			if (!row || row.ts !== requested.ts) {
+				await reply({ error: "This message reference is stale. Reopen the editor." })
+				return
+			}
+			if (row.type !== "say" || row.say !== "user_feedback") {
+				await reply({ error: "Only your own messages can be edited from history." })
+				return
+			}
+			const text = chatMessageText(row) ?? ""
+			if (Buffer.byteLength(text) > CHAT_EDITOR_BYTES) {
+				await reply({ tooLarge: true })
+				return
+			}
+			const images: string[] = []
+			let imageBytes = 0
+			for (const image of row.images ?? []) {
+				imageBytes += Buffer.byteLength(image) + 24
+				if (imageBytes > CHAT_EDIT_IMAGES_BYTES) {
+					await reply({ tooLarge: true })
+					return
+				}
+				images.push(image)
+			}
+			await reply({ text, ...(images.length ? { images } : {}) })
 			return
 		}
 		const request = message.chatMessageOpen ?? message.chatFileChangesOpen

@@ -91,7 +91,25 @@ export function ModelOperationProvider({ children }: { children: ReactNode }) {
 			profileId: profileId ?? state.profileId ?? profiles.find((p) => p.name === currentApiConfigName)?.id ?? "",
 		})
 	}
-	const stale = !!selection && !sameRevision(state, selection.source)
+	const stale =
+		!!selection &&
+		(!sameRevision(state, selection.source) ||
+			(selection.kind === "switch" && selection.requestId !== state?.requestId))
+	const canRefresh =
+		!!selection &&
+		sameInstance(state, selection.source) &&
+		!historical &&
+		!busy &&
+		(selection.kind !== "switch" || (state?.readiness === "ready" && !!state.requestId))
+	const refreshSelection = () => {
+		if (!selection || !state || !canRefresh) return
+		setConfirmed(false)
+		setSelection({
+			...selection,
+			source: { ...state },
+			requestId: selection.kind === "switch" ? state.requestId : selection.requestId,
+		})
+	}
 	const switchReason =
 		selection?.kind === "switch" && (state?.readiness !== "ready" || !state.requestId)
 			? state?.reason || t("chat:modelOperation.unavailable")
@@ -232,6 +250,24 @@ export function ModelOperationProvider({ children }: { children: ReactNode }) {
 					</Select>
 					{profiles.length === 0 && <p role="alert">{t("chat:modelOperation.noProfiles")}</p>}
 					{disabledReason && <p role="alert">{disabledReason}</p>}
+					{stale && (
+						<div className="space-y-2 text-sm">
+							<p>
+								The task advanced while this dialog was open. Refresh the request and confirm again.
+								Your selected model profile will be kept.
+							</p>
+							<Button variant="secondary" disabled={!canRefresh} onClick={refreshSelection}>
+								Refresh current request
+							</Button>
+							{!sameInstance(state, selection?.source) && (
+								<p>
+									The task instance changed. Close this dialog and select the model again in the
+									intended task.
+								</p>
+							)}
+							{sameInstance(state, selection?.source) && switchReason && <p>{switchReason}</p>}
+						</div>
+					)}
 					<label className="flex items-start gap-2 text-sm">
 						<input
 							type="checkbox"

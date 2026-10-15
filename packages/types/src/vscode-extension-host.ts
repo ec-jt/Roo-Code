@@ -161,6 +161,24 @@ export interface AssistantMessageEditResult {
 	error?: string
 }
 
+/**
+ * Correlated reply to a webview `chatMessageEdit` request. `text` and `images` are the
+ * authoritative stored values for the exact indexed row, so the webview never edits a
+ * truncated preview prefix and loses the remainder or the attachments.
+ */
+export interface ChatMessageEditData {
+	taskId: string
+	instanceId: string
+	ts: number
+	index?: number
+	revision?: number
+	text?: string
+	images?: string[]
+	/** The stored user message or its attachments exceed the inline edit bound. */
+	tooLarge?: boolean
+	error?: string
+}
+
 export interface ReleaseUpdateState {
 	phase: "idle" | "checking" | "available" | "downloading" | "installing" | "installed" | "error"
 	currentVersion: string
@@ -237,6 +255,7 @@ export interface ExtensionMessage {
 		| "shareTaskSuccess"
 		| "codeIndexSettingsSaved"
 		| "codeIndexSecretStatus"
+		| "chatMessageEditData"
 		| "showDeleteMessageDialog"
 		| "showEditMessageDialog"
 		| "commands"
@@ -337,6 +356,8 @@ export interface ExtensionMessage {
 	settings?: any // eslint-disable-line @typescript-eslint/no-explicit-any
 	messageTs?: number
 	hasCheckpoint?: boolean
+	chatMessageEditData?: ChatMessageEditData
+	chatMessageEdit?: { taskId: string; instanceId: string; ts: number; index?: number; revision?: number }
 	context?: string
 	commands?: Command[]
 	queuedMessages?: QueuedMessage[]
@@ -611,6 +632,7 @@ export interface WebviewMessage {
 		| "chatWindowRequest"
 		| "chatWindowAck"
 		| "chatMessageOpen"
+		| "chatMessageEdit"
 		| "chatFileChangesOpen"
 		| "updateTodoList"
 		| "backgroundTask"
@@ -794,6 +816,7 @@ export interface WebviewMessage {
 	chatWindowRequest?: ChatWindowRequest
 	chatWindowAck?: ChatWindowAck
 	chatMessageOpen?: { taskId: string; instanceId: string; ts: number; index?: number; revision?: number }
+	chatMessageEdit?: { taskId: string; instanceId: string; ts: number; index?: number; revision?: number }
 	contextRecoveryBranch?: { taskId: string; instanceId: string; eventId: string }
 	assistantMessageEdit?: AssistantMessageEdit
 	chatFileChangesOpen?: { taskId: string; instanceId: string; path: string }

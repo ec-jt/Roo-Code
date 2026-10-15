@@ -31,6 +31,7 @@ interface DeleteMessageDialogState {
 }
 
 interface EditMessageDialogState {
+	chatMessageEdit?: ExtensionMessage["chatMessageEdit"]
 	isOpen: boolean
 	messageTs: number
 	text: string
@@ -153,6 +154,7 @@ const App = () => {
 
 			if (message.type === "showEditMessageDialog" && message.messageTs && message.text) {
 				setEditMessageDialogState({
+					chatMessageEdit: message.chatMessageEdit,
 					isOpen: true,
 					messageTs: message.messageTs,
 					text: message.text,
@@ -299,6 +301,8 @@ const App = () => {
 							messageTs: editMessageDialogState.messageTs,
 							text: editMessageDialogState.text,
 							restoreCheckpoint,
+							images: editMessageDialogState.images,
+							chatMessageEdit: editMessageDialogState.chatMessageEdit,
 						})
 						setEditMessageDialogState((prev) => ({ ...prev, isOpen: false }))
 					}}
@@ -313,6 +317,7 @@ const App = () => {
 							messageTs: editMessageDialogState.messageTs,
 							text: editMessageDialogState.text,
 							images: editMessageDialogState.images,
+							chatMessageEdit: editMessageDialogState.chatMessageEdit,
 						})
 						setEditMessageDialogState((prev) => ({ ...prev, isOpen: false }))
 					}}

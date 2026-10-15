@@ -1,5 +1,7 @@
 import { useState } from "react"
+import { Pencil } from "lucide-react"
 import { ContextRecoveryButton } from "./context-management/ContextRecoveryButton"
+import { UserMessageEditor } from "./UserMessageEditor"
 import type { ChatWindowState, ClineMessage } from "@roo-code/types"
 import { Button } from "@/components/ui"
 import { vscode } from "@/utils/vscode"
@@ -49,7 +51,10 @@ export function ChatWindowControls({ window }: { window: ChatWindowState }) {
 				</div>
 			</div>
 			{!window.following && (
-				<p>Read-only history. Return to latest to send messages or approve actions. Your draft is preserved.</p>
+				<p>
+					Read-only history. Return to latest to send messages, edit your own messages, or approve actions.
+					Your draft is preserved.
+				</p>
 			)}
 			{window.reason === "staleRevision" && (
 				<p role="status">History changed. The current page was refreshed. Try navigation again.</p>
@@ -65,6 +70,16 @@ export function ChatWindowControls({ window }: { window: ChatWindowState }) {
 
 export function PlainHistoryMessage({ message, window }: { message: ClineMessage; window: ChatWindowState }) {
 	const [expanded, setExpanded] = useState(false)
+	const [editing, setEditing] = useState(false)
+	const index = message.chatPreview?.index
+	// Only the user's own stored messages are editable, only on the latest page, and never
+	// the pinned root row (index 0), which is handled as the task prompt.
+	const canEdit =
+		message.type === "say" &&
+		message.say === "user_feedback" &&
+		window.following &&
+		typeof index === "number" &&
+		index !== 0
 	const isToolPreview =
 		["tool", "command", "command_output", "use_mcp_server"].includes(message.ask ?? "") ||
 		["tool", "command_output", "mcp_server_response", "browser_action_result", "user_feedback_diff"].includes(
@@ -91,6 +106,16 @@ export function PlainHistoryMessage({ message, window }: { message: ClineMessage
 					{isChatPreview(message, window) ? " (preview)" : ""}
 				</div>
 				<div className="flex shrink-0 items-center gap-1">
+					{canEdit && (
+						<Button
+							size="sm"
+							variant="secondary"
+							className={`h-6 px-2 text-xs ${editing ? "invisible" : ""}`}
+							onClick={() => setEditing(true)}>
+							<Pencil className="w-3.5 shrink-0" aria-hidden />
+							Edit
+						</Button>
+					)}
 					{compact && hasPreview && (
 						<Button
 							size="sm"
@@ -127,7 +152,10 @@ export function PlainHistoryMessage({ message, window }: { message: ClineMessage
 			<ContextRecoveryButton
 				eventId={message.contextCondense?.condenseId ?? message.contextTruncation?.truncationId}
 			/>
-			{(!compact || expanded) && hasPreview && (
+			{editing && index !== undefined && (
+				<UserMessageEditor message={message} window={window} onClose={() => setEditing(false)} />
+			)}
+			{!editing && (!compact || expanded) && hasPreview && (
 				<pre className="whitespace-pre-wrap break-words text-xs font-mono max-h-80 overflow-auto">
 					{text}
 					{message.reasoning ? `\n\n${message.reasoning}` : ""}

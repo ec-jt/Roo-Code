@@ -188,6 +188,38 @@ it.each(["revision", "instanceId", "taskId"] as const)("invalidates the dialog w
 	expect(operations()).toHaveLength(0)
 })
 
+it("refreshes a switch to the current request but requires fresh confirmation", () => {
+	const view = render(<Harness />)
+	fireEvent.click(screen.getByRole("button", { name: /Select profile/ }))
+	fireEvent.click(within(screen.getByRole("dialog")).getByRole("checkbox"))
+	state = { ...source, revision: 9, requestId: "next-request" }
+	view.rerender(<Harness />)
+	expect(screen.getByRole("button", { name: switchLabel })).toBeDisabled()
+	fireEvent.click(screen.getByRole("button", { name: "Refresh current request" }))
+	expect(within(screen.getByRole("dialog")).getByRole("checkbox")).not.toBeChecked()
+	expect(screen.getByRole("button", { name: switchLabel })).toBeDisabled()
+	confirm(switchLabel)
+	expect(operations()[0].modelOperation).toMatchObject({
+		revision: 9,
+		requestId: "next-request",
+		profileId: "target-profile",
+		instanceId: "instance",
+	})
+})
+
+it("does not refresh a switch across task instances or blocked request state", () => {
+	const view = render(<Harness />)
+	fireEvent.click(screen.getByRole("button", { name: /Select profile/ }))
+	state = { ...source, revision: 8, readiness: "blocked", reason: "Tools are running" }
+	view.rerender(<Harness />)
+	expect(screen.getByRole("button", { name: "Refresh current request" })).toBeDisabled()
+	expect(screen.getByText("Tools are running")).toBeInTheDocument()
+	state = { ...source, instanceId: "different-instance" }
+	view.rerender(<Harness />)
+	expect(screen.getByRole("button", { name: "Refresh current request" })).toBeDisabled()
+	expect(operations()).toHaveLength(0)
+})
+
 it("disables legacy responses with an explicit reason", () => {
 	render(<Harness message={{ ...assistant, requestId: undefined }} />)
 	expect(screen.getByRole("button", { name: regenerate })).toBeDisabled()

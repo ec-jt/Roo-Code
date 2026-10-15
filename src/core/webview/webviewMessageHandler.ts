@@ -483,6 +483,7 @@ export const webviewMessageHandler = async (
 			text: editedContent,
 			hasCheckpoint,
 			images,
+			...(message.chatMessageEdit ? { chatMessageEdit: message.chatMessageEdit } : {}),
 		})
 	}
 
@@ -680,6 +681,7 @@ export const webviewMessageHandler = async (
 		case "chatWindowRequest":
 		case "chatWindowAck":
 		case "chatMessageOpen":
+		case "chatMessageEdit":
 		case "chatFileChangesOpen":
 			await provider.handleChatWindowMessage(message)
 			break
@@ -1806,12 +1808,24 @@ export const webviewMessageHandler = async (
 			break
 		}
 		case "submitEditedMessage": {
+			const editTask = provider.getCurrentTask()
+			if (message.chatMessageEdit && !provider.validateChatMessageEdit(message.chatMessageEdit)) {
+				void vscode.window.showWarningMessage(
+					"History changed or the message is ambiguous. Reopen the editor; no edit was applied.",
+				)
+				break
+			}
+			// A correlated editor carries the task identity it opened against. Never apply
+			// the edit to a task the user has since switched to.
 			if (
-				provider.getCurrentTask() &&
-				typeof message.value === "number" &&
-				message.value &&
-				message.editedMessageContent
+				message.taskId &&
+				message.instanceId &&
+				(!editTask || editTask.taskId !== message.taskId || editTask.instanceId !== message.instanceId)
 			) {
+				void vscode.window.showWarningMessage("This edit no longer applies to the current task.")
+				break
+			}
+			if (editTask && typeof message.value === "number" && message.value && message.editedMessageContent) {
 				await handleMessageModificationsOperation(
 					message.value,
 					"edit",
@@ -2164,8 +2178,15 @@ export const webviewMessageHandler = async (
 			break
 		case "editMessageConfirm":
 			if (message.messageTs && message.text) {
+				if (message.chatMessageEdit && !provider.validateChatMessageEdit(message.chatMessageEdit)) {
+					void vscode.window.showWarningMessage(
+						"This edit confirmation is stale. Reopen the editor; no edit was applied.",
+					)
+					break
+				}
 				const resolved = await resolveIncomingImages({ text: message.text, images: message.images })
 				if (!isCurrentAction()) break
+				if (message.chatMessageEdit && !provider.validateChatMessageEdit(message.chatMessageEdit)) break
 				await handleEditMessageConfirm(
 					message.messageTs,
 					resolved.text,

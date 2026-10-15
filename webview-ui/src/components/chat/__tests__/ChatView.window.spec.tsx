@@ -265,6 +265,28 @@ describe("bounded chat view", () => {
 		})
 		parse.mockRestore()
 	})
+	it("offers edit for the user's own truncated message on the latest page", () => {
+		render(
+			<ExtensionStateContextProvider>
+				<ChatView isHidden={false} showAnnouncement={false} hideAnnouncement={() => {}} />
+			</ExtensionStateContextProvider>,
+		)
+		const user: ClineMessage = {
+			ts: 150,
+			type: "say",
+			say: "user_feedback",
+			text: "large prompt prefix",
+			chatPreview: { index: 149, truncated: true, label: "user feedback", hasContent: true },
+		}
+		push({ ...page(1), truncatedTs: [user.ts] }, [user])
+		expect(screen.getByTestId("plain-history-message")).toBeInTheDocument()
+		expect(screen.queryByTestId("legacy-row")).not.toBeInTheDocument()
+		fireEvent.click(screen.getByRole("button", { name: "Edit" }))
+		expect(vscode.postMessage).toHaveBeenCalledWith({
+			type: "chatMessageEdit",
+			chatMessageEdit: { taskId: "task", instanceId: "instance", ts: 150, index: 149, revision: 8 },
+		})
+	})
 	it("pages replace rows, preserve draft/images, and block historical sends and approvals", () => {
 		const ref = React.createRef<ChatViewRef>()
 		render(

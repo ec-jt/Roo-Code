@@ -7,6 +7,8 @@ export const CHAT_WINDOW_ROWS = 100
 export const CHAT_PREVIEW_BYTES = 16 * 1024
 export const CHAT_REASONING_TAIL_BYTES = 4 * 1024
 export const CHAT_EDITOR_BYTES = 8 * 1024 * 1024
+/** Total attachment bytes returned for an explicit user-message edit. Larger sets stay view-only. */
+export const CHAT_EDIT_IMAGES_BYTES = 1024 * 1024
 
 /** Slice before encoding so previewing a large source does not allocate another full-size buffer. */
 export function utf8Preview(text: string, bytes: number): string {
