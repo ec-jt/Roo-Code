@@ -13,9 +13,13 @@ export async function findInstalledChrome(): Promise<string> {
 		candidates = [process.env.ProgramFiles, process.env["ProgramFiles(x86)"], process.env.LOCALAPPDATA]
 			.filter((root): root is string => !!root && path.win32.isAbsolute(root))
 			.map((root) => path.win32.join(root, "Google", "Chrome", "Application", "chrome.exe"))
+	} else if (process.platform === "linux") {
+		// Prefer the vendor binary covered by a host's Chrome sandbox/AppArmor policy.
+		// Do not search PATH or fall back to a different browser installation.
+		candidates = ["/opt/google/chrome/chrome", "/usr/bin/google-chrome-stable", "/usr/bin/google-chrome"]
 	} else {
 		throw new Error(
-			"Installed Google Chrome is supported only on macOS and Windows. Select managed Chromium in Browser settings, or configure a trusted remote browser. No browser was downloaded or launched.",
+			"Installed Google Chrome is supported on Linux, macOS and Windows. Select managed Chromium in Browser settings, or configure a trusted remote browser. No browser was downloaded or launched.",
 		)
 	}
 	for (const candidate of candidates) {

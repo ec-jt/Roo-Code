@@ -139,6 +139,8 @@ export const globalSettingsSchema = z.object({
 	allowedMaxCost: z.number().nullish(),
 	/** When enabled (default), compact and retry once on an explicit provider context-limit rejection. */
 	autoCondenseContext: z.boolean().optional(),
+	/** Allow guarded truncation after eligible overflow-compaction failure. Defaults to true for compatibility. */
+	allowOverflowTruncation: z.boolean().optional(),
 	/** @deprecated Retained for settings import compatibility; no proactive percentage trigger. */
 	autoCondenseContextPercent: z.number().optional(),
 

@@ -89,6 +89,45 @@ const push = (window: ChatWindowState, rows: ClineMessage[]) =>
 
 describe("bounded chat view", () => {
 	beforeEach(() => vi.clearAllMocks())
+	it.each([true, false])(
+		"renders structured context summaries rather than empty previews, following=%s",
+		(following) => {
+			render(
+				<ExtensionStateContextProvider>
+					<ChatView isHidden={false} showAnnouncement={false} hideAnnouncement={() => {}} />
+				</ExtensionStateContextProvider>,
+			)
+			push(page(1, following), [
+				{
+					ts: 150,
+					type: "say",
+					say: "condense_context",
+					contextCondense: {
+						summary: "Stored context summary with decisions",
+						condenseId: "event-1",
+						cost: 0,
+						prevContextTokens: 1000,
+						newContextTokens: 100,
+					},
+					chatPreview: { index: 149, label: "Context summary", truncated: true, hasContent: true },
+				},
+			])
+			expect(screen.getByText("Context summary (preview)")).toBeInTheDocument()
+			expect(screen.getByText("Stored context summary with decisions")).toBeInTheDocument()
+			expect(screen.queryByText("No stored text for this entry.")).not.toBeInTheDocument()
+			fireEvent.click(screen.getByRole("button", { name: "Open full message" }))
+			expect(vscode.postMessage).toHaveBeenCalledWith({
+				type: "chatMessageOpen",
+				chatMessageOpen: {
+					taskId: "task",
+					instanceId: "instance",
+					ts: 150,
+					index: 149,
+					revision: 8,
+				},
+			})
+		},
+	)
 	it.each(["command_output", "mcp_server_response"] as const)(
 		"retains standalone %s at the latest-page boundary",
 		(say) => {

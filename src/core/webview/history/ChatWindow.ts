@@ -1,6 +1,6 @@
 import type { ChatWindowRequest, ChatWindowState, ClineMessage } from "@roo-code/types"
 import { ChatHistoryIndex } from "./ChatHistoryIndex"
-import { chatPreviewLabel } from "../../../shared/chat-preview"
+import { chatMessageText, chatPreviewLabel } from "../../../shared/chat-preview"
 
 export const CHAT_WINDOW_BYTES = 1024 * 1024
 export const CHAT_WINDOW_ROWS = 100
@@ -44,6 +44,21 @@ function preview(message: ClineMessage, limit = CHAT_PREVIEW_BYTES) {
 	for (const key of ["requestId", "checkpoint", "progressStatus", "contextCondense", "contextTruncation"] as const) {
 		const value = message[key]
 		if (value === undefined) continue
+		if (key === "contextCondense" && message.contextCondense) {
+			const data = message.contextCondense
+			// Keep a readable summary and event identity rather than dropping the entire
+			// event. Reserve room for JSON escaping without encoding the full summary.
+			const summary = utf8Preview(data.summary, Math.floor(limit / 6))
+			row.contextCondense = {
+				summary,
+				cost: data.cost,
+				prevContextTokens: data.prevContextTokens,
+				newContextTokens: data.newContextTokens,
+				...(data.condenseId && data.condenseId.length <= 128 ? { condenseId: data.condenseId } : {}),
+			}
+			if (summary !== data.summary || row.contextCondense.condenseId !== data.condenseId) truncated = true
+			continue
+		}
 		const json = JSON.stringify(value)
 		if (json.length <= limit && Buffer.byteLength(json) <= limit) Object.assign(row, { [key]: value })
 		else truncated = true
@@ -56,7 +71,7 @@ function preview(message: ClineMessage, limit = CHAT_PREVIEW_BYTES) {
 				type: message.type,
 				say: message.say,
 				ask: message.ask,
-				text: utf8Preview(message.text ?? "", Math.floor(limit / 6)),
+				text: utf8Preview(chatMessageText(message) ?? "", Math.floor(limit / 6)),
 				partial: message.partial,
 				isAnswered: message.isAnswered,
 			},
@@ -145,7 +160,7 @@ export class ChatWindow {
 				index,
 				truncated: entry.truncated,
 				label: chatPreviewLabel(message),
-				hasContent: !!(message.text?.trim() || message.reasoning?.trim()),
+				hasContent: !!(chatMessageText(message)?.trim() || message.reasoning?.trim()),
 			}
 			return entry
 		}

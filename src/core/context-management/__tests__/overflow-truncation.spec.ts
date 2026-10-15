@@ -29,6 +29,32 @@ const options = () => ({
 
 describe("overflow truncation fallback", () => {
 	afterEach(() => vi.restoreAllMocks())
+	it.each(["context-limit", "empty-summary"] as const)(
+		"honors disabled fallback after %s without changing stored history",
+		async (failureKind) => {
+			const opts = options()
+			const before = structuredClone(opts.messages)
+			vi.spyOn(condense, "summarizeConversation").mockResolvedValue({
+				messages: opts.messages,
+				summary: "",
+				cost: 0.01,
+				error: "compaction failed",
+				failureKind,
+			})
+			const result = await manageContext({
+				...opts,
+				totalTokens: 900,
+				autoCondenseContext: true,
+				contextLimitExceeded: true,
+				allowOverflowTruncation: false,
+				taskId: "task",
+			})
+			expect(result.truncationId).toBeUndefined()
+			expect(result.messages).toEqual(before)
+			expect(result.error).toContain("Automatic truncation fallback is disabled")
+			expect(result.cost).toBe(0.01)
+		},
+	)
 	it("tags complete older exchanges, retains root/latest, and leaves original objects unchanged", async () => {
 		const opts = options()
 		const before = structuredClone(opts.messages)

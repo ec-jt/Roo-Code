@@ -45,6 +45,7 @@ import { ChatHistoryDocument } from "./history/ChatHistoryDocument"
 import { fileDiffs } from "./history/ChatHistoryIndex"
 
 import { Package } from "../../shared/package"
+import { chatMessageText } from "../../shared/chat-preview"
 import { findLast } from "../../shared/array"
 import { supportPrompt } from "../../shared/support-prompt"
 import { GlobalFileNames } from "../../shared/globalFileNames"
@@ -1550,13 +1551,14 @@ export class ClineProvider
 			}
 			if (!row) return
 			// Do not serialize images or huge message objects to obtain an editor preview.
-			if ((row.text?.length ?? 0) + (row.reasoning?.length ?? 0) > CHAT_EDITOR_BYTES) {
+			const text = chatMessageText(row)
+			if ((text?.length ?? 0) + (row.reasoning?.length ?? 0) > CHAT_EDITOR_BYTES) {
 				void vscode.window.showWarningMessage(
 					"This history entry is too large to open. Export the task to inspect the full content.",
 				)
 				return
 			}
-			content = [row.text ?? "", row.reasoning ?? ""].filter(Boolean).join("\n\n")
+			content = [text ?? "", row.reasoning ?? ""].filter(Boolean).join("\n\n")
 		} else if (message.type === "chatFileChangesOpen" && message.chatFileChangesOpen) {
 			const chunks: string[] = []
 			let bytes = 0
@@ -2688,6 +2690,7 @@ export class ClineProvider
 			allowedMaxRequests,
 			allowedMaxCost,
 			autoCondenseContext,
+			allowOverflowTruncation,
 			autoCondenseContextPercent,
 			soundEnabled,
 			ttsEnabled,
@@ -2791,6 +2794,7 @@ export class ClineProvider
 			allowedMaxRequests,
 			allowedMaxCost,
 			autoCondenseContext: autoCondenseContext ?? true,
+			allowOverflowTruncation: allowOverflowTruncation ?? true,
 			autoCondenseContextPercent: autoCondenseContextPercent ?? 100,
 			uriScheme: vscode.env.uriScheme,
 			currentTaskId: currentTask?.taskId,
@@ -2975,6 +2979,7 @@ export class ClineProvider
 			allowedMaxRequests: stateValues.allowedMaxRequests,
 			allowedMaxCost: stateValues.allowedMaxCost,
 			autoCondenseContext: stateValues.autoCondenseContext ?? true,
+			allowOverflowTruncation: stateValues.allowOverflowTruncation ?? true,
 			autoCondenseContextPercent: stateValues.autoCondenseContextPercent ?? 100,
 			taskHistory: this.taskHistoryStore.getAll(),
 			allowedCommands: stateValues.allowedCommands,

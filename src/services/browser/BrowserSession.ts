@@ -142,7 +142,7 @@ export class BrowserSession {
 		} catch (error) {
 			await fs.rm(this.userDataDir, { recursive: true, force: true }).catch(() => {})
 			this.resetBrowserState()
-			throw browserLaunchError(error, useChrome ? "Google Chrome" : "Chromium")
+			throw browserLaunchError(error, useChrome ? "Google Chrome" : "Chromium", stats.executablePath)
 		}
 		this.isUsingRemoteBrowser = false
 	}

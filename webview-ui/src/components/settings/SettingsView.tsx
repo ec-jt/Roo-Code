@@ -170,6 +170,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 		alwaysAllowWriteOutsideWorkspace,
 		alwaysAllowWriteProtected,
 		autoCondenseContext,
+		allowOverflowTruncation,
 		autoCondenseContextPercent,
 		browserToolEnabled,
 		browserViewportSize,
@@ -479,6 +480,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 					allowedMaxRequests: allowedMaxRequests ?? null,
 					allowedMaxCost: allowedMaxCost ?? null,
 					autoCondenseContext,
+					allowOverflowTruncation: allowOverflowTruncation ?? true,
 					autoCondenseContextPercent,
 					browserToolEnabled: browserToolEnabled ?? true,
 					soundEnabled: soundEnabled ?? true,
@@ -971,6 +973,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 						{renderTab === "contextManagement" && (
 							<ContextManagementSettings
 								autoCondenseContext={autoCondenseContext}
+								allowOverflowTruncation={allowOverflowTruncation}
 								autoCondenseContextPercent={autoCondenseContextPercent}
 								listApiConfigMeta={listApiConfigMeta ?? []}
 								maxOpenTabsContext={maxOpenTabsContext}

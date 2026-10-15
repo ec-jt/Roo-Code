@@ -5133,6 +5133,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 						}),
 						apiHandler: handler,
 						autoCondenseContext: true,
+						allowOverflowTruncation: state?.allowOverflowTruncation ?? true,
 						contextLimitExceeded: true,
 						systemPrompt,
 						taskId: this.taskId,
@@ -5694,9 +5695,13 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			}
 
 			if (isContextWindowExceededError) {
-				if (!autoCondenseContext || recovery.attempted)
+				if (recovery.attempted)
 					throw new ContextRecoveryError(
-						"Provider context limit exceeded. Compact manually or change models before retrying.",
+						"Provider context limit exceeded again after automatic context recovery and its single retry. No further automatic compaction or truncation will run for this request. Compact manually or change models before retrying.",
+					)
+				if (!autoCondenseContext)
+					throw new ContextRecoveryError(
+						"Provider context limit exceeded. Automatic compaction and truncation were skipped because 'Compact on context overflow' is disabled in Settings > Context Management. Enable it for future requests, or Compact manually or change models before retrying.",
 					)
 				recovery.attempted = true
 				await this.handleContextWindowExceededError(requestRevision, condensationHandler, abortSignal, metadata)

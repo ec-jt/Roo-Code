@@ -1,5 +1,10 @@
 import type { ChatWindowState, ClineMessage } from "@roo-code/types"
 
+/** Compaction summaries are structured event content, not the ordinary text field. */
+export function chatMessageText(message: ClineMessage): string | undefined {
+	return message.say === "condense_context" ? message.contextCondense?.summary || message.text : message.text
+}
+
 export function isChatPreview(message: ClineMessage, window?: Pick<ChatWindowState, "truncatedTs">): boolean {
 	return message.chatPreview?.truncated ?? window?.truncatedTs.includes(message.ts) ?? false
 }
@@ -18,6 +23,7 @@ export function isEmptyCommandStatus(message: ClineMessage): boolean {
 export function chatPreviewLabel(message: ClineMessage): string {
 	if (message.chatPreview?.label) return message.chatPreview.label
 	const kind = message.ask ?? message.say ?? message.type
+	if (kind === "condense_context") return "Context summary"
 	const prefix = message.text?.slice(0, 1024) ?? ""
 	if (kind === "tool" || kind === "use_mcp_server") {
 		const tool = prefix.match(/"(?:tool|toolName)"\s*:\s*"([a-zA-Z0-9_.:-]{1,80})"/)

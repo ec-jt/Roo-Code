@@ -3,7 +3,7 @@ import { ContextRecoveryButton } from "./context-management/ContextRecoveryButto
 import type { ChatWindowState, ClineMessage } from "@roo-code/types"
 import { Button } from "@/components/ui"
 import { vscode } from "@/utils/vscode"
-import { isChatPreview, isEmptyCommandStatus, chatPreviewLabel } from "@roo/chat-preview"
+import { isChatPreview, isEmptyCommandStatus, chatPreviewLabel, chatMessageText } from "@roo/chat-preview"
 
 // English fallback labels until the bounded-history UI is localized.
 export function ChatWindowControls({ window }: { window: ChatWindowState }) {
@@ -78,8 +78,9 @@ export function PlainHistoryMessage({ message, window }: { message: ClineMessage
 		message.type === "ask" &&
 		!message.isAnswered
 	const compact = isToolPreview && !isLiveApproval
-	const hasPreview = !!(message.text?.trim() || message.reasoning?.trim())
-	const hasContent = message.chatPreview?.hasContent ?? hasPreview
+	const text = chatMessageText(message)
+	const hasPreview = !!(text?.trim() || message.reasoning?.trim())
+	const hasContent = hasPreview || message.chatPreview?.hasContent
 	if (isEmptyCommandStatus(message)) return null
 	const label = chatPreviewLabel(message)
 	return (
@@ -128,7 +129,7 @@ export function PlainHistoryMessage({ message, window }: { message: ClineMessage
 			/>
 			{(!compact || expanded) && hasPreview && (
 				<pre className="whitespace-pre-wrap break-words text-xs font-mono max-h-80 overflow-auto">
-					{message.text}
+					{text}
 					{message.reasoning ? `\n\n${message.reasoning}` : ""}
 				</pre>
 			)}

@@ -14,6 +14,7 @@ import { SearchableSetting } from "./SearchableSetting"
 
 type ContextManagementSettingsProps = HTMLAttributes<HTMLDivElement> & {
 	autoCondenseContext: boolean
+	allowOverflowTruncation?: boolean
 	autoCondenseContextPercent: number
 	listApiConfigMeta: any[]
 	maxOpenTabsContext: number
@@ -33,6 +34,7 @@ type ContextManagementSettingsProps = HTMLAttributes<HTMLDivElement> & {
 	setCustomSupportPrompts: (prompts: Record<string, string | undefined>) => void
 	setCachedStateField: SetCachedStateField<
 		| "autoCondenseContext"
+		| "allowOverflowTruncation"
 		| "autoCondenseContextPercent"
 		| "maxOpenTabsContext"
 		| "maxWorkspaceFiles"
@@ -52,6 +54,7 @@ type ContextManagementSettingsProps = HTMLAttributes<HTMLDivElement> & {
 
 export const ContextManagementSettings = ({
 	autoCondenseContext,
+	allowOverflowTruncation,
 	autoCondenseContextPercent: _legacyPercent,
 	profileThresholds: _legacyProfileThresholds,
 	listApiConfigMeta: _legacyProfiles,
@@ -450,10 +453,31 @@ export const ContextManagementSettings = ({
 					output reserve triggers automatic compaction or truncation. The context percentage is informational.
 					You can still use Compact now at any time when the task is idle.
 				</p>
+				<SearchableSetting
+					settingId="context-overflow-truncation"
+					section="contextManagement"
+					label="Allow truncation fallback">
+					<VSCodeCheckbox
+						checked={allowOverflowTruncation ?? true}
+						disabled={!autoCondenseContext}
+						onChange={(e: any) => setCachedStateField("allowOverflowTruncation", e.target.checked)}
+						data-testid="overflow-truncation-checkbox">
+						<span className="font-medium">Allow truncation fallback</span>
+					</VSCodeCheckbox>
+				</SearchableSetting>
 				<p className="text-sm text-vscode-descriptionForeground">
-					If compaction also exceeds the provider limit or returns an empty summary, Roo can exclude complete
-					older exchanges before that same single retry. Original history stays stored. Other compaction
-					failures stop recovery.
+					After an explicit context-limit rejection, if compaction also exceeds the limit or returns an empty
+					summary, allow Roo to exclude complete older exchanges before the same single retry. This omits
+					information from model context but keeps original history stored. Other compaction failures stop
+					recovery. This option only applies when Compact on context overflow is enabled.
+				</p>
+				<p className="text-sm text-vscode-descriptionForeground" role="status">
+					{!autoCondenseContext
+						? "Current policy: manual compaction only. Automatic compaction and truncation are off."
+						: allowOverflowTruncation === false
+							? "Current policy: compact on overflow and retry once. Truncation fallback is off."
+							: "Current policy: compact on overflow, allow eligible truncation fallback, and retry once."}{" "}
+					Save settings to apply changes. These controls do not resume a stopped task.
 				</p>
 			</Section>
 		</div>

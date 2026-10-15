@@ -8,10 +8,12 @@ Roo does not automatically summarize or truncate because a percentage, estimated
 
 **Settings > Context management > Compact on context overflow** is enabled by default. An existing disabled automatic-compaction setting is respected.
 
+**Allow truncation fallback** is a separate saved control in the same section. It defaults to enabled to preserve existing behavior, but only applies when **Compact on context overflow** is enabled. Turn it off for compaction-only recovery. Turn off **Compact on context overflow** for manual-only operation. The settings page shows the selected policy; save changes to apply them. Changing these settings does not resume a stopped task.
+
 1. Roo sends the request without proactive compaction.
 2. If the provider explicitly rejects it for exceeding the input/context limit before assistant content or tool calls are emitted, Roo attempts one summary of earlier history.
 3. Roo preserves the newest input and its tool-call/result exchange, saves the compacted history, and retries the request once.
-4. If summarization itself exceeds the provider context limit or returns an empty summary, Roo may exclude complete older exchanges before that same single retry. It retains the root/current-summary exchange and the newest user turn with its tool-call/result chain. Stored messages are tagged, not deleted.
+4. If summarization itself exceeds the provider context limit or returns an empty summary, and **Allow truncation fallback** is enabled, Roo may exclude complete older exchanges before that same single retry. It retains the root/current-summary exchange and the newest user turn with its tool-call/result chain. Stored messages are tagged, not deleted. With fallback disabled, that summary failure stops without truncating or retrying.
 5. Other summarization failures, a failed retry, or an empty retry stop for manual intervention. There is no extra retry allowance for truncation.
 
 Truncation displays an explicit reason and excluded-message count. After overflow only, token estimates guide how many complete exchanges to exclude, aiming for approximately 75% of the advertised window while allowing for requested output and known system/tool overhead. This is a recovery target, not a proactive trigger. If protected content is too large, tool pairs are ambiguous, or no safe older exchange exists, Roo stops without truncating. The current summary is retained when earlier history has already been condensed; excluded pre-summary history is not resurrected.
@@ -21,6 +23,8 @@ Generic HTTP errors, rate limits, network failures, output-token exhaustion, and
 The percentage and profile-threshold settings from older versions remain readable for compatibility but no longer control compaction. No saved percentages are rewritten. The unreleased 32K safety-margin proposal was replaced by this on-overflow policy.
 
 ## Manual compaction
+
+Context-limit errors distinguish disabled automatic recovery from a request that still overflowed after its single recovery retry. If the retry fails, Roo does not start another compaction/truncation cycle automatically.
 
 Turn off **Compact on context overflow** for manual-only behavior. A context-limit rejection then stops the request without automatically changing history. Use the existing context-compaction button while the task is idle, or switch to a suitable model before retrying.
 

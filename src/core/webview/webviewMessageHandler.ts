@@ -1697,14 +1697,14 @@ export const webviewMessageHandler = async (
 					await provider.postMessageToWebview({
 						type: "browserConnectionResult",
 						success: !!chromeHostUrl,
-						text: `Auto-discovered and tested connection to Chrome: ${chromeHostUrl}`,
+						text: `Discovered Chrome debugging endpoint: ${chromeHostUrl}. HTTP discovery passed; launch a browser action to verify WebSocket access.`,
 						values: { endpoint: chromeHostUrl },
 					})
 				} else {
 					await provider.postMessageToWebview({
 						type: "browserConnectionResult",
 						success: false,
-						text: "No Chrome instances found on the network. Make sure Chrome is running with remote debugging enabled (--remote-debugging-port=9222).",
+						text: "No Chrome debugging endpoint found. For Remote SSH, use an explicit loopback URL through a private SSH tunnel to a separate Chrome profile on your computer. See Browser settings setup guidance. Do not expose the debugging port publicly.",
 					})
 				}
 			} else {
@@ -1715,8 +1715,8 @@ export const webviewMessageHandler = async (
 					type: "browserConnectionResult",
 					success: hostIsValid,
 					text: hostIsValid
-						? `Successfully connected to Chrome: ${customHostUrl}`
-						: "Failed to connect to Chrome",
+						? `Chrome debugging endpoint responded: ${customHostUrl}. HTTP discovery passed; launch a browser action to verify WebSocket access.`
+						: "No valid Chrome debugging endpoint responded. The URL is reached from the extension host (the server in Remote SSH). Check the dedicated Chrome profile, SSH reverse tunnel, and /json/version response. A successful HTTP probe does not verify WebSocket access or the browser sandbox.",
 				})
 			}
 			break

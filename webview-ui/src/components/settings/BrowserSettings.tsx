@@ -21,6 +21,7 @@ import { SearchableSetting } from "./SearchableSetting"
 import { Section } from "./Section"
 import { SectionHeader } from "./SectionHeader"
 import { SetCachedStateField } from "./types"
+import { BrowserSshSetup } from "./BrowserSshSetup"
 
 type BrowserSettingsProps = HTMLAttributes<HTMLDivElement> & {
 	browserToolEnabled?: boolean
@@ -140,6 +141,7 @@ export const BrowserSettings = ({
 
 				{browserToolEnabled && (
 					<div className="flex flex-col gap-3 pl-3 border-l-2 border-vscode-button-background">
+						<BrowserSshSetup />
 						<SearchableSetting
 							settingId="browser-local-browser"
 							section="browser"
@@ -165,13 +167,16 @@ export const BrowserSettings = ({
 									<SelectItem value="chromium">
 										{t("settings:browser.localBrowser.chromium")}
 									</SelectItem>
-									<SelectItem value="chrome">{t("settings:browser.localBrowser.chrome")}</SelectItem>
+									<SelectItem value="chrome">
+										Installed Google Chrome (Linux/macOS/Windows)
+									</SelectItem>
 								</SelectContent>
 							</Select>
 							<div
 								id="browser-local-browser-description"
 								className="text-vscode-descriptionForeground text-sm mt-1">
-								{t("settings:browser.localBrowser.description")}
+								Browsers run on the extension host. In Remote SSH, this is the server. Installed Chrome
+								uses standard system locations and never downloads or falls back to another browser.
 							</div>
 						</SearchableSetting>
 						<SearchableSetting

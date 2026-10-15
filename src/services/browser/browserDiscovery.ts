@@ -44,9 +44,19 @@ export async function isPortOpen(host: string, port: number, timeout = 1000): Pr
  */
 export async function tryChromeHostUrl(chromeHostUrl: string): Promise<boolean> {
 	try {
-		console.log(`Trying to connect to Chrome at: ${chromeHostUrl}/json/version`)
-		await axios.get(`${chromeHostUrl}/json/version`, { timeout: 1000 })
-		return true
+		const host = new URL(chromeHostUrl)
+		if (!["http:", "https:"].includes(host.protocol) || host.username || host.password || host.search || host.hash)
+			return false
+		const endpoint = `${host.toString().replace(/\/$/, "")}/json/version`
+		const { data } = await axios.get(endpoint, { timeout: 1000, maxRedirects: 0, maxContentLength: 65536 })
+		if (typeof data?.Browser !== "string" || typeof data?.webSocketDebuggerUrl !== "string") return false
+		const socket = new URL(data.webSocketDebuggerUrl)
+		return (
+			["ws:", "wss:"].includes(socket.protocol) &&
+			!socket.username &&
+			!socket.password &&
+			socket.pathname.startsWith("/devtools/browser/")
+		)
 	} catch (error) {
 		return false
 	}

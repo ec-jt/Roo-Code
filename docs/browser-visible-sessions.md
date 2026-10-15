@@ -5,7 +5,7 @@
 In **Roo Settings > Browser**, enable the browser tool and choose a local browser:
 
 - **Managed Chromium** is the default. Roo resolves or downloads its managed Chromium installation when needed.
-- **Installed Google Chrome (macOS/Windows)** uses Chrome already installed on the machine running the VS Code extension host. Roo checks standard system and per-user application locations. It does not download Chrome, search the network, or silently fall back to Chromium if Chrome is unavailable. On Linux, select managed Chromium or a trusted remote browser instead.
+- **Installed Google Chrome (Linux/macOS/Windows)** uses Chrome already installed on the machine running the VS Code extension host. Roo checks standard system and per-user application locations. Linux checks the vendor binary first, then standard Google Chrome launchers. It does not download Chrome, search PATH or the network, or silently fall back to Chromium if Chrome is unavailable. An installed browser still needs a usable sandbox and compatible host policy.
 
 Save the settings, close any existing browser session, and launch a new session to apply the selection.
 
@@ -46,6 +46,8 @@ An explicit remote host is authoritative. Changing it takes effect on the next l
 Use a trusted, sandboxed remote browser whose debugging endpoint is reachable only by trusted clients. Roo cannot verify or repair an external browser's sandbox policy. Disconnecting Roo does not close the externally managed browser.
 
 ## Validation and deployment limits
+
+See [Remote SSH setup](browser-remote-ssh.md) for Linux-host troubleshooting and a dedicated Mac Chrome session through a private tunnel. Browser settings also include these setup instructions. The connection test checks a bounded Chrome discovery response, not WebSocket access or external sandbox configuration.
 
 The regression tests cover default Chromium selection, standard Chrome installation discovery, missing/unsupported Chrome errors, no download or fallback for Chrome, isolated profiles, concurrent-session cleanup, platform-specific visibility, and screenshot write authorization. Settings tests cover persistence, saved values, selection changes, and remote-mode disabling. Panel tests cover activity updates after initial hydration.
 

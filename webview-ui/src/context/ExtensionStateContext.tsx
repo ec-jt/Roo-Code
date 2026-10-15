@@ -286,6 +286,7 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 		enterBehavior: "send", // Default: Enter sends, Shift+Enter creates newline
 		organizationAllowList: ORGANIZATION_ALLOW_ALL,
 		autoCondenseContext: true,
+		allowOverflowTruncation: true,
 		autoCondenseContextPercent: 100,
 		profileThresholds: {},
 		codebaseIndexConfig: {

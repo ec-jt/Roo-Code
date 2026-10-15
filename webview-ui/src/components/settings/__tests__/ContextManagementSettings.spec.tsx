@@ -345,6 +345,29 @@ describe("ContextManagementSettings", () => {
 			],
 		}
 
+		it("toggles truncation independently and shows the selected policy", () => {
+			const setCachedStateField = vi.fn()
+			render(
+				<ContextManagementSettings
+					{...autoCondenseProps}
+					allowOverflowTruncation={false}
+					setCachedStateField={setCachedStateField}
+				/>,
+			)
+			const checkbox = screen.getByTestId("overflow-truncation-checkbox")
+			expect(checkbox.querySelector('input[type="checkbox"]')).not.toBeChecked()
+			expect(screen.getByRole("status")).toHaveTextContent("Truncation fallback is off")
+			fireEvent.click(checkbox)
+			expect(setCachedStateField).toHaveBeenCalledWith("allowOverflowTruncation", true)
+			expect(setCachedStateField).not.toHaveBeenCalledWith("autoCondenseContext", expect.anything())
+		})
+
+		it("keeps the fallback preference visible but disabled in manual-only mode", () => {
+			render(<ContextManagementSettings {...defaultProps} allowOverflowTruncation={true} />)
+			expect(screen.getByTestId("overflow-truncation-checkbox")).toHaveAttribute("disabled")
+			expect(screen.getByRole("status")).toHaveTextContent("Automatic compaction and truncation are off")
+		})
+
 		it("toggles auto condense context setting", () => {
 			const mockSetCachedStateField = vitest.fn()
 			const props = { ...autoCondenseProps, setCachedStateField: mockSetCachedStateField }

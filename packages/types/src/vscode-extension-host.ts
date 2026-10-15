@@ -532,6 +532,7 @@ export type ExtensionState = Pick<
 	isBrowserSessionActive: boolean
 
 	autoCondenseContext: boolean
+	allowOverflowTruncation?: boolean
 	autoCondenseContextPercent: number
 	marketplaceItems?: MarketplaceItem[]
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any

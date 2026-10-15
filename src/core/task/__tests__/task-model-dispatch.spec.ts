@@ -500,7 +500,9 @@ describe("Task opt-in model dispatch", () => {
 		await enableOverflow(mediated)
 		const backoff = vi.spyOn(task as any, "backoffAndAnnounce")
 		create.mockRejectedValueOnce(overflow()).mockResolvedValueOnce(response()).mockRejectedValueOnce(overflow())
-		await expect(consume(task.attemptApiRequest())).rejects.toThrow("Compact manually")
+		await expect(consume(task.attemptApiRequest())).rejects.toThrow(
+			"again after automatic context recovery and its single retry",
+		)
 		expect(create).toHaveBeenCalledTimes(3)
 		expect(backoff).not.toHaveBeenCalled()
 	})
@@ -550,6 +552,25 @@ describe("Task opt-in model dispatch", () => {
 			expect.objectContaining({ messagesRemoved: 2, fallbackReason: "context-limit" }),
 		)
 	})
+	it.each([false, true])(
+		"passes the disabled fallback preference through overflow recovery, mediated=%s",
+		async (mediated) => {
+			await enableOverflow(mediated)
+			provider.getState.mockResolvedValue({ ...(await provider.getState()), allowOverflowTruncation: false })
+			task.apiConversationHistory = [
+				{ role: "user", content: "original" },
+				{ role: "assistant", content: "root answer" },
+				{ role: "user", content: "older" },
+				{ role: "assistant", content: "older answer" },
+				{ role: "user", content: "latest" },
+			]
+			const before = structuredClone(task.apiConversationHistory)
+			create.mockRejectedValueOnce(overflow()).mockRejectedValueOnce(overflow())
+			await expect(consume(task.attemptApiRequest())).rejects.toThrow("Automatic truncation fallback is disabled")
+			expect(create).toHaveBeenCalledTimes(2)
+			expect(task.apiConversationHistory).toEqual(before)
+		},
+	)
 	it.each(["cancel", "stale"])("%s during summary does not persist or retry", async (stop) => {
 		await enableOverflow(false)
 		const before = structuredClone(task.apiConversationHistory)
@@ -566,7 +587,8 @@ describe("Task opt-in model dispatch", () => {
 		const before = structuredClone(task.apiConversationHistory)
 		admit.mockResolvedValue({ outcome: "granted", settle })
 		create.mockRejectedValueOnce(overflow())
-		await expect(consume(task.attemptApiRequest())).rejects.toThrow("Compact manually")
+		await expect(consume(task.attemptApiRequest())).rejects.toThrow("'Compact on context overflow' is disabled")
+		expect(create).toHaveBeenCalledOnce()
 		expect(task.apiConversationHistory).toEqual(before)
 		create.mockResolvedValueOnce(response())
 		await task.condenseContext()

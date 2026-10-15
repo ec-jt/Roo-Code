@@ -134,6 +134,7 @@ export function willManageContext(options: WillManageContextOptions): boolean {
 
 export type ContextManagementOptions = Omit<WillManageContextOptions, "lastMessageTokens"> & {
 	messages: ApiMessage[]
+	allowOverflowTruncation?: boolean
 	apiHandler: ApiHandler
 	systemPrompt: string
 	taskId: string
@@ -184,6 +185,14 @@ export async function manageContext(options: ContextManagementOptions): Promise<
 		rooIgnoreController: options.rooIgnoreController,
 	})
 	if (result.failureKind) {
+		if (options.allowOverflowTruncation === false) {
+			return {
+				...unchanged,
+				cost: result.cost,
+				error: `${result.error || "Context compaction failed."} Automatic truncation fallback is disabled in Settings > Context Management.`,
+				errorDetails: result.errorDetails,
+			}
+		}
 		const fallback = await truncateAfterOverflow({ ...options, tools: options.metadata?.tools })
 		return { ...unchanged, ...fallback, cost: result.cost, fallbackReason: result.failureKind }
 	}

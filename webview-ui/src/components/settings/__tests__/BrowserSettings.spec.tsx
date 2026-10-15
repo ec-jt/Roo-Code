@@ -19,13 +19,22 @@ vi.mock("@vscode/webview-ui-toolkit/react", () => ({
 }))
 
 describe("visible browser setting", () => {
+	it("shows separate host and Mac SSH setup without changing settings", () => {
+		const setCachedStateField = vi.fn()
+		render(<BrowserSettings browserToolEnabled setCachedStateField={setCachedStateField} />)
+		fireEvent.click(screen.getByText("Remote SSH: browser on the server or on your Mac"))
+		expect(screen.getByText(/-R 127.0.0.1:9222:127.0.0.1:9222 USER@SERVER/)).toBeInTheDocument()
+		expect(screen.getByText(/--user-data-dir=/)).toBeInTheDocument()
+		expect(screen.getByText(/Other users on a shared server/)).toBeInTheDocument()
+		expect(setCachedStateField).not.toHaveBeenCalled()
+	})
 	it("defaults to managed Chromium and propagates a Chrome selection", () => {
 		const setCachedStateField = vi.fn()
 		render(<BrowserSettings browserToolEnabled setCachedStateField={setCachedStateField} />)
 		const selector = screen.getByRole("combobox", { name: "settings:browser.localBrowser.label" })
 		expect(selector).toHaveTextContent("settings:browser.localBrowser.chromium")
 		fireEvent.keyDown(selector, { key: "ArrowDown" })
-		fireEvent.click(screen.getByRole("option", { name: "settings:browser.localBrowser.chrome" }))
+		fireEvent.click(screen.getByRole("option", { name: "Installed Google Chrome (Linux/macOS/Windows)" }))
 		expect(setCachedStateField).toHaveBeenCalledWith("browserLocalBrowser", "chrome")
 	})
 
@@ -39,7 +48,7 @@ describe("visible browser setting", () => {
 			/>,
 		)
 		const selector = screen.getByRole("combobox", { name: "settings:browser.localBrowser.label" })
-		expect(selector).toHaveTextContent("settings:browser.localBrowser.chrome")
+		expect(selector).toHaveTextContent("Installed Google Chrome (Linux/macOS/Windows)")
 		expect(selector).toBeEnabled()
 		rerender(
 			<BrowserSettings
@@ -50,7 +59,7 @@ describe("visible browser setting", () => {
 			/>,
 		)
 		expect(selector).toBeDisabled()
-		expect(selector).toHaveTextContent("settings:browser.localBrowser.chrome")
+		expect(selector).toHaveTextContent("Installed Google Chrome (Linux/macOS/Windows)")
 		rerender(
 			<BrowserSettings
 				browserToolEnabled
@@ -59,7 +68,7 @@ describe("visible browser setting", () => {
 			/>,
 		)
 		expect(selector).toBeEnabled()
-		expect(selector).toHaveTextContent("settings:browser.localBrowser.chrome")
+		expect(selector).toHaveTextContent("Installed Google Chrome (Linux/macOS/Windows)")
 		expect(setCachedStateField).not.toHaveBeenCalled()
 	})
 

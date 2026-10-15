@@ -173,6 +173,32 @@ describe("sandboxed browser launch", () => {
 		)
 	})
 
+	it.each(["/opt/google/chrome/chrome", "/usr/bin/google-chrome-stable", "/usr/bin/google-chrome"])(
+		"launches installed Linux Chrome at %s without disabling the sandbox or downloading",
+		async (executablePath) => {
+			settings.browserLocalBrowser = "chrome"
+			vi.mocked(fs.stat).mockImplementation(async (candidate) => {
+				if (candidate !== executablePath) throw new Error("missing")
+				return { isFile: () => true } as never
+			})
+			await session.launchBrowser()
+			expect(launch).toHaveBeenCalledWith(expect.objectContaining({ executablePath, headless: true, args: [] }))
+			expect(PCR).not.toHaveBeenCalled()
+			expect(discoverChromeHostUrl).not.toHaveBeenCalled()
+		},
+	)
+
+	it("reports Linux executable and extension-host location after sandbox denial without retrying", async () => {
+		settings.browserLocalBrowser = "chrome"
+		vi.mocked(fs.stat).mockResolvedValue({ isFile: () => true } as never)
+		vi.mocked(launch).mockRejectedValueOnce(new Error("Permission denied (13)"))
+		await expect(session.launchBrowser()).rejects.toThrow(
+			/extension host \(linux\).*\/opt\/google\/chrome\/chrome.*AppArmor.*private SSH tunnel.*Permission denied/,
+		)
+		expect(launch).toHaveBeenCalledOnce()
+		expect(PCR).not.toHaveBeenCalled()
+	})
+
 	it.each(["ProgramFiles", "ProgramFiles(x86)", "LOCALAPPDATA"])(
 		"finds Windows Chrome under %s",
 		async (location) => {
