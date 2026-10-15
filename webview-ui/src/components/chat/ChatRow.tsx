@@ -13,8 +13,6 @@ import type {
 	ClineSayTool,
 } from "@roo-code/types"
 
-import { Mode } from "@roo/modes"
-
 import { COMMAND_OUTPUT_STRING } from "@roo/combineCommandSequences"
 import { safeJsonParse } from "@roo/core"
 import { isChatPreview } from "@roo/chat-preview"
@@ -51,11 +49,8 @@ import { CommandExecutionError } from "./CommandExecutionError"
 import { AutoApprovedRequestLimitWarning } from "./AutoApprovedRequestLimitWarning"
 import { InProgressRow, CondensationResultRow, CondensationErrorRow, TruncationResultRow } from "./context-management"
 import CodebaseSearchResultsDisplay from "./CodebaseSearchResultsDisplay"
-import { appendImages } from "@src/utils/imageUtils"
 import { McpExecution } from "./McpExecution"
-import { ChatTextArea } from "./ChatTextArea"
-import { MAX_IMAGES_PER_MESSAGE } from "./ChatView"
-import { useSelectedModel } from "../ui/hooks/useSelectedModel"
+import { UserMessageEditor } from "./UserMessageEditor"
 import {
 	Eye,
 	FileDiff,
@@ -190,8 +185,6 @@ export const ChatRowContent = ({
 		mcpServers,
 		alwaysAllowMcp,
 		currentCheckpoint,
-		mode,
-		apiConfiguration,
 		clineMessages: windowMessages,
 		currentTaskItem,
 		chatWindow,
@@ -199,64 +192,15 @@ export const ChatRowContent = ({
 	const clineMessages = useMemo(() => {
 		return (windowMessages ?? []).filter((row) => !isChatPreview(row, chatWindow))
 	}, [windowMessages, chatWindow])
-	const { info: model } = useSelectedModel(apiConfiguration)
 	const [isEditing, setIsEditing] = useState(false)
-	const [editedContent, setEditedContent] = useState("")
-	const [editMode, setEditMode] = useState<Mode>(mode || "code")
-	const [editImages, setEditImages] = useState<string[]>([])
-
-	// Handle message events for image selection during edit mode
-	useEffect(() => {
-		const handleMessage = (event: MessageEvent) => {
-			const msg = event.data
-			if (msg.type === "selectedImages" && msg.context === "edit" && msg.messageTs === message.ts && isEditing) {
-				setEditImages((prevImages) => appendImages(prevImages, msg.images, MAX_IMAGES_PER_MESSAGE))
-			}
-		}
-
-		window.addEventListener("message", handleMessage)
-		return () => window.removeEventListener("message", handleMessage)
-	}, [isEditing, message.ts])
-
-	// Memoized callback to prevent re-renders caused by inline arrow functions.
+	const canEdit =
+		!!chatWindow?.following && typeof message.chatPreview?.index === "number" && message.chatPreview.index > 0
 	const handleToggleExpand = useCallback(() => {
 		onToggleExpand(message.ts)
 	}, [onToggleExpand, message.ts])
-
-	// Handle edit button click
 	const handleEditClick = useCallback(() => {
-		setIsEditing(true)
-		setEditedContent(message.text || "")
-		setEditImages(message.images || [])
-		setEditMode(mode || "code")
-		// Edit mode is now handled entirely in the frontend
-		// No need to notify the backend
-	}, [message.text, message.images, mode])
-
-	// Handle cancel edit
-	const handleCancelEdit = useCallback(() => {
-		setIsEditing(false)
-		setEditedContent(message.text || "")
-		setEditImages(message.images || [])
-		setEditMode(mode || "code")
-	}, [message.text, message.images, mode])
-
-	// Handle save edit
-	const handleSaveEdit = useCallback(() => {
-		setIsEditing(false)
-		// Send edited message to backend
-		vscode.postMessage({
-			type: "submitEditedMessage",
-			value: message.ts,
-			editedMessageContent: editedContent,
-			images: editImages,
-		})
-	}, [message.ts, editedContent, editImages])
-
-	// Handle image selection for editing
-	const handleSelectImages = useCallback(() => {
-		vscode.postMessage({ type: "selectImages", context: "edit", messageTs: message.ts })
-	}, [message.ts])
+		if (canEdit) setIsEditing(true)
+	}, [canEdit])
 
 	const [cost, apiReqCancelReason, apiReqStreamingFailedMessage] = useMemo(() => {
 		if (message.text !== null && message.text !== undefined && message.say === "api_req_started") {
@@ -1280,26 +1224,12 @@ export const ChatRowContent = ({
 										? "bg-vscode-editor-background text-vscode-editor-foreground"
 										: "cursor-text p-1 bg-vscode-editor-foreground/70 text-vscode-editor-background",
 								)}>
-								{isEditing ? (
-									<div className="flex flex-col gap-2">
-										<ChatTextArea
-											inputValue={editedContent}
-											setInputValue={setEditedContent}
-											sendingDisabled={false}
-											selectApiConfigDisabled={true}
-											placeholderText={t("chat:editMessage.placeholder")}
-											selectedImages={editImages}
-											setSelectedImages={setEditImages}
-											onSend={handleSaveEdit}
-											onSelectImages={handleSelectImages}
-											shouldDisableImages={!model?.supportsImages}
-											mode={editMode}
-											setMode={setEditMode}
-											modeShortcutText=""
-											isEditMode={true}
-											onCancel={handleCancelEdit}
-										/>
-									</div>
+								{isEditing && chatWindow ? (
+									<UserMessageEditor
+										message={message}
+										window={chatWindow}
+										onClose={() => setIsEditing(false)}
+									/>
 								) : (
 									<div className="flex justify-between">
 										<div
@@ -1316,7 +1246,7 @@ export const ChatRowContent = ({
 										<div className="flex gap-2 pr-1">
 											<div
 												className="cursor-pointer shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
-												style={{ visibility: isStreaming ? "hidden" : "visible" }}
+												style={{ visibility: isStreaming || !canEdit ? "hidden" : "visible" }}
 												onClick={(e) => {
 													e.stopPropagation()
 													handleEditClick()

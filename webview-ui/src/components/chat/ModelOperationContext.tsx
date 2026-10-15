@@ -18,7 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 type Identity = Pick<ModelOperationState, "taskId" | "instanceId" | "revision">
 type Selection = { source: ModelOperationState; kind: ModelOperation["kind"]; requestId?: string; profileId: string }
-type Pending = { operationId: string; source: Identity; approval?: boolean }
+type Pending = { operationId: string; source: Identity; approval?: boolean; nextRequest?: boolean }
 
 const sameInstance = (a: Identity | undefined, b: Partial<Identity> | undefined) =>
 	!!a && !!b && a.taskId === b.taskId && a.instanceId === b.instanceId
@@ -48,6 +48,12 @@ export function ModelOperationProvider({ children }: { children: ReactNode }) {
 	const [confirmed, setConfirmed] = useState(false)
 	const [pending, setPending] = useState<Pending>()
 	const pendingRef = useRef<Pending>()
+	const [unknownOutcome, setUnknownOutcome] = useState<Pending>()
+	useEffect(() => {
+		if (!pending) return
+		const timer = setTimeout(() => setUnknownOutcome(pending), 60_000)
+		return () => clearTimeout(timer)
+	}, [pending])
 	const [outcome, setOutcome] = useState<{ status: ModelOperationStatus; source: Identity; approval?: boolean }>()
 	const [answeredApproval, setAnsweredApproval] = useState<string>()
 	const stateRef = useRef(state)
@@ -65,12 +71,20 @@ export function ModelOperationProvider({ children }: { children: ReactNode }) {
 			const onSource = sameInstance(current, action.source)
 			const onBranch = !action.approval && status.status === "completed" && sameInstance(current, status)
 			if (!onSource && !onBranch) return
-			if (!action.approval && onSource && current!.revision > action.source.revision + 1) return
+			if (!action.approval && !action.nextRequest && onSource && current!.revision > action.source.revision + 1) {
+				if (status.status !== "running") {
+					pendingRef.current = undefined
+					setPending(undefined)
+					setUnknownOutcome(undefined)
+				}
+				return
+			}
 			if (action.approval && (!sameInstance(current, status) || (status.revision ?? -1) < action.source.revision))
 				return
 			if (status.status === "running" && !sameRevision(current, action.source)) return
 			setOutcome({ status, source: action.source, approval: action.approval })
 			if (status.status !== "running") {
+				setUnknownOutcome(undefined)
 				pendingRef.current = undefined
 				setPending(undefined)
 				if (action.approval && status.status !== "completed") setAnsweredApproval(undefined)
@@ -80,7 +94,10 @@ export function ModelOperationProvider({ children }: { children: ReactNode }) {
 		return () => window.removeEventListener("message", handleMessage)
 	}, [])
 
-	const busy = !!pending && sameInstance(state, pending.source) && state!.revision <= pending.source.revision + 1
+	const busy =
+		!!pending &&
+		sameInstance(state, pending.source) &&
+		(pending.nextRequest || state!.revision <= pending.source.revision + 1)
 	const open: ModelOperationControls["open"] = (kind, requestId, profileId) => {
 		if (!state || busy || historical) return
 		setConfirmed(false)
@@ -115,6 +132,34 @@ export function ModelOperationProvider({ children }: { children: ReactNode }) {
 			? state?.reason || t("chat:modelOperation.unavailable")
 			: undefined
 	const disabledReason = stale ? t("chat:modelOperation.stale") : switchReason
+	const selectNextRequest = () => {
+		if (
+			!selection ||
+			!state ||
+			historical ||
+			busy ||
+			!sameInstance(state, selection.source) ||
+			state.profileId ||
+			!profiles.some((profile) => profile.id === selection.profileId)
+		)
+			return
+		const operation: ModelOperation = {
+			operationId: crypto.randomUUID(),
+			kind: "switch",
+			taskId: state.taskId,
+			instanceId: state.instanceId,
+			revision: state.revision,
+			profileId: selection.profileId,
+			confirmCurrentWorkspace: false,
+		}
+		const action: Pending = { operationId: operation.operationId, source: { ...state }, nextRequest: true }
+		pendingRef.current = action
+		setPending(action)
+		setUnknownOutcome(undefined)
+		setOutcome(undefined)
+		setSelection(undefined)
+		vscode.postMessage({ type: "queueTaskProfile", modelOperation: operation })
+	}
 	const dispatch = () => {
 		if (
 			historical ||
@@ -142,6 +187,7 @@ export function ModelOperationProvider({ children }: { children: ReactNode }) {
 		const action = { operationId: operation.operationId, source: selection.source }
 		pendingRef.current = action
 		setPending(action)
+		setUnknownOutcome(undefined)
 		setOutcome(undefined)
 		setSelection(undefined)
 		vscode.postMessage({ type: "modelOperation", modelOperation: operation })
@@ -176,6 +222,12 @@ export function ModelOperationProvider({ children }: { children: ReactNode }) {
 
 	const panel = (
 		<div className="px-3 pb-2 space-y-2 max-h-48 overflow-y-auto shrink-0">
+			{unknownOutcome && sameInstance(state, unknownOutcome.source) && (
+				<p role="alert">
+					The operation outcome is unknown because no final acknowledgement arrived. Do not repeat it
+					automatically. Inspect the current task, then reopen it from History if necessary.
+				</p>
+			)}
 			{(visibleOutcome || busy) && (
 				<div
 					role={
@@ -250,6 +302,29 @@ export function ModelOperationProvider({ children }: { children: ReactNode }) {
 					</Select>
 					{profiles.length === 0 && <p role="alert">{t("chat:modelOperation.noProfiles")}</p>}
 					{disabledReason && <p role="alert">{disabledReason}</p>}
+					{selection?.kind === "switch" && (
+						<div className="space-y-2 text-sm">
+							<p>
+								To change models without restarting this response, select Use for next request. Current
+								tools and files are unchanged. The selection is pending until the next request and does
+								not start one.
+							</p>
+							<Button
+								onClick={selectNextRequest}
+								disabled={
+									busy ||
+									historical ||
+									!sameInstance(state, selection.source) ||
+									!!state?.profileId ||
+									!profiles.some((profile) => profile.id === selection.profileId)
+								}>
+								Use for next request
+							</Button>
+							{state?.profileId && (
+								<p>This replay branch has a pinned model profile. Use a new branch to change it.</p>
+							)}
+						</div>
+					)}
 					{stale && (
 						<div className="space-y-2 text-sm">
 							<p>

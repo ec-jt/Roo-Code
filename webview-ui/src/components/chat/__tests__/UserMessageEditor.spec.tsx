@@ -44,6 +44,8 @@ const reply = (data: Partial<{ text: string; images: string[]; tooLarge: boolean
 				data: {
 					type: "chatMessageEditData",
 					chatMessageEditData: {
+						operationId: postMessage.mock.calls.find(([m]) => m.type === "chatMessageEdit")?.[0]
+							.chatMessageEdit.operationId,
 						taskId: "task",
 						instanceId: "instance",
 						ts: 150,
@@ -65,7 +67,14 @@ describe("user message editor", () => {
 		render(<UserMessageEditor message={truncatedUserMessage} window={page()} onClose={() => {}} />)
 		expect(vscode.postMessage).toHaveBeenCalledWith({
 			type: "chatMessageEdit",
-			chatMessageEdit: { taskId: "task", instanceId: "instance", ts: 150, index: 149, revision: 8 },
+			chatMessageEdit: {
+				operationId: expect.any(String),
+				taskId: "task",
+				instanceId: "instance",
+				ts: 150,
+				index: 149,
+				revision: 8,
+			},
 		})
 		expect(screen.getByText("Loading the full message...")).toBeInTheDocument()
 		expect(screen.getByRole("button", { name: "Save and confirm" })).toBeDisabled()
@@ -86,9 +95,82 @@ describe("user message editor", () => {
 			images: ["data:image/png;base64,AAAA"],
 			taskId: "task",
 			instanceId: "instance",
-			chatMessageEdit: { taskId: "task", instanceId: "instance", ts: 150, index: 149, revision: 8 },
+			chatMessageEdit: {
+				operationId: expect.any(String),
+				taskId: "task",
+				instanceId: "instance",
+				ts: 150,
+				index: 149,
+				revision: 8,
+			},
 		})
 	})
+	it.each(["cancelled", "error"])("preserves the full draft after %s and ignores duplicate retrieval", (status) => {
+		const close = vi.fn()
+		render(<UserMessageEditor message={truncatedUserMessage} window={page()} onClose={close} />)
+		reply({ text: "full text", images: ["data:image/png;base64,AAAA"] })
+		fireEvent.change(screen.getByRole("textbox"), { target: { value: "my draft" } })
+		reply({ text: "late original" })
+		expect(screen.getByRole("textbox")).toHaveValue("my draft")
+		fireEvent.click(screen.getByRole("button", { name: "Save and confirm" }))
+		expect(close).not.toHaveBeenCalled()
+		expect(screen.getByRole("button", { name: "Save and confirm" })).toBeDisabled()
+		act(() =>
+			window.dispatchEvent(
+				new MessageEvent("message", {
+					data: {
+						type: "chatMessageEditResult",
+						chatMessageEditResult: { ...submitted()[0][0].chatMessageEdit, status, error: "failed" },
+					},
+				}),
+			),
+		)
+		expect(screen.getByRole("textbox")).toHaveValue("my draft")
+		expect(close).not.toHaveBeenCalled()
+		expect(screen.getByRole("button", { name: "Save and confirm" })).not.toBeDisabled()
+	})
+	it("closes only on correlated success", () => {
+		const close = vi.fn()
+		render(<UserMessageEditor message={truncatedUserMessage} window={page()} onClose={close} />)
+		reply({ text: "full text" })
+		fireEvent.click(screen.getByRole("button", { name: "Save and confirm" }))
+		const identity = submitted()[0][0].chatMessageEdit
+		act(() =>
+			window.dispatchEvent(
+				new MessageEvent("message", {
+					data: {
+						type: "chatMessageEditResult",
+						chatMessageEditResult: { ...identity, operationId: "old", status: "success" },
+					},
+				}),
+			),
+		)
+		expect(close).not.toHaveBeenCalled()
+		act(() =>
+			window.dispatchEvent(
+				new MessageEvent("message", {
+					data: { type: "chatMessageEditResult", chatMessageEditResult: { ...identity, status: "success" } },
+				}),
+			),
+		)
+		expect(close).toHaveBeenCalledTimes(1)
+	})
+	it("keeps an unknown-outcome draft without replay after the bounded timeout", () => {
+		vi.useFakeTimers()
+		try {
+			render(<UserMessageEditor message={truncatedUserMessage} window={page()} onClose={vi.fn()} />)
+			reply({ text: "keep this" })
+			fireEvent.click(screen.getByRole("button", { name: "Save and confirm" }))
+			act(() => vi.advanceTimersByTime(60_000))
+			expect(screen.getByRole("textbox")).toHaveValue("keep this")
+			expect(screen.getByRole("alert")).toHaveTextContent("outcome is unknown")
+			expect(screen.getByRole("button", { name: "Save and confirm" })).toBeDisabled()
+			expect(submitted()).toHaveLength(1)
+		} finally {
+			vi.useRealTimers()
+		}
+	})
+
 	it("preserves a draft and disables Save when the loaded history revision changes", () => {
 		const view = render(<UserMessageEditor message={truncatedUserMessage} window={page()} onClose={() => {}} />)
 		reply({ text: "full message" })
@@ -136,7 +218,14 @@ describe("plain history user message edit affordance", () => {
 		fireEvent.click(screen.getByRole("button", { name: "Edit" }))
 		expect(vscode.postMessage).toHaveBeenCalledWith({
 			type: "chatMessageEdit",
-			chatMessageEdit: { taskId: "task", instanceId: "instance", ts: 150, index: 149, revision: 8 },
+			chatMessageEdit: {
+				operationId: expect.any(String),
+				taskId: "task",
+				instanceId: "instance",
+				ts: 150,
+				index: 149,
+				revision: 8,
+			},
 		})
 	})
 

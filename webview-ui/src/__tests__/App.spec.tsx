@@ -4,6 +4,9 @@ import React from "react"
 import { render, screen, act, cleanup } from "@/utils/test-utils"
 
 import AppWithProviders from "../App"
+import { vscode } from "@src/utils/vscode"
+
+vi.mock("@src/utils/vscode", () => ({ vscode: { postMessage: vi.fn() } }))
 
 // Mock the ErrorBoundary component
 
@@ -138,6 +141,31 @@ vi.mock("process.env", () => ({
 }))
 
 describe("App", () => {
+	it.each([true, false])("sends only the selected edit action when confirmed=%s", (confirmed) => {
+		render(<AppWithProviders />)
+		const identity = { operationId: "edit", taskId: "task", instanceId: "instance", ts: 2, index: 1, revision: 3 }
+		act(() =>
+			window.dispatchEvent(
+				new MessageEvent("message", {
+					data: { type: "showEditMessageDialog", messageTs: 2, text: "new", chatMessageEdit: identity },
+				}),
+			),
+		)
+		act(() =>
+			screen
+				.getByRole("button", { name: confirmed ? "common:confirmation.proceed" : "common:answers.cancel" })
+				.click(),
+		)
+		expect(vscode.postMessage).toHaveBeenCalledWith(
+			expect.objectContaining({
+				type: confirmed ? "editMessageConfirm" : "editMessageCancel",
+				chatMessageEdit: identity,
+			}),
+		)
+		expect(vscode.postMessage).not.toHaveBeenCalledWith(
+			expect.objectContaining({ type: confirmed ? "editMessageCancel" : "editMessageConfirm" }),
+		)
+	})
 	beforeEach(() => {
 		vi.clearAllMocks()
 		window.removeEventListener("message", () => {})

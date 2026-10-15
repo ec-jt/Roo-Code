@@ -1,4 +1,3 @@
-import * as vscode from "vscode"
 import type { ClineMessage, ExtensionMessage } from "@roo-code/types"
 import { ChatWindow } from "../ChatWindow"
 import { ChatHistoryIndex } from "../ChatHistoryIndex"
@@ -41,7 +40,14 @@ const revision = (task: Task) => task.chatHistoryIndex.ensure(task.clineMessages
 describe("correlated user-message edit retrieval", () => {
 	it("validates the original row identity for save and rejects changed revisions and duplicate timestamps", () => {
 		const { task, provider } = harness()
-		const request = { taskId: "task", instanceId: "instance", ts: 2, index: 1, revision: revision(task) }
+		const request = {
+			operationId: "op",
+			taskId: "task",
+			instanceId: "instance",
+			ts: 2,
+			index: 1,
+			revision: revision(task),
+		}
 		expect(provider.validateChatMessageEdit(request)).toBe(true)
 		expect(provider.validateChatMessageEdit({ ...request, revision: request.revision + 1 })).toBe(false)
 		task.clineMessages.push({ ts: 2, type: "say", say: "user_feedback", text: "different row" })
@@ -57,7 +63,14 @@ describe("correlated user-message edit retrieval", () => {
 
 		await provider.handleChatWindowMessage({
 			type: "chatMessageEdit",
-			chatMessageEdit: { taskId: "task", instanceId: "instance", ts: 2, index: 1, revision: revision(task) },
+			chatMessageEdit: {
+				operationId: "op",
+				taskId: "task",
+				instanceId: "instance",
+				ts: 2,
+				index: 1,
+				revision: revision(task),
+			},
 		})
 		expect(postMessageToWebview).toHaveBeenCalledTimes(1)
 		expect(postMessageToWebview.mock.calls[0][0]).toMatchObject({
@@ -77,7 +90,14 @@ describe("correlated user-message edit retrieval", () => {
 		const { task, provider, postMessageToWebview } = harness()
 		await provider.handleChatWindowMessage({
 			type: "chatMessageEdit",
-			chatMessageEdit: { taskId: "task", instanceId: "instance", ts: 2, index: 1, revision: revision(task) + 1 },
+			chatMessageEdit: {
+				operationId: "op",
+				taskId: "task",
+				instanceId: "instance",
+				ts: 2,
+				index: 1,
+				revision: revision(task) + 1,
+			},
 		})
 		expect(reply(postMessageToWebview.mock.calls)).toMatchObject({
 			error: expect.stringContaining("History changed"),
@@ -86,14 +106,28 @@ describe("correlated user-message edit retrieval", () => {
 		postMessageToWebview.mockClear()
 		await provider.handleChatWindowMessage({
 			type: "chatMessageEdit",
-			chatMessageEdit: { taskId: "task", instanceId: "instance", ts: 3, index: 2, revision: revision(task) },
+			chatMessageEdit: {
+				operationId: "op",
+				taskId: "task",
+				instanceId: "instance",
+				ts: 3,
+				index: 2,
+				revision: revision(task),
+			},
 		})
 		expect(reply(postMessageToWebview.mock.calls)).toMatchObject({ error: expect.stringContaining("your own") })
 
 		postMessageToWebview.mockClear()
 		await provider.handleChatWindowMessage({
 			type: "chatMessageEdit",
-			chatMessageEdit: { taskId: "other", instanceId: "instance", ts: 2, index: 1, revision: revision(task) },
+			chatMessageEdit: {
+				operationId: "op",
+				taskId: "other",
+				instanceId: "instance",
+				ts: 2,
+				index: 1,
+				revision: revision(task),
+			},
 		})
 		expect(reply(postMessageToWebview.mock.calls)).toMatchObject({
 			error: expect.stringContaining("instance changed"),
@@ -110,7 +144,14 @@ describe("correlated user-message edit retrieval", () => {
 
 		await provider.handleChatWindowMessage({
 			type: "chatMessageEdit",
-			chatMessageEdit: { taskId: "task", instanceId: "instance", ts: 2, index: 1, revision: rev },
+			chatMessageEdit: {
+				operationId: "op",
+				taskId: "task",
+				instanceId: "instance",
+				ts: 2,
+				index: 1,
+				revision: rev,
+			},
 		})
 		expect(reply(postMessageToWebview.mock.calls)).toMatchObject({
 			error: expect.stringContaining("latest page"),
@@ -135,49 +176,113 @@ describe("correlated user-message edit retrieval", () => {
 
 		await provider.handleChatWindowMessage({
 			type: "chatMessageEdit",
-			chatMessageEdit: { taskId: "task", instanceId: "instance", ts: 2, index: 1, revision: revision(task) },
+			chatMessageEdit: {
+				operationId: "op",
+				taskId: "task",
+				instanceId: "instance",
+				ts: 2,
+				index: 1,
+				revision: revision(task),
+			},
 		})
 		expect(reply(postMessageToWebview.mock.calls)).toMatchObject({ tooLarge: true })
 	})
 })
 
-describe("submitEditedMessage task fencing", () => {
-	it.each(["submitEditedMessage", "editMessageConfirm"] as const)(
-		"rejects stale correlated %s before confirmation or history writes",
-		async (type) => {
-			const warn = vi.spyOn(vscode.window, "showWarningMessage").mockResolvedValue(undefined)
-			const provider = {
-				getCurrentTask: () => ({ taskId: "task", instanceId: "instance" }),
-				validateChatMessageEdit: vi.fn(() => false),
-				postMessageToWebview: vi.fn(),
-			}
-			await webviewMessageHandler(provider as never, {
-				type,
+describe("user edit confirmation fencing", () => {
+	const setup = () => {
+		const value = harness()
+		const task = Object.assign(value.task, {
+			assertUserEditReady: vi.fn(),
+			editUserMessage: vi.fn().mockResolvedValue(undefined),
+		})
+		Object.assign(value.provider, { postStateToWebview: vi.fn().mockResolvedValue(undefined) })
+		const identity = {
+			operationId: "save",
+			taskId: "task",
+			instanceId: "instance",
+			ts: 2,
+			index: 1,
+			revision: revision(task),
+		}
+		return { ...value, task, identity }
+	}
+	it.each(["submitEditedMessage", "editMessageConfirm"] as const)("rejects missing identity on %s", async (type) => {
+		const { provider, task } = setup()
+		await webviewMessageHandler(provider, {
+			type,
+			value: 2,
+			messageTs: 2,
+			text: "new",
+			editedMessageContent: "new",
+		})
+		expect(task.editUserMessage).not.toHaveBeenCalled()
+	})
+	it("checks readiness before opening a confirmation", async () => {
+		const { provider, task, identity, postMessageToWebview } = setup()
+		task.assertUserEditReady.mockImplementation(() => {
+			throw new Error("request active")
+		})
+		await provider.handleUserMessageEdit({
+			type: "submitEditedMessage",
+			value: 2,
+			editedMessageContent: "new",
+			chatMessageEdit: identity,
+		})
+		expect(postMessageToWebview).toHaveBeenCalledWith(
+			expect.objectContaining({
+				chatMessageEditResult: expect.objectContaining({ status: "error", error: "request active" }),
+			}),
+		)
+		expect(task.editUserMessage).not.toHaveBeenCalled()
+	})
+	it.each(["cancel", "checkpoint", "switched", "revision", "expired"])(
+		"does not commit %s confirmations",
+		async (kind) => {
+			const { provider, task, identity, postMessageToWebview } = setup()
+			await provider.handleUserMessageEdit({
+				type: "submitEditedMessage",
 				value: 2,
-				messageTs: 2,
-				editedMessageContent: "changed",
-				text: "changed",
-				chatMessageEdit: { taskId: "task", instanceId: "old", ts: 2, index: 1, revision: 8 },
+				editedMessageContent: "new",
+				chatMessageEdit: identity,
 			})
-			expect(provider.postMessageToWebview).not.toHaveBeenCalled()
-			expect(warn).toHaveBeenCalled()
-			warn.mockRestore()
+			if (kind === "switched") task.instanceId = "other"
+			if (kind === "revision") task.clineMessages.push({ ts: 4, type: "say", say: "text", text: "changed" })
+			if (kind === "expired") (provider as any).pendingUserEdit.expires = 0
+			await provider.handleUserMessageEdit({
+				type: kind === "cancel" ? "editMessageCancel" : "editMessageConfirm",
+				restoreCheckpoint: kind === "checkpoint",
+				chatMessageEdit: identity,
+			})
+			expect(task.editUserMessage).not.toHaveBeenCalled()
+			expect(postMessageToWebview).toHaveBeenLastCalledWith(
+				expect.objectContaining({
+					chatMessageEditResult: expect.objectContaining({
+						status: kind === "cancel" ? "cancelled" : "error",
+					}),
+				}),
+			)
 		},
 	)
-	it("refuses an edit correlated to a task the user has switched away from", async () => {
-		const warn = vi.spyOn(vscode.window, "showWarningMessage").mockResolvedValue(undefined)
-		const provider = {
-			getCurrentTask: () => ({ taskId: "task", instanceId: "instance" }),
-			postMessageToWebview: vi.fn(),
-		}
-		await webviewMessageHandler(provider as never, {
+	it("uses the stored draft, consumes confirmation once and reports success", async () => {
+		const { provider, task, identity, postMessageToWebview } = setup()
+		await provider.handleUserMessageEdit({
 			type: "submitEditedMessage",
-			value: 5,
-			editedMessageContent: "changed",
-			taskId: "other",
-			instanceId: "instance",
+			value: 2,
+			editedMessageContent: "full draft",
+			images: [IMAGE],
+			chatMessageEdit: identity,
 		})
-		expect(warn).toHaveBeenCalledWith("This edit no longer applies to the current task.")
-		warn.mockRestore()
+		await provider.handleUserMessageEdit({
+			type: "editMessageConfirm",
+			text: "tampered",
+			chatMessageEdit: identity,
+		})
+		expect(task.editUserMessage).toHaveBeenCalledWith(identity, "full draft", [IMAGE])
+		expect(postMessageToWebview).toHaveBeenLastCalledWith(
+			expect.objectContaining({ chatMessageEditResult: expect.objectContaining({ status: "success" }) }),
+		)
+		await provider.handleUserMessageEdit({ type: "editMessageConfirm", chatMessageEdit: identity })
+		expect(task.editUserMessage).toHaveBeenCalledTimes(1)
 	})
 })

@@ -100,6 +100,24 @@ export const webviewMessageHandler = async (
 	message: WebviewMessage,
 	marketplaceManager?: MarketplaceManager,
 ) => {
+	// Always acknowledge explicit model actions, including read-only/busy rejections.
+	if (message.type === "modelOperation") {
+		await provider.handleModelOperation(message.modelOperation)
+		return
+	}
+	if (message.type === "modelOperationApproval") {
+		await provider.handleModelOperationApproval(message.modelOperationApproval)
+		return
+	}
+	if (message.type === "queueTaskProfile") {
+		await provider.queueTaskProfile(message.modelOperation)
+		return
+	}
+	// History-edit results must also reach the editor when its source becomes stale.
+	if (["submitEditedMessage", "editMessageConfirm", "editMessageCancel"].includes(message.type)) {
+		await provider.handleUserMessageEdit(message)
+		return
+	}
 	// Updater controls are not model tools. URLs and local paths never come from the webview.
 	if (message.type === "releaseUpdateAction") {
 		const action = message.releaseUpdateAction
@@ -454,175 +472,6 @@ export const webviewMessageHandler = async (
 	}
 
 	/**
-	 * Handles message editing operations with user confirmation
-	 */
-	const handleEditOperation = async (messageTs: number, editedContent: string, images?: string[]): Promise<void> => {
-		// Check if there's a checkpoint before this message
-		const currentCline = provider.getCurrentTask()
-		let hasCheckpoint = false
-		if (currentCline) {
-			const { messageIndex } = findMessageIndices(messageTs, currentCline)
-			if (messageIndex !== -1) {
-				// Find the last checkpoint before this message
-				const checkpoints = currentCline.clineMessages.filter(
-					(msg) => msg.say === "checkpoint_saved" && msg.ts > messageTs,
-				)
-
-				hasCheckpoint = checkpoints.length > 0
-			} else {
-				console.log("[webviewMessageHandler] Edit - Message not found in clineMessages!")
-			}
-		} else {
-			console.log("[webviewMessageHandler] Edit - No currentCline available!")
-		}
-
-		// Send message to webview to show edit confirmation dialog
-		await provider.postMessageToWebview({
-			type: "showEditMessageDialog",
-			messageTs,
-			text: editedContent,
-			hasCheckpoint,
-			images,
-			...(message.chatMessageEdit ? { chatMessageEdit: message.chatMessageEdit } : {}),
-		})
-	}
-
-	/**
-	 * Handles confirmed message editing from webview dialog
-	 */
-	const handleEditMessageConfirm = async (
-		messageTs: number,
-		editedContent: string,
-		restoreCheckpoint?: boolean,
-		images?: string[],
-	): Promise<void> => {
-		const currentCline = provider.getCurrentTask()
-		if (!currentCline) {
-			console.error("[handleEditMessageConfirm] No current cline available")
-			return
-		}
-
-		// Use findMessageIndices to find messages based on timestamp
-		const { messageIndex, apiConversationHistoryIndex } = findMessageIndices(messageTs, currentCline)
-
-		if (messageIndex === -1) {
-			const errorMessage = t("common:errors.message.message_not_found", { messageTs })
-			console.error("[handleEditMessageConfirm]", errorMessage)
-			await vscode.window.showErrorMessage(errorMessage)
-			return
-		}
-
-		try {
-			const targetMessage = currentCline.clineMessages[messageIndex]
-
-			// If checkpoint restoration is requested, find and restore to the last checkpoint before this message
-			if (restoreCheckpoint) {
-				// Find the last checkpoint before this message
-				const checkpoints = currentCline.clineMessages.filter(
-					(msg) => msg.say === "checkpoint_saved" && msg.ts > messageTs,
-				)
-
-				const nextCheckpoint = checkpoints[0]
-
-				if (nextCheckpoint && nextCheckpoint.text) {
-					await handleCheckpointRestoreOperation({
-						provider,
-						currentCline,
-						messageTs: targetMessage.ts!,
-						messageIndex,
-						checkpoint: { hash: nextCheckpoint.text },
-						operation: "edit",
-						editData: {
-							editedContent,
-							images,
-							apiConversationHistoryIndex,
-						},
-					})
-					// The task will be cancelled and reinitialized by checkpointRestore
-					// The pending edit will be processed in the reinitialized task
-					return
-				} else {
-					// No checkpoint found before this message
-					console.log("[handleEditMessageConfirm] No checkpoint found before message")
-					vscode.window.showWarningMessage("No checkpoint found before this message")
-					// Continue with non-checkpoint edit
-				}
-			}
-
-			// For non-checkpoint edits, remove the ORIGINAL user message being edited and all subsequent messages
-			// Determine the correct starting index to delete from (prefer the last preceding user_feedback message)
-			let deleteFromMessageIndex = messageIndex
-			let deleteFromApiIndex = apiConversationHistoryIndex
-
-			// Find the nearest preceding user message to ensure we replace the original, not just the assistant reply
-			for (let i = messageIndex; i >= 0; i--) {
-				const m = currentCline.clineMessages[i]
-				if (m?.say === "user_feedback") {
-					deleteFromMessageIndex = i
-					// Align API history truncation to the same user message timestamp if present
-					const userTs = m.ts
-					if (typeof userTs === "number") {
-						const apiIdx = currentCline.apiConversationHistory.findIndex(
-							(am: ApiMessage) => am.ts === userTs,
-						)
-						if (apiIdx !== -1) {
-							deleteFromApiIndex = apiIdx
-						}
-					}
-					break
-				}
-			}
-
-			// Timestamp fallback for API history when exact user message isn't present
-			if (deleteFromApiIndex === -1) {
-				const tsThresholdForEdit = currentCline.clineMessages[deleteFromMessageIndex]?.ts
-				if (typeof tsThresholdForEdit === "number") {
-					deleteFromApiIndex = findFirstApiIndexAtOrAfter(tsThresholdForEdit, currentCline)
-				}
-			}
-
-			// Store checkpoints from messages that will be preserved
-			const preservedCheckpoints = new Map<number, any>()
-			for (let i = 0; i < deleteFromMessageIndex; i++) {
-				const msg = currentCline.clineMessages[i]
-				if (msg?.checkpoint && msg.ts) {
-					preservedCheckpoints.set(msg.ts, msg.checkpoint)
-				}
-			}
-
-			// Delete the original (user) message and all subsequent messages using MessageManager
-			const rewindTs = currentCline.clineMessages[deleteFromMessageIndex]?.ts
-			if (rewindTs) {
-				await currentCline.messageManager.rewindToTimestamp(rewindTs, { includeTargetMessage: false })
-			}
-
-			// Restore checkpoint associations for preserved messages
-			for (const [ts, checkpoint] of preservedCheckpoints) {
-				const msgIndex = currentCline.clineMessages.findIndex((msg) => msg.ts === ts)
-				if (msgIndex !== -1) {
-					currentCline.clineMessages[msgIndex].checkpoint = checkpoint
-				}
-			}
-
-			// Save the updated messages with restored checkpoints
-			if (!isCurrentAction()) return
-			await currentCline.overwriteClineMessages(currentCline.clineMessages)
-
-			// Update the UI to reflect the deletion
-			await provider.postStateToWebview()
-
-			if (isCurrentAction()) await currentCline.submitUserMessage(editedContent, images)
-		} catch (error) {
-			console.error("Error in edit message:", error)
-			vscode.window.showErrorMessage(
-				t("common:errors.message.error_editing_message", {
-					error: error instanceof Error ? error.message : String(error),
-				}),
-			)
-		}
-	}
-
-	/**
 	 * Handles message modification operations (delete or edit) with confirmation dialog
 	 * @param messageTs Timestamp of the message to operate on
 	 * @param operation Type of operation ('delete' or 'edit')
@@ -638,7 +487,7 @@ export const webviewMessageHandler = async (
 		if (operation === "delete") {
 			await handleDeleteOperation(messageTs)
 		} else if (operation === "edit" && editedContent) {
-			await handleEditOperation(messageTs, editedContent, images)
+			await provider.handleUserMessageEdit(message)
 		}
 	}
 
@@ -695,12 +544,6 @@ export const webviewMessageHandler = async (
 		case "foregroundTask":
 		case "cancelBackgroundTask":
 			await provider.handleRunningTaskControl(message.type, message.taskId, message.instanceId)
-			break
-		case "modelOperation":
-			await provider.handleModelOperation(message.modelOperation)
-			break
-		case "modelOperationApproval":
-			await provider.handleModelOperationApproval(message.modelOperationApproval)
 			break
 		case "webviewDidLaunch":
 			// Log arrival with heap pressure. A repeated hydration request mid-task is the
@@ -1807,34 +1650,9 @@ export const webviewMessageHandler = async (
 			await handleMessageModificationsOperation(message.value, "delete")
 			break
 		}
-		case "submitEditedMessage": {
-			const editTask = provider.getCurrentTask()
-			if (message.chatMessageEdit && !provider.validateChatMessageEdit(message.chatMessageEdit)) {
-				void vscode.window.showWarningMessage(
-					"History changed or the message is ambiguous. Reopen the editor; no edit was applied.",
-				)
-				break
-			}
-			// A correlated editor carries the task identity it opened against. Never apply
-			// the edit to a task the user has since switched to.
-			if (
-				message.taskId &&
-				message.instanceId &&
-				(!editTask || editTask.taskId !== message.taskId || editTask.instanceId !== message.instanceId)
-			) {
-				void vscode.window.showWarningMessage("This edit no longer applies to the current task.")
-				break
-			}
-			if (editTask && typeof message.value === "number" && message.value && message.editedMessageContent) {
-				await handleMessageModificationsOperation(
-					message.value,
-					"edit",
-					message.editedMessageContent,
-					message.images,
-				)
-			}
+		case "submitEditedMessage":
+			await provider.handleUserMessageEdit(message)
 			break
-		}
 
 		case "hasOpenedModeSelector":
 			await updateGlobalState("hasOpenedModeSelector", message.bool ?? true)
@@ -2177,24 +1995,10 @@ export const webviewMessageHandler = async (
 			await handleDeleteMessageConfirm(message.messageTs, message.restoreCheckpoint)
 			break
 		case "editMessageConfirm":
-			if (message.messageTs && message.text) {
-				if (message.chatMessageEdit && !provider.validateChatMessageEdit(message.chatMessageEdit)) {
-					void vscode.window.showWarningMessage(
-						"This edit confirmation is stale. Reopen the editor; no edit was applied.",
-					)
-					break
-				}
-				const resolved = await resolveIncomingImages({ text: message.text, images: message.images })
-				if (!isCurrentAction()) break
-				if (message.chatMessageEdit && !provider.validateChatMessageEdit(message.chatMessageEdit)) break
-				await handleEditMessageConfirm(
-					message.messageTs,
-					resolved.text,
-					message.restoreCheckpoint,
-					resolved.images,
-				)
-			}
+		case "editMessageCancel":
+			await provider.handleUserMessageEdit(message)
 			break
+
 		case "getListApiConfiguration":
 			try {
 				const listApiConfig = await provider.providerSettingsManager.listConfig()

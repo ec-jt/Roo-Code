@@ -97,6 +97,7 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 			taskHistory,
 			clineMessages,
 			commands,
+			chatWindow,
 			enterBehavior,
 			lockApiConfigAcrossModes,
 			modelOperation,
@@ -105,15 +106,23 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 		// Find the ID and display text for the currently selected API configuration.
 		const { currentConfigId, displayName } = useMemo(() => {
 			const currentConfig = listApiConfigMeta?.find((config) =>
-				modelOperation?.profileId
-					? config.id === modelOperation.profileId
-					: config.name === currentApiConfigName,
+				modelOperation?.nextProfileId
+					? config.id === modelOperation.nextProfileId
+					: modelOperation?.profileId
+						? config.id === modelOperation.profileId
+						: config.name === (modelOperation?.activeProfileName ?? currentApiConfigName),
 			)
 			return {
 				currentConfigId: currentConfig?.id || "",
-				displayName: currentConfig?.name || currentApiConfigName || "",
+				displayName: `${currentConfig?.name || currentApiConfigName || ""}${modelOperation?.nextProfileId ? " (next request)" : ""}`,
 			}
-		}, [listApiConfigMeta, currentApiConfigName, modelOperation?.profileId])
+		}, [
+			listApiConfigMeta,
+			currentApiConfigName,
+			modelOperation?.profileId,
+			modelOperation?.nextProfileId,
+			modelOperation?.activeProfileName,
+		])
 
 		const [gitCommits, setGitCommits] = useState<any[]>([])
 		const [showDropdown, setShowDropdown] = useState(false)
@@ -944,13 +953,13 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 		// Helper function to handle API config change
 		const handleApiConfigChange = useCallback(
 			(value: string) => {
-				if (isStreaming) {
+				if (isStreaming || (modelOperationControls && modelOperation)) {
 					modelOperationControls?.open("switch", undefined, value)
 					return
 				}
 				vscode.postMessage({ type: "loadApiConfigurationById", text: value })
 			},
-			[isStreaming, modelOperationControls],
+			[isStreaming, modelOperationControls, modelOperation],
 		)
 
 		const handleToggleLockApiConfig = useCallback(() => {
@@ -1323,9 +1332,11 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 							value={currentConfigId}
 							displayName={displayName}
 							disabled={
-								isStreaming
-									? !modelOperationControls || modelOperationControls.busy
-									: selectApiConfigDisabled
+								isEditMode ||
+								chatWindow?.following === false ||
+								(modelOperationControls && modelOperation
+									? modelOperationControls.busy
+									: selectApiConfigDisabled)
 							}
 							title={t("chat:selectApiConfig")}
 							onChange={handleApiConfigChange}

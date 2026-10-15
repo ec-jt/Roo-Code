@@ -520,6 +520,93 @@ describe("Task persistence", () => {
 		})
 	})
 
+	describe("user history edit safety", () => {
+		const setupUser = () => {
+			const task = new Task({ provider: mockProvider, apiConfiguration: mockApiConfig, startTask: false })
+			mockProvider.getCurrentTask = vi.fn(() => task)
+			mockProvider.isChatWindowFollowing = vi.fn(() => true)
+			mockProvider.validateChatMessageEdit = vi.fn(() => true)
+			task.isInitialized = true
+			task.clineMessages = [
+				{ ts: 1, type: "say", say: "text", text: "root" },
+				{ ts: 2, type: "say", say: "user_feedback", text: "old" },
+				{ ts: 4, type: "ask", ask: "resume_task" },
+			]
+			task.apiConversationHistory = [
+				{ role: "user", content: "root", ts: 1 },
+				{ role: "user", content: "old", ts: 3 },
+			]
+			;(task as any).assistantEditWaitingForResume = true
+			return {
+				task,
+				edit: {
+					taskId: task.taskId,
+					instanceId: task.instanceId,
+					operationId: "edit",
+					index: 1,
+					revision: task.chatHistoryIndex.ensure(task.clineMessages).revision,
+					ts: 2,
+				},
+			}
+		}
+		it.each(["modelOperationRequests", "isStreaming", "presentAssistantMessageLocked"])(
+			"rejects editing during %s before writes",
+			async (field) => {
+				const { task, edit } = setupUser()
+				;(task as any)[field] = true
+				await expect(task.editUserMessage(edit, "new")).rejects.toThrow()
+				expect(mockSaveApiMessages).not.toHaveBeenCalled()
+			},
+		)
+		it("locks dispatch during writes and admits a replacement only after both histories are durable", async () => {
+			const { task, edit } = setupUser()
+			let release!: () => void
+			mockFlushTaskSaves.mockImplementationOnce(
+				() =>
+					new Promise<void>((resolve) => {
+						release = resolve
+					}),
+			)
+			const saving = task.editUserMessage(edit, "new", ["image"])
+			await Promise.resolve()
+			expect(task.isAssistantMessageEditing).toBe(true)
+			await expect(task.attemptApiRequest().next()).rejects.toThrow("edit")
+			expect((task as any).askResponse).toBeUndefined()
+			release()
+			await saving
+			expect(task.clineMessages).toHaveLength(1)
+			expect(task.apiConversationHistory).toHaveLength(1)
+			expect((task as any).askResponseText).toBe("new")
+			expect((task as any).askResponseImages).toEqual(["image"])
+			expect(mockSaveApiMessages).toHaveBeenCalledWith(expect.objectContaining({ barrier: true }))
+			expect(mockSaveTaskMessages).toHaveBeenCalledWith(expect.objectContaining({ barrier: true }))
+		})
+		it("rolls back failed saves and does not admit the replacement", async () => {
+			const { task, edit } = setupUser()
+			const before = structuredClone(task.clineMessages)
+			mockSaveTaskMessages.mockRejectedValueOnce(new Error("disk full"))
+			await expect(task.editUserMessage(edit, "new")).rejects.toThrow()
+			expect(task.clineMessages).toEqual(before)
+			expect((task as any).askResponse).toBeUndefined()
+			expect(task.modelOperationDispatchClosed).toBe(true)
+		})
+		it("queues model changes without changing the current handler and applies at a safe boundary", () => {
+			const { task } = setupUser()
+			const handler = task.api
+			;(task as any).modelOperationRequests = 1
+			task.queueProfileForNextRequest("next", "Next", { ...mockApiConfig, apiModelId: "claude-sonnet-4-6" })
+			expect(task.api).toBe(handler)
+			expect(task.modelOperationState.nextProfileId).toBe("next")
+			expect(() => (task as any).applyNextTaskProfile()).toThrow()
+			;(task as any).modelOperationRequests = 0
+			;(task as any).applyNextTaskProfile()
+			expect(task.api).not.toBe(handler)
+			expect(task.apiConfiguration.apiModelId).toBe("claude-sonnet-4-6")
+			expect(task.taskApiConfigName).toBe("Next")
+			expect(task.skipPrevResponseIdOnce).toBe(true)
+		})
+	})
+
 	describe("assistant history edits", () => {
 		const setup = () => {
 			const task = new Task({

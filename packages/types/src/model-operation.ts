@@ -55,6 +55,8 @@ export const modelOperationStateSchema = z
 		revision: revisionSchema,
 		requestId: identitySchema.optional(),
 		profileId: identitySchema.optional(),
+		nextProfileId: identitySchema.optional(),
+		activeProfileName: z.string().optional(),
 		readiness: z.enum(["ready", "blocked"]),
 		reason: z.string().optional(),
 		requiresToolApproval: z.boolean(),

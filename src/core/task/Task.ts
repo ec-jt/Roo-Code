@@ -38,6 +38,7 @@ import {
 	type ContextTruncation,
 	type ClineMessage,
 	type AssistantMessageEdit,
+	type ChatMessageEditIdentity,
 	type ClineSay,
 	type ClineAsk,
 	type ToolProgressStatus,
@@ -166,7 +167,12 @@ import {
 	checkpointDiff,
 } from "../checkpoints"
 import { processUserContentMentions } from "../mentions/processUserContentMentions"
-import { getMessagesSinceLastSummary, summarizeConversation, getEffectiveApiHistory } from "../condense"
+import {
+	getMessagesSinceLastSummary,
+	summarizeConversation,
+	getEffectiveApiHistory,
+	cleanupAfterTruncation,
+} from "../condense"
 import { MessageQueueService } from "../message-queue/MessageQueueService"
 import { AutoApprovalHandler, checkAutoApproval } from "../auto-approval"
 import { MessageManager } from "../message-manager"
@@ -571,6 +577,44 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	private memoryContextForTurn = ""
 	private modelOperationRequestPreparing = false
 	private deferredApiConfiguration?: ProviderSettings
+	private nextTaskProfile?: { id: string; name: string; settings: ProviderSettings }
+
+	public queueProfileForNextRequest(id: string, name: string, settings: ProviderSettings): void {
+		if (
+			this.isAssistantMessageEditing ||
+			this.modelOperationClosed ||
+			this.persistenceClosed ||
+			this.abort ||
+			this.abandoned
+		)
+			throw new Error("Task is closed or saving a history edit. Reopen it before changing models.")
+		if (this.modelOperationProfileId || this.modelOperationPreparing || this.modelOperationPrepared)
+			throw new Error("This replay branch has a pinned profile. Use a new branch to change its model.")
+		if (this.modelDispatchRuntime && settings.apiProvider !== "anthropic")
+			throw new Error(
+				"The active mediated runtime supports Anthropic only. Reopen the task with the desired provider.",
+			)
+		this.nextTaskProfile = { id, name, settings: structuredClone(settings) }
+	}
+
+	private applyNextTaskProfile(): void {
+		const next = this.nextTaskProfile
+		if (!next) return
+		if (
+			this.modelOperationRequests ||
+			this.isAssistantMessageEditing ||
+			this.modelOperationProfileId ||
+			this.modelOperationClosed
+		)
+			throw new Error("The next model profile cannot be applied while a request or history edit is active.")
+		const handler = buildApiHandler(next.settings)
+		this.apiConfiguration = next.settings
+		this.api = handler
+		this._taskApiConfigName = next.name
+		this.deferredApiConfiguration = undefined
+		this.nextTaskProfile = undefined
+		this.skipPrevResponseIdOnce = true
+	}
 	private modelOperationProvenanceReady?: Promise<void>
 	private readonly modelOperationAdmission = new ModelOperationAdmission(
 		() => ({ taskId: this.taskId, instanceId: this.instanceId, revision: this.modelOperationRevision }),
@@ -591,6 +635,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			revision: this.modelOperationRevision,
 			requestId: this.modelOperationSnapshot?.requestId,
 			profileId: this.modelOperationProfileId,
+			nextProfileId: this.nextTaskProfile?.id,
+			activeProfileName: this._taskApiConfigName,
 			readiness: reason ? "blocked" : "ready",
 			reason,
 			requiresToolApproval: this.modelOperationAdmission.requiresApproval,
@@ -1858,6 +1904,108 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		await this.saveClineMessages(true)
 	}
 
+	/** User edits require a settled resume prompt, not a live tool/follow-up approval. */
+	public assertUserEditReady(edit: ChatMessageEditIdentity): void {
+		this.assertAssistantEditAllowed(edit)
+		if (!this.assistantEditWaitingForResume)
+			throw new Error("Stop and reopen the task without resuming before editing your message.")
+	}
+
+	/** Rewind both histories under the shared history-edit/dispatch lock. */
+	public async editUserMessage(edit: ChatMessageEditIdentity, text: string, images?: string[]): Promise<void> {
+		const provider = this.providerRef.deref()
+		if (this.isAssistantMessageEditing) throw new Error("Another history edit is being saved.")
+		const validate = () => {
+			this.assertUserEditReady(edit)
+			if (!provider?.validateChatMessageEdit(edit)) throw new Error("The edit reference is stale or ambiguous.")
+		}
+		validate()
+		if (!text.trim() && !images?.length) throw new Error("The replacement message is empty.")
+		const originalUi = this.clineMessages
+		const originalApi = this.apiConversationHistory
+		// UI feedback is recorded before its API user turn. Never select a turn beyond
+		// the next feedback row, and reject ambiguous timestamp matches.
+		const nextFeedback = originalUi.slice(edit.index + 1).find((row) => row.say === "user_feedback")
+		const apiIndex = originalApi.findIndex(
+			(row) => row.role === "user" && row.ts !== undefined && row.ts >= edit.ts,
+		)
+		const target = originalApi[apiIndex]
+		if (
+			!target ||
+			(nextFeedback && target.ts! >= nextFeedback.ts) ||
+			originalApi.filter((row) => row.ts === target.ts).length !== 1
+		)
+			throw new Error("The stored model turn cannot be mapped uniquely. No edit was applied.")
+		const removed = originalUi.slice(edit.index)
+		const condenseIds = new Set(removed.map((row) => row.contextCondense?.condenseId).filter(Boolean))
+		const truncationIds = new Set(removed.map((row) => row.contextTruncation?.truncationId).filter(Boolean))
+		const ui = originalUi.slice(0, edit.index)
+		const api = cleanupAfterTruncation(
+			originalApi
+				.slice(0, apiIndex)
+				.filter(
+					(row) =>
+						!(row.isSummary && row.condenseId && condenseIds.has(row.condenseId)) &&
+						!(row.isTruncationMarker && row.truncationId && truncationIds.has(row.truncationId)),
+				),
+		)
+		const freshHandler = buildApiHandler(this.apiConfiguration)
+		const saving = Promise.resolve().then(async () => {
+			let mutated = false
+			let marked = false
+			try {
+				await this.flushPersistence()
+				await Promise.all(this.pendingMessageSaves)
+				validate()
+				await beginAssistantEdit(this.globalStoragePath, this.taskId)
+				marked = true
+				validate()
+				this.apiConversationHistory = api
+				this.clineMessages = ui
+				this.chatHistoryIndex.rebuild(ui)
+				mutated = true
+				if (!(await this.saveApiConversationHistory(true))) throw new Error("Could not save model history.")
+				this.assertUserEditReady(edit)
+				await this.saveClineMessages(true)
+				this.assertUserEditReady(edit)
+				await finishAssistantEdit(this.globalStoragePath, this.taskId)
+				this.assertUserEditReady(edit)
+				this.api = freshHandler
+				this.skipPrevResponseIdOnce = true
+				this.modelOperationRevision++
+				this.modelOperationSnapshot = undefined
+				this.modelOperationRequestId = undefined
+				// Admit exactly one replacement synchronously while the resume loop is
+				// fenced. No checkpoint continuation, delayed callback or automatic retry.
+				this.askResponseText = text
+				this.askResponseImages = images ?? []
+				this.askResponse = "messageResponse"
+			} catch (error) {
+				this.modelOperationFailure = "User edit failed. Reopen the task before continuing."
+				this.modelOperationClosed = true
+				if (mutated) {
+					this.apiConversationHistory = originalApi
+					this.clineMessages = originalUi
+					this.chatHistoryIndex.rebuild(originalUi)
+					const options = { taskId: this.taskId, globalStoragePath: this.globalStoragePath, barrier: true }
+					const restored = await Promise.allSettled([
+						saveApiMessages({ ...options, messages: originalApi }),
+						saveTaskMessages({ ...options, messages: originalUi }),
+					])
+					if (restored.every((result) => result.status === "fulfilled"))
+						await finishAssistantEdit(this.globalStoragePath, this.taskId)
+				} else if (marked) await finishAssistantEdit(this.globalStoragePath, this.taskId)
+				throw error
+			}
+		})
+		this.assistantEditPromise = saving
+		try {
+			await saving
+		} finally {
+			this.assistantEditPromise = undefined
+		}
+	}
+
 	/** Save a correction without fulfilling an ask or dispatching work. */
 	public async editAssistantMessage(edit: AssistantMessageEdit): Promise<void> {
 		validateAssistantMessageEdit(edit)
@@ -1922,7 +2070,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		if (this.providerRef.deref()?.getCurrentTask() === this) await this.updateClineMessage(prepared.message)
 	}
 
-	private assertAssistantEditAllowed(edit: AssistantMessageEdit): void {
+	private assertAssistantEditAllowed(edit: Pick<AssistantMessageEdit, "taskId" | "instanceId">): void {
 		const provider = this.providerRef.deref()
 		if (edit.taskId !== this.taskId || edit.instanceId !== this.instanceId || provider?.getCurrentTask() !== this)
 			throw new Error("The task instance changed. Reopen the editor.")
@@ -3730,6 +3878,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				this.updateApiConfiguration(this.deferredApiConfiguration)
 				this.deferredApiConfiguration = undefined
 			}
+			this.applyNextTaskProfile()
 			// Read memory once at the new-turn boundary, before pinning. Prepared replay
 			// uses its exact imported snapshot and must never acquire fresh memory.
 			this.memoryContextForTurn = this.modelOperationPrepared ? "" : await getTaskMemoryContext(this)

@@ -166,12 +166,21 @@ export interface AssistantMessageEditResult {
  * authoritative stored values for the exact indexed row, so the webview never edits a
  * truncated preview prefix and loses the remainder or the attachments.
  */
-export interface ChatMessageEditData {
+export interface ChatMessageEditIdentity {
+	operationId: string
 	taskId: string
 	instanceId: string
 	ts: number
-	index?: number
-	revision?: number
+	index: number
+	revision: number
+}
+
+export interface ChatMessageEditResult extends ChatMessageEditIdentity {
+	status: "success" | "cancelled" | "error"
+	error?: string
+}
+
+export interface ChatMessageEditData extends ChatMessageEditIdentity {
 	text?: string
 	images?: string[]
 	/** The stored user message or its attachments exceed the inline edit bound. */
@@ -256,6 +265,7 @@ export interface ExtensionMessage {
 		| "codeIndexSettingsSaved"
 		| "codeIndexSecretStatus"
 		| "chatMessageEditData"
+		| "chatMessageEditResult"
 		| "showDeleteMessageDialog"
 		| "showEditMessageDialog"
 		| "commands"
@@ -357,7 +367,8 @@ export interface ExtensionMessage {
 	messageTs?: number
 	hasCheckpoint?: boolean
 	chatMessageEditData?: ChatMessageEditData
-	chatMessageEdit?: { taskId: string; instanceId: string; ts: number; index?: number; revision?: number }
+	chatMessageEditResult?: ChatMessageEditResult
+	chatMessageEdit?: ChatMessageEditIdentity
 	context?: string
 	commands?: Command[]
 	queuedMessages?: QueuedMessage[]
@@ -641,6 +652,7 @@ export interface WebviewMessage {
 		| "commandActivityControl"
 		| "memoryBrowserRequest"
 		| "modelOperation"
+		| "queueTaskProfile"
 		| "modelOperationApproval"
 		| "deleteMultipleTasksWithIds"
 		| "currentApiConfigName"
@@ -705,6 +717,7 @@ export interface WebviewMessage {
 		| "deleteMessageConfirm"
 		| "submitEditedMessage"
 		| "editMessageConfirm"
+		| "editMessageCancel"
 		| "searchCommits"
 		| "setApiConfigPassword"
 		| "mode"
@@ -816,7 +829,7 @@ export interface WebviewMessage {
 	chatWindowRequest?: ChatWindowRequest
 	chatWindowAck?: ChatWindowAck
 	chatMessageOpen?: { taskId: string; instanceId: string; ts: number; index?: number; revision?: number }
-	chatMessageEdit?: { taskId: string; instanceId: string; ts: number; index?: number; revision?: number }
+	chatMessageEdit?: ChatMessageEditIdentity
 	contextRecoveryBranch?: { taskId: string; instanceId: string; eventId: string }
 	assistantMessageEdit?: AssistantMessageEdit
 	chatFileChangesOpen?: { taskId: string; instanceId: string; path: string }

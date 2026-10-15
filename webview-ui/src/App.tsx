@@ -89,6 +89,7 @@ const App = () => {
 		images: [],
 	})
 
+	const confirmedEditOperation = useRef<string>()
 	const settingsRef = useRef<SettingsViewRef>(null)
 	const chatViewRef = useRef<ChatViewRef>(null)
 
@@ -152,12 +153,13 @@ const App = () => {
 				})
 			}
 
-			if (message.type === "showEditMessageDialog" && message.messageTs && message.text) {
+			if (message.type === "showEditMessageDialog" && message.messageTs && message.chatMessageEdit) {
+				confirmedEditOperation.current = undefined
 				setEditMessageDialogState({
 					chatMessageEdit: message.chatMessageEdit,
 					isOpen: true,
 					messageTs: message.messageTs,
-					text: message.text,
+					text: message.text ?? "",
 					hasCheckpoint: message.hasCheckpoint || false,
 					images: message.images || [],
 				})
@@ -294,8 +296,19 @@ const App = () => {
 					open={editMessageDialogState.isOpen}
 					type="edit"
 					hasCheckpoint={editMessageDialogState.hasCheckpoint}
-					onOpenChange={(open: boolean) => setEditMessageDialogState((prev) => ({ ...prev, isOpen: open }))}
+					onOpenChange={(open: boolean) => {
+						if (
+							!open &&
+							confirmedEditOperation.current !== editMessageDialogState.chatMessageEdit?.operationId
+						)
+							vscode.postMessage({
+								type: "editMessageCancel",
+								chatMessageEdit: editMessageDialogState.chatMessageEdit,
+							})
+						setEditMessageDialogState((prev) => ({ ...prev, isOpen: open }))
+					}}
 					onConfirm={(restoreCheckpoint: boolean) => {
+						confirmedEditOperation.current = editMessageDialogState.chatMessageEdit?.operationId
 						vscode.postMessage({
 							type: "editMessageConfirm",
 							messageTs: editMessageDialogState.messageTs,
@@ -310,8 +323,19 @@ const App = () => {
 			) : (
 				<MemoizedEditMessageDialog
 					open={editMessageDialogState.isOpen}
-					onOpenChange={(open: boolean) => setEditMessageDialogState((prev) => ({ ...prev, isOpen: open }))}
+					onOpenChange={(open: boolean) => {
+						if (
+							!open &&
+							confirmedEditOperation.current !== editMessageDialogState.chatMessageEdit?.operationId
+						)
+							vscode.postMessage({
+								type: "editMessageCancel",
+								chatMessageEdit: editMessageDialogState.chatMessageEdit,
+							})
+						setEditMessageDialogState((prev) => ({ ...prev, isOpen: open }))
+					}}
 					onConfirm={() => {
+						confirmedEditOperation.current = editMessageDialogState.chatMessageEdit?.operationId
 						vscode.postMessage({
 							type: "editMessageConfirm",
 							messageTs: editMessageDialogState.messageTs,

@@ -632,29 +632,123 @@ export class ClineProvider
 		}))
 	}
 
+	private async postModelControlFailure(payload: unknown, message: string, approval = false) {
+		const value = payload as Record<string, unknown> | undefined
+		const id = value?.[approval ? "approvalId" : "operationId"]
+		const status = {
+			operationId: typeof id === "string" && id.trim() ? id.slice(0, 256) : "invalid-operation",
+			status: "blocked" as const,
+			message,
+			...(this.getCurrentTask()
+				? {
+						taskId: this.getCurrentTask()!.taskId,
+						instanceId: this.getCurrentTask()!.instanceId,
+						revision: this.getCurrentTask()!.modelOperationState.revision,
+					}
+				: {}),
+		}
+		await this.postMessageToWebview({ type: "modelOperationStatus", modelOperationStatus: status })
+		return status
+	}
+
+	private pendingTaskProfileOperation?: symbol
+
 	public async handleModelOperation(payload: unknown) {
-		if (this.warnIfTaskBackgrounded() || this.modelOperationInProgress)
-			return {
-				operationId: "background-blocked",
-				status: "blocked" as const,
-				message: "Return to the task and wait for the current operation to finish.",
-			}
+		if (
+			this.isTaskBackgrounded ||
+			this.modelOperationInProgress ||
+			this.pendingTaskProfileOperation ||
+			this.isChatWindowFollowing() === false ||
+			this.getCurrentTask()?.isAssistantMessageEditing
+		)
+			return this.postModelControlFailure(
+				payload,
+				"Return to the latest foreground task and wait for the current operation or edit to finish.",
+			)
 		this.modelOperationInProgress = true
 		try {
 			return await this.getModelOperationCoordinator().run(payload)
+		} catch (error) {
+			return this.postModelControlFailure(
+				payload,
+				error instanceof Error ? error.message : "Model operation failed before acknowledgement.",
+			)
 		} finally {
 			this.modelOperationInProgress = false
 		}
 	}
 
-	public handleModelOperationApproval(payload: unknown) {
-		if (this.isTaskBackgrounded)
-			return Promise.resolve({
-				operationId: "background-blocked",
-				status: "blocked" as const,
-				message: "Return to the task before approving.",
+	public async handleModelOperationApproval(payload: unknown) {
+		if (
+			this.isTaskBackgrounded ||
+			this.isChatWindowFollowing() === false ||
+			this.getCurrentTask()?.isAssistantMessageEditing
+		)
+			return this.postModelControlFailure(payload, "Return to the latest foreground task before approving.", true)
+		try {
+			return await this.getModelOperationCoordinator().respondToApproval(payload)
+		} catch (error) {
+			return this.postModelControlFailure(
+				payload,
+				error instanceof Error ? error.message : "Approval failed before acknowledgement.",
+				true,
+			)
+		}
+	}
+
+	public async queueTaskProfile(payload: unknown): Promise<void> {
+		const { modelOperationSchema } = await import("@roo-code/types")
+		const parsed = modelOperationSchema.safeParse(payload)
+		if (!parsed.success || parsed.data.kind !== "switch") {
+			await this.postModelControlFailure(payload, "Invalid next-request model selection.")
+			return
+		}
+		const operation = parsed.data
+		const source = this.getCurrentTask()
+		const token = Symbol("next-profile")
+		const assertCurrent = () => {
+			if (
+				!source ||
+				this.getCurrentTask() !== source ||
+				source.taskId !== operation.taskId ||
+				source.instanceId !== operation.instanceId ||
+				this.isTaskBackgrounded ||
+				!this.isChatWindowFollowing() ||
+				this.modelOperationInProgress ||
+				source.isAssistantMessageEditing ||
+				(this.pendingTaskProfileOperation && this.pendingTaskProfileOperation !== token)
+			)
+				throw new Error("Task changed or is busy. Select the model again on the current foreground task.")
+		}
+		try {
+			assertCurrent()
+			this.pendingTaskProfileOperation = token
+			const profile = await this.providerSettingsManager.getProfile({ id: operation.profileId })
+			const state = await this.getState()
+			assertCurrent()
+			if (!ProfileValidator.isProfileAllowed(profile, state.organizationAllowList))
+				throw new Error("The selected model profile is blocked by organization policy.")
+			source!.queueProfileForNextRequest(operation.profileId, profile.name, profile)
+			await this.postMessageToWebview({
+				type: "modelOperationStatus",
+				modelOperationStatus: {
+					operationId: operation.operationId,
+					status: "completed",
+					message: `Model profile '${profile.name}' selected for the next request in this task. The current response is unchanged; no request was started.`,
+					taskId: source!.taskId,
+					instanceId: source!.instanceId,
+					revision: source!.modelOperationState.revision,
+				},
 			})
-		return this.getModelOperationCoordinator().respondToApproval(payload)
+			await this.postStateToWebview()
+		} catch (error) {
+			await this.postModelControlFailure(
+				payload,
+				error instanceof Error ? error.message : "Could not select the next model.",
+			)
+		} finally {
+			if (this.pendingTaskProfileOperation === token) this.pendingTaskProfileOperation = undefined
+		}
 	}
 
 	/** Construct an inert standalone branch using only the explicitly selected saved profile. */
@@ -1517,9 +1611,13 @@ export class ClineProvider
 		return !task || this.chatWindow.isFollowing(task)
 	}
 
-	public validateChatMessageEdit(request: NonNullable<WebviewMessage["chatMessageEdit"]>): boolean {
+	public validateChatMessageEdit(request: WebviewMessage["chatMessageEdit"]): boolean {
 		const task = this.getCurrentTask()
 		if (
+			!request ||
+			typeof request.operationId !== "string" ||
+			!request.operationId ||
+			request.operationId.length > 128 ||
 			!task ||
 			task.taskId !== request.taskId ||
 			task.instanceId !== request.instanceId ||
@@ -1542,6 +1640,90 @@ export class ClineProvider
 		)
 	}
 
+	private pendingUserEdit?: {
+		identity: NonNullable<WebviewMessage["chatMessageEdit"]>
+		text: string
+		images?: string[]
+		expires: number
+	}
+
+	public async handleUserMessageEdit(message: WebviewMessage): Promise<void> {
+		const identity = message.chatMessageEdit
+		const reply = (status: "success" | "cancelled" | "error", error?: string) =>
+			identity &&
+			this.postMessageToWebview({
+				type: "chatMessageEditResult",
+				chatMessageEditResult: { ...identity, status, error },
+			})
+		try {
+			// Cancellation must clear its original pending confirmation even if a
+			// streaming update or task switch has made the history revision stale.
+			if (
+				message.type === "editMessageCancel" &&
+				identity &&
+				this.pendingUserEdit?.identity.operationId === identity.operationId &&
+				this.pendingUserEdit.identity.taskId === identity.taskId &&
+				this.pendingUserEdit.identity.instanceId === identity.instanceId
+			) {
+				this.pendingUserEdit = undefined
+				await reply("cancelled")
+				return
+			}
+			if (!identity || !this.validateChatMessageEdit(identity))
+				throw new Error("History changed or the message is ambiguous. Reopen the editor; no edit was applied.")
+			const task = this.getCurrentTask()!
+			if (message.type === "submitEditedMessage") {
+				task.assertUserEditReady(identity)
+				if (task.isAssistantMessageEditing) throw new Error("Another history edit is being saved.")
+				if (message.value !== identity.ts || typeof message.editedMessageContent !== "string")
+					throw new Error("The edit identity or content is missing.")
+				if (this.pendingUserEdit && this.pendingUserEdit.expires > Date.now())
+					throw new Error("An edit confirmation is already open.")
+				this.pendingUserEdit = {
+					identity: { ...identity },
+					text: message.editedMessageContent,
+					images: message.images?.slice(),
+					expires: Date.now() + 60_000,
+				}
+				await this.postMessageToWebview({
+					type: "showEditMessageDialog",
+					messageTs: identity.ts,
+					text: message.editedMessageContent,
+					images: message.images,
+					hasCheckpoint: false,
+					chatMessageEdit: identity,
+				})
+				return
+			}
+			const pending = this.pendingUserEdit
+			if (
+				!pending ||
+				Object.keys(pending.identity).some(
+					(key) => pending.identity[key as keyof typeof identity] !== identity[key as keyof typeof identity],
+				)
+			)
+				throw new Error("This edit confirmation is stale or has already been handled.")
+			this.pendingUserEdit = undefined // Consume before any await; duplicate confirmations cannot replay.
+			if (message.type === "editMessageCancel") {
+				await reply("cancelled")
+				return
+			}
+			if (pending.expires <= Date.now())
+				throw new Error("The edit confirmation expired. Your draft was not submitted.")
+			if (message.restoreCheckpoint)
+				throw new Error(
+					"Checkpoint restoration is not supported during message editing. No files or messages were changed.",
+				)
+			await task.editUserMessage(identity, pending.text, pending.images)
+			await reply("success")
+			await this.postStateToWebview()
+		} catch (error) {
+			if (identity && this.pendingUserEdit?.identity.operationId === identity.operationId)
+				this.pendingUserEdit = undefined
+			await reply("error", error instanceof Error ? error.message : String(error))
+		}
+	}
+
 	public async handleChatWindowMessage(message: WebviewMessage) {
 		if (message.type === "chatWindowAck") {
 			if (message.chatWindowAck) this.chatWindowDiagnostics.acknowledge(message.chatWindowAck)
@@ -1560,15 +1742,18 @@ export class ClineProvider
 		// bounded error, and never mutate history here.
 		if (message.type === "chatMessageEdit" && message.chatMessageEdit) {
 			const requested = message.chatMessageEdit
-			const reply = (data: Omit<ChatMessageEditData, "taskId" | "instanceId" | "ts">) =>
+			const reply = (
+				data: Omit<ChatMessageEditData, "taskId" | "instanceId" | "ts" | "operationId" | "index" | "revision">,
+			) =>
 				this.postMessageToWebview({
 					type: "chatMessageEditData",
 					chatMessageEditData: {
+						operationId: requested.operationId,
+						index: requested.index,
+						revision: requested.revision,
 						taskId: requested.taskId,
 						instanceId: requested.instanceId,
 						ts: requested.ts,
-						...(requested.index !== undefined ? { index: requested.index } : {}),
-						...(requested.revision !== undefined ? { revision: requested.revision } : {}),
 						...data,
 					},
 				})
@@ -1597,6 +1782,10 @@ export class ClineProvider
 			}
 			if (row.type !== "say" || row.say !== "user_feedback") {
 				await reply({ error: "Only your own messages can be edited from history." })
+				return
+			}
+			if (!this.validateChatMessageEdit(requested)) {
+				await reply({ error: "The edit identity is missing or ambiguous. Reopen the editor." })
 				return
 			}
 			const text = chatMessageText(row) ?? ""

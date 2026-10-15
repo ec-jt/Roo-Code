@@ -178,6 +178,56 @@ it("shows live readiness reason and cannot switch when blocked", () => {
 	expect(operations()).toHaveLength(0)
 })
 
+it("allows a next-request choice even when immediate restart is blocked", () => {
+	state = { ...source, readiness: "blocked", reason: "A tool has been admitted" }
+	render(<Harness />)
+	fireEvent.click(screen.getByRole("button", { name: /Select profile/ }))
+	fireEvent.click(screen.getByRole("button", { name: "Use for next request" }))
+	expect(vscode.postMessage).toHaveBeenCalledWith({
+		type: "queueTaskProfile",
+		modelOperation: expect.objectContaining({
+			taskId: "source",
+			instanceId: "instance",
+			profileId: "target-profile",
+			confirmCurrentWorkspace: false,
+		}),
+	})
+	expect(operations()).toHaveLength(0)
+})
+
+it("keeps the profile selector usable when the composer is disabled but not streaming", () => {
+	render(<Harness streaming={false} />)
+	expect(screen.getByRole("button", { name: /Select profile/ })).toBeEnabled()
+	fireEvent.click(screen.getByRole("button", { name: /Select profile/ }))
+	expect(screen.getByRole("button", { name: "Use for next request" })).toBeEnabled()
+})
+
+it("reports an unknown acknowledgement outcome without replaying the operation", async () => {
+	vi.useFakeTimers()
+	try {
+		render(<Harness />)
+		fireEvent.click(screen.getByRole("button", { name: regenerate }))
+		confirm(regenerate)
+		await act(async () => {
+			vi.advanceTimersByTime(60_001)
+		})
+		expect(screen.getByText(/operation outcome is unknown/)).toBeInTheDocument()
+		expect(operations()).toHaveLength(1)
+		postStatus({
+			operationId: operations()[0].modelOperation!.operationId,
+			status: "blocked",
+			message: "Busy. Retry later.",
+			taskId: source.taskId,
+			instanceId: source.instanceId,
+			revision: source.revision,
+		})
+		expect(screen.queryByText(/operation outcome is unknown/)).not.toBeInTheDocument()
+		expect(screen.getByRole("button", { name: regenerate })).toBeEnabled()
+	} finally {
+		vi.useRealTimers()
+	}
+})
+
 it.each(["revision", "instanceId", "taskId"] as const)("invalidates the dialog when %s changes", (field) => {
 	const view = render(<Harness />)
 	fireEvent.click(screen.getByRole("button", { name: regenerate }))
