@@ -909,7 +909,7 @@ export type CheckpointDiffPayload = z.infer<typeof checkoutDiffPayloadSchema>
 export const checkoutRestorePayloadSchema = z.object({
 	ts: z.number(),
 	commitHash: z.string(),
-	mode: z.enum(["preview", "restore"]),
+	mode: z.enum(["preview", "restore", "task"]),
 })
 
 export type CheckpointRestorePayload = z.infer<typeof checkoutRestorePayloadSchema>

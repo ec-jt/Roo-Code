@@ -31,7 +31,7 @@ export const CheckpointMenu = ({
 }: CheckpointMenuProps) => {
 	const { t } = useTranslation()
 	const [internalRestoreOpen, setInternalRestoreOpen] = useState(false)
-	const [restoreConfirming, setRestoreConfirming] = useState(false)
+	const [restoreConfirming, setRestoreConfirming] = useState<"restore" | "task" | false>(false)
 	const [internalMoreOpen, setInternalMoreOpen] = useState(false)
 	const portalContainer = useRooPortal("roo-portal")
 
@@ -86,9 +86,11 @@ export const CheckpointMenu = ({
 	}, [ts, commitHash, setRestoreOpen])
 
 	const onRestore = useCallback(() => {
-		vscode.postMessage({ type: "checkpointRestore", payload: { ts, commitHash, mode: "restore" } })
+		if (!restoreConfirming) return
+		vscode.postMessage({ type: "checkpointRestore", payload: { ts, commitHash, mode: restoreConfirming } })
 		setRestoreOpen(false)
-	}, [ts, commitHash, setRestoreOpen])
+		setRestoreConfirming(false)
+	}, [ts, commitHash, setRestoreOpen, restoreConfirming])
 
 	const handleOpenChange = useCallback(
 		(open: boolean) => {
@@ -132,10 +134,42 @@ export const CheckpointMenu = ({
 							</div>
 						</div>
 						<div className="flex flex-col gap-1 group hover:text-foreground">
-							{!restoreConfirming ? (
+							{restoreConfirming !== "task" ? (
 								<Button
 									variant="secondary"
-									onClick={() => setRestoreConfirming(true)}
+									onClick={() => setRestoreConfirming("task")}
+									data-testid="restore-task-only-btn">
+									Restore task only
+								</Button>
+							) : (
+								<>
+									<Button
+										variant="primary"
+										onClick={onRestore}
+										data-testid="confirm-restore-task-btn">
+										{t("chat:checkpoint.menu.confirm")}
+									</Button>
+									<Button variant="secondary" onClick={() => setRestoreConfirming(false)}>
+										{t("chat:checkpoint.menu.cancel")}
+									</Button>
+								</>
+							)}
+							<div
+								className={
+									restoreConfirming === "task"
+										? "text-destructive font-bold"
+										: "text-muted transition-colors group-hover:text-foreground"
+								}>
+								{restoreConfirming === "task"
+									? "Later conversation messages will be removed. Workspace files stay unchanged and may no longer match the restored conversation."
+									: "Rewind the conversation to this checkpoint without restoring files."}
+							</div>
+						</div>
+						<div className="flex flex-col gap-1 group hover:text-foreground">
+							{restoreConfirming !== "restore" ? (
+								<Button
+									variant="secondary"
+									onClick={() => setRestoreConfirming("restore")}
 									data-testid="restore-files-and-task-btn">
 									{t("chat:checkpoint.menu.restoreFilesAndTask")}
 								</Button>
@@ -159,7 +193,7 @@ export const CheckpointMenu = ({
 									</Button>
 								</>
 							)}
-							{restoreConfirming ? (
+							{restoreConfirming === "restore" ? (
 								<div data-testid="checkpoint-confirm-warning" className="text-destructive font-bold">
 									{t("chat:checkpoint.menu.cannotUndo")}
 								</div>

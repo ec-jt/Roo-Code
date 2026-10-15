@@ -1389,6 +1389,17 @@ export const webviewMessageHandler = async (
 			const result = checkoutRestorePayloadSchema.safeParse(message.payload)
 
 			if (result.success) {
+				if (result.data.mode === "task") {
+					try {
+						// Do not cancel an active edit: cancellation can revert workspace files.
+						actionTask?.assertContextRecoveryAllowed()
+					} catch (error) {
+						void vscode.window.showErrorMessage(
+							`Task-only restore stopped: ${error instanceof Error ? error.message : String(error)}`,
+						)
+						break
+					}
+				}
 				await provider.cancelTask()
 
 				try {

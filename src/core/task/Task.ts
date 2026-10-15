@@ -5998,8 +5998,10 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	}
 	public async checkpointRestore(options: CheckpointRestoreOptions) {
 		if (this.persistenceClosed) throw new Error("Task persistence is closed")
+		if (options.mode === "task") this.assertContextRecoveryAllowed()
 		await this.flushPersistence()
 		if (this.persistenceClosed) throw new Error("Task persistence is closed")
+		if (options.mode === "task") this.assertContextRecoveryAllowed()
 		return checkpointRestore(this, options)
 	}
 

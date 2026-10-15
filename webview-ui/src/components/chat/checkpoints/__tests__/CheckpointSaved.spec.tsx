@@ -32,6 +32,8 @@ import { render, waitFor, screen, fireEvent } from "@/utils/test-utils"
 import React from "react"
 import userEvent from "@testing-library/user-event"
 import { CheckpointSaved } from "../CheckpointSaved"
+import { vscode } from "@src/utils/vscode"
+vi.mock("@src/utils/vscode", () => ({ vscode: { postMessage: vi.fn() } }))
 
 const waitForOpenHandler = async () => {
 	await waitFor(() => {
@@ -41,6 +43,7 @@ const waitForOpenHandler = async () => {
 }
 
 describe("CheckpointSaved popover visibility", () => {
+	beforeEach(() => vi.clearAllMocks())
 	// Timers are controlled per-test to avoid interfering with i18n init
 	const baseProps = {
 		ts: 123,
@@ -76,6 +79,35 @@ describe("CheckpointSaved popover visibility", () => {
 
 		await waitFor(() => {
 			expect(getMenu().className).toContain("hidden")
+		})
+	})
+
+	it("requires confirmation and sends task-only restore without a file restore", async () => {
+		const { getByTestId } = render(<CheckpointSaved {...baseProps} />)
+		await waitForOpenHandler()
+		lastOnOpenChange?.(true)
+		await userEvent.click(getByTestId("restore-task-only-btn"))
+		expect(vscode.postMessage).not.toHaveBeenCalled()
+		expect(screen.getByText(/Workspace files stay unchanged/)).toBeTruthy()
+		await userEvent.click(getByTestId("confirm-restore-task-btn"))
+		expect(vscode.postMessage).toHaveBeenCalledTimes(1)
+		expect(vscode.postMessage).toHaveBeenCalledWith({
+			type: "checkpointRestore",
+			payload: { ts: baseProps.ts, commitHash: baseProps.commitHash, mode: "task" },
+		})
+		expect(getByTestId("restore-popover").getAttribute("data-open")).toBe("false")
+	})
+
+	it("clears task-only confirmation when switching restore choices", async () => {
+		const { getByTestId } = render(<CheckpointSaved {...baseProps} />)
+		await userEvent.click(getByTestId("restore-task-only-btn"))
+		await userEvent.click(getByTestId("restore-files-and-task-btn"))
+		expect(screen.queryByTestId("confirm-restore-task-btn")).toBeNull()
+		await userEvent.click(getByTestId("confirm-restore-btn"))
+		expect(vscode.postMessage).toHaveBeenCalledTimes(1)
+		expect(vscode.postMessage).toHaveBeenCalledWith({
+			type: "checkpointRestore",
+			payload: { ts: baseProps.ts, commitHash: baseProps.commitHash, mode: "restore" },
 		})
 	})
 

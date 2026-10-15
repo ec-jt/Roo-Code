@@ -215,6 +215,39 @@ describe("Checkpoint functionality", () => {
 			]
 		})
 
+		it("rewinds only task history without restoring files or publishing a restored Git checkpoint", async () => {
+			await checkpointRestore(mockTask, { ts: 2, commitHash: "abc123", mode: "task" })
+			expect(mockCheckpointService.restoreCheckpoint).not.toHaveBeenCalled()
+			expect(mockProvider.getState).not.toHaveBeenCalled()
+			expect(mockProvider.postMessageToWebview).not.toHaveBeenCalledWith({
+				type: "currentCheckpointUpdated",
+				text: "abc123",
+			})
+			expect(mockTask.overwriteClineMessages).toHaveBeenCalledWith([mockTask.clineMessages[0]])
+			expect(mockTask.overwriteApiConversationHistory).toHaveBeenCalledWith([mockTask.apiConversationHistory[0]])
+			expect(mockTask.say).toHaveBeenCalledWith("api_req_deleted", expect.any(String))
+			expect(mockProvider.cancelTask).toHaveBeenCalledOnce()
+		})
+
+		it("restores task history even when the checkpoint service is unavailable", async () => {
+			mockTask.checkpointService = undefined
+			mockTask.enableCheckpoints = false
+			await checkpointRestore(mockTask, { ts: 2, commitHash: "missing-git-object", mode: "task" })
+			expect(mockTask.overwriteClineMessages).toHaveBeenCalledWith([mockTask.clineMessages[0]])
+			expect(mockCheckpointService.initShadowGit).not.toHaveBeenCalled()
+			expect(mockCheckpointService.restoreCheckpoint).not.toHaveBeenCalled()
+		})
+
+		it("propagates task-only persistence failure without disabling checkpoints or reloading", async () => {
+			mockTask.overwriteClineMessages.mockRejectedValueOnce(new Error("disk full"))
+			await expect(checkpointRestore(mockTask, { ts: 2, commitHash: "abc123", mode: "task" })).rejects.toThrow(
+				"disk full",
+			)
+			expect(mockTask.enableCheckpoints).toBe(true)
+			expect(mockCheckpointService.restoreCheckpoint).not.toHaveBeenCalled()
+			expect(mockProvider.cancelTask).not.toHaveBeenCalled()
+		})
+
 		it("should restore checkpoint for delete operation", async () => {
 			await checkpointRestore(mockTask, {
 				ts: 2,
@@ -277,11 +310,13 @@ describe("Checkpoint functionality", () => {
 		it("should disable checkpoints on error", async () => {
 			mockCheckpointService.restoreCheckpoint.mockRejectedValue(new Error("Restore failed"))
 
-			await checkpointRestore(mockTask, {
-				ts: 2,
-				commitHash: "abc123",
-				mode: "restore",
-			})
+			await expect(
+				checkpointRestore(mockTask, {
+					ts: 2,
+					commitHash: "abc123",
+					mode: "restore",
+				}),
+			).rejects.toThrow("Restore failed")
 
 			expect(mockTask.enableCheckpoints).toBe(false)
 			expect(mockProvider.log).toHaveBeenCalledWith("[checkpointRestore] disabling checkpoints for this task")

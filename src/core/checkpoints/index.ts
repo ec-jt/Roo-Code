@@ -228,7 +228,7 @@ export async function checkpointSave(task: Task, force = false, suppressMessage 
 export type CheckpointRestoreOptions = {
 	ts: number
 	commitHash: string
-	mode: "preview" | "restore"
+	mode: "preview" | "restore" | "task"
 	operation?: "delete" | "edit" // Optional to maintain backward compatibility
 }
 
@@ -236,12 +236,6 @@ export async function checkpointRestore(
 	task: Task,
 	{ ts, commitHash, mode, operation = "delete" }: CheckpointRestoreOptions,
 ) {
-	const service = await getCheckpointService(task)
-
-	if (!service) {
-		return
-	}
-
 	const index = task.clineMessages.findIndex((m) => m.ts === ts)
 
 	if (index === -1) {
@@ -251,18 +245,22 @@ export async function checkpointRestore(
 	const provider = task.providerRef.deref()
 
 	try {
-		await service.restoreCheckpoint(commitHash)
-		try {
-			const warning = await getCheckpointEnvironmentWarning(task)
-			if (warning) void vscode.window.showWarningMessage(warning)
-		} catch {
-			void vscode.window.showWarningMessage(
-				"Workspace restored, but managed environment compatibility could not be checked. Environments were not changed.",
-			)
+		if (mode !== "task") {
+			const service = await getCheckpointService(task)
+			if (!service) return
+			await service.restoreCheckpoint(commitHash)
+			try {
+				const warning = await getCheckpointEnvironmentWarning(task)
+				if (warning) void vscode.window.showWarningMessage(warning)
+			} catch {
+				void vscode.window.showWarningMessage(
+					"Workspace restored, but managed environment compatibility could not be checked. Environments were not changed.",
+				)
+			}
+			await provider?.postMessageToWebview({ type: "currentCheckpointUpdated", text: commitHash })
 		}
-		await provider?.postMessageToWebview({ type: "currentCheckpointUpdated", text: commitHash })
 
-		if (mode === "restore") {
+		if (mode === "restore" || mode === "task") {
 			// Calculate metrics from messages that will be deleted (must be done before rewind)
 			const deletedMessages = task.clineMessages.slice(index + 1)
 
@@ -301,8 +299,10 @@ export async function checkpointRestore(
 		// `Task` instance.
 		await provider?.cancelTask()
 	} catch (err) {
-		provider?.log("[checkpointRestore] disabling checkpoints for this task")
-		task.enableCheckpoints = false
+		if (mode !== "task") {
+			provider?.log("[checkpointRestore] disabling checkpoints for this task")
+			task.enableCheckpoints = false
+		}
 		throw err
 	}
 }
