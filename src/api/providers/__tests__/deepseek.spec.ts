@@ -523,6 +523,151 @@ describe("DeepSeekHandler", () => {
 			}
 		})
 
+		describe("switching into thinking mode with existing history", () => {
+			const tools = [
+				{ type: "function" as const, function: { name: "read_file", parameters: { type: "object" } } },
+			]
+			const toolCall = {
+				type: "tool_use" as const,
+				id: "old_call",
+				name: "read_file",
+				input: { path: "sample.txt" },
+			}
+			const toolResult: Anthropic.Messages.MessageParam = {
+				role: "user",
+				content: [
+					{ type: "tool_result", tool_use_id: "old_call", content: "already executed" },
+					{ type: "text", text: "environment" },
+				],
+			}
+
+			it.each([
+				["tool-only", [toolCall]],
+				[
+					"encrypted GPT reasoning",
+					[{ type: "reasoning", encrypted_content: "opaque-test-data", summary: [] }, toolCall],
+				],
+				["empty reasoning", [{ type: "reasoning", text: "" }, toolCall]],
+				["whitespace reasoning", [{ type: "reasoning", text: "  " }, toolCall]],
+			])("disables thinking for %s without changing history or replaying tools", async (_name, content) => {
+				const history = [
+					...messages,
+					{ role: "assistant", content },
+					toolResult,
+				] as Anthropic.Messages.MessageParam[]
+				const before = structuredClone(history)
+				for await (const _chunk of handler.createMessage(systemPrompt, history, {
+					taskId: "test-task",
+					tools,
+				})) {
+					/* consume */
+				}
+				expect(mockCreate).toHaveBeenCalledTimes(1)
+				const request = mockCreate.mock.calls[0][0]
+				expect(request.thinking).toEqual({ type: "disabled" })
+				expect(request.model).toBe("deepseek-flash")
+				expect(request.tools).toEqual([
+					expect.objectContaining({
+						type: "function",
+						function: expect.objectContaining({ name: "read_file" }),
+					}),
+				])
+				expect(request.messages.find((m: any) => m.role === "assistant")).toEqual({
+					role: "assistant",
+					content: null,
+					tool_calls: [
+						{
+							id: "old_call",
+							type: "function",
+							function: { name: "read_file", arguments: '{"path":"sample.txt"}' },
+						},
+					],
+				})
+				expect(request.messages.at(-1)).toEqual({
+					role: "tool",
+					tool_call_id: "old_call",
+					content: "already executed\n\nenvironment",
+				})
+				expect(history).toEqual(before)
+				expect(JSON.stringify(request)).not.toContain("opaque-test-data")
+			})
+
+			it("checks old text-only turns before merging, even across a new user turn", async () => {
+				const history: Anthropic.Messages.MessageParam[] = [
+					...messages,
+					{ role: "assistant", content: "old response without reasoning" },
+					{
+						role: "assistant",
+						content: [
+							{ type: "reasoning", text: "available reasoning" },
+							{ type: "text", text: "another response" },
+						] as any,
+					},
+					{ role: "user", content: "new question" },
+				]
+				for await (const _chunk of handler.createMessage(systemPrompt, history, {
+					taskId: "test-task",
+					tools,
+				})) {
+					/* consume */
+				}
+				const request = mockCreate.mock.calls[0][0]
+				expect(request.thinking).toEqual({ type: "disabled" })
+				expect(request.messages.find((m: any) => m.role === "assistant").content).toContain(
+					"old response without reasoning",
+				)
+				expect(request.messages.every((m: any) => m.reasoning_content === undefined)).toBe(true)
+			})
+
+			it("keeps thinking and all plaintext reasoning for complete native history", async () => {
+				const history: Anthropic.Messages.MessageParam[] = [
+					...messages,
+					{
+						role: "assistant",
+						content: [
+							{ type: "reasoning", text: "part one" },
+							{ type: "reasoning", text: " part two" },
+							toolCall,
+						] as any,
+					},
+					toolResult,
+				]
+				for await (const _chunk of handler.createMessage(systemPrompt, history, {
+					taskId: "test-task",
+					tools,
+				})) {
+					/* consume */
+				}
+				const request = mockCreate.mock.calls[0][0]
+				expect(request.thinking).toEqual({ type: "enabled" })
+				expect(request.messages.find((m: any) => m.role === "assistant").reasoning_content).toBe(
+					"part one part two",
+				)
+			})
+
+			it("does not disable thinking for ordinary text-only requests without tools", async () => {
+				for await (const _chunk of handler.createMessage(systemPrompt, [
+					...messages,
+					{ role: "assistant", content: "old answer" },
+					{ role: "user", content: "next" },
+				])) {
+					/* consume */
+				}
+				expect(mockCreate.mock.calls[0][0].thinking).toEqual({ type: "enabled" })
+			})
+
+			it("checks tool-call history even when no tool definitions are supplied", async () => {
+				for await (const _chunk of handler.createMessage(systemPrompt, [
+					...messages,
+					{ role: "assistant", content: [toolCall] },
+					toolResult,
+				])) {
+					/* consume */
+				}
+				expect(mockCreate.mock.calls[0][0].thinking).toEqual({ type: "disabled" })
+			})
+		})
+
 		it("should handle tool calls with reasoning_content", async () => {
 			const reasonerHandler = new DeepSeekHandler({
 				...mockOptions,

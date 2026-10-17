@@ -12,7 +12,7 @@ import type { ApiHandlerOptions } from "../../shared/api"
 
 import { ApiStream, ApiStreamUsageChunk } from "../transform/stream"
 import { getModelParams } from "../transform/model-params"
-import { convertToR1Format } from "../transform/r1-format"
+import { convertToR1Format, getR1ReasoningContent, type DeepSeekAssistantMessage } from "../transform/r1-format"
 
 import { OpenAiHandler } from "./openai"
 import type { ApiHandlerCreateMessageMetadata } from "../index"
@@ -60,13 +60,32 @@ export class DeepSeekHandler extends OpenAiHandler {
 
 		// Convert messages to R1 format (merges consecutive same-role messages)
 		// This is required for DeepSeek which does not support successive messages with the same role
-		// For thinking models, enable mergeToolResultText to preserve reasoning_content
-		// during tool call sequences. Without this, environment_details text after tool_results would
-		// create user messages that cause DeepSeek to drop all previous reasoning_content.
+		// Keep environment details alongside tool results rather than introducing a
+		// synthetic user turn. Preserve reasoning across the full tool conversation.
 		// See: https://api-docs.deepseek.com/guides/thinking_mode
 		const convertedMessages = convertToR1Format([{ role: "user", content: systemPrompt }, ...messages], {
 			mergeToolResultText: isThinkingModel,
 		})
+		const tools = this.convertToolsForOpenAI(metadata?.tools)
+		// Thinking + tools requires reasoning on every historical assistant turn,
+		// including text-only turns. Imported GPT/Claude history may have no portable
+		// plaintext reasoning. Check BEFORE same-role merging can hide a missing turn.
+		// Never fabricate reasoning, drop history, or retry/replay completed tools.
+		const hasToolContext =
+			!!tools?.length ||
+			convertedMessages.some((message) => message.role === "assistant" && message.tool_calls?.length)
+		const missingReasoning = messages.some(
+			(message) => message.role === "assistant" && !getR1ReasoningContent(message)?.trim(),
+		)
+		const disableThinking = isThinkingModel && hasToolContext && missingReasoning
+		if (disableThinking) {
+			for (const message of convertedMessages) {
+				if (message.role === "assistant") delete (message as DeepSeekAssistantMessage).reasoning_content
+			}
+			console.warn(
+				"[DeepSeek] Using non-thinking mode: tool history contains assistant turns without portable reasoning.",
+			)
+		}
 
 		const requestOptions: DeepSeekChatCompletionParams = {
 			model: modelId,
@@ -75,8 +94,8 @@ export class DeepSeekHandler extends OpenAiHandler {
 			stream: true as const,
 			stream_options: { include_usage: true },
 			// Enable thinking mode for models that preserve reasoning during tool continuation.
-			...(isThinkingModel && { thinking: { type: "enabled" } }),
-			tools: this.convertToolsForOpenAI(metadata?.tools),
+			...(isThinkingModel && { thinking: { type: disableThinking ? "disabled" : "enabled" } }),
+			tools,
 			tool_choice: metadata?.tool_choice,
 			parallel_tool_calls: metadata?.parallelToolCalls ?? true,
 		}

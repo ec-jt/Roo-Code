@@ -18,6 +18,22 @@ export type DeepSeekAssistantMessage = AssistantMessage & {
 	reasoning_content?: string
 }
 
+/** Only plaintext reasoning can be used by the Chat Completions API. */
+export function getR1ReasoningContent(message: AnthropicMessage): string | undefined {
+	const topLevel = (message as AnthropicMessage & { reasoning_content?: unknown }).reasoning_content
+	if (typeof topLevel === "string" && topLevel.length > 0) return topLevel
+	if (!Array.isArray(message.content)) return undefined
+	const text = message.content
+		.flatMap((part) => {
+			const block = part as { type: string; text?: unknown; encrypted_content?: unknown }
+			return block.type === "reasoning" && typeof block.text === "string" && !block.encrypted_content
+				? [block.text]
+				: []
+		})
+		.join("")
+	return text || undefined
+}
+
 /**
  * Converts Anthropic messages to OpenAI format while merging consecutive messages with the same role.
  * This is required for DeepSeek Reasoner which does not support successive messages with the same role.
@@ -25,9 +41,9 @@ export type DeepSeekAssistantMessage = AssistantMessage & {
  * For DeepSeek's interleaved thinking mode:
  * - Preserves reasoning_content on assistant messages for tool call continuations
  * - Tool result messages are converted to OpenAI tool messages
- * - reasoning_content from previous assistant messages is preserved until a new user turn
+ * - reasoning_content from previous assistant messages is preserved across user turns
  * - Text content after tool_results (like environment_details) is merged into the last tool message
- *   to avoid creating user messages that would cause reasoning_content to be dropped
+ *   to avoid creating synthetic user turns during tool continuation
  *
  * @param messages Array of Anthropic messages
  * @param options Optional configuration for message conversion
@@ -44,8 +60,7 @@ export function convertToR1Format(
 
 	for (const message of messages) {
 		// Check if the message has reasoning_content (for DeepSeek interleaved thinking)
-		const messageWithReasoning = message as AnthropicMessage & { reasoning_content?: string }
-		const reasoningContent = messageWithReasoning.reasoning_content
+		const reasoningContent = getR1ReasoningContent(message)
 
 		if (message.role === "user") {
 			// Handle user messages - may contain tool_result blocks
@@ -167,7 +182,6 @@ export function convertToR1Format(
 			if (Array.isArray(message.content)) {
 				const textParts: string[] = []
 				const toolCalls: OpenAI.Chat.ChatCompletionMessageToolCall[] = []
-				let extractedReasoning: string | undefined
 
 				for (const part of message.content) {
 					if (part.type === "text") {
@@ -181,14 +195,10 @@ export function convertToR1Format(
 								arguments: JSON.stringify(part.input),
 							},
 						})
-					} else if ((part as any).type === "reasoning" && (part as any).text) {
-						// Extract reasoning from content blocks (Task stores it this way)
-						extractedReasoning = (part as any).text
 					}
 				}
 
-				// Use reasoning from content blocks if not provided at top level
-				const finalReasoning = reasoningContent || extractedReasoning
+				const finalReasoning = reasoningContent
 
 				const assistantMessage: DeepSeekAssistantMessage = {
 					role: "assistant",
@@ -210,7 +220,10 @@ export function convertToR1Format(
 					}
 					// Preserve reasoning_content from the new message if present
 					if (finalReasoning) {
-						;(lastMessage as DeepSeekAssistantMessage).reasoning_content = finalReasoning
+						const previous = (lastMessage as DeepSeekAssistantMessage).reasoning_content
+						;(lastMessage as DeepSeekAssistantMessage).reasoning_content = previous
+							? `${previous}\n${finalReasoning}`
+							: finalReasoning
 					}
 				} else {
 					result.push(assistantMessage)
@@ -226,7 +239,10 @@ export function convertToR1Format(
 					}
 					// Preserve reasoning_content from the new message if present
 					if (reasoningContent) {
-						;(lastMessage as DeepSeekAssistantMessage).reasoning_content = reasoningContent
+						const previous = (lastMessage as DeepSeekAssistantMessage).reasoning_content
+						;(lastMessage as DeepSeekAssistantMessage).reasoning_content = previous
+							? `${previous}\n${reasoningContent}`
+							: reasoningContent
 					}
 				} else {
 					const assistantMessage: DeepSeekAssistantMessage = {

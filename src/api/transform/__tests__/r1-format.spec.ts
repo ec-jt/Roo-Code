@@ -303,6 +303,23 @@ describe("convertToR1Format", () => {
 			expect((result[1] as any).reasoning_content).toBe("Let me analyze step by step...")
 		})
 
+		it("preserves reasoning from every merged assistant message", () => {
+			const result = convertToR1Format([
+				{ role: "assistant", content: "one", reasoning_content: "first" },
+				{
+					role: "assistant",
+					content: [
+						{ type: "reasoning", text: "second" },
+						{ type: "text", text: "two" },
+					],
+				},
+				{ role: "assistant", content: "three", reasoning_content: "third" },
+			] as any)
+			expect(result).toEqual([
+				{ role: "assistant", content: "one\ntwo\nthree", reasoning_content: "first\nsecond\nthird" },
+			])
+		})
+
 		it("should handle mixed tool_result and text in user message", () => {
 			const input: Anthropic.Messages.MessageParam[] = [
 				{

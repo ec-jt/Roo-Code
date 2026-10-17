@@ -257,7 +257,31 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 		}
 
 		// Filter out non-Anthropic blocks (reasoning, thoughtSignature, etc.) before sending to the API
-		const sanitizedMessages = filterNonAnthropicBlocks(messages)
+		let sanitizedMessages = filterNonAnthropicBlocks(messages)
+		const lastAssistant = [...sanitizedMessages].reverse().find((message) => message.role === "assistant")
+		const firstBlock = Array.isArray(lastAssistant?.content) ? lastAssistant.content[0] : undefined
+		if (
+			thinking &&
+			!useAdaptiveThinking &&
+			lastAssistant &&
+			firstBlock?.type !== "thinking" &&
+			firstBlock?.type !== "redacted_thinking"
+		) {
+			// Manual thinking requires the final assistant turn to start with a
+			// signed thinking block. Foreign history cannot supply that signature.
+			// Disable it for this request, not by inventing blocks or replaying tools.
+			thinking = undefined
+			sanitizedMessages = filterNonAnthropicBlocks(
+				sanitizedMessages.map((message) => ({
+					...message,
+					content: Array.isArray(message.content)
+						? message.content.filter(
+								(block) => block.type !== "thinking" && block.type !== "redacted_thinking",
+							)
+						: message.content,
+				})),
+			)
+		}
 
 		if (
 			modelId === "claude-opus-4-6" &&

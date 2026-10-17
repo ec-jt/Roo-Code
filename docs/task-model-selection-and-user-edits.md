@@ -9,6 +9,40 @@ Open the model-profile selector in the composer and choose a saved profile. The 
 
 Pending selections exist only in the current task instance. Closing or reloading before the choice takes effect discards it. Prepared replay branches keep their pinned profile. An active mediated Anthropic runtime cannot switch to another provider through this control. Organization policy still applies.
 
+## Anthropic, OpenAI, and DeepSeek compatibility
+
+The additional source-level compatibility fixes cover all six switching directions
+between Anthropic, OpenAI Native (Responses API), and DeepSeek for ordinary tasks.
+OpenAI Chat Completions and Codex history conversion also have focused coverage.
+Select a saved destination profile and use **Use for next request**. The current
+response and tools finish under the old profile; the next request uses the new one.
+
+Conversation text and completed tool-call/result pairs remain intact. Incompatible
+provider-specific reasoning is excluded from outgoing requests, not deleted from
+saved history. OpenAI encrypted reasoning is not sent to Anthropic or Chat
+Completions. Native Claude thinking signatures remain intact on Claude requests.
+Adaptive Claude can accept a continuation without a prior Claude thinking block.
+Manual-thinking Claude uses a request-only non-thinking fallback when the final
+assistant turn lacks that required block. DeepSeek uses the fallback described in
+the [DeepSeek compatibility guide](deepseek-history-compatibility.md).
+
+These checks verify constructed requests and safe profile application, not live
+acceptance by every model or account. Valid credentials, model access, context
+capacity, and compatible image/tool capabilities are still required. Pinned replay
+branches and the experimental Anthropic-only mediated runtime retain their safety
+restrictions. No admission controls are bypassed to enable a switch.
+
+The compatibility fixes start in 4.2.33; they are not in 4.2.31 or 4.2.32.
+Claude's manual/adaptive distinction follows its
+[extended-thinking documentation](https://platform.claude.com/docs/en/build-with-claude/extended-thinking),
+read 2026-10-17, section Turn structure in manual mode.
+
+LiteLLM and OpenAI-compatible proxy connections benefit from the shared message
+conversion fixes. However, the direct Anthropic/DeepSeek thinking fallbacks do
+not automatically apply to proxy aliases. Claude and DeepSeek thinking-mode
+switching through LiteLLM remains incomplete and unverified. No live proxy was
+tested, including proxy routes serving actual OpenAI models.
+
 Rejected operations return a result tied to the original action. If no terminal result arrives within 60 seconds, Roo reports an unknown outcome. It does not automatically replay the action. Inspect the task before retrying or reopening it from History.
 
 ## Edit your own message

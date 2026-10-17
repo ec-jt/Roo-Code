@@ -605,6 +605,31 @@ describe("Task persistence", () => {
 			expect(task.taskApiConfigName).toBe("Next")
 			expect(task.skipPrevResponseIdOnce).toBe(true)
 		})
+		it.each([
+			["anthropic", "openai-native"],
+			["anthropic", "deepseek"],
+			["openai-native", "anthropic"],
+			["openai-native", "deepseek"],
+			["deepseek", "anthropic"],
+			["deepseek", "openai-native"],
+		] as const)("applies %s to %s only after the active request settles", (source, destination) => {
+			const { task } = setupUser()
+			task.apiConfiguration = { ...mockApiConfig, apiProvider: source }
+			const oldHandler = task.api
+			const before = structuredClone(task.apiConversationHistory)
+			;(task as any).modelOperationRequests = 1
+			task.queueProfileForNextRequest("selected", "Selected", { ...mockApiConfig, apiProvider: destination })
+			expect(task.apiConfiguration.apiProvider).toBe(source)
+			expect(task.api).toBe(oldHandler)
+			expect(() => (task as any).applyNextTaskProfile()).toThrow()
+			;(task as any).modelOperationRequests = 0
+			;(task as any).applyNextTaskProfile()
+			expect(task.apiConfiguration.apiProvider).toBe(destination)
+			expect(task.api).not.toBe(oldHandler)
+			expect(task.apiConversationHistory).toEqual(before)
+			expect(task.modelOperationState.nextProfileId).toBeUndefined()
+			expect(task.skipPrevResponseIdOnce).toBe(true)
+		})
 	})
 
 	describe("assistant history edits", () => {

@@ -27,10 +27,15 @@ export function filterNonAnthropicBlocks(
 	messages: Anthropic.Messages.MessageParam[],
 ): Anthropic.Messages.MessageParam[] {
 	return messages
-		.map((message) => {
+		.map((message): Anthropic.Messages.MessageParam | undefined => {
+			// OpenAI Responses reasoning items are not Messages API messages. Task
+			// history can contain them after switching providers; never send them or
+			// dereference their absent content as an array.
+			if (message.role !== "user" && message.role !== "assistant") return undefined
 			if (typeof message.content === "string") {
-				return message
+				return { role: message.role, content: message.content }
 			}
+			if (!Array.isArray(message.content)) return undefined
 
 			const filteredContent = message.content.filter((block) => {
 				const blockType = (block as { type: string }).type
@@ -44,7 +49,7 @@ export function filterNonAnthropicBlocks(
 			}
 
 			return {
-				...message,
+				role: message.role,
 				content: filteredContent,
 			}
 		})

@@ -250,6 +250,9 @@ export function convertToOpenAiMessages(
 	const normalizeId = options?.normalizeToolCallId ?? ((id: string) => id)
 
 	for (const anthropicMessage of anthropicMessages) {
+		// Responses-only reasoning items have no role/content and are not valid
+		// Chat Completions messages, including after switching from OpenAI Native.
+		if (anthropicMessage.role !== "user" && anthropicMessage.role !== "assistant") continue
 		if (typeof anthropicMessage.content === "string") {
 			// Some upstream transforms (e.g. [`Task.buildCleanConversationHistory()`](src/core/task/Task.ts:4048))
 			// will convert a single text block into a string for compactness.
