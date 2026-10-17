@@ -14,27 +14,27 @@ import { ApiStream } from "../transform/stream"
 
 import { BaseProvider } from "./base-provider"
 import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata } from "../index"
-import { getModelsFromCache } from "./fetchers/modelCache"
+import { getCachedLMStudioModels } from "./fetchers/lmstudio"
+import { normalizeLMStudioBaseUrl, safeLMStudioInferenceError } from "./utils/lm-studio-config"
 import { getApiRequestTimeout } from "./utils/timeout-config"
 import { configureApiRequestTimeout } from "./utils/sdk-timeout"
-import { handleOpenAIError } from "./utils/openai-error-handler"
 
 export class LmStudioHandler extends BaseProvider implements SingleCompletionHandler {
 	protected options: ApiHandlerOptions
 	private client: OpenAI
-	private readonly providerName = "LM Studio"
 
 	constructor(options: ApiHandlerOptions) {
 		super()
 		this.options = options
 
-		// LM Studio uses "noop" as a placeholder API key
-		const apiKey = "noop"
+		const apiKey = this.options.lmStudioApiKey?.trim()
 
 		this.client = configureApiRequestTimeout(
 			new OpenAI({
-				baseURL: (this.options.lmStudioBaseUrl || "http://localhost:1234") + "/v1",
-				apiKey: apiKey,
+				baseURL: normalizeLMStudioBaseUrl(this.options.lmStudioBaseUrl) + "v1",
+				apiKey: apiKey || "noop",
+				// Satisfy the SDK constructor without sending a fake bearer token.
+				...(!apiKey && { defaultHeaders: { Authorization: null } }),
 				timeout: getApiRequestTimeout(),
 			}),
 		)
@@ -100,12 +100,7 @@ export class LmStudioHandler extends BaseProvider implements SingleCompletionHan
 				params.draft_model = this.options.lmStudioDraftModelId
 			}
 
-			let results
-			try {
-				results = await this.client.chat.completions.create(params)
-			} catch (error) {
-				throw handleOpenAIError(error, this.providerName)
-			}
+			const results = await this.client.chat.completions.create(params)
 
 			const matcher = new TagMatcher(
 				"think",
@@ -167,14 +162,12 @@ export class LmStudioHandler extends BaseProvider implements SingleCompletionHan
 				outputTokens,
 			} as const
 		} catch (error) {
-			throw new Error(
-				"Please check the LM Studio developer logs to debug what went wrong. You may need to load the model with a larger context length to work with Roo Code's prompts.",
-			)
+			throw safeLMStudioInferenceError(error)
 		}
 	}
 
 	override getModel(): { id: string; info: ModelInfo } {
-		const models = getModelsFromCache("lmstudio")
+		const models = getCachedLMStudioModels(this.options.lmStudioBaseUrl, this.options.lmStudioApiKey)
 		if (models && this.options.lmStudioModelId && models[this.options.lmStudioModelId]) {
 			return {
 				id: this.options.lmStudioModelId,
@@ -203,17 +196,10 @@ export class LmStudioHandler extends BaseProvider implements SingleCompletionHan
 				params.draft_model = this.options.lmStudioDraftModelId
 			}
 
-			let response
-			try {
-				response = await this.client.chat.completions.create(params)
-			} catch (error) {
-				throw handleOpenAIError(error, this.providerName)
-			}
+			const response = await this.client.chat.completions.create(params)
 			return response.choices[0]?.message.content || ""
 		} catch (error) {
-			throw new Error(
-				"Please check the LM Studio developer logs to debug what went wrong. You may need to load the model with a larger context length to work with Roo Code's prompts.",
-			)
+			throw safeLMStudioInferenceError(error)
 		}
 	}
 }

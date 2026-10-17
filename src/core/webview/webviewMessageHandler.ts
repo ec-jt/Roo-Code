@@ -1113,27 +1113,36 @@ export const webviewMessageHandler = async (
 			break
 		}
 		case "requestLmStudioModels": {
-			// Specific handler for LM Studio models only.
 			const { apiConfiguration: lmStudioApiConfig } = await provider.getState()
+			const requestId =
+				typeof message.values?.requestId === "string" ? message.values.requestId.slice(0, 128) : undefined
 			try {
 				const lmStudioOptions = {
 					provider: "lmstudio" as const,
-					baseUrl: lmStudioApiConfig.lmStudioBaseUrl,
+					baseUrl:
+						typeof message.values?.baseUrl === "string"
+							? message.values.baseUrl
+							: lmStudioApiConfig.lmStudioBaseUrl,
+					apiKey:
+						typeof message.values?.apiKey === "string"
+							? message.values.apiKey
+							: lmStudioApiConfig.lmStudioApiKey,
 				}
-				// Flush cache and refresh to ensure fresh models.
-				await flushModels(lmStudioOptions, true)
-
 				const lmStudioModels = await getModels(lmStudioOptions)
-
-				if (Object.keys(lmStudioModels).length > 0) {
-					provider.postMessageToWebview({
-						type: "lmStudioModels",
-						lmStudioModels: lmStudioModels,
-					})
-				}
+				await provider.postMessageToWebview({
+					type: "lmStudioModels",
+					lmStudioModels,
+					...(requestId ? { lmStudioModelsRequestId: requestId } : {}),
+				})
 			} catch (error) {
-				// Silently fail - user hasn't configured LM Studio yet.
-				console.debug("LM Studio models fetch failed:", error)
+				// The LM Studio fetcher returns sanitized errors, never request/token details.
+				await provider.postMessageToWebview({
+					type: "lmStudioModels",
+					lmStudioModels: {},
+					...(requestId ? { lmStudioModelsRequestId: requestId } : {}),
+					lmStudioModelsError:
+						error instanceof Error ? error.message : "Could not discover LM Studio models.",
+				})
 			}
 			break
 		}

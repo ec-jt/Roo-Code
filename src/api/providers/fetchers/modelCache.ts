@@ -94,7 +94,7 @@ async function fetchModelsFromProvider(options: GetModelsOptions): Promise<Model
 			models = await getOllamaModels(options.baseUrl, options.apiKey)
 			break
 		case "lmstudio":
-			models = await getLMStudioModels(options.baseUrl)
+			models = await getLMStudioModels(options.baseUrl, options.apiKey)
 			break
 		case "vercel-ai-gateway":
 			models = await getVercelAiGatewayModels()
@@ -125,6 +125,8 @@ async function fetchModelsFromProvider(options: GetModelsOptions): Promise<Model
  */
 export const getModels = async (options: GetModelsOptions): Promise<ModelRecord> => {
 	const { provider } = options
+	// Local servers and token scopes must not share a provider-only disk cache.
+	if (provider === "lmstudio") return getLMStudioModels(options.baseUrl, options.apiKey)
 
 	let models = getModelsFromCache(provider)
 
@@ -166,6 +168,7 @@ export const getModels = async (options: GetModelsOptions): Promise<ModelRecord>
  */
 export const refreshModels = async (options: GetModelsOptions): Promise<ModelRecord> => {
 	const { provider } = options
+	if (provider === "lmstudio") return getLMStudioModels(options.baseUrl, options.apiKey)
 
 	// Check if there's already an in-flight refresh for this provider
 	// This prevents race conditions where multiple concurrent refreshes might
@@ -249,6 +252,10 @@ export async function initializeModelCacheRefresh(): Promise<void> {
  */
 export const flushModels = async (options: GetModelsOptions, refresh: boolean = false): Promise<void> => {
 	const { provider } = options
+	if (provider === "lmstudio") {
+		if (refresh) await getLMStudioModels(options.baseUrl, options.apiKey)
+		return
+	}
 	if (refresh) {
 		// Don't delete memory cache - let refreshModels atomically replace it
 		// This prevents a race condition where getModels() might be called

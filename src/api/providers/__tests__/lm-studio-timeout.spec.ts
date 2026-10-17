@@ -29,6 +29,17 @@ vitest.mock("openai", () => {
 })
 
 describe("LmStudioHandler timeout configuration", () => {
+	it.each([undefined, "", "   ", "test-token"])("normalizes /v1 and supports optional token %s", (token) => {
+		new LmStudioHandler({ lmStudioBaseUrl: "http://server:1234/v1/", lmStudioApiKey: token })
+		expect(mockOpenAIConstructor).toHaveBeenLastCalledWith(
+			expect.objectContaining({
+				baseURL: "http://server:1234/v1",
+				apiKey: token?.trim() || "noop",
+				...(!token?.trim() ? { defaultHeaders: { Authorization: null } } : {}),
+			}),
+		)
+		if (token?.trim()) expect(mockOpenAIConstructor.mock.calls.at(-1)?.[0].defaultHeaders).toBeUndefined()
+	})
 	beforeEach(() => {
 		vitest.clearAllMocks()
 	})

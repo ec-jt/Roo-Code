@@ -298,13 +298,39 @@ describe("webviewMessageHandler - requestLmStudioModels", () => {
 			type: "requestLmStudioModels",
 		})
 
-		expect(mockGetModels).toHaveBeenCalledWith({ provider: "lmstudio", baseUrl: "http://localhost:1234" })
+		expect(mockGetModels).toHaveBeenCalledWith({
+			provider: "lmstudio",
+			baseUrl: "http://localhost:1234",
+			apiKey: undefined,
+		})
 
 		expect(mockClineProvider.postMessageToWebview).toHaveBeenCalledWith({
 			type: "lmStudioModels",
 			lmStudioModels: mockModels,
 		})
 	})
+	it.each([false, true])(
+		"acknowledges LM Studio empty/error discovery (failure=%s) with draft credentials",
+		async (failure) => {
+			if (failure) mockGetModels.mockRejectedValueOnce(new Error("LM Studio authentication failed (HTTP 401)."))
+			else mockGetModels.mockResolvedValueOnce({})
+			await webviewMessageHandler(mockClineProvider, {
+				type: "requestLmStudioModels",
+				values: { requestId: "draft", baseUrl: "http://other:1234/v1", apiKey: "draft-token" },
+			})
+			expect(mockGetModels).toHaveBeenCalledWith({
+				provider: "lmstudio",
+				baseUrl: "http://other:1234/v1",
+				apiKey: "draft-token",
+			})
+			expect(mockClineProvider.postMessageToWebview).toHaveBeenCalledWith({
+				type: "lmStudioModels",
+				lmStudioModels: {},
+				lmStudioModelsRequestId: "draft",
+				...(failure ? { lmStudioModelsError: "LM Studio authentication failed (HTTP 401)." } : {}),
+			})
+		},
+	)
 })
 
 describe("webviewMessageHandler - image mentions", () => {

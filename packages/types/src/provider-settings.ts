@@ -268,6 +268,7 @@ const vsCodeLmSchema = baseProviderSettingsSchema.extend({
 })
 
 const lmStudioSchema = baseProviderSettingsSchema.extend({
+	lmStudioApiKey: z.string().optional(),
 	lmStudioModelId: z.string().optional(),
 	lmStudioBaseUrl: z.string().optional(),
 	lmStudioDraftModelId: z.string().optional(),

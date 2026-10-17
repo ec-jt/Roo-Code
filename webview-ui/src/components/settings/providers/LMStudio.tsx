@@ -1,4 +1,4 @@
-import { useCallback, useState, useMemo, useEffect } from "react"
+import { useCallback, useState, useMemo, useEffect, useRef } from "react"
 import { useEvent } from "react-use"
 import { Trans } from "react-i18next"
 import { Checkbox } from "vscrui"
@@ -22,6 +22,11 @@ export const LMStudio = ({ apiConfiguration, setApiConfigurationField }: LMStudi
 	const { t } = useAppTranslation()
 
 	const [lmStudioModels, setLmStudioModels] = useState<ModelRecord>({})
+	const [discoveryError, setDiscoveryError] = useState<string>()
+	const [loading, setLoading] = useState(false)
+	const [refresh, setRefresh] = useState(0)
+	const pendingRequest = useRef<string>()
+	const deadline = useRef<ReturnType<typeof setTimeout>>()
 	const routerModels = useRouterModels()
 
 	const handleInputChange = useCallback(
@@ -41,6 +46,11 @@ export const LMStudio = ({ apiConfiguration, setApiConfigurationField }: LMStudi
 		switch (message.type) {
 			case "lmStudioModels":
 				{
+					if (!pendingRequest.current || message.lmStudioModelsRequestId !== pendingRequest.current) return
+					pendingRequest.current = undefined
+					clearTimeout(deadline.current)
+					setLoading(false)
+					setDiscoveryError(message.lmStudioModelsError)
 					const newModels = message.lmStudioModels ?? {}
 					setLmStudioModels(newModels)
 				}
@@ -50,11 +60,35 @@ export const LMStudio = ({ apiConfiguration, setApiConfigurationField }: LMStudi
 
 	useEvent("message", onMessage)
 
-	// Refresh models on mount
+	// Use draft values, not the previously saved profile. Ignore stale responses.
 	useEffect(() => {
-		// Request fresh models - the handler now flushes cache automatically
-		vscode.postMessage({ type: "requestLmStudioModels" })
-	}, [])
+		const requestId = crypto.randomUUID()
+		pendingRequest.current = requestId
+		setLmStudioModels({})
+		setDiscoveryError(undefined)
+		setLoading(true)
+		const timer = setTimeout(() => {
+			vscode.postMessage({
+				type: "requestLmStudioModels",
+				values: {
+					requestId,
+					baseUrl: apiConfiguration.lmStudioBaseUrl ?? "",
+					apiKey: apiConfiguration.lmStudioApiKey ?? "",
+				},
+			})
+			deadline.current = setTimeout(() => {
+				if (pendingRequest.current !== requestId) return
+				pendingRequest.current = undefined
+				setLoading(false)
+				setDiscoveryError("LM Studio discovery timed out. Check the server connection and refresh.")
+			}, 35_000)
+		}, 300)
+		return () => {
+			clearTimeout(timer)
+			clearTimeout(deadline.current)
+			pendingRequest.current = undefined
+		}
+	}, [apiConfiguration.lmStudioBaseUrl, apiConfiguration.lmStudioApiKey, refresh])
 
 	// Check if the selected model exists in the fetched models
 	const modelNotAvailableError = useMemo(() => {
@@ -112,6 +146,28 @@ export const LMStudio = ({ apiConfiguration, setApiConfigurationField }: LMStudi
 				className="w-full">
 				<label className="block font-medium mb-1">{t("settings:providers.lmStudio.baseUrl")}</label>
 			</VSCodeTextField>
+			<VSCodeTextField
+				value={apiConfiguration.lmStudioApiKey || ""}
+				type="password"
+				onInput={handleInputChange("lmStudioApiKey")}
+				className="w-full">
+				<label className="block font-medium mb-1">API token (optional)</label>
+			</VSCodeTextField>
+			<p className="text-sm text-vscode-descriptionForeground">
+				Leave blank when LM Studio does not require authentication. Use the server URL; a trailing /v1 is
+				accepted. Downloaded chat models and loaded instances are listed when the server exposes them.
+			</p>
+			<button
+				type="button"
+				className="text-vscode-textLink-foreground"
+				onClick={() => setRefresh((value) => value + 1)}>
+				Refresh models
+			</button>
+			{loading && <p role="status">Loading LM Studio models...</p>}
+			{discoveryError && <p role="alert">{discoveryError}</p>}
+			{!loading && !discoveryError && Object.keys(lmStudioModels).length === 0 && (
+				<p role="status">No chat models were returned by this server.</p>
+			)}
 			<ModelPicker
 				apiConfiguration={apiConfiguration}
 				setApiConfigurationField={setApiConfigurationField}

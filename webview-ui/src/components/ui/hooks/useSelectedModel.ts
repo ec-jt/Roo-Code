@@ -66,7 +66,11 @@ export const useSelectedModel = (apiConfiguration?: ProviderSettings) => {
 	})
 
 	const openRouterModelProviders = useOpenRouterModelProviders(openRouterModelId)
-	const lmStudioModels = useLmStudioModels(lmStudioModelId)
+	const lmStudioModels = useLmStudioModels(
+		lmStudioModelId,
+		apiConfiguration?.lmStudioBaseUrl,
+		apiConfiguration?.lmStudioApiKey,
+	)
 	const ollamaModels = useOllamaModels(ollamaModelId)
 
 	// Compute readiness only for the data actually needed for the selected provider

@@ -814,14 +814,20 @@ export class ClineProvider
 	}
 
 	async performPreparationTasks(cline: Task) {
-		// LMStudio: We need to force model loading in order to read its context
-		// size; we do it now since we're starting a task with that model selected.
+		// Refresh runtime metadata without loading or replacing server models.
 		if (cline.apiConfiguration && cline.apiConfiguration.apiProvider === "lmstudio") {
 			try {
-				if (!hasLoadedFullDetails(cline.apiConfiguration.lmStudioModelId!)) {
+				if (
+					!hasLoadedFullDetails(
+						cline.apiConfiguration.lmStudioModelId!,
+						cline.apiConfiguration.lmStudioBaseUrl,
+						cline.apiConfiguration.lmStudioApiKey,
+					)
+				) {
 					await forceFullModelDetailsLoad(
 						cline.apiConfiguration.lmStudioBaseUrl ?? "http://localhost:1234",
 						cline.apiConfiguration.lmStudioModelId!,
+						cline.apiConfiguration.lmStudioApiKey,
 					)
 				}
 			} catch (error) {

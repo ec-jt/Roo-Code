@@ -1,457 +1,334 @@
 import axios from "axios"
-import { LMStudioClient, LLMInstanceInfo, LLMInfo } from "@lmstudio/sdk"
+import { type LLMInfo, type LLMInstanceInfo, LMStudioClient } from "@lmstudio/sdk"
 
-import { ModelInfo, lMStudioDefaultModelInfo } from "@roo-code/types"
+import { lMStudioDefaultModelInfo } from "@roo-code/types"
 
-import { getLMStudioModels, parseLMStudioModel } from "../lmstudio"
+import {
+	forceFullModelDetailsLoad,
+	getLMStudioModels,
+	getCachedLMStudioModels,
+	hasLoadedFullDetails,
+	parseLMStudioModel,
+} from "../lmstudio"
+import { MODEL_FETCH_TIMEOUT_MS } from "../fetch-timeout"
+import { normalizeLMStudioBaseUrl, safeLMStudioError } from "../../utils/lm-studio-config"
 
-// Mock axios
 vi.mock("axios")
-const mockedAxios = axios as any
+const { listDownloadedModels, listLoaded, loadModel } = vi.hoisted(() => ({
+	listDownloadedModels: vi.fn(),
+	listLoaded: vi.fn(),
+	loadModel: vi.fn(),
+}))
+vi.mock("@lmstudio/sdk", () => ({
+	LMStudioClient: vi.fn().mockImplementation(() => ({
+		llm: { listLoaded, model: loadModel, load: loadModel },
+		system: { listDownloadedModels },
+	})),
+}))
 
-// Mock @lmstudio/sdk
-const mockGetModelInfo = vi.fn()
-const mockListLoaded = vi.fn()
-const mockListDownloadedModels = vi.fn()
-vi.mock("@lmstudio/sdk", () => {
-	return {
-		LMStudioClient: vi.fn().mockImplementation(() => ({
-			llm: {
-				listLoaded: mockListLoaded,
-			},
-			system: {
-				listDownloadedModels: mockListDownloadedModels,
-			},
-		})),
-	}
+const baseUrl = "http://localhost:1234"
+const unavailable = { response: { status: 404 } }
+const downloaded: LLMInfo = {
+	type: "llm",
+	modelKey: "publisher/model",
+	path: "publisher/model/model-Q4.gguf",
+	displayName: "Model",
+	format: "gguf",
+	sizeBytes: 1000,
+	vision: true,
+	trainedForToolUse: true,
+	maxContextLength: 131072,
+}
+const instance: LLMInstanceInfo = {
+	...downloaded,
+	identifier: "custom-inference-id",
+	instanceReference: "instance-1",
+	contextLength: 126720,
+}
+const nativeModel = {
+	type: "llm",
+	key: downloaded.modelKey,
+	display_name: "Model",
+	max_context_length: 131072,
+	capabilities: { vision: true },
+	loaded_instances: [{ id: instance.identifier, config: { context_length: 126720 } }],
+}
+
+beforeEach(() => {
+	vi.clearAllMocks()
+	vi.mocked(LMStudioClient).mockImplementation(
+		() =>
+			({
+				llm: { listLoaded, model: loadModel, load: loadModel },
+				system: { listDownloadedModels },
+			}) as unknown as LMStudioClient,
+	)
+	vi.mocked(axios.get).mockReset().mockRejectedValue(unavailable)
+	listDownloadedModels.mockReset().mockRejectedValue(new Error("SDK unavailable"))
+	listLoaded.mockReset().mockRejectedValue(new Error("SDK unavailable"))
 })
-const MockedLMStudioClientConstructor = LMStudioClient as any
 
-describe("LMStudio Fetcher", () => {
-	beforeEach(() => {
-		vi.clearAllMocks()
-		MockedLMStudioClientConstructor.mockClear()
-		mockListLoaded.mockClear()
-		mockGetModelInfo.mockClear()
-		mockListDownloadedModels.mockClear()
+afterEach(() => {
+	vi.useRealTimers()
+	vi.restoreAllMocks()
+})
+
+describe("LM Studio configuration", () => {
+	it.each([
+		[undefined, `${baseUrl}/`],
+		["  ", `${baseUrl}/`],
+		[`${baseUrl}/v1///`, `${baseUrl}/`],
+		["https://server.example/proxy/v1/", "https://server.example/proxy/"],
+		["https://server.example/proxy/", "https://server.example/proxy/"],
+		["http://[::1]:1234/v1", "http://[::1]:1234/"],
+	])("normalizes %s", (input, expected) => {
+		expect(normalizeLMStudioBaseUrl(input)).toBe(expected)
 	})
 
-	describe("parseLMStudioModel", () => {
-		it("should correctly parse raw LLMInfo to ModelInfo", () => {
-			const rawModel: LLMInstanceInfo = {
-				type: "llm",
-				modelKey: "mistralai/devstral-small-2505",
-				format: "safetensors",
-				displayName: "Devstral Small 2505",
-				path: "mistralai/devstral-small-2505",
-				sizeBytes: 13277565112,
-				architecture: "mistral",
-				identifier: "mistralai/devstral-small-2505",
-				instanceReference: "RAP5qbeHVjJgBiGFQ6STCuTJ",
-				vision: false,
-				trainedForToolUse: false,
-				maxContextLength: 131072,
-				contextLength: 7161,
-			}
-
-			const expectedModelInfo: ModelInfo = {
-				...lMStudioDefaultModelInfo,
-				description: `${rawModel.displayName} - ${rawModel.path}`,
-				contextWindow: rawModel.contextLength,
-				supportsPromptCache: true,
-				supportsImages: rawModel.vision,
-				maxTokens: rawModel.contextLength,
-				inputPrice: 0,
-				outputPrice: 0,
-				cacheWritesPrice: 0,
-				cacheReadsPrice: 0,
-			}
-
-			const result = parseLMStudioModel(rawModel)
-			expect(result).toEqual(expectedModelInfo)
-		})
-	})
-
-	describe("getLMStudioModels", () => {
-		const baseUrl = "http://localhost:1234"
-		const lmsUrl = "ws://localhost:1234"
-
-		const mockRawModel: LLMInstanceInfo = {
-			architecture: "test-arch",
-			identifier: "mistralai/devstral-small-2505",
-			instanceReference: "RAP5qbeHVjJgBiGFQ6STCuTJ",
-			modelKey: "test-model-key-1",
-			path: "/path/to/test-model-1",
-			type: "llm",
-			displayName: "Test Model One",
-			maxContextLength: 2048,
-			contextLength: 7161,
-			paramsString: "1B params, 2k context",
-			vision: true,
-			format: "gguf",
-			sizeBytes: 1000000000,
-			trainedForToolUse: false, // Added
+	it.each([
+		"ftp://server",
+		"ws://server",
+		"not a URL",
+		"http://secret:token@server",
+		"http://server/?token=secret",
+		"http://server/#secret",
+		"http://server/?",
+		"http://server/#",
+	])("rejects unsafe configuration without echoing input", (input) => {
+		expect(() => normalizeLMStudioBaseUrl(input)).toThrow("Invalid LM Studio base URL")
+		try {
+			normalizeLMStudioBaseUrl(input)
+		} catch (error) {
+			expect(String(error)).not.toContain(input)
 		}
+	})
 
-		it("should fetch downloaded models using system.listDownloadedModels", async () => {
-			const mockLLMInfo: LLMInfo = {
-				type: "llm" as const,
-				modelKey: "mistralai/devstral-small-2505",
-				format: "safetensors",
-				displayName: "Devstral Small 2505",
-				path: "mistralai/devstral-small-2505",
-				sizeBytes: 13277565112,
-				architecture: "mistral",
-				vision: false,
-				trainedForToolUse: false,
-				maxContextLength: 131072,
-			}
-
-			mockedAxios.get.mockResolvedValueOnce({ data: { status: "ok" } })
-			mockListDownloadedModels.mockResolvedValueOnce([mockLLMInfo])
-
-			const result = await getLMStudioModels(baseUrl)
-
-			expect(mockedAxios.get).toHaveBeenCalledTimes(1)
-			expect(mockedAxios.get).toHaveBeenCalledWith(`${baseUrl}/v1/models`)
-			expect(MockedLMStudioClientConstructor).toHaveBeenCalledTimes(1)
-			expect(MockedLMStudioClientConstructor).toHaveBeenCalledWith({ baseUrl: lmsUrl })
-			expect(mockListDownloadedModels).toHaveBeenCalledTimes(1)
-			expect(mockListDownloadedModels).toHaveBeenCalledWith("llm")
-			expect(mockListLoaded).toHaveBeenCalled() // we now call it to get context data
-
-			const expectedParsedModel = parseLMStudioModel(mockLLMInfo)
-			expect(result).toEqual({ [mockLLMInfo.path]: expectedParsedModel })
+	it("returns fixed errors without preserving the original error or its cause", () => {
+		const error = safeLMStudioError({
+			message: "secret-token",
+			response: { status: 502, data: "secret-token" },
+			config: { headers: { Authorization: "Bearer secret-token" } },
 		})
+		expect(error.message).toBe("LM Studio model discovery failed (HTTP 502).")
+		expect(error).not.toHaveProperty("cause")
+		expect(JSON.stringify(error, Object.getOwnPropertyNames(error))).not.toContain("secret-token")
+	})
+})
 
-		it("should fall back to listLoaded when listDownloadedModels fails", async () => {
-			mockedAxios.get.mockResolvedValueOnce({ data: { status: "ok" } })
-			mockListDownloadedModels.mockRejectedValueOnce(new Error("Method not available"))
-			mockListLoaded.mockResolvedValueOnce([{ getModelInfo: mockGetModelInfo }])
-			mockGetModelInfo.mockResolvedValueOnce(mockRawModel)
-
-			const result = await getLMStudioModels(baseUrl)
-
-			expect(mockedAxios.get).toHaveBeenCalledTimes(1)
-			expect(mockedAxios.get).toHaveBeenCalledWith(`${baseUrl}/v1/models`)
-			expect(MockedLMStudioClientConstructor).toHaveBeenCalledTimes(1)
-			expect(MockedLMStudioClientConstructor).toHaveBeenCalledWith({ baseUrl: lmsUrl })
-			expect(mockListDownloadedModels).toHaveBeenCalledTimes(1)
-			expect(mockListLoaded).toHaveBeenCalledTimes(1)
-
-			const expectedParsedModel = parseLMStudioModel(mockRawModel)
-			expect(result).toEqual({ [mockRawModel.modelKey]: expectedParsedModel })
+describe("LM Studio discovery", () => {
+	it("parses downloaded limits and prefers loaded runtime context", () => {
+		expect(parseLMStudioModel(downloaded).contextWindow).toBe(131072)
+		expect(parseLMStudioModel(instance)).toEqual({
+			...lMStudioDefaultModelInfo,
+			description: "Model - publisher/model/model-Q4.gguf",
+			contextWindow: 126720,
+			maxTokens: 126720,
+			supportsImages: true,
 		})
+	})
 
-		it("should deduplicate models when both downloaded and loaded", async () => {
-			const mockDownloadedModel: LLMInfo = {
-				type: "llm" as const,
-				modelKey: "mistralai/devstral-small-2505",
-				format: "safetensors",
-				displayName: "Devstral Small 2505",
-				path: "mistralai/devstral-small-2505",
-				sizeBytes: 13277565112,
-				architecture: "mistral",
-				vision: false,
-				trainedForToolUse: false,
-				maxContextLength: 131072,
-			}
-
-			const mockLoadedModel: LLMInstanceInfo = {
-				type: "llm",
-				modelKey: "devstral-small-2505", // Different key but should match case-insensitively
-				format: "safetensors",
-				displayName: "Devstral Small 2505",
-				path: "mistralai/devstral-small-2505",
-				sizeBytes: 13277565112,
-				architecture: "mistral",
-				identifier: "mistralai/devstral-small-2505",
-				instanceReference: "RAP5qbeHVjJgBiGFQ6STCuTJ",
-				vision: false,
-				trainedForToolUse: false,
-				maxContextLength: 131072,
-				contextLength: 7161, // Runtime context info
-			}
-
-			mockedAxios.get.mockResolvedValueOnce({ data: { status: "ok" } })
-			mockListDownloadedModels.mockResolvedValueOnce([mockDownloadedModel])
-			mockListLoaded.mockResolvedValueOnce([{ getModelInfo: vi.fn().mockResolvedValueOnce(mockLoadedModel) }])
-
-			const result = await getLMStudioModels(baseUrl)
-
-			// Should only have one model, with the loaded model replacing the downloaded one
-			expect(Object.keys(result)).toHaveLength(1)
-
-			// The loaded model's key should be used, with loaded model's data
-			const expectedParsedModel = parseLMStudioModel(mockLoadedModel)
-			expect(result[mockLoadedModel.modelKey]).toEqual(expectedParsedModel)
-
-			// The downloaded model should have been removed
-			expect(result[mockDownloadedModel.path]).toBeUndefined()
+	it("lists native loaded and unloaded chat models, excluding embeddings and decision models", async () => {
+		vi.mocked(axios.get).mockResolvedValueOnce({
+			data: {
+				models: [
+					nativeModel,
+					{ ...nativeModel, key: "other/model", loaded_instances: [] },
+					{ type: "embedding", key: "embedding" },
+					{ type: "decision", key: "decision" },
+				],
+			},
 		})
-
-		it("should handle deduplication with path-based matching", async () => {
-			const mockDownloadedModel: LLMInfo = {
-				type: "llm" as const,
-				modelKey: "Meta/Llama-3.1/8B-Instruct",
-				format: "gguf",
-				displayName: "Llama 3.1 8B Instruct",
-				path: "Meta/Llama-3.1/8B-Instruct",
-				sizeBytes: 8000000000,
-				architecture: "llama",
-				vision: false,
-				trainedForToolUse: false,
-				maxContextLength: 8192,
-			}
-
-			const mockLoadedModel: LLMInstanceInfo = {
-				type: "llm",
-				modelKey: "Llama-3.1", // Should match the path segment
-				format: "gguf",
-				displayName: "Llama 3.1",
-				path: "Meta/Llama-3.1/8B-Instruct",
-				sizeBytes: 8000000000,
-				architecture: "llama",
-				identifier: "Meta/Llama-3.1/8B-Instruct",
-				instanceReference: "ABC123",
-				vision: false,
-				trainedForToolUse: false,
-				maxContextLength: 8192,
-				contextLength: 4096,
-			}
-
-			mockedAxios.get.mockResolvedValueOnce({ data: { status: "ok" } })
-			mockListDownloadedModels.mockResolvedValueOnce([mockDownloadedModel])
-			mockListLoaded.mockResolvedValueOnce([{ getModelInfo: vi.fn().mockResolvedValueOnce(mockLoadedModel) }])
-
-			const result = await getLMStudioModels(baseUrl)
-
-			expect(Object.keys(result)).toHaveLength(1)
-			expect(result[mockLoadedModel.modelKey]).toBeDefined()
-			expect(result[mockDownloadedModel.path]).toBeUndefined()
+		const result = await getLMStudioModels(`${baseUrl}/v1/`, " test-token ")
+		expect(Object.keys(result)).toEqual([instance.identifier, "other/model"])
+		expect(result[instance.identifier]).toMatchObject({
+			contextWindow: 126720,
+			maxTokens: 126720,
+			supportsImages: true,
 		})
-
-		it("should not deduplicate models with similar but distinct names", async () => {
-			const mockDownloadedModels: LLMInfo[] = [
-				{
-					type: "llm" as const,
-					modelKey: "mistral-7b",
-					format: "gguf",
-					displayName: "Mistral 7B",
-					path: "mistralai/mistral-7b-instruct",
-					sizeBytes: 7000000000,
-					architecture: "mistral",
-					vision: false,
-					trainedForToolUse: false,
-					maxContextLength: 4096,
-				},
-				{
-					type: "llm" as const,
-					modelKey: "codellama",
-					format: "gguf",
-					displayName: "Code Llama",
-					path: "meta/codellama/7b",
-					sizeBytes: 7000000000,
-					architecture: "llama",
-					vision: false,
-					trainedForToolUse: false,
-					maxContextLength: 4096,
-				},
-			]
-
-			const mockLoadedModel: LLMInstanceInfo = {
-				type: "llm",
-				modelKey: "llama", // Should not match "codellama" or "mistral-7b"
-				format: "gguf",
-				displayName: "Llama",
-				path: "meta/llama/7b",
-				sizeBytes: 7000000000,
-				architecture: "llama",
-				identifier: "meta/llama/7b",
-				instanceReference: "XYZ789",
-				vision: false,
-				trainedForToolUse: false,
-				maxContextLength: 4096,
-				contextLength: 2048,
-			}
-
-			mockedAxios.get.mockResolvedValueOnce({ data: { status: "ok" } })
-			mockListDownloadedModels.mockResolvedValueOnce(mockDownloadedModels)
-			mockListLoaded.mockResolvedValueOnce([{ getModelInfo: vi.fn().mockResolvedValueOnce(mockLoadedModel) }])
-
-			const result = await getLMStudioModels(baseUrl)
-
-			// Should have 3 models: mistral-7b (not deduped), codellama (not deduped), and llama (loaded)
-			expect(Object.keys(result)).toHaveLength(3)
-			expect(result["mistralai/mistral-7b-instruct"]).toBeDefined() // Should NOT be removed
-			expect(result["meta/codellama/7b"]).toBeDefined() // Should NOT be removed (codellama != llama)
-			expect(result[mockLoadedModel.modelKey]).toBeDefined()
+		expect(result["other/model"].contextWindow).toBe(131072)
+		expect(axios.get).toHaveBeenCalledExactlyOnceWith(`${baseUrl}/api/v1/models`, {
+			timeout: MODEL_FETCH_TIMEOUT_MS,
+			maxRedirects: 0,
+			maxContentLength: 10 * 1024 * 1024,
+			headers: { Authorization: "Bearer test-token" },
 		})
+		expect(LMStudioClient).not.toHaveBeenCalled()
+		expect(loadModel).not.toHaveBeenCalled()
+	})
 
-		it("should handle multiple loaded models with various duplicate scenarios", async () => {
-			const mockDownloadedModels: LLMInfo[] = [
-				{
-					type: "llm" as const,
-					modelKey: "mistral-7b",
-					format: "gguf",
-					displayName: "Mistral 7B",
-					path: "mistralai/mistral-7b/instruct",
-					sizeBytes: 7000000000,
-					architecture: "mistral",
-					vision: false,
-					trainedForToolUse: false,
-					maxContextLength: 8192,
-				},
-				{
-					type: "llm" as const,
-					modelKey: "llama-3.1",
-					format: "gguf",
-					displayName: "Llama 3.1",
-					path: "meta/llama-3.1/8b",
-					sizeBytes: 8000000000,
-					architecture: "llama",
-					vision: false,
-					trainedForToolUse: false,
-					maxContextLength: 8192,
-				},
-			]
+	it.each([undefined, "", "   "])("omits authorization when no token is configured", async (token) => {
+		vi.mocked(axios.get).mockResolvedValueOnce({ data: { models: [] } })
+		expect(await getLMStudioModels(undefined, token)).toEqual({})
+		expect(vi.mocked(axios.get).mock.calls[0][1]).not.toHaveProperty("headers")
+		expect(LMStudioClient).not.toHaveBeenCalled()
+	})
 
-			const mockLoadedModels: LLMInstanceInfo[] = [
-				{
-					type: "llm",
-					modelKey: "mistral-7b", // Exact match with path segment
-					format: "gguf",
-					displayName: "Mistral 7B",
-					path: "mistralai/mistral-7b/instruct",
-					sizeBytes: 7000000000,
-					architecture: "mistral",
-					identifier: "mistralai/mistral-7b/instruct",
-					instanceReference: "REF1",
-					vision: false,
-					trainedForToolUse: false,
-					maxContextLength: 8192,
-					contextLength: 4096,
-				},
-				{
-					type: "llm",
-					modelKey: "gpt-4", // No match, new model
-					format: "gguf",
-					displayName: "GPT-4",
-					path: "openai/gpt-4",
-					sizeBytes: 10000000000,
-					architecture: "gpt",
-					identifier: "openai/gpt-4",
-					instanceReference: "REF2",
-					vision: true,
-					trainedForToolUse: true,
-					maxContextLength: 32768,
-					contextLength: 16384,
-				},
-			]
-
-			mockedAxios.get.mockResolvedValueOnce({ data: { status: "ok" } })
-			mockListDownloadedModels.mockResolvedValueOnce(mockDownloadedModels)
-			mockListLoaded.mockResolvedValueOnce(
-				mockLoadedModels.map((model) => ({ getModelInfo: vi.fn().mockResolvedValueOnce(model) })),
-			)
-
-			const result = await getLMStudioModels(baseUrl)
-
-			// Should have 3 models: llama-3.1 (downloaded), mistral-7b (loaded, replaced), gpt-4 (loaded, new)
-			expect(Object.keys(result)).toHaveLength(3)
-			expect(result["meta/llama-3.1/8b"]).toBeDefined() // Downloaded, not replaced
-			expect(result["mistralai/mistral-7b/instruct"]).toBeUndefined() // Downloaded, replaced
-			expect(result["mistral-7b"]).toBeDefined() // Loaded, replaced downloaded
-			expect(result["gpt-4"]).toBeDefined() // Loaded, new
+	it("retains multiple loaded instances and their separate contexts", async () => {
+		vi.mocked(axios.get).mockResolvedValueOnce({
+			data: {
+				models: [
+					{
+						...nativeModel,
+						loaded_instances: [
+							...nativeModel.loaded_instances,
+							{ id: "second", config: { context_length: 4096 } },
+						],
+					},
+				],
+			},
 		})
+		const result = await getLMStudioModels(baseUrl)
+		expect(Object.keys(result)).toEqual([instance.identifier, "second"])
+		expect(result.second.contextWindow).toBe(4096)
+	})
 
-		it("should use default baseUrl if an empty string is provided", async () => {
-			const defaultBaseUrl = "http://localhost:1234"
-			const defaultLmsUrl = "ws://localhost:1234"
-			mockedAxios.get.mockResolvedValueOnce({ data: {} })
-			mockListLoaded.mockResolvedValueOnce([])
+	it("falls back to the compatible list when the native endpoint and SDK are unavailable", async () => {
+		vi.mocked(axios.get)
+			.mockRejectedValueOnce(unavailable)
+			.mockResolvedValueOnce({ data: { data: [{ id: "chat" }] } })
+		expect(await getLMStudioModels(baseUrl)).toEqual({ chat: { ...lMStudioDefaultModelInfo, description: "chat" } })
+		expect(axios.get).toHaveBeenNthCalledWith(
+			2,
+			`${baseUrl}/v1/models`,
+			expect.objectContaining({ timeout: 10000, maxRedirects: 0 }),
+		)
+	})
 
-			await getLMStudioModels("")
+	it("uses authenticated REST fallback without attempting SDK access", async () => {
+		vi.mocked(axios.get)
+			.mockRejectedValueOnce(unavailable)
+			.mockResolvedValueOnce({ data: { data: [{ id: "chat" }, { id: "embed", type: "embedding" }] } })
+		expect(Object.keys(await getLMStudioModels(baseUrl, "test-token"))).toEqual(["chat"])
+		expect(axios.get).toHaveBeenNthCalledWith(
+			2,
+			`${baseUrl}/v1/models`,
+			expect.objectContaining({ headers: { Authorization: "Bearer test-token" }, maxRedirects: 0 }),
+		)
+		expect(LMStudioClient).not.toHaveBeenCalled()
+	})
 
-			expect(mockedAxios.get).toHaveBeenCalledWith(`${defaultBaseUrl}/v1/models`)
-			expect(MockedLMStudioClientConstructor).toHaveBeenCalledWith({ baseUrl: defaultLmsUrl })
+	it("uses SDK metadata and exact identity, not substring matches, for REST enrichment", async () => {
+		vi.mocked(axios.get)
+			.mockRejectedValueOnce(unavailable)
+			.mockResolvedValueOnce({ data: { data: [{ id: downloaded.modelKey }, { id: "embedding" }] } })
+		listDownloadedModels.mockResolvedValueOnce([
+			downloaded,
+			{ ...downloaded, modelKey: "publisher/model-Q8", path: "publisher/model/Q8" },
+			{ type: "embedding", modelKey: "embedding", path: "embedding/path" },
+		])
+		listLoaded.mockResolvedValueOnce([{ getModelInfo: vi.fn().mockResolvedValue(instance) }])
+		const result = await getLMStudioModels("https://server.example/proxy/v1")
+		expect(Object.keys(result)).toEqual(["publisher/model-Q8", instance.identifier])
+		expect(result[instance.identifier].contextWindow).toBe(126720)
+		expect(LMStudioClient).toHaveBeenCalledWith(expect.objectContaining({ baseUrl: "wss://server.example/proxy" }))
+		expect(listDownloadedModels).toHaveBeenCalledWith()
+		expect(loadModel).not.toHaveBeenCalled()
+	})
+
+	it("can discover via SDK when both HTTP endpoints are unavailable", async () => {
+		listDownloadedModels.mockResolvedValueOnce([downloaded])
+		expect(Object.keys(await getLMStudioModels(baseUrl))).toEqual([downloaded.modelKey])
+	})
+
+	it("preserves all SDK loaded instances sharing one model key", async () => {
+		listDownloadedModels.mockResolvedValueOnce([downloaded])
+		listLoaded.mockResolvedValueOnce([
+			{ getModelInfo: vi.fn().mockResolvedValue(instance) },
+			{
+				getModelInfo: vi
+					.fn()
+					.mockResolvedValue({ ...instance, identifier: downloaded.modelKey, contextLength: 4096 }),
+			},
+		])
+		const result = await getLMStudioModels(baseUrl)
+		expect(Object.keys(result)).toEqual([instance.identifier, downloaded.modelKey])
+		expect(result[downloaded.modelKey].contextWindow).toBe(4096)
+	})
+
+	it.each([401, 403])("does not hide native HTTP %s authentication failures or try fallback", async (status) => {
+		vi.mocked(axios.get).mockRejectedValueOnce({ response: { status }, config: { secret: "test-token" } })
+		await expect(getLMStudioModels(baseUrl, "test-token")).rejects.toThrow(`authentication failed (HTTP ${status})`)
+		expect(axios.get).toHaveBeenCalledTimes(1)
+		expect(LMStudioClient).not.toHaveBeenCalled()
+	})
+
+	it("does not hide compatible endpoint authentication failures behind SDK results", async () => {
+		vi.mocked(axios.get)
+			.mockRejectedValueOnce(unavailable)
+			.mockRejectedValueOnce({ response: { status: 401 } })
+		await expect(getLMStudioModels(baseUrl)).rejects.toThrow("authentication failed")
+		expect(LMStudioClient).not.toHaveBeenCalled()
+	})
+
+	it("throws a sanitized failure instead of returning an empty catalog", async () => {
+		const warn = vi.spyOn(console, "warn")
+		const error = vi.spyOn(console, "error")
+		vi.mocked(axios.get).mockRejectedValue({
+			code: "ECONNREFUSED",
+			message: "test-token",
+			config: { secret: "test-token" },
 		})
+		await expect(getLMStudioModels(baseUrl, "test-token")).rejects.toThrow("Could not connect to LM Studio")
+		expect(warn).not.toHaveBeenCalled()
+		expect(error).not.toHaveBeenCalled()
+	})
 
-		it("should transform https baseUrl to wss for LMStudioClient", async () => {
-			const httpsBaseUrl = "https://securehost:4321"
-			const wssLmsUrl = "wss://securehost:4321"
-			mockedAxios.get.mockResolvedValueOnce({ data: {} })
-			mockListLoaded.mockResolvedValueOnce([])
+	it("rejects invalid URLs before sending any request", async () => {
+		await expect(getLMStudioModels("http://token@server")).rejects.toThrow("Invalid LM Studio base URL")
+		expect(axios.get).not.toHaveBeenCalled()
+	})
 
-			await getLMStudioModels(httpsBaseUrl)
+	it("rejects malformed endpoint responses when no discovery method succeeds", async () => {
+		vi.mocked(axios.get).mockResolvedValue({ data: { error: "secret-token" } })
+		await expect(getLMStudioModels(baseUrl, "test-token")).rejects.toThrow("Could not discover LM Studio models")
+	})
 
-			expect(mockedAxios.get).toHaveBeenCalledWith(`${httpsBaseUrl}/v1/models`)
-			expect(MockedLMStudioClientConstructor).toHaveBeenCalledWith({ baseUrl: wssLmsUrl })
-		})
+	it("accepts a valid empty compatible list even if SDK enrichment fails", async () => {
+		vi.mocked(axios.get)
+			.mockRejectedValueOnce(unavailable)
+			.mockResolvedValueOnce({ data: { data: [] } })
+		expect(await getLMStudioModels(baseUrl)).toEqual({})
+	})
 
-		it("should return an empty object if lmsUrl is unparsable", async () => {
-			const unparsableBaseUrl = "http://localhost:invalid:port" // Leads to ws://localhost:invalid:port
+	it("bounds SDK waits and preserves REST results", async () => {
+		vi.useFakeTimers()
+		vi.mocked(axios.get)
+			.mockRejectedValueOnce(unavailable)
+			.mockResolvedValueOnce({ data: { data: [{ id: "chat" }] } })
+		listDownloadedModels.mockReturnValueOnce(new Promise(() => {}))
+		listLoaded.mockResolvedValueOnce([{ getModelInfo: () => new Promise(() => {}) }])
+		const result = getLMStudioModels(baseUrl)
+		await vi.advanceTimersByTimeAsync(MODEL_FETCH_TIMEOUT_MS)
+		expect(Object.keys(await result)).toEqual(["chat"])
+		expect(vi.getTimerCount()).toBe(0)
+	})
 
-			const result = await getLMStudioModels(unparsableBaseUrl)
+	it("reports HTTP timeouts without leaking the underlying request", async () => {
+		vi.mocked(axios.get).mockRejectedValue({ code: "ECONNABORTED", request: "secret-token" })
+		await expect(getLMStudioModels(baseUrl, "test-token")).rejects.toThrow("LM Studio model discovery timed out.")
+	})
 
-			expect(result).toEqual({})
-			expect(mockedAxios.get).not.toHaveBeenCalled()
-			expect(MockedLMStudioClientConstructor).not.toHaveBeenCalled()
-		})
+	it("scopes loaded metadata by normalized endpoint and token, and clears only the refreshed scope", async () => {
+		vi.mocked(axios.get).mockResolvedValue({ data: { models: [nativeModel] } })
+		await getLMStudioModels(baseUrl, "one")
+		await getLMStudioModels("https://other.example", "two")
+		expect(hasLoadedFullDetails(instance.identifier, `${baseUrl}/v1/`, "one")).toBe(true)
+		expect(hasLoadedFullDetails(instance.identifier, baseUrl, "two")).toBe(false)
+		expect(getCachedLMStudioModels(baseUrl, "two")).toBeUndefined()
+		expect(getCachedLMStudioModels(baseUrl, "one")?.[instance.identifier].contextWindow).toBe(126720)
+		expect(hasLoadedFullDetails(instance.identifier, "https://other.example", "two")).toBe(true)
+		vi.mocked(axios.get).mockResolvedValueOnce({ data: { models: [] } })
+		await getLMStudioModels(baseUrl, "one")
+		expect(hasLoadedFullDetails(instance.identifier, baseUrl, "one")).toBe(false)
+		expect(getCachedLMStudioModels(baseUrl, "one")).toEqual({})
+		expect(hasLoadedFullDetails(instance.identifier, "https://other.example", "two")).toBe(true)
+	})
 
-		it("should return an empty object and log error if axios.get fails with a generic error", async () => {
-			const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
-			const networkError = new Error("Network connection failed")
-			mockedAxios.get.mockRejectedValueOnce(networkError)
-
-			const result = await getLMStudioModels(baseUrl)
-
-			expect(mockedAxios.get).toHaveBeenCalledTimes(1)
-			expect(mockedAxios.get).toHaveBeenCalledWith(`${baseUrl}/v1/models`)
-			expect(MockedLMStudioClientConstructor).not.toHaveBeenCalled()
-			expect(mockListLoaded).not.toHaveBeenCalled()
-			expect(consoleErrorSpy).toHaveBeenCalledWith(
-				`Error fetching LMStudio models: ${JSON.stringify(networkError, Object.getOwnPropertyNames(networkError), 2)}`,
-			)
-			expect(result).toEqual({})
-			consoleErrorSpy.mockRestore()
-		})
-
-		it("should return an empty object and log info if axios.get fails with ECONNREFUSED", async () => {
-			const consoleInfoSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
-			const econnrefusedError = new Error("Connection refused")
-			;(econnrefusedError as any).code = "ECONNREFUSED"
-			mockedAxios.get.mockRejectedValueOnce(econnrefusedError)
-
-			const result = await getLMStudioModels(baseUrl)
-
-			expect(mockedAxios.get).toHaveBeenCalledTimes(1)
-			expect(mockedAxios.get).toHaveBeenCalledWith(`${baseUrl}/v1/models`)
-			expect(MockedLMStudioClientConstructor).not.toHaveBeenCalled()
-			expect(mockListLoaded).not.toHaveBeenCalled()
-			expect(consoleInfoSpy).toHaveBeenCalledWith(`Error connecting to LMStudio at ${baseUrl}`)
-			expect(result).toEqual({})
-			consoleInfoSpy.mockRestore()
-		})
-
-		it("should return an empty object and log error if listDownloadedModels fails", async () => {
-			const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
-			const listError = new Error("LMStudio SDK internal error")
-
-			mockedAxios.get.mockResolvedValueOnce({ data: {} })
-			mockListLoaded.mockRejectedValueOnce(listError)
-
-			const result = await getLMStudioModels(baseUrl)
-
-			expect(mockedAxios.get).toHaveBeenCalledTimes(1)
-			expect(MockedLMStudioClientConstructor).toHaveBeenCalledTimes(1)
-			expect(MockedLMStudioClientConstructor).toHaveBeenCalledWith({ baseUrl: lmsUrl })
-			expect(mockListLoaded).toHaveBeenCalledTimes(1)
-			expect(consoleErrorSpy).toHaveBeenCalledWith(
-				`Error fetching LMStudio models: ${JSON.stringify(listError, Object.getOwnPropertyNames(listError), 2)}`,
-			)
-			expect(result).toEqual({})
-			consoleErrorSpy.mockRestore()
-		})
+	it("refreshes details with optional credentials without loading models or using the shared cache", async () => {
+		vi.mocked(axios.get).mockResolvedValue({ data: { models: [nativeModel] } })
+		await forceFullModelDetailsLoad(baseUrl, instance.identifier, "test-token")
+		expect(hasLoadedFullDetails(instance.identifier, baseUrl, "test-token")).toBe(true)
+		expect(loadModel).not.toHaveBeenCalled()
+		expect(LMStudioClient).not.toHaveBeenCalled()
 	})
 })
