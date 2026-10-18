@@ -5,6 +5,7 @@ import * as vscode from "vscode"
 
 import { getTaskDirectoryPath } from "../../utils/storage"
 import { fileExistsAtPath } from "../../utils/fs"
+import { safeWriteJson } from "../../utils/safeWriteJson"
 
 export interface ErrorDiagnosticsValues {
 	timestamp?: string
@@ -53,6 +54,8 @@ export async function generateErrorDiagnostics(params: GenerateDiagnosticsParams
 		}
 
 		const diagnostics = {
+			sharingNotice:
+				"This report contains conversation history and may contain private data. Review and redact it before attaching it to a GitHub issue. Nothing is uploaded automatically.",
 			error: {
 				timestamp: values?.timestamp ?? new Date().toISOString(),
 				version: values?.version ?? "",
@@ -63,20 +66,13 @@ export async function generateErrorDiagnostics(params: GenerateDiagnosticsParams
 			history,
 		}
 
-		// Prepend human-readable guidance comments before the JSON payload
-		const headerComment =
-			"// Please attach this file to a GitHub issue if it helps diagnose the problem faster\n" +
-			"// Just make sure you're OK sharing the contents of the conversation below.\n\n"
-		const jsonContent = JSON.stringify(diagnostics, null, 2)
-		const fullContent = headerComment + jsonContent
-
 		// Create a temporary diagnostics file
 		const tmpDir = os.tmpdir()
 		const timestamp = Date.now()
 		const tempFileName = `roo-diagnostics-${taskId.slice(0, 8)}-${timestamp}.json`
 		const tempFilePath = path.join(tmpDir, tempFileName)
 
-		await fs.writeFile(tempFilePath, fullContent, "utf8")
+		await safeWriteJson(tempFilePath, diagnostics, { prettyPrint: true })
 
 		// Open the diagnostics file in VS Code
 		const doc = await vscode.workspace.openTextDocument(tempFilePath)

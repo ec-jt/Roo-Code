@@ -47,7 +47,10 @@ vi.mock("fs/promises", () => {
 import * as vscode from "vscode"
 import * as fs from "fs/promises"
 import * as fsUtils from "../../../utils/fs"
+import { safeWriteJson } from "../../../utils/safeWriteJson"
 import { generateErrorDiagnostics } from "../diagnosticsHandler"
+
+vi.mock("../../../utils/safeWriteJson", () => ({ safeWriteJson: vi.fn().mockResolvedValue(undefined) }))
 
 describe("generateErrorDiagnostics", () => {
 	const mockLog = vi.fn()
@@ -80,13 +83,15 @@ describe("generateErrorDiagnostics", () => {
 		expect(fs.readFile).toHaveBeenCalledWith(path.join("/mock/task-dir", "api_conversation_history.json"), "utf8")
 
 		// Verify we wrote a diagnostics file with the expected content
-		expect(fs.writeFile).toHaveBeenCalledTimes(1)
-		const [writtenPath, writtenContent] = vi.mocked(fs.writeFile).mock.calls[0]
+		expect(safeWriteJson).toHaveBeenCalledTimes(1)
+		const [writtenPath, payload, options] = vi.mocked(safeWriteJson).mock.calls[0]
+		const writtenContent = JSON.stringify(payload, null, 2)
+		expect(options).toEqual({ prettyPrint: true })
+		expect(JSON.parse(writtenContent)).toMatchObject({ history: [{ role: "user", content: "test" }] })
+		expect(fs.writeFile).not.toHaveBeenCalled()
 		// taskId.slice(0, 8) = "test-tas" from "test-task-id"
 		expect(String(writtenPath)).toContain("roo-diagnostics-test-tas")
-		expect(String(writtenContent)).toContain(
-			"// Please attach this file to a GitHub issue if it helps diagnose the problem faster",
-		)
+		expect(String(writtenContent)).toContain("Review and redact it before attaching it to a GitHub issue")
 		expect(String(writtenContent)).not.toContain("support@roocode.com")
 		expect(String(writtenContent)).toContain('"error":')
 		expect(String(writtenContent)).toContain('"history":')
@@ -122,7 +127,7 @@ describe("generateErrorDiagnostics", () => {
 		expect(fs.readFile).not.toHaveBeenCalled()
 
 		// Verify empty history in output
-		const [, writtenContent] = vi.mocked(fs.writeFile).mock.calls[0]
+		const writtenContent = JSON.stringify(vi.mocked(safeWriteJson).mock.calls[0][1], null, 2)
 		expect(String(writtenContent)).toContain('"history": []')
 	})
 
@@ -138,7 +143,7 @@ describe("generateErrorDiagnostics", () => {
 		expect(result.success).toBe(true)
 
 		// Verify defaults in output
-		const [, writtenContent] = vi.mocked(fs.writeFile).mock.calls[0]
+		const writtenContent = JSON.stringify(vi.mocked(safeWriteJson).mock.calls[0][1], null, 2)
 		expect(String(writtenContent)).toContain('"version": ""')
 		expect(String(writtenContent)).toContain('"provider": ""')
 		expect(String(writtenContent)).toContain('"model": ""')
@@ -167,13 +172,13 @@ describe("generateErrorDiagnostics", () => {
 		expect(vscode.window.showErrorMessage).toHaveBeenCalledWith("Failed to parse api_conversation_history.json")
 
 		// Verify empty history in output
-		const [, writtenContent] = vi.mocked(fs.writeFile).mock.calls[0]
+		const writtenContent = JSON.stringify(vi.mocked(safeWriteJson).mock.calls[0][1], null, 2)
 		expect(String(writtenContent)).toContain('"history": []')
 	})
 
 	it("returns error result when file write fails", async () => {
 		vi.mocked(fsUtils.fileExistsAtPath).mockResolvedValue(false as any)
-		vi.mocked(fs.writeFile).mockRejectedValue(new Error("Write failed"))
+		vi.mocked(safeWriteJson).mockRejectedValueOnce(new Error("Write failed"))
 
 		const result = await generateErrorDiagnostics({
 			taskId: "test-task-id",
