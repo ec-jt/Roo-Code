@@ -6,6 +6,7 @@ import * as vscode from "vscode"
 import ignore from "ignore"
 import { arePathsEqual } from "../../utils/path"
 import { getBinPath } from "../../services/ripgrep"
+import { RipgrepNotFoundError } from "../ripgrep/ripgrep-path"
 import { DIRS_TO_IGNORE } from "./constants"
 
 /**
@@ -188,7 +189,7 @@ async function getRipgrepPath(): Promise<string> {
 	const rgPath = await getBinPath(vscodeAppRoot)
 
 	if (!rgPath) {
-		throw new Error("Could not find ripgrep binary")
+		throw new RipgrepNotFoundError()
 	}
 
 	return rgPath

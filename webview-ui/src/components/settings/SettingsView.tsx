@@ -134,6 +134,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 
 	const [isDiscardDialogShow, setDiscardDialogShow] = useState(false)
 	const [isChangeDetected, setChangeDetected] = useState(false)
+	const [isApiConfigurationChanged, setApiConfigurationChanged] = useState(false)
 	const [errorMessage, setErrorMessage] = useState<string | undefined>(undefined)
 	const [activeTab, setActiveTab] = useState<SectionName>(
 		targetSection && sectionNames.includes(targetSection as SectionName)
@@ -181,7 +182,6 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 		experiments,
 		maxOpenTabsContext,
 		maxWorkspaceFiles,
-		mcpEnabled,
 		remoteBrowserHost,
 		screenshotQuality,
 		soundEnabled,
@@ -241,6 +241,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 		setCachedState((prevCachedState) => ({ ...prevCachedState, ...extensionState }))
 		prevApiConfigName.current = currentApiConfigName
 		setChangeDetected(false)
+		setApiConfigurationChanged(false)
 	}, [currentApiConfigName, extensionState])
 
 	// Bust the cache when settings are imported.
@@ -248,6 +249,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 		if (settingsImportedAt) {
 			setCachedState((prevCachedState) => ({ ...prevCachedState, ...extensionState }))
 			setChangeDetected(false)
+			setApiConfigurationChanged(false)
 		}
 	}, [settingsImportedAt, extensionState])
 
@@ -295,7 +297,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 				const isAutomaticNoOpSync = !isUserAction && areValuesEqual(previousValue, value)
 
 				if (!isInitialSync && !isAutomaticNoOpSync) {
-					setChangeDetected(true)
+					setApiConfigurationChanged(true)
 				}
 				return { ...prevState, apiConfiguration: { ...prevState.apiConfiguration, [field]: value } }
 			})
@@ -455,7 +457,9 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 		})
 	}, [])
 
-	const isSettingValid = !errorMessage
+	const hasUnsavedChanges = isChangeDetected || isApiConfigurationChanged
+	// Provider errors must not block unrelated settings or cause an invalid draft to be submitted.
+	const isSettingValid = isChangeDetected || !errorMessage
 
 	const handleSubmit = () => {
 		if (isSettingValid) {
@@ -505,7 +509,6 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 					terminalZshP10k,
 					terminalZdotdir,
 					terminalOutputPreviewSize: terminalOutputPreviewSize ?? "medium",
-					mcpEnabled,
 					maxOpenTabsContext: Math.min(Math.max(0, maxOpenTabsContext ?? 20), 500),
 					maxWorkspaceFiles: Math.min(Math.max(0, maxWorkspaceFiles ?? 200), 500),
 					showRooIgnoredFiles: showRooIgnoredFiles ?? true,
@@ -552,7 +555,10 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 
 			// These have more complex logic so they aren't (yet) handled
 			// by the `updateSettings` message.
-			vscode.postMessage({ type: "upsertApiConfiguration", text: currentApiConfigName, apiConfiguration })
+			if (isApiConfigurationChanged && !errorMessage) {
+				vscode.postMessage({ type: "upsertApiConfiguration", text: currentApiConfigName, apiConfiguration })
+				setApiConfigurationChanged(false)
+			}
 			vscode.postMessage({ type: "debugSetting", bool: cachedState.debug })
 
 			setChangeDetected(false)
@@ -561,14 +567,14 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 
 	const checkUnsaveChanges = useCallback(
 		(then: () => void) => {
-			if (isChangeDetected) {
+			if (hasUnsavedChanges) {
 				confirmDialogHandler.current = then
 				setDiscardDialogShow(true)
 			} else {
 				then()
 			}
 		},
-		[isChangeDetected],
+		[hasUnsavedChanges],
 	)
 
 	useImperativeHandle(ref, () => ({ checkUnsaveChanges }), [checkUnsaveChanges])
@@ -579,6 +585,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 				// Discard changes: Reset state and flag
 				setCachedState(extensionState) // Revert to original state
 				setChangeDetected(false) // Reset change flag
+				setApiConfigurationChanged(false)
 				confirmDialogHandler.current?.() // Execute the pending action (e.g., tab switch)
 			}
 			// If confirm is false (Cancel), do nothing, dialog closes automatically
@@ -779,7 +786,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 						content={
 							!isSettingValid
 								? errorMessage
-								: isChangeDetected
+								: hasUnsavedChanges
 									? t("settings:header.saveButtonTooltip")
 									: t("settings:header.nothingChangedTooltip")
 						}>
@@ -787,13 +794,18 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 							variant={isSettingValid ? "primary" : "secondary"}
 							className={!isSettingValid ? "!border-vscode-errorForeground" : ""}
 							onClick={handleSubmit}
-							disabled={!isChangeDetected || !isSettingValid}
+							disabled={!hasUnsavedChanges || !isSettingValid}
 							data-testid="save-button">
 							{t("settings:common.save")}
 						</Button>
 					</StandardTooltip>
 				</div>
 			</TabHeader>
+			{isApiConfigurationChanged && errorMessage && (
+				<div role="status" className="px-5 py-2 text-sm text-vscode-descriptionForeground">
+					Provider changes are not saved: {errorMessage} Other settings can still be saved.
+				</div>
+			)}
 
 			{/* Vertical tabs layout */}
 			<div ref={containerRef} className={cn(settingsTabsContainer, isCompactMode && "narrow")}>

@@ -56,6 +56,10 @@ const McpView = () => {
 				</div>
 
 				<McpEnabledToggle />
+				<p className="mb-4 text-sm text-vscode-descriptionForeground">
+					MCP toggles and server controls save immediately. The Settings Save button is not needed for these
+					changes. When editing an MCP settings file, save it in the editor.
+				</p>
 
 				{mcpEnabled && (
 					<>

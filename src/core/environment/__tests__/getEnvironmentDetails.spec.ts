@@ -9,6 +9,7 @@ import { getFullModeDetails } from "../../../shared/modes"
 import { isToolAllowedForMode } from "../../tools/validateToolUse"
 import { getApiMetrics } from "../../../shared/getApiMetrics"
 import { listFiles } from "../../../services/glob/list-files"
+import { RipgrepNotFoundError } from "../../../services/ripgrep/ripgrep-path"
 import { TerminalRegistry } from "../../../integrations/terminal/TerminalRegistry"
 import { Terminal } from "../../../integrations/terminal/Terminal"
 import { arePathsEqual } from "../../../utils/path"
@@ -218,6 +219,16 @@ describe("getEnvironmentDetails", () => {
 			mockCline.rooIgnoreController,
 			false,
 		)
+	})
+	it("continues context preparation with an explicit omission when ripgrep is missing", async () => {
+		vi.mocked(listFiles).mockRejectedValueOnce(new RipgrepNotFoundError())
+		const details = await getEnvironmentDetails(mockCline as Task, true)
+		expect(details).toContain("Workspace file listing unavailable: ripgrep is missing")
+		expect(details).toContain("No file listing was collected")
+	})
+	it("does not silently suppress unrelated workspace preparation errors", async () => {
+		vi.mocked(listFiles).mockRejectedValueOnce(new Error("unexpected failure"))
+		await expect(getEnvironmentDetails(mockCline as Task, true)).rejects.toThrow("unexpected failure")
 	})
 
 	it("should not include file details when includeFileDetails is false", async () => {

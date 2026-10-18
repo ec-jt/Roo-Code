@@ -11,6 +11,7 @@ import { formatLanguage } from "../../shared/language"
 import { defaultModeSlug, getFullModeDetails } from "../../shared/modes"
 import { getApiMetrics } from "../../shared/getApiMetrics"
 import { listFiles } from "../../services/glob/list-files"
+import { RipgrepNotFoundError } from "../../services/ripgrep/ripgrep-path"
 import { TerminalRegistry } from "../../integrations/terminal/TerminalRegistry"
 import { scopedCommandActivities, formatCommandActivityContext } from "../../integrations/terminal/activityScope"
 import { Terminal } from "../../integrations/terminal/Terminal"
@@ -259,18 +260,30 @@ export async function getEnvironmentDetails(cline: Task, includeFileDetails: boo
 			if (maxFiles === 0) {
 				details += "(Workspace files context disabled. Use list_files to explore if needed.)"
 			} else {
-				const [files, didHitLimit] = await listFiles(cline.cwd, true, maxFiles)
-				const { showRooIgnoredFiles = false } = state ?? {}
+				let listing: Awaited<ReturnType<typeof listFiles>> | undefined
+				try {
+					listing = await listFiles(cline.cwd, true, maxFiles)
+				} catch (error) {
+					if (!(error instanceof RipgrepNotFoundError)) throw error
+					// File-tree context is optional. Explicit search/list tools still fail
+					// clearly; do not leave the entire request stuck in Preparing context.
+					details +=
+						"(Workspace file listing unavailable: ripgrep is missing on the extension host. No file listing was collected.)"
+				}
+				if (listing) {
+					const [files, didHitLimit] = listing
+					const { showRooIgnoredFiles = false } = state ?? {}
 
-				const result = formatResponse.formatFilesList(
-					cline.cwd,
-					files,
-					didHitLimit,
-					cline.rooIgnoreController,
-					showRooIgnoredFiles,
-				)
+					const result = formatResponse.formatFilesList(
+						cline.cwd,
+						files,
+						didHitLimit,
+						cline.rooIgnoreController,
+						showRooIgnoredFiles,
+					)
 
-				details += result
+					details += result
+				}
 			}
 		}
 	}

@@ -13,6 +13,9 @@ const mockVscode = {
 // Import the actual component
 import SettingsView from "../SettingsView"
 import { useExtensionState } from "@src/context/ExtensionStateContext"
+import { vscode } from "@src/utils/vscode"
+
+vi.mock("@src/utils/vscode", () => ({ vscode: { postMessage: vi.fn() } }))
 
 // Mock the extension state context
 vi.mock("@src/context/ExtensionStateContext", () => ({
@@ -187,11 +190,24 @@ vi.mock("../ApiConfigManager", () => ({
 }))
 
 vi.mock("../ApiOptions", () => ({
-	default: () => null,
+	default: function MockApiOptions({ apiConfiguration, setApiConfigurationField, setErrorMessage }: any) {
+		React.useEffect(() => {
+			setErrorMessage(apiConfiguration.lmStudioModelId ? undefined : "Select a model")
+		}, [apiConfiguration, setErrorMessage])
+		return (
+			<input
+				aria-label="LM Studio model"
+				value={apiConfiguration.lmStudioModelId ?? ""}
+				onChange={(event) => setApiConfigurationField("lmStudioModelId", event.target.value)}
+			/>
+		)
+	},
 }))
 
 vi.mock("../AutoApproveSettings", () => ({
-	AutoApproveSettings: () => null,
+	AutoApproveSettings: ({ alwaysAllowMcp, setCachedStateField }: any) => (
+		<button onClick={() => setCachedStateField("alwaysAllowMcp", !alwaysAllowMcp)}>Toggle MCP approval</button>
+	),
 }))
 
 vi.mock("../SectionHeader", () => ({
@@ -312,6 +328,68 @@ describe("SettingsView - Change Detection Fix", () => {
 				mutations: { retry: false },
 			},
 		})
+	})
+
+	it("saves unrelated settings with an invalid unchanged provider without resubmitting MCP enabled state", () => {
+		;(useExtensionState as any).mockReturnValue(createExtensionState({ mcpEnabled: false }))
+		render(
+			<QueryClientProvider client={queryClient}>
+				<SettingsView onDone={vi.fn()} targetSection="autoApprove" />
+			</QueryClientProvider>,
+		)
+		fireEvent.click(screen.getByText("Toggle MCP approval"))
+		expect(screen.getByTestId("save-button")).toBeEnabled()
+		fireEvent.click(screen.getByTestId("save-button"))
+		const messages = vi.mocked(vscode.postMessage).mock.calls.map(([message]) => message)
+		expect(messages).toContainEqual(
+			expect.objectContaining({
+				type: "updateSettings",
+				updatedSettings: expect.objectContaining({ alwaysAllowMcp: true }),
+			}),
+		)
+		expect(messages.find((message) => message.type === "updateSettings")?.updatedSettings).not.toHaveProperty(
+			"mcpEnabled",
+		)
+		expect(messages.some((message) => message.type === "upsertApiConfiguration")).toBe(false)
+		expect(screen.getByTestId("save-button")).toBeDisabled()
+	})
+
+	it("retains an invalid provider draft while saving other settings, then submits it only after correction", () => {
+		;(useExtensionState as any).mockReturnValue(
+			createExtensionState({
+				apiConfiguration: { apiProvider: "lmstudio", lmStudioModelId: "original", lmStudioApiKey: "" },
+			}),
+		)
+		const onDone = vi.fn()
+		const view = (targetSection: string) => (
+			<QueryClientProvider client={queryClient}>
+				<SettingsView onDone={onDone} targetSection={targetSection} />
+			</QueryClientProvider>
+		)
+		const { rerender } = render(view("providers"))
+		fireEvent.change(screen.getByLabelText("LM Studio model"), { target: { value: "" } })
+		expect(screen.getByTestId("save-button")).toBeDisabled()
+		rerender(view("autoApprove"))
+		fireEvent.click(screen.getByText("Toggle MCP approval"))
+		fireEvent.click(screen.getByTestId("save-button"))
+		expect(
+			vi.mocked(vscode.postMessage).mock.calls.some(([message]) => message.type === "upsertApiConfiguration"),
+		).toBe(false)
+		expect(screen.getByRole("status")).toHaveTextContent("Provider changes are not saved")
+		fireEvent.click(screen.getByText("settings:common.done"))
+		expect(onDone).not.toHaveBeenCalled()
+		expect(screen.getByTestId("alert-dialog")).toBeInTheDocument()
+		fireEvent.click(screen.getByText("settings:unsavedChangesDialog.cancelButton"))
+		rerender(view("providers"))
+		expect(screen.getByLabelText("LM Studio model")).toHaveValue("")
+		fireEvent.change(screen.getByLabelText("LM Studio model"), { target: { value: "corrected" } })
+		fireEvent.click(screen.getByTestId("save-button"))
+		expect(vscode.postMessage).toHaveBeenCalledWith({
+			type: "upsertApiConfiguration",
+			text: "default",
+			apiConfiguration: { apiProvider: "lmstudio", lmStudioModelId: "corrected", lmStudioApiKey: "" },
+		})
+		expect(screen.getByTestId("save-button")).toBeDisabled()
 	})
 
 	it("should not show unsaved changes when no changes are made", async () => {
