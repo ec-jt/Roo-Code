@@ -52,6 +52,36 @@ describe("model operation state merging", () => {
 		expect(mergeExtensionState(previous, { modelOperation: undefined }).modelOperation).toBeUndefined()
 		expect(mergeExtensionState(previous, { currentTaskId: undefined }).modelOperation).toBeUndefined()
 	})
+	it("clears task fields after undefined properties disappear during serialization", () => {
+		const wireState = JSON.parse(
+			JSON.stringify({
+				currentTaskId: undefined,
+				modelOperation: undefined,
+				currentTaskItem: undefined,
+				runningTask: undefined,
+				chatWindow: undefined,
+				clineMessages: [],
+				clineMessagesSeq: 11,
+			}),
+		)
+		const merged = mergeExtensionState(previous, wireState)
+		expect(merged.modelOperation).toBeUndefined()
+		expect(merged.currentTaskId).toBeUndefined()
+		expect(merged.clineMessages).toEqual([])
+	})
+	it("does not treat an initializing task or an old clear as an empty start screen", () => {
+		expect(
+			mergeExtensionState(previous, {
+				clineMessages: [],
+				clineMessagesSeq: 11,
+				currentTaskId: "task",
+				modelOperation: operation,
+			}).modelOperation,
+		).toEqual(operation)
+		expect(mergeExtensionState(previous, { clineMessages: [], clineMessagesSeq: 9 }).modelOperation).toEqual(
+			operation,
+		)
+	})
 })
 
 const TestComponent = () => {

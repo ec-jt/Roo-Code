@@ -1589,8 +1589,11 @@ export class ClineProvider
 				const snapshot = task ? this.chatWindow.snapshot(task) : { clineMessages: [], chatWindow: undefined }
 				Object.assign(message.state, snapshot, {
 					clineMessagesSeq: ++this.clineMessagesSeq,
+					currentTaskId: task?.taskId,
+					modelOperation: task?.modelOperationState,
 					currentTaskTodos: task?.todoList ?? [],
 				})
+				if (message.state.currentTaskItem?.id !== task?.taskId) message.state.currentTaskItem = undefined
 				this.lastChatWindowPost = Date.now()
 				if (snapshot.chatWindow && this.view) this.chatWindowDiagnostics.sent(snapshot.chatWindow)
 			}

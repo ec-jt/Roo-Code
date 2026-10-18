@@ -132,6 +132,7 @@ export function ModelOperationProvider({ children }: { children: ReactNode }) {
 			? state?.reason || t("chat:modelOperation.unavailable")
 			: undefined
 	const disabledReason = stale ? t("chat:modelOperation.stale") : switchReason
+	const nextRequestOnly = selection?.kind === "switch" && !selection.requestId
 	const selectNextRequest = () => {
 		if (
 			!selection ||
@@ -275,13 +276,13 @@ export function ModelOperationProvider({ children }: { children: ReactNode }) {
 				<DialogContent>
 					<DialogHeader>
 						<DialogTitle>
-							{t(
-								selection?.kind === "switch"
-									? "chat:modelOperation.switch"
-									: "chat:modelOperation.regenerate",
-							)}
+							{selection?.kind === "switch" ? "Change model" : t("chat:modelOperation.regenerate")}
 						</DialogTitle>
-						<DialogDescription>{t("chat:modelOperation.warning")}</DialogDescription>
+						<DialogDescription>
+							{nextRequestOnly
+								? "Select the model profile for the next request in this task. No restart or request snapshot is needed."
+								: t("chat:modelOperation.warning")}
+						</DialogDescription>
 					</DialogHeader>
 					<label id="model-operation-profile-label">{t("chat:modelOperation.profile")}</label>
 					<Select
@@ -301,7 +302,7 @@ export function ModelOperationProvider({ children }: { children: ReactNode }) {
 						</SelectContent>
 					</Select>
 					{profiles.length === 0 && <p role="alert">{t("chat:modelOperation.noProfiles")}</p>}
-					{disabledReason && <p role="alert">{disabledReason}</p>}
+					{!nextRequestOnly && disabledReason && <p role="alert">{disabledReason}</p>}
 					{selection?.kind === "switch" && (
 						<div className="space-y-2 text-sm">
 							<p>
@@ -325,7 +326,7 @@ export function ModelOperationProvider({ children }: { children: ReactNode }) {
 							)}
 						</div>
 					)}
-					{stale && (
+					{stale && !nextRequestOnly && (
 						<div className="space-y-2 text-sm">
 							<p>
 								The task advanced while this dialog was open. Refresh the request and confirm again.
@@ -343,34 +344,38 @@ export function ModelOperationProvider({ children }: { children: ReactNode }) {
 							{sameInstance(state, selection?.source) && switchReason && <p>{switchReason}</p>}
 						</div>
 					)}
-					<label className="flex items-start gap-2 text-sm">
-						<input
-							type="checkbox"
-							checked={confirmed}
-							onChange={(event) => setConfirmed(event.target.checked)}
-						/>
-						{t("chat:modelOperation.confirmWorkspace")}
-					</label>
+					{!nextRequestOnly && (
+						<label className="flex items-start gap-2 text-sm">
+							<input
+								type="checkbox"
+								checked={confirmed}
+								onChange={(event) => setConfirmed(event.target.checked)}
+							/>
+							{t("chat:modelOperation.confirmWorkspace")}
+						</label>
+					)}
 					<DialogFooter>
 						<Button variant="secondary" onClick={() => setSelection(undefined)}>
 							{t("chat:modelOperation.cancel")}
 						</Button>
-						<Button
-							variant="primary"
-							disabled={
-								!confirmed ||
-								!!disabledReason ||
-								!selection?.requestId ||
-								!profiles.some((p) => p.id === selection?.profileId) ||
-								busy
-							}
-							onClick={dispatch}>
-							{t(
-								selection?.kind === "switch"
-									? "chat:modelOperation.switch"
-									: "chat:modelOperation.regenerate",
-							)}
-						</Button>
+						{!nextRequestOnly && (
+							<Button
+								variant="primary"
+								disabled={
+									!confirmed ||
+									!!disabledReason ||
+									!selection?.requestId ||
+									!profiles.some((p) => p.id === selection?.profileId) ||
+									busy
+								}
+								onClick={dispatch}>
+								{t(
+									selection?.kind === "switch"
+										? "chat:modelOperation.switch"
+										: "chat:modelOperation.regenerate",
+								)}
+							</Button>
+						)}
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>

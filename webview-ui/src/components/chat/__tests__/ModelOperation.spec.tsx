@@ -50,7 +50,15 @@ let profiles: { id: string; name: string }[]
 const emptyList: never[] = []
 const emptyConfiguration = {}
 
-function Harness({ message = assistant, streaming = true }: { message?: ClineMessage; streaming?: boolean }) {
+function Harness({
+	message = assistant,
+	streaming = true,
+	selectionDisabled = true,
+}: {
+	message?: ClineMessage
+	streaming?: boolean
+	selectionDisabled?: boolean
+}) {
 	const [draft, setDraft] = useState("Keep my unsent draft")
 	return (
 		<ModelOperationProvider>
@@ -60,7 +68,7 @@ function Harness({ message = assistant, streaming = true }: { message?: ClineMes
 				inputValue={draft}
 				setInputValue={setDraft}
 				sendingDisabled={true}
-				selectApiConfigDisabled={true}
+				selectApiConfigDisabled={selectionDisabled}
 				placeholderText="Draft"
 				selectedImages={[]}
 				setSelectedImages={vi.fn()}
@@ -89,6 +97,37 @@ const operations = () =>
 		.mocked(vscode.postMessage)
 		.mock.calls.map(([message]) => message)
 		.filter((message) => message.type === "modelOperation")
+
+it("changes the global profile directly on the empty new-task screen", () => {
+	state = undefined
+	render(<Harness streaming={false} selectionDisabled={false} />)
+	fireEvent.click(screen.getByRole("button", { name: /Select profile/ }))
+	expect(vscode.postMessage).toHaveBeenCalledWith({ type: "loadApiConfigurationById", text: "target-profile" })
+	expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+})
+
+it("offers next-request selection without restart warnings or confirmation when no snapshot exists", () => {
+	state = {
+		...source,
+		requestId: undefined,
+		readiness: "blocked",
+		reason: "No durable request snapshot is available.",
+	}
+	render(<Harness streaming={false} />)
+	fireEvent.click(screen.getByRole("button", { name: /Select profile/ }))
+	expect(screen.getByRole("dialog")).toHaveAccessibleName("Change model")
+	expect(screen.queryByText("No durable request snapshot is available.")).not.toBeInTheDocument()
+	expect(screen.queryByRole("checkbox")).not.toBeInTheDocument()
+	expect(screen.queryByRole("button", { name: switchLabel })).not.toBeInTheDocument()
+	fireEvent.click(screen.getByRole("button", { name: "Use for next request" }))
+	expect(vscode.postMessage).toHaveBeenCalledWith(
+		expect.objectContaining({
+			type: "queueTaskProfile",
+			modelOperation: expect.objectContaining({ profileId: "target-profile", confirmCurrentWorkspace: false }),
+		}),
+	)
+	expect(operations()).toHaveLength(0)
+})
 const approvals = () =>
 	vi
 		.mocked(vscode.postMessage)

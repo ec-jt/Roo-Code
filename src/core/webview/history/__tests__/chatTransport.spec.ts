@@ -34,6 +34,28 @@ function fixture() {
 }
 
 describe("bounded provider transport", () => {
+	it("clears stale task identity and model controls when the task closes during state assembly", async () => {
+		const { provider, task, postMessage, dispose } = fixture()
+		const state = {
+			clineMessages: task.clineMessages,
+			currentTaskId: task.taskId,
+			modelOperation: {
+				taskId: task.taskId,
+				instanceId: task.instanceId,
+				revision: 1,
+				readiness: "blocked" as const,
+				requiresToolApproval: false,
+			},
+		}
+		Object.assign(provider, { getCurrentTask: () => undefined })
+		await provider.postMessageToWebview({ type: "state", state })
+		expect(postMessage.mock.calls[0][0].state).toMatchObject({
+			clineMessages: [],
+			currentTaskId: undefined,
+			modelOperation: undefined,
+		})
+		dispose()
+	})
 	it("replaces full-history state and raw messageUpdated at the final send boundary", async () => {
 		const { provider, task, postMessage, dispose } = fixture()
 		await provider.postMessageToWebview({ type: "state", state: { clineMessages: task.clineMessages } })

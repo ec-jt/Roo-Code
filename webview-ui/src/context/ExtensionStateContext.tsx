@@ -162,6 +162,28 @@ export const mergeExtensionState = (prevState: ExtensionState, newState: Partial
 	)
 		return prevState
 
+	// Undefined task fields disappear across JSON/webview serialization. A newer
+	// empty message snapshot with no task identity is the authoritative clear,
+	// not a partial settings update. Do not retain the old task's model controls.
+	if (
+		newState.clineMessagesSeq !== undefined &&
+		newState.clineMessagesSeq > (prevState.clineMessagesSeq ?? -1) &&
+		newState.clineMessages?.length === 0 &&
+		!newState.chatWindow &&
+		!newState.currentTaskId &&
+		!newState.modelOperation &&
+		!newState.runningTask
+	) {
+		newState = {
+			...newState,
+			currentTaskId: undefined,
+			currentTaskItem: undefined,
+			modelOperation: undefined,
+			chatWindow: undefined,
+			runningTask: undefined,
+		}
+	}
+
 	if (prevState.chatWindow && newState.clineMessages !== undefined && !newState.chatWindow) {
 		if (newState.clineMessages.length === 0) {
 			newState = { ...newState, chatWindow: undefined }
