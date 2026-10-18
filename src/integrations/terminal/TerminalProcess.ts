@@ -165,14 +165,19 @@ export class TerminalProcess extends BaseTerminalProcess {
 			// Check for command output start marker
 			if (!commandOutputStarted) {
 				preOutput += data
-				const match = this.matchAfterVsceStartMarkers(data)
+				// Shell-integration markers can span stream chunks. Searching only
+				// this chunk discards all subsequent output when the marker is split.
+				const match = this.matchAfterVsceStartMarkers(preOutput)
 
 				if (match !== undefined) {
 					commandOutputStarted = true
 					data = match
+					preOutput = ""
 					this.fullOutput = "" // Reset fullOutput when command actually starts
 					this.emit("line", "") // Trigger UI to proceed
 				} else {
+					// Bound diagnostics while retaining enough suffix for a split marker.
+					preOutput = preOutput.slice(-64 * 1024)
 					continue
 				}
 			}

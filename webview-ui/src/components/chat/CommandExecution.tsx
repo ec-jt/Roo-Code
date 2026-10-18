@@ -37,7 +37,7 @@ export const CommandExecution = ({ executionId, text, icon, title }: CommandExec
 
 	const { command, output: parsedOutput } = useMemo(() => parseCommandAndOutput(text), [text])
 
-	// Keep output collapsed for both integrated and background commands.
+	// Keep the full output compact, but never hide the recent-output preview.
 	const [isExpanded, setIsExpanded] = useState(false)
 	const [streamingOutput, setStreamingOutput] = useState("")
 	const [status, setStatus] = useState<CommandExecutionStatus | null>(null)
@@ -46,6 +46,7 @@ export const CommandExecution = ({ executionId, text, icon, title }: CommandExec
 	// task message (this is the case for completed commands) or from the
 	// streaming output (this is the case for running commands).
 	const output = streamingOutput || parsedOutput
+	const recentOutput = useMemo(() => output.slice(-2048).split("\n").slice(-6).join("\n"), [output])
 
 	// Extract command patterns from the actual command that was executed
 	const commandPatterns = useMemo<CommandPattern[]>(() => {
@@ -200,6 +201,23 @@ export const CommandExecution = ({ executionId, text, icon, title }: CommandExec
 			<div className="bg-vscode-editor-background border border-vscode-border rounded-xs ml-6 mt-2">
 				<div className="p-2">
 					<CodeBlock source={command} language="shell" />
+					{!isExpanded && output.length > 0 && (
+						<div className="mt-1 pt-1 border-t border-vscode-panel-border">
+							<div className="text-xs text-vscode-descriptionForeground">Recent command output</div>
+							<pre
+								aria-label="Recent command output"
+								className="m-0 whitespace-pre-wrap break-all text-xs font-mono max-h-24 overflow-auto">
+								{recentOutput}
+							</pre>
+						</div>
+					)}
+					{output.length === 0 && (
+						<p role="status" className="text-xs text-vscode-descriptionForeground">
+							{status?.status === "exited"
+								? "Command finished with no captured output."
+								: "No command output captured yet. API request statistics are separate from terminal output."}
+						</p>
+					)}
 					<OutputContainer isExpanded={isExpanded} output={output} />
 				</div>
 				{command && command.trim() && (

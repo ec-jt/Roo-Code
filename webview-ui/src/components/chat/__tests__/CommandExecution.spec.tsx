@@ -66,6 +66,7 @@ describe("CommandExecution", () => {
 		)
 
 		expect(screen.getByTestId("code-block")).toHaveTextContent("npm install")
+		expect(screen.getByRole("status")).toHaveTextContent("No command output captured yet")
 	})
 
 	it("should render command with output", () => {
@@ -79,10 +80,25 @@ describe("CommandExecution", () => {
 		expect(codeBlocks[0]).toHaveTextContent("npm install")
 
 		expect(screen.queryByTestId("terminal-output")).not.toBeInTheDocument()
+		expect(screen.getByLabelText("Recent command output")).toHaveTextContent("Installing packages...")
 		fireEvent.click(screen.getByRole("button", { name: "Show command output" }))
 		const terminalOutput = screen.getByTestId("terminal-output")
 		expect(terminalOutput).toHaveTextContent("Installing packages...")
 		fireEvent.click(screen.getByRole("button", { name: "Hide command output" }))
+		expect(screen.queryByTestId("terminal-output")).not.toBeInTheDocument()
+	})
+
+	it("shows a bounded recent tail by default and updates it as output grows", () => {
+		const view = (output: string) => (
+			<ExtensionStateWrapper>
+				<CommandExecution executionId="test-tail" text={`echo test\nOutput:\n${output}`} />
+			</ExtensionStateWrapper>
+		)
+		const { rerender } = render(view("old-prefix" + "x".repeat(5000) + "\nlatest"))
+		expect(screen.getByLabelText("Recent command output").textContent?.length).toBeLessThanOrEqual(2048)
+		expect(screen.getByLabelText("Recent command output")).not.toHaveTextContent("old-prefix")
+		rerender(view("x".repeat(5000) + "\nlatest\nnewest"))
+		expect(screen.getByLabelText("Recent command output")).toHaveTextContent("newest")
 		expect(screen.queryByTestId("terminal-output")).not.toBeInTheDocument()
 	})
 

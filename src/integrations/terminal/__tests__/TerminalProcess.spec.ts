@@ -111,6 +111,32 @@ describe("TerminalProcess", () => {
 	})
 
 	describe("run", () => {
+		it.each(
+			["\x1b]633;C\x07", "\x1b]133;C\x07"].flatMap((marker) =>
+				Array.from({ length: marker.length - 1 }, (_, index) => [marker, index + 1] as const),
+			),
+		)("captures output when marker %j is split at %s", async (marker, split) => {
+			const captured = vi.fn()
+			const completed = vi.fn()
+			const missing = vi.fn()
+			terminalProcess.on("activity_output", captured)
+			terminalProcess.on("completed", completed)
+			terminalProcess.on("no_shell_integration", missing)
+			const stream = (async function* () {
+				yield "prompt not command output\n" + marker.slice(0, split)
+				yield marker.slice(split) + "first output\n"
+				yield "second output\n"
+				terminalProcess.emit("shell_execution_complete", { exitCode: 0 })
+			})()
+			mockTerminal.shellIntegration.executeCommand.mockReturnValue({ read: () => stream })
+			const run = terminalProcess.run("synthetic command")
+			terminalProcess.emit("stream_available", stream)
+			await run
+			expect(captured.mock.calls.map(([text]) => text).join("")).toBe("first output\nsecond output\n")
+			expect(completed).toHaveBeenCalledWith("first output\nsecond output\n")
+			expect(missing).not.toHaveBeenCalled()
+		})
+
 		it("handles shell integration commands correctly", async () => {
 			let lines: string[] = []
 
