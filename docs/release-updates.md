@@ -4,11 +4,11 @@ Use **Roo Settings > About > GitHub release updates**. This updater checks only 
 
 ## Manual update
 
-1. Save or finish work and close the loaded Roo task. Its saved history remains available.
+1. Save your work. Installation is allowed while a Roo task is loaded or running; activation is separate.
 2. Select **Check for updates** to see the newer version and release notes, or select **Update / install latest** to check and install in one flow.
 3. Confirm the version and source in the native VS Code dialog.
 4. Wait for download, verification, and VS Code installation to finish.
-5. Select **Reload to activate**, or use **Developer: Reload Window**, when ready to interrupt the extension host.
+5. Finish or stop work and close the loaded task before selecting **Reload to activate**. Reload interrupts the extension host. **Developer: Reload Window** bypasses Roo's reload guard, so use it only when safe.
 
 The updater does not uninstall Roo, delete settings/tasks, or automatically reload. A successful installation command is not proof that the running extension has switched versions; reload and check the version shown in About.
 
@@ -18,7 +18,7 @@ The first release containing this updater must still be installed once using **E
 
 Automatic updating is **off by default**. Enable **Automatically install GitHub release updates** and confirm the native warning. This is host-local consent, not part of imported or synchronized Roo settings. The option takes effect immediately and does not use the Settings Save button.
 
-When enabled, Roo checks about 30 seconds after activation and every six hours. A tick is skipped while any Roo task is loaded in this extension host, including a background task. Installation also rechecks task state and consent after download. Failed checks do not retry in a tight loop; use the manual button or wait for the next scheduled check. No additional update is installed while a previously installed version awaits reload.
+When enabled, Roo checks about 30 seconds after activation and every six hours. Loaded or running tasks do not block checks or installation. Installation rechecks cancellation and automatic-update consent after download. Failed checks do not retry in a tight loop; use the manual button or wait for the next scheduled check. No additional update is installed while a previously installed version awaits reload.
 
 Disabling automation stops pending work before it is handed to VS Code. Once VS Code is installing, the updater cannot cancel that installation. Reload is always manual. Other VS Code windows can have separate extension hosts; this is not a machine-wide task lock.
 
@@ -32,7 +32,7 @@ VS Code distributions and administrator policies can reject VSIX installation. E
 
 - Consider only strict versioned release tags and exact matching VSIX/checksum asset names. Do not downgrade or reinstall the running version. Search at most the latest 300 listed releases.
 - Use HTTPS with certificate verification, a fixed host allowlist, bounded redirects, timeouts, and download size limits. No repository credentials or provider keys are sent.
-- Download to a private temporary directory. Check SHA-256 against the release sidecar and GitHub's asset digest when present.
+- Download to a unique temporary directory. On Linux/macOS, enforce owner-only permissions and verify ownership. On Windows, inherit the temporary location's ACLs; Node's Unix mode bits do not describe Windows ACL privacy and are not used to reject the directory. Keep the Windows user temporary location protected by its normal user ACLs; custom shared temporary locations are not supported as a security boundary. Check SHA-256 against the release sidecar and GitHub's asset digest when present.
 - Inspect archive paths, size/compression limits, and the extension manifest without extracting or executing it. Require the expected publisher, extension name, and release version. Reject known incompatible engine ranges; VS Code remains responsible for final compatibility checks.
 - Hand the verified file to the VS Code installer. Clean temporary files after success, rejection, or failure. An extension-host crash may leave its private temporary directory behind.
 

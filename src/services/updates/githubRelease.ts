@@ -726,14 +726,23 @@ async function streamResponseToFile(
 // Temporary directory handling
 // ---------------------------------------------------------------------------
 
-async function createPrivateTempDirectory(): Promise<string> {
+export async function createPrivateTempDirectory(): Promise<string> {
 	const base = path.resolve(os.tmpdir())
 	const directory = await fs.mkdtemp(path.join(base, TEMP_DIRECTORY_PREFIX))
 	try {
-		await fs.chmod(directory, 0o700)
-		const stats = await fs.stat(directory)
-		if ((stats.mode & 0o077) !== 0) {
-			throw updateError("TEMPORARY_DIRECTORY", "Temporary update directory is not private.")
+		// Windows uses inherited ACLs from the user's temporary directory. Node's
+		// chmod/stat mode bits do not set or report those ACLs and can show 0777.
+		const windows = os.platform() === "win32"
+		if (!windows) await fs.chmod(directory, 0o700)
+		const stats = await fs.lstat(directory)
+		if (!stats.isDirectory() || stats.isSymbolicLink()) {
+			throw updateError("TEMPORARY_DIRECTORY", "Temporary update path is not a regular directory.")
+		}
+		if (!windows && ((stats.mode & 0o077) !== 0 || stats.uid !== process.getuid?.())) {
+			throw updateError(
+				"TEMPORARY_DIRECTORY",
+				"Temporary update directory is not private. Use a temporary filesystem that supports owner-only permissions.",
+			)
 		}
 	} catch (error) {
 		await fs.rm(directory, { recursive: true, force: true }).catch(() => undefined)

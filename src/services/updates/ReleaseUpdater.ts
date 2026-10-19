@@ -85,10 +85,6 @@ export class ReleaseUpdater implements vscode.Disposable {
 		if (this.disposed || signal.aborted) throw new Error("Update cancelled before installation.")
 		if (automatic && (!this.enabled() || revision !== this.automaticRevision))
 			throw new Error("Automatic update consent changed. Installation stopped.")
-		if (this.hasLoadedTask())
-			throw new Error(
-				"Close the loaded Roo task before installing an update. Its saved history will remain available.",
-			)
 	}
 
 	async handle(action: ReleaseUpdateAction): Promise<void> {
@@ -147,7 +143,7 @@ export class ReleaseUpdater implements vscode.Disposable {
 				"Enable automatic installation of ec-jt/Roo-Code GitHub releases on this extension host?",
 				{
 					modal: true,
-					detail: "Includes experimental Cordis prereleases. Checks at startup and every six hours, and installs only while no Roo task is loaded. Downloads and checksums come from this repository, not the Marketplace. Reload remains manual. Enable only if you trust this release publisher.",
+					detail: "Includes experimental Cordis prereleases. Checks at startup and every six hours, and can install while a Roo task is loaded. Downloads and checksums come from this repository, not the Marketplace. Reload remains manual and interrupts the extension host. Enable only if you trust this release publisher.",
 				},
 				"Enable automatic updates",
 			)
@@ -160,7 +156,7 @@ export class ReleaseUpdater implements vscode.Disposable {
 			this.setState({
 				automatic: true,
 				message:
-					"Automatic GitHub updates enabled on this host. Installation waits until no Roo task is loaded. Reload remains manual.",
+					"Automatic GitHub updates enabled on this host. Updates can install while a task is loaded. Reload remains manual.",
 			})
 		} finally {
 			this.consentPending = false
@@ -169,7 +165,7 @@ export class ReleaseUpdater implements vscode.Disposable {
 	}
 
 	async runAutomatic(): Promise<void> {
-		if (this.disposed || !this.enabled() || this.busy || this.hasLoadedTask() || this.state.installedVersion) return
+		if (this.disposed || !this.enabled() || this.busy || this.state.installedVersion) return
 		await this.run(true, true)
 	}
 

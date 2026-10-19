@@ -28,6 +28,7 @@ import {
 	buildReleaseHtmlUrl,
 	checkEngineRange,
 	compareStrictVersions,
+	createPrivateTempDirectory,
 	downloadVerifiedRelease,
 	findReleaseUpdate,
 	getInstalledVscodeVersion,
@@ -42,6 +43,10 @@ import {
 import { DEFAULT_ZIP_LIMITS, inspectVsixManifest, listZipEntries } from "../zipInspect"
 
 vi.mock("axios", () => ({ default: { request: vi.fn() } }))
+// Copy native exports into configurable test modules so permission failures can
+// be simulated while the existing download tests keep using the real filesystem.
+vi.mock("fs/promises", async (importOriginal) => ({ ...(await importOriginal<typeof import("fs/promises")>()) }))
+vi.mock("os", async (importOriginal) => ({ ...(await importOriginal<typeof import("os")>()) }))
 
 const VERSION = "4.2.30"
 const VSIX_NAME = `roo-cline-${VERSION}.vsix`
@@ -682,7 +687,7 @@ describe("downloadVerifiedRelease", () => {
 
 		expect(path.basename(vsixPath)).toBe(VSIX_NAME)
 		expect(path.dirname(vsixPath).startsWith(path.join(os.tmpdir(), "roo-update-"))).toBe(true)
-		expect((await fs.stat(path.dirname(vsixPath))).mode & 0o077).toBe(0)
+		if (os.platform() !== "win32") expect((await fs.stat(path.dirname(vsixPath))).mode & 0o077).toBe(0)
 		expect((await fs.stat(vsixPath)).isFile()).toBe(true)
 		expect(sha256(await fs.readFile(vsixPath))).toBe(sha256(archive))
 
@@ -980,6 +985,54 @@ describe("archive verification", () => {
 // ---------------------------------------------------------------------------
 
 describe("temporary directory safety", () => {
+	describe("platform permissions", () => {
+		const directory = path.join(os.tmpdir(), "roo-update-mocked")
+		beforeEach(() => {
+			vi.spyOn(fs, "mkdtemp").mockResolvedValue(directory)
+			vi.spyOn(fs, "chmod").mockResolvedValue(undefined)
+			vi.spyOn(fs, "rm").mockResolvedValue(undefined)
+		})
+		afterEach(() => vi.restoreAllMocks())
+
+		it("does not interpret Windows synthetic Unix mode bits as ACL permissions", async () => {
+			const stats = await fs.lstat(os.tmpdir())
+			vi.spyOn(os, "platform").mockReturnValue("win32")
+			vi.spyOn(fs, "lstat").mockResolvedValue(Object.assign(stats, { mode: 0o40777 }))
+			await expect(createPrivateTempDirectory()).resolves.toBe(directory)
+			expect(fs.chmod).not.toHaveBeenCalled()
+			expect(fs.rm).not.toHaveBeenCalled()
+		})
+
+		it.each(["linux", "darwin"] as const)("enforces owner-only permissions on %s", async (platform) => {
+			const stats = await fs.lstat(os.tmpdir())
+			vi.spyOn(os, "platform").mockReturnValue(platform)
+			vi.spyOn(fs, "lstat").mockResolvedValue(Object.assign(stats, { mode: 0o40700, uid: process.getuid?.() }))
+			await expect(createPrivateTempDirectory()).resolves.toBe(directory)
+			expect(fs.chmod).toHaveBeenCalledWith(directory, 0o700)
+		})
+
+		it.each(["permissions", "owner", "symlink"])("rejects unsafe POSIX %s and cleans up", async (problem) => {
+			const stats = await fs.lstat(os.tmpdir())
+			vi.spyOn(os, "platform").mockReturnValue("linux")
+			vi.spyOn(fs, "lstat").mockResolvedValue(
+				Object.assign(stats, {
+					mode: problem === "permissions" ? 0o40755 : 0o40700,
+					uid: problem === "owner" ? (process.getuid?.() ?? 0) + 1 : process.getuid?.(),
+					isSymbolicLink: () => problem === "symlink",
+				}),
+			)
+			await expect(createPrivateTempDirectory()).rejects.toMatchObject({ code: "TEMPORARY_DIRECTORY" })
+			expect(fs.rm).toHaveBeenCalledWith(directory, { recursive: true, force: true })
+		})
+
+		it("cleans up if setting POSIX permissions fails", async () => {
+			vi.spyOn(os, "platform").mockReturnValue("linux")
+			vi.mocked(fs.chmod).mockRejectedValue(new Error("Permission denied"))
+			await expect(createPrivateTempDirectory()).rejects.toThrow("Permission denied")
+			expect(fs.rm).toHaveBeenCalledWith(directory, { recursive: true, force: true })
+		})
+	})
+
 	it("refuses to remove a directory this module did not create", async () => {
 		const directory = await fs.mkdtemp(path.join(os.tmpdir(), "roo-foreign-"))
 		createdFixtureDirectories.add(directory)

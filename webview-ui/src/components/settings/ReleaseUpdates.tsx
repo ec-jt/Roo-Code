@@ -66,8 +66,9 @@ export function ReleaseUpdates() {
 			)}
 			<p className="text-xs text-vscode-descriptionForeground">
 				VS Code Marketplace auto-update is separate. Disable marketplace auto-update for this extension if you
-				want only releases from this fork. This does not uninstall Roo or remove tasks/settings. Close the loaded
-				task before installing or reloading. Remote SSH and local installations must be updated separately.
+				want only releases from this fork. This does not uninstall Roo or remove tasks/settings. Updates can
+				install while a task is loaded. Close the loaded task before reloading to activate the update. Remote
+				SSH and local installations must be updated separately.
 			</p>
 		</div>
 	)

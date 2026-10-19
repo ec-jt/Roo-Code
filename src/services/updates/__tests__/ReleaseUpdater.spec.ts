@@ -88,22 +88,51 @@ describe("release updater consent and lifecycle", () => {
 		await updater.handle("install")
 		expect(findReleaseUpdate).toHaveBeenCalledOnce()
 	})
-	it("blocks manual installation while a task is loaded", async () => {
+	it("allows manual installation while a task is loaded without reloading", async () => {
 		loaded = true
+		confirm.mockResolvedValue("Install update")
 		await updater.handle("install")
-		expect(findReleaseUpdate).not.toHaveBeenCalled()
-		expect(execute).not.toHaveBeenCalled()
-		expect(updater.snapshot().message).toContain("Close the loaded Roo task")
+		expect(execute).toHaveBeenCalledExactlyOnceWith(
+			"workbench.extensions.installExtension",
+			vscode.Uri.file("/tmp/roo-update-abcdef/roo-cline-4.2.30.vsix"),
+		)
+		expect(updater.snapshot().phase).toBe("installed")
 	})
-	it("rechecks loaded tasks after downloading and cleans up without installation", async () => {
+	it("installs even if a task loads during download, then cleans up", async () => {
 		confirm.mockResolvedValue("Install update")
 		vi.mocked(downloadVerifiedRelease).mockImplementation(async () => {
 			loaded = true
 			return { vsixPath: "/tmp/unused.vsix", cleanup }
 		})
 		await updater.handle("install")
-		expect(execute).not.toHaveBeenCalled()
+		expect(execute).toHaveBeenCalledExactlyOnceWith(
+			"workbench.extensions.installExtension",
+			vscode.Uri.file("/tmp/unused.vsix"),
+		)
 		expect(cleanup).toHaveBeenCalledOnce()
+	})
+	it("allows opted-in automatic installation with a loaded task without reloading", async () => {
+		loaded = true
+		confirm.mockResolvedValue("Enable automatic updates")
+		await updater.handle("enableAutomatic")
+		await updater.runAutomatic()
+		expect(updater.snapshot().phase).toBe("installed")
+		expect(execute).toHaveBeenCalledExactlyOnceWith(
+			"workbench.extensions.installExtension",
+			vscode.Uri.file("/tmp/roo-update-abcdef/roo-cline-4.2.30.vsix"),
+		)
+	})
+	it("still blocks reload while a task is loaded", async () => {
+		loaded = true
+		confirm.mockResolvedValue("Install update")
+		await updater.handle("install")
+		execute.mockClear()
+		confirm.mockResolvedValue("Reload Window")
+		await updater.handle("reload")
+		expect(execute).not.toHaveBeenCalled()
+		expect(confirm).toHaveBeenLastCalledWith(
+			"Close the loaded Roo task before reloading. Reloading interrupts the extension host.",
+		)
 	})
 	it("requires explicit native opt-in for automatic installation", async () => {
 		await updater.handle("enableAutomatic")
