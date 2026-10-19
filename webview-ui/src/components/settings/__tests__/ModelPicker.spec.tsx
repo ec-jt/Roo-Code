@@ -55,6 +55,23 @@ describe("ModelPicker", () => {
 		)
 	}
 
+	it("shows the selection placeholder without initializing an undiscovered LiteLLM alias", () => {
+		render(
+			<QueryClientProvider client={queryClient}>
+				<ModelPicker
+					{...defaultProps}
+					apiConfiguration={{ apiProvider: "litellm" }}
+					modelIdKey="litellmModelId"
+					defaultModelId=""
+					models={{}}
+				/>
+			</QueryClientProvider>,
+		)
+		expect(screen.getByTestId("model-picker-button")).toHaveTextContent("settings:common.select")
+		expect(screen.queryByText(/sonnet/i)).not.toBeInTheDocument()
+		expect(mockSetApiConfigurationField).not.toHaveBeenCalled()
+	})
+
 	beforeEach(() => {
 		vi.clearAllMocks()
 		vi.useFakeTimers()

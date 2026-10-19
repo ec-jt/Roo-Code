@@ -65,7 +65,7 @@ import { RooIgnoreController } from "../ignore/RooIgnoreController"
 import { getWorkspacePath } from "../../utils/path"
 import { isPathOutsideWorkspace } from "../../utils/pathUtils"
 import { Mode, defaultModeSlug } from "../../shared/modes"
-import { getModels, flushModels } from "../../api/providers/fetchers/modelCache"
+import { getModels, flushModels, refreshModels } from "../../api/providers/fetchers/modelCache"
 import { GetModelsOptions } from "../../shared/api"
 import { generateSystemPrompt } from "./generateSystemPrompt"
 import { resolveDefaultSaveUri, saveLastExportPath } from "../../utils/export"
@@ -952,6 +952,31 @@ export const webviewMessageHandler = async (
 			// For providers that need credentials, use their specific handlers
 			await flushModels({ provider: routerNameFlush } as GetModelsOptions, true)
 			break
+		case "requestLiteLLMModels": {
+			// Draft credentials only: never fall back to a saved profile or fetch other routers.
+			if (typeof message.requestId !== "string" || !message.requestId) break
+			try {
+				const models = await refreshModels({
+					provider: "litellm",
+					baseUrl: typeof message.values?.baseUrl === "string" ? message.values.baseUrl : "",
+					apiKey: typeof message.values?.apiKey === "string" ? message.values.apiKey : "",
+				})
+				await provider.postMessageToWebview({
+					type: "liteLLMModels",
+					requestId: message.requestId,
+					liteLLMModels: models,
+				})
+			} catch (error) {
+				// LiteLLM discovery emits sanitized messages, never raw Axios errors or response bodies.
+				await provider.postMessageToWebview({
+					type: "liteLLMModels",
+					requestId: message.requestId,
+					liteLLMModels: {},
+					error: error instanceof Error ? error.message : "LiteLLM model discovery failed.",
+				})
+			}
+			break
+		}
 		case "requestRouterModels":
 			const { apiConfiguration } = await provider.getState()
 
@@ -1011,16 +1036,10 @@ export const webviewMessageHandler = async (
 
 			// LiteLLM is conditional on baseUrl+apiKey
 			// Prefer explicit message values from the Experimental media settings refresh flow.
-			const litellmApiKey = message?.values?.litellmApiKey || apiConfiguration.litellmApiKey
-			const litellmBaseUrl = message?.values?.litellmBaseUrl || apiConfiguration.litellmBaseUrl
+			const litellmApiKey = message?.values?.litellmApiKey ?? apiConfiguration.litellmApiKey
+			const litellmBaseUrl = message?.values?.litellmBaseUrl ?? apiConfiguration.litellmBaseUrl
 
 			if (litellmApiKey && litellmBaseUrl) {
-				// If explicit credentials are provided in message.values (from Refresh Models button),
-				// flush the cache first to ensure we fetch fresh data with the new credentials
-				if (message?.values?.litellmApiKey || message?.values?.litellmBaseUrl) {
-					await flushModels({ provider: "litellm", apiKey: litellmApiKey, baseUrl: litellmBaseUrl }, true)
-				}
-
 				candidates.push({
 					key: "litellm",
 					options: { provider: "litellm", apiKey: litellmApiKey, baseUrl: litellmBaseUrl },
@@ -1048,7 +1067,7 @@ export const webviewMessageHandler = async (
 				: candidates
 
 			// If refresh flag is set and we have a specific provider, flush its cache first
-			if (shouldRefresh && providerFilter && modelFetchPromises.length > 0) {
+			if (shouldRefresh && providerFilter && providerFilter !== "litellm" && modelFetchPromises.length > 0) {
 				const targetCandidate = modelFetchPromises[0]
 				await flushModels(targetCandidate.options, true)
 			}

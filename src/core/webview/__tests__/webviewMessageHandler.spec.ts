@@ -44,7 +44,7 @@ import type { ModelRecord } from "@roo-code/types"
 
 import { webviewMessageHandler } from "../webviewMessageHandler"
 import type { ClineProvider } from "../ClineProvider"
-import { getModels } from "../../../api/providers/fetchers/modelCache"
+import { getModels, refreshModels } from "../../../api/providers/fetchers/modelCache"
 import { getCommands } from "../../../services/command/commands"
 const { openAiCodexOAuthManager } = await import("../../../integrations/openai-codex/oauth")
 const { fetchOpenAiCodexRateLimitInfo } = await import("../../../integrations/openai-codex/rate-limits")
@@ -262,6 +262,48 @@ describe("webviewMessageHandler - persistent Read approval", () => {
 		})
 		expect(setValues).toHaveBeenCalledWith({ autoApprovalEnabled: true, alwaysAllowReadOnly: true })
 		expect(task.handleWebviewAskResponse).toHaveBeenCalledExactlyOnceWith("yesButtonClicked")
+	})
+})
+
+describe("webviewMessageHandler - requestLiteLLMModels", () => {
+	beforeEach(() => vi.clearAllMocks())
+	it.each<ModelRecord>([{}, { alias: { contextWindow: 262144, maxTokens: 32768, supportsPromptCache: false } }])(
+		"returns fresh correlated results using only draft values",
+		async (models) => {
+			vi.mocked(refreshModels).mockResolvedValueOnce(models)
+			await webviewMessageHandler(mockClineProvider, {
+				type: "requestLiteLLMModels",
+				requestId: "draft-request",
+				values: { baseUrl: "https://draft.test/v1", apiKey: "draft-key" },
+			})
+			expect(refreshModels).toHaveBeenCalledExactlyOnceWith({
+				provider: "litellm",
+				baseUrl: "https://draft.test/v1",
+				apiKey: "draft-key",
+			})
+			expect(getModels).not.toHaveBeenCalled()
+			expect(mockClineProvider.getState).not.toHaveBeenCalled()
+			expect(mockClineProvider.postMessageToWebview).toHaveBeenCalledWith({
+				type: "liteLLMModels",
+				requestId: "draft-request",
+				liteLLMModels: models,
+			})
+		},
+	)
+	it("does not substitute saved credentials for explicit blanks and acknowledges failure", async () => {
+		vi.mocked(refreshModels).mockRejectedValueOnce(new Error("Failed to fetch LiteLLM models: HTTP 400."))
+		await webviewMessageHandler(mockClineProvider, {
+			type: "requestLiteLLMModels",
+			requestId: "empty",
+			values: { baseUrl: "", apiKey: "" },
+		})
+		expect(refreshModels).toHaveBeenCalledExactlyOnceWith({ provider: "litellm", baseUrl: "", apiKey: "" })
+		expect(mockClineProvider.postMessageToWebview).toHaveBeenCalledWith({
+			type: "liteLLMModels",
+			requestId: "empty",
+			liteLLMModels: {},
+			error: "Failed to fetch LiteLLM models: HTTP 400.",
+		})
 	})
 })
 

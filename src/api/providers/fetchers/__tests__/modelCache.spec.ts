@@ -32,6 +32,7 @@ vi.mock("fs", () => ({
 vi.mock("../litellm")
 vi.mock("../openrouter")
 vi.mock("../requesty")
+vi.mock("../../../../utils/safeWriteJson", () => ({ safeWriteJson: vi.fn().mockResolvedValue(undefined) }))
 
 // Mock ContextProxy with a simple static instance
 vi.mock("../../../core/config/ContextProxy", () => ({
@@ -48,7 +49,8 @@ vi.mock("../../../core/config/ContextProxy", () => ({
 import type { Mock } from "vitest"
 import * as fsSync from "fs"
 import NodeCache from "node-cache"
-import { getModels, getModelsFromCache } from "../modelCache"
+import { flushModels, getModels, getModelsFromCache, refreshModels } from "../modelCache"
+import { safeWriteJson } from "../../../../utils/safeWriteJson"
 import { getLiteLLMModels } from "../litellm"
 import { getOpenRouterModels } from "../openrouter"
 import { getRequestyModels } from "../requesty"
@@ -59,9 +61,78 @@ const mockGetRequestyModels = getRequestyModels as Mock<typeof getRequestyModels
 
 const DUMMY_REQUESTY_KEY = "requesty-key-for-testing"
 
+describe("uncached LiteLLM discovery", () => {
+	const options = { provider: "litellm" as const, apiKey: "test-key", baseUrl: "https://proxy.example.test" }
+	const catalog = { alias: { contextWindow: 262144, maxTokens: 32768, supportsPromptCache: false } }
+	let cache: NodeCache
+
+	beforeEach(() => {
+		vi.clearAllMocks()
+		cache = new NodeCache()
+		vi.mocked(cache.get).mockReturnValue(catalog)
+		vi.mocked(fsSync.existsSync).mockReturnValue(true)
+		vi.mocked(fsSync.readFileSync).mockReturnValue(JSON.stringify(catalog))
+	})
+
+	it("ignores legacy memory and disk cache", () => {
+		expect(getModelsFromCache("litellm")).toBeUndefined()
+		expect(cache.get).not.toHaveBeenCalled()
+		expect(fsSync.existsSync).not.toHaveBeenCalled()
+		expect(fsSync.readFileSync).not.toHaveBeenCalled()
+	})
+
+	it("fetches every time and returns empty results instead of stale data", async () => {
+		mockGetLiteLLMModels.mockResolvedValueOnce(catalog).mockResolvedValue({})
+		expect(await getModels(options)).toEqual(catalog)
+		expect(await getModels(options)).toEqual({})
+		expect(await refreshModels(options)).toEqual({})
+		expect(mockGetLiteLLMModels).toHaveBeenCalledTimes(3)
+		expect(cache.get).not.toHaveBeenCalled()
+		expect(cache.set).not.toHaveBeenCalled()
+		expect(fsSync.readFileSync).not.toHaveBeenCalled()
+		expect(safeWriteJson).not.toHaveBeenCalled()
+	})
+
+	it("never shares concurrent requests, including different credentials and endpoints", async () => {
+		let resolveFirst!: (models: typeof catalog) => void
+		mockGetLiteLLMModels.mockReturnValueOnce(
+			new Promise((resolve) => {
+				resolveFirst = resolve
+			}),
+		)
+		mockGetLiteLLMModels.mockResolvedValue({})
+		const first = refreshModels(options)
+		const same = refreshModels(options)
+		const otherKey = refreshModels({ ...options, apiKey: "other-key" })
+		const otherUrl = refreshModels({ ...options, baseUrl: "https://other.example.test" })
+		expect(mockGetLiteLLMModels).toHaveBeenCalledTimes(4)
+		expect(await Promise.all([same, otherKey, otherUrl])).toEqual([{}, {}, {}])
+		resolveFirst(catalog)
+		expect(await first).toEqual(catalog)
+	})
+
+	it("propagates fetch and refresh errors without a cache fallback", async () => {
+		mockGetLiteLLMModels.mockRejectedValue(new Error("sanitized discovery failure"))
+		await expect(getModels(options)).rejects.toThrow("sanitized discovery failure")
+		await expect(refreshModels(options)).rejects.toThrow("sanitized discovery failure")
+		expect(cache.get).not.toHaveBeenCalled()
+	})
+
+	it("flush is a no-op unless a fresh request is explicitly requested", async () => {
+		mockGetLiteLLMModels.mockResolvedValue({})
+		await flushModels(options)
+		expect(mockGetLiteLLMModels).not.toHaveBeenCalled()
+		await flushModels(options, true)
+		expect(mockGetLiteLLMModels).toHaveBeenCalledTimes(1)
+		expect(cache.del).not.toHaveBeenCalled()
+		expect(safeWriteJson).not.toHaveBeenCalled()
+	})
+})
+
 describe("getModels with new GetModelsOptions", () => {
 	beforeEach(() => {
 		vi.clearAllMocks()
+		vi.mocked(new NodeCache().get).mockReturnValue(undefined)
 	})
 
 	it("calls getLiteLLMModels with correct parameters", async () => {

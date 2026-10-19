@@ -93,7 +93,10 @@ export const ModelPicker = ({
 	const selectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 	const closeTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
-	const { id: selectedModelId, info: selectedModelInfo } = useSelectedModel(apiConfiguration)
+	const { id: selectedModelId, info: selectedModelInfo } = useSelectedModel(
+		apiConfiguration,
+		apiConfiguration.apiProvider === "litellm" ? (models ?? {}) : undefined,
+	)
 
 	// Get the display value for the current selection
 	// If displayTransform is provided, use it to convert the stored value to a display string
@@ -182,7 +185,7 @@ export const ModelPicker = ({
 	}, [])
 
 	useEffect(() => {
-		if (!selectedModelId && !isInitialized.current) {
+		if (!selectedModelId && defaultModelId && !isInitialized.current) {
 			const initialValue = modelIds.includes(selectedModelId) ? selectedModelId : defaultModelId
 			setApiConfigurationField(modelIdKey, initialValue, false) // false = automatic initialization
 		}
@@ -217,7 +220,7 @@ export const ModelPicker = ({
 							aria-expanded={open}
 							className="w-full justify-between"
 							data-testid="model-picker-button">
-							<div className="truncate">{displayValue ?? t("settings:common.select")}</div>
+							<div className="truncate">{displayValue || t("settings:common.select")}</div>
 							<ChevronsUpDown className="opacity-50" />
 						</Button>
 					</PopoverTrigger>

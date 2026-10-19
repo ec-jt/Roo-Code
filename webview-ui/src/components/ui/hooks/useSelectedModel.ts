@@ -50,7 +50,7 @@ function getValidatedModelId(
 	return configuredId && availableModels?.[configuredId] ? configuredId : defaultModelId
 }
 
-export const useSelectedModel = (apiConfiguration?: ProviderSettings) => {
+export const useSelectedModel = (apiConfiguration?: ProviderSettings, liteLLMModels?: ModelRecord) => {
 	const provider = apiConfiguration?.apiProvider || "openrouter"
 	const activeProvider: ProviderName | undefined = isRetiredProvider(provider) ? undefined : provider
 	const dynamicProvider = activeProvider && isDynamicProvider(activeProvider) ? activeProvider : undefined
@@ -59,7 +59,7 @@ export const useSelectedModel = (apiConfiguration?: ProviderSettings) => {
 	const ollamaModelId = activeProvider === "ollama" ? apiConfiguration?.ollamaModelId : undefined
 
 	// Only fetch router models for dynamic providers
-	const shouldFetchRouterModels = !!dynamicProvider
+	const shouldFetchRouterModels = !!dynamicProvider && dynamicProvider !== "litellm"
 	const routerModels = useRouterModels({
 		provider: dynamicProvider,
 		enabled: shouldFetchRouterModels,
@@ -98,7 +98,7 @@ export const useSelectedModel = (apiConfiguration?: ProviderSettings) => {
 			? getSelectedModel({
 					provider: activeProvider,
 					apiConfiguration,
-					routerModels: (routerModels.data || {}) as RouterModels,
+					routerModels: { ...routerModels.data, litellm: liteLLMModels ?? {} } as RouterModels,
 					openRouterModelProviders: (openRouterModelProviders.data || {}) as Record<string, ModelInfo>,
 					lmStudioModels: (lmStudioModels.data || undefined) as ModelRecord | undefined,
 					ollamaModels: (ollamaModels.data || undefined) as ModelRecord | undefined,
@@ -169,7 +169,7 @@ function getSelectedModel({
 			return { id, info: routerInfo }
 		}
 		case "litellm": {
-			const id = getValidatedModelId(apiConfiguration.litellmModelId, routerModels.litellm, defaultModelId)
+			const id = apiConfiguration.litellmModelId || defaultModelId
 			const routerInfo = routerModels.litellm?.[id]
 			return { id, info: routerInfo ?? litellmDefaultModelInfo }
 		}

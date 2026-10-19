@@ -1,7 +1,8 @@
 import type { ModelInfo } from "../model.js"
 
 // https://docs.litellm.ai/
-export const litellmDefaultModelId = "claude-3-7-sonnet-20250219"
+// Proxy aliases are deployment-specific. Require an explicit selection after discovery.
+export const litellmDefaultModelId = ""
 
 export const litellmDefaultModelInfo: ModelInfo = {
 	maxTokens: 8192,

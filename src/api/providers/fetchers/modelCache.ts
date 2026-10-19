@@ -127,6 +127,8 @@ export const getModels = async (options: GetModelsOptions): Promise<ModelRecord>
 	const { provider } = options
 	// Local servers and token scopes must not share a provider-only disk cache.
 	if (provider === "lmstudio") return getLMStudioModels(options.baseUrl, options.apiKey)
+	// LiteLLM discovery is on demand. Never reuse a catalog or an in-flight request.
+	if (provider === "litellm") return getLiteLLMModels(options.apiKey, options.baseUrl)
 
 	let models = getModelsFromCache(provider)
 
@@ -169,6 +171,8 @@ export const getModels = async (options: GetModelsOptions): Promise<ModelRecord>
 export const refreshModels = async (options: GetModelsOptions): Promise<ModelRecord> => {
 	const { provider } = options
 	if (provider === "lmstudio") return getLMStudioModels(options.baseUrl, options.apiKey)
+	// Propagate failures and successful empty catalogs instead of returning stale data.
+	if (provider === "litellm") return getLiteLLMModels(options.apiKey, options.baseUrl)
 
 	// Check if there's already an in-flight refresh for this provider
 	// This prevents race conditions where multiple concurrent refreshes might
@@ -252,6 +256,10 @@ export async function initializeModelCacheRefresh(): Promise<void> {
  */
 export const flushModels = async (options: GetModelsOptions, refresh: boolean = false): Promise<void> => {
 	const { provider } = options
+	if (provider === "litellm") {
+		if (refresh) await getLiteLLMModels(options.apiKey, options.baseUrl)
+		return
+	}
 	if (provider === "lmstudio") {
 		if (refresh) await getLMStudioModels(options.baseUrl, options.apiKey)
 		return
@@ -277,6 +285,9 @@ export const flushModels = async (options: GetModelsOptions, refresh: boolean = 
  * @returns Models from memory cache, disk cache, or undefined if not cached.
  */
 export function getModelsFromCache(provider: ProviderName): ModelRecord | undefined {
+	// Ignore legacy LiteLLM disk catalogs as well as any provider-global memory entry.
+	if (provider === "litellm") return undefined
+
 	// Check memory cache first (fast)
 	const memoryModels = memoryCache.get<ModelRecord>(provider)
 	if (memoryModels) {

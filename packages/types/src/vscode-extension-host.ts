@@ -223,6 +223,7 @@ export interface ExtensionMessage {
 		| "openAiModels"
 		| "ollamaModels"
 		| "lmStudioModels"
+		| "liteLLMModels"
 		| "vsCodeLmModels"
 		| "vsCodeLmApiAvailable"
 		| "updatePrompt"
@@ -335,6 +336,7 @@ export interface ExtensionMessage {
 	openAiModels?: string[]
 	ollamaModels?: ModelRecord
 	lmStudioModels?: ModelRecord
+	liteLLMModels?: ModelRecord
 	lmStudioModelsRequestId?: string
 	lmStudioModelsError?: string
 	vsCodeLmModels?: { vendor?: string; family?: string; version?: string; id?: string }[]
@@ -686,6 +688,7 @@ export interface WebviewMessage {
 		| "requestOpenAiModels"
 		| "requestOllamaModels"
 		| "requestLmStudioModels"
+		| "requestLiteLLMModels"
 		| "requestVsCodeLmModels"
 		| "openImage"
 		| "saveImage"

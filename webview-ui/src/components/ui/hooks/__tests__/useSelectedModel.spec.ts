@@ -550,6 +550,17 @@ describe("useSelectedModel", () => {
 			} as any)
 		})
 
+		it.each([undefined, "", "claude-3-7-sonnet-20250219"])(
+			"does not invent a model selection, but preserves explicit aliases (%s)",
+			(litellmModelId) => {
+				mockUseRouterModels.mockReturnValue({ data: {}, isLoading: false, isError: false } as any)
+				const { result } = renderHook(() => useSelectedModel({ apiProvider: "litellm", litellmModelId }), {
+					wrapper: createWrapper(),
+				})
+				expect(result.current.id).toBe(litellmModelId || "")
+			},
+		)
+
 		it("should use litellmDefaultModelInfo as fallback when routerModels.litellm is empty", () => {
 			mockUseRouterModels.mockReturnValue({
 				data: {
@@ -570,8 +581,8 @@ describe("useSelectedModel", () => {
 			const { result } = renderHook(() => useSelectedModel(apiConfiguration), { wrapper })
 
 			expect(result.current.provider).toBe("litellm")
-			// Should fall back to default model ID since "some-model" doesn't exist in empty litellm models
-			expect(result.current.id).toBe("claude-3-7-sonnet-20250219")
+			// Missing metadata must not replace the user's proxy alias.
+			expect(result.current.id).toBe("some-model")
 			// Should use litellmDefaultModelInfo as fallback
 			expect(result.current.info).toEqual(litellmDefaultModelInfo)
 		})
@@ -603,8 +614,7 @@ describe("useSelectedModel", () => {
 			const { result } = renderHook(() => useSelectedModel(apiConfiguration), { wrapper })
 
 			expect(result.current.provider).toBe("litellm")
-			// Falls back to default model ID
-			expect(result.current.id).toBe("claude-3-7-sonnet-20250219")
+			expect(result.current.id).toBe("non-existing-model")
 			// Should use litellmDefaultModelInfo as fallback since default model also not in router models
 			expect(result.current.info).toEqual(litellmDefaultModelInfo)
 		})
@@ -636,9 +646,13 @@ describe("useSelectedModel", () => {
 			}
 
 			const wrapper = createWrapper()
-			const { result } = renderHook(() => useSelectedModel(apiConfiguration), { wrapper })
+			const { result } = renderHook(
+				() => useSelectedModel(apiConfiguration, { "custom-model": customModelInfo }),
+				{ wrapper },
+			)
 
 			expect(result.current.provider).toBe("litellm")
+			expect(mockUseRouterModels).toHaveBeenLastCalledWith({ provider: "litellm", enabled: false })
 			expect(result.current.id).toBe("custom-model")
 			expect(result.current.info).toEqual(customModelInfo)
 		})

@@ -15,7 +15,91 @@ const DUMMY_INVALID_KEY = "invalid-key-for-testing"
 
 describe("getLiteLLMModels", () => {
 	beforeEach(() => {
-		vi.clearAllMocks()
+		vi.resetAllMocks()
+	})
+
+	it.each(["  https://proxy.example.test/v1/  ", "https://proxy.example.test/", "https://proxy.example.test"])(
+		"normalizes the discovery base URL %s",
+		async (baseUrl) => {
+			mockedAxios.get.mockResolvedValue({ data: { data: [] } })
+			await getLiteLLMModels("test-key", baseUrl)
+			expect(mockedAxios.get).toHaveBeenCalledWith("https://proxy.example.test/v1/model/info", expect.any(Object))
+		},
+	)
+
+	it("retains a proxy path and strips the optional v1 suffix and query", async () => {
+		mockedAxios.get.mockResolvedValue({ data: { data: [] } })
+		await getLiteLLMModels("test-key", "https://proxy.example.test/proxy//v1/?token=private#private")
+		expect(mockedAxios.get).toHaveBeenCalledWith(
+			"https://proxy.example.test/proxy/v1/model/info",
+			expect.any(Object),
+		)
+	})
+
+	it.each(["invalid secret", "ftp://proxy.example.test", "https://user:secret@proxy.example.test"])(
+		"rejects invalid or credential-bearing URLs without making a request",
+		async (baseUrl) => {
+			await expect(getLiteLLMModels("test-key", baseUrl)).rejects.toThrow(
+				"Use an HTTP(S) base URL without embedded credentials.",
+			)
+			expect(mockedAxios.get).not.toHaveBeenCalled()
+		},
+	)
+
+	it("accepts public model metadata without private litellm_params", async () => {
+		mockedAxios.get.mockResolvedValue({
+			data: {
+				data: [
+					{ model_name: "public-alias", model_info: { max_input_tokens: 262144, max_output_tokens: 32768 } },
+				],
+			},
+		})
+		const result = await getLiteLLMModels("test-key", "https://proxy.example.test")
+		expect(result["public-alias"]).toMatchObject({ contextWindow: 262144, maxTokens: 32768 })
+	})
+
+	it.each([301, 401, 403, 404, 500])("sanitizes HTTP %s errors without logging secrets", async (status) => {
+		const log = vi.spyOn(console, "error").mockImplementation(() => {})
+		try {
+			mockedAxios.isAxiosError.mockReturnValue(true)
+			mockedAxios.get.mockRejectedValue({
+				message: "private-transport-secret",
+				response: { status, statusText: "private-status-secret", data: "private-response-secret" },
+				config: { headers: { Authorization: "Bearer private-key" } },
+			})
+			const error = await getLiteLLMModels(
+				"private-key",
+				"https://private-host.example.test?token=private-query",
+			).catch((failure: Error) => failure)
+			expect(error).toBeInstanceOf(Error)
+			expect((error as Error).message).toContain(`HTTP ${status}`)
+			expect((error as Error).message).not.toContain("private-")
+			if (status === 301) expect((error as Error).message).toContain("Redirects are not followed")
+			expect(log).not.toHaveBeenCalled()
+		} finally {
+			log.mockRestore()
+		}
+	})
+
+	it.each(["ECONNABORTED", "ETIMEDOUT", "ERR_CANCELED"])("sanitizes timeout %s", async (code) => {
+		mockedAxios.isAxiosError.mockReturnValue(true)
+		mockedAxios.get.mockRejectedValue({ code, message: "private-timeout-secret" })
+		await expect(getLiteLLMModels("test-key", "https://proxy.example.test")).rejects.toThrow(
+			"Request timed out after 5 seconds.",
+		)
+	})
+
+	it("does not log malformed response bodies", async () => {
+		const log = vi.spyOn(console, "error").mockImplementation(() => {})
+		try {
+			mockedAxios.get.mockResolvedValue({ data: { secret: "private-response-secret" } })
+			await expect(getLiteLLMModels("test-key", "https://proxy.example.test")).rejects.toThrow(
+				"Unexpected response format.",
+			)
+			expect(log).not.toHaveBeenCalled()
+		} finally {
+			log.mockRestore()
+		}
 	})
 
 	it("handles base URLs with trailing slashes correctly", async () => {
@@ -36,6 +120,9 @@ describe("getLiteLLMModels", () => {
 				...DEFAULT_HEADERS,
 			},
 			timeout: 5000,
+			signal: expect.any(AbortSignal),
+			maxRedirects: 0,
+			maxContentLength: 5 * 1024 * 1024,
 		})
 	})
 
@@ -57,6 +144,9 @@ describe("getLiteLLMModels", () => {
 				...DEFAULT_HEADERS,
 			},
 			timeout: 5000,
+			signal: expect.any(AbortSignal),
+			maxRedirects: 0,
+			maxContentLength: 5 * 1024 * 1024,
 		})
 	})
 
@@ -78,6 +168,9 @@ describe("getLiteLLMModels", () => {
 				...DEFAULT_HEADERS,
 			},
 			timeout: 5000,
+			signal: expect.any(AbortSignal),
+			maxRedirects: 0,
+			maxContentLength: 5 * 1024 * 1024,
 		})
 	})
 
@@ -99,6 +192,9 @@ describe("getLiteLLMModels", () => {
 				...DEFAULT_HEADERS,
 			},
 			timeout: 5000,
+			signal: expect.any(AbortSignal),
+			maxRedirects: 0,
+			maxContentLength: 5 * 1024 * 1024,
 		})
 	})
 
@@ -113,13 +209,16 @@ describe("getLiteLLMModels", () => {
 
 		await getLiteLLMModels("test-api-key", "http://localhost:4000/litellm?key=value")
 
-		expect(mockedAxios.get).toHaveBeenCalledWith("http://localhost:4000/litellm/v1/model/info?key=value", {
+		expect(mockedAxios.get).toHaveBeenCalledWith("http://localhost:4000/litellm/v1/model/info", {
 			headers: {
 				Authorization: "Bearer test-api-key",
 				"Content-Type": "application/json",
 				...DEFAULT_HEADERS,
 			},
 			timeout: 5000,
+			signal: expect.any(AbortSignal),
+			maxRedirects: 0,
+			maxContentLength: 5 * 1024 * 1024,
 		})
 	})
 
@@ -134,13 +233,16 @@ describe("getLiteLLMModels", () => {
 
 		await getLiteLLMModels("test-api-key", "http://localhost:4000/litellm#section")
 
-		expect(mockedAxios.get).toHaveBeenCalledWith("http://localhost:4000/litellm/v1/model/info#section", {
+		expect(mockedAxios.get).toHaveBeenCalledWith("http://localhost:4000/litellm/v1/model/info", {
 			headers: {
 				Authorization: "Bearer test-api-key",
 				"Content-Type": "application/json",
 				...DEFAULT_HEADERS,
 			},
 			timeout: 5000,
+			signal: expect.any(AbortSignal),
+			maxRedirects: 0,
+			maxContentLength: 5 * 1024 * 1024,
 		})
 	})
 
@@ -162,6 +264,9 @@ describe("getLiteLLMModels", () => {
 				...DEFAULT_HEADERS,
 			},
 			timeout: 5000,
+			signal: expect.any(AbortSignal),
+			maxRedirects: 0,
+			maxContentLength: 5 * 1024 * 1024,
 		})
 	})
 
@@ -214,6 +319,9 @@ describe("getLiteLLMModels", () => {
 				...DEFAULT_HEADERS,
 			},
 			timeout: 5000,
+			signal: expect.any(AbortSignal),
+			maxRedirects: 0,
+			maxContentLength: 5 * 1024 * 1024,
 		})
 
 		expect(result).toEqual({
@@ -259,6 +367,9 @@ describe("getLiteLLMModels", () => {
 				...DEFAULT_HEADERS,
 			},
 			timeout: 5000,
+			signal: expect.any(AbortSignal),
+			maxRedirects: 0,
+			maxContentLength: 5 * 1024 * 1024,
 		})
 	})
 
@@ -351,7 +462,7 @@ describe("getLiteLLMModels", () => {
 		mockedAxios.get.mockRejectedValue(axiosError)
 
 		await expect(getLiteLLMModels(DUMMY_INVALID_KEY, "http://localhost:4000")).rejects.toThrow(
-			"Failed to fetch LiteLLM models: 401 Unauthorized. Check base URL and API key.",
+			"Failed to fetch LiteLLM models: HTTP 401. The API key must have access to model discovery.",
 		)
 	})
 
@@ -365,7 +476,7 @@ describe("getLiteLLMModels", () => {
 		mockedAxios.get.mockRejectedValue(axiosError)
 
 		await expect(getLiteLLMModels("test-api-key", "http://invalid-url")).rejects.toThrow(
-			"Failed to fetch LiteLLM models: No response from server. Check LiteLLM server status and base URL.",
+			"Failed to fetch LiteLLM models: Request failed.",
 		)
 	})
 
@@ -376,7 +487,7 @@ describe("getLiteLLMModels", () => {
 		mockedAxios.get.mockRejectedValue(genericError)
 
 		await expect(getLiteLLMModels("test-api-key", "http://localhost:4000")).rejects.toThrow(
-			"Failed to fetch LiteLLM models: Network timeout",
+			"Failed to fetch LiteLLM models: Request failed.",
 		)
 	})
 
@@ -390,6 +501,9 @@ describe("getLiteLLMModels", () => {
 			"http://localhost:4000/v1/model/info",
 			expect.objectContaining({
 				timeout: 5000,
+				signal: expect.any(AbortSignal),
+				maxRedirects: 0,
+				maxContentLength: 5 * 1024 * 1024,
 			}),
 		)
 	})

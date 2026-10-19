@@ -61,6 +61,19 @@ export abstract class RouterProvider extends BaseProvider {
 	}
 
 	public async fetchModel() {
+		if (this.name === "litellm") {
+			// Keep only the active model's metadata, not the discovered catalog.
+			// Clear it before fetching so a failed refresh cannot retain stale metadata.
+			this.models = {}
+			const models = await getModels({
+				provider: this.name,
+				apiKey: this.client.apiKey,
+				baseUrl: this.client.baseURL,
+			})
+			const id = this.modelId ?? this.defaultModelId
+			if (Object.hasOwn(models, id)) this.models = { [id]: models[id] }
+			return this.getModel()
+		}
 		this.models = await getModels({ provider: this.name, apiKey: this.client.apiKey, baseUrl: this.client.baseURL })
 		return this.getModel()
 	}
@@ -69,9 +82,12 @@ export abstract class RouterProvider extends BaseProvider {
 		const id = this.modelId ?? this.defaultModelId
 
 		// First check instance models (populated by fetchModel)
-		if (this.models[id]) {
+		if (Object.hasOwn(this.models, id)) {
 			return { id, info: this.models[id] }
 		}
+
+		// A private proxy alias must never be replaced with an unrelated default model.
+		if (this.name === "litellm") return { id, info: this.defaultModelInfo }
 
 		// Fall back to global cache (synchronous disk/memory cache)
 		// This ensures models are available before fetchModel() is called

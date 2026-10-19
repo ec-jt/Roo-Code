@@ -1,17 +1,9 @@
-import { useCallback, useState, useEffect, useRef } from "react"
+import { useCallback } from "react"
 import { VSCodeTextField, VSCodeCheckbox } from "@vscode/webview-ui-toolkit/react"
 
-import {
-	type ProviderSettings,
-	type OrganizationAllowList,
-	type ExtensionMessage,
-	litellmDefaultModelId,
-} from "@roo-code/types"
+import { type ProviderSettings, type OrganizationAllowList, litellmDefaultModelId } from "@roo-code/types"
 
-import { RouterName } from "@roo/api"
-
-import { vscode } from "@src/utils/vscode"
-import { useExtensionState } from "@src/context/ExtensionStateContext"
+import type { useLiteLLMModels } from "@src/components/ui/hooks/useLiteLLMModels"
 import { useAppTranslation } from "@src/i18n/TranslationContext"
 import { Button } from "@src/components/ui"
 
@@ -19,6 +11,7 @@ import { inputEventTransform } from "../transforms"
 import { ModelPicker } from "../ModelPicker"
 
 type LiteLLMProps = {
+	discovery: ReturnType<typeof useLiteLLMModels>
 	apiConfiguration: ProviderSettings
 	setApiConfigurationField: (field: keyof ProviderSettings, value: ProviderSettings[keyof ProviderSettings]) => void
 	organizationAllowList: OrganizationAllowList
@@ -27,6 +20,7 @@ type LiteLLMProps = {
 }
 
 export const LiteLLM = ({
+	discovery,
 	apiConfiguration,
 	setApiConfigurationField,
 	organizationAllowList,
@@ -34,38 +28,7 @@ export const LiteLLM = ({
 	simplifySettings,
 }: LiteLLMProps) => {
 	const { t } = useAppTranslation()
-	const { routerModels } = useExtensionState()
-	const [refreshStatus, setRefreshStatus] = useState<"idle" | "loading" | "success" | "error">("idle")
-	const [refreshError, setRefreshError] = useState<string | undefined>()
-	const litellmErrorJustReceived = useRef(false)
-
-	useEffect(() => {
-		const handleMessage = (event: MessageEvent<ExtensionMessage>) => {
-			const message = event.data
-			if (message.type === "singleRouterModelFetchResponse" && !message.success) {
-				const providerName = message.values?.provider as RouterName
-				if (providerName === "litellm") {
-					litellmErrorJustReceived.current = true
-					setRefreshStatus("error")
-					setRefreshError(message.error)
-				}
-			} else if (message.type === "routerModels") {
-				// If we were loading and no specific error for litellm was just received, mark as success.
-				// The ModelPicker will show available models or "no models found".
-				if (refreshStatus === "loading") {
-					if (!litellmErrorJustReceived.current) {
-						setRefreshStatus("success")
-					}
-					// If litellmErrorJustReceived.current is true, status is already (or will be) "error".
-				}
-			}
-		}
-
-		window.addEventListener("message", handleMessage)
-		return () => {
-			window.removeEventListener("message", handleMessage)
-		}
-	}, [refreshStatus, refreshError, setRefreshStatus, setRefreshError])
+	const { models, status: refreshStatus, error: refreshError, refresh: handleRefreshModels } = discovery
 
 	const handleInputChange = useCallback(
 		<K extends keyof ProviderSettings, E>(
@@ -77,23 +40,6 @@ export const LiteLLM = ({
 			},
 		[setApiConfigurationField],
 	)
-
-	const handleRefreshModels = useCallback(() => {
-		litellmErrorJustReceived.current = false // Reset flag on new refresh action
-		setRefreshStatus("loading")
-		setRefreshError(undefined)
-
-		const key = apiConfiguration.litellmApiKey
-		const url = apiConfiguration.litellmBaseUrl
-
-		if (!key || !url) {
-			setRefreshStatus("error")
-			setRefreshError(t("settings:providers.refreshModels.missingConfig"))
-			return
-		}
-
-		vscode.postMessage({ type: "requestRouterModels", values: { litellmApiKey: key, litellmBaseUrl: url } })
-	}, [apiConfiguration, setRefreshStatus, setRefreshError, t])
 
 	return (
 		<>
@@ -140,7 +86,11 @@ export const LiteLLM = ({
 				</div>
 			)}
 			{refreshStatus === "success" && (
-				<div className="text-sm text-vscode-foreground">{t("settings:providers.refreshModels.success")}</div>
+				<div className="text-sm text-vscode-foreground">
+					{Object.keys(models).length === 0
+						? "The proxy returned no models. Check model discovery access for this API key."
+						: t("settings:providers.refreshModels.success")}
+				</div>
 			)}
 			{refreshStatus === "error" && (
 				<div className="text-sm text-vscode-errorForeground">
@@ -150,7 +100,7 @@ export const LiteLLM = ({
 			<ModelPicker
 				apiConfiguration={apiConfiguration}
 				defaultModelId={litellmDefaultModelId}
-				models={routerModels?.litellm ?? {}}
+				models={models}
 				modelIdKey="litellmModelId"
 				serviceName="LiteLLM"
 				serviceUrl="https://docs.litellm.ai/"
@@ -163,7 +113,7 @@ export const LiteLLM = ({
 			{/* Show prompt caching option if the selected model supports it */}
 			{(() => {
 				const selectedModelId = apiConfiguration.litellmModelId || litellmDefaultModelId
-				const selectedModel = routerModels?.litellm?.[selectedModelId]
+				const selectedModel = models[selectedModelId]
 				if (selectedModel?.supportsPromptCache) {
 					return (
 						<div className="mt-4">

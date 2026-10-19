@@ -7,6 +7,7 @@ import { ExternalLinkIcon } from "@radix-ui/react-icons"
 import {
 	type ProviderName,
 	type ProviderSettings,
+	type RouterModels,
 	isRetiredProvider,
 	DEFAULT_CONSECUTIVE_MISTAKE_LIMIT,
 	openRouterDefaultModelId,
@@ -46,6 +47,7 @@ import { vscode } from "@src/utils/vscode"
 import { validateApiConfigurationExcludingModelErrors, getModelValidationError } from "@src/utils/validate"
 import { useAppTranslation } from "@src/i18n/TranslationContext"
 import { useRouterModels } from "@src/components/ui/hooks/useRouterModels"
+import { useLiteLLMModels } from "@src/components/ui/hooks/useLiteLLMModels"
 import { useSelectedModel } from "@src/components/ui/hooks/useSelectedModel"
 import { useExtensionState } from "@src/context/ExtensionStateContext"
 import {
@@ -176,18 +178,39 @@ const ApiOptions = ({
 		[setApiConfigurationField],
 	)
 
+	const liteLLMDiscovery = useLiteLLMModels(
+		apiConfiguration.apiProvider === "litellm",
+		apiConfiguration.litellmBaseUrl,
+		apiConfiguration.litellmApiKey,
+	)
 	const {
 		provider: selectedProvider,
 		id: selectedModelId,
 		info: selectedModelInfo,
-	} = useSelectedModel(apiConfiguration)
+	} = useSelectedModel(apiConfiguration, liteLLMDiscovery.models)
 	const activeSelectedProvider: ProviderName | undefined = isRetiredProvider(selectedProvider)
 		? undefined
 		: selectedProvider
 	const isRetiredSelectedProvider =
 		typeof apiConfiguration.apiProvider === "string" && isRetiredProvider(apiConfiguration.apiProvider)
 
-	const { data: routerModels, refetch: refetchRouterModels } = useRouterModels()
+	const { data: sharedRouterModels, refetch: refetchRouterModels } = useRouterModels({
+		enabled: selectedProvider !== "litellm",
+	})
+	const routerModels = useMemo<RouterModels>(
+		() => ({
+			openrouter: {},
+			requesty: {},
+			unbound: {},
+			"vercel-ai-gateway": {},
+			ollama: {},
+			lmstudio: {},
+			poe: {},
+			...sharedRouterModels,
+			litellm: liteLLMDiscovery.models,
+		}),
+		[sharedRouterModels, liteLLMDiscovery.models],
+	)
 
 	const { data: openRouterModelProviders } = useOpenRouterModelProviders(
 		apiConfiguration?.openRouterModelId,
@@ -237,7 +260,7 @@ const ApiOptions = ({
 				// LMStudio owns draft URL/token discovery and correlated replies.
 			} else if (selectedProvider === "vscode-lm") {
 				vscode.postMessage({ type: "requestVsCodeLmModels" })
-			} else if (selectedProvider === "litellm" || selectedProvider === "poe") {
+			} else if (selectedProvider === "poe") {
 				vscode.postMessage({ type: "requestRouterModels" })
 			}
 		},
@@ -655,6 +678,7 @@ const ApiOptions = ({
 
 					{selectedProvider === "litellm" && (
 						<LiteLLM
+							discovery={liteLLMDiscovery}
 							apiConfiguration={apiConfiguration}
 							setApiConfigurationField={setApiConfigurationField}
 							organizationAllowList={organizationAllowList}
