@@ -5759,6 +5759,14 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		} catch (error) {
 			this.modelOperationFailure = "Request snapshot or prepared context validation failed; dispatch is blocked."
 			this.modelOperationClosed = true
+			// Surface the storage/validation failure instead of leaving the request card on
+			// "Preparing" forever. The message is already sanitized by the storage layer.
+			if (!this.abort && !this.abandoned) {
+				await this.say(
+					"error",
+					`Could not save the request snapshot, so no provider request was sent. ${error instanceof Error ? error.message : String(error)}`,
+				).catch(() => {})
+			}
 			throw error
 		}
 		// Publishing state may synchronously fence this task. Never install a fresh

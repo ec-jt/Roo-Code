@@ -71,7 +71,11 @@ function hasCode(error: unknown, code: string): boolean {
 }
 
 async function syncFile(file: string): Promise<void> {
-	const handle = await fs.open(file, "r")
+	// Windows fsync (FlushFileBuffers) needs write access for regular files;
+	// "r" fails with EPERM there. Directories cannot be opened "r+" and are only
+	// synced on POSIX, where "r" is valid.
+	const isDirectory = (await fs.lstat(file)).isDirectory()
+	const handle = await fs.open(file, isDirectory ? "r" : "r+")
 	try {
 		await handle.sync()
 	} finally {

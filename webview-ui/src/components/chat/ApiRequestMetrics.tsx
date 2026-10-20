@@ -7,6 +7,7 @@ export function ApiRequestMetrics({ info, active }: { info?: ClineApiReqInfo; ac
 	const [now, setNow] = useState(Date.now)
 	const timing = info?.timing
 	const running = active && timing !== undefined && timing.completedAt === undefined
+	const preparationDelayed = running && timing.providerStartedAt === undefined && now - timing.startedAt >= 15000
 	useEffect(() => {
 		if (!running) return
 		setNow(Date.now())
@@ -24,6 +25,13 @@ export function ApiRequestMetrics({ info, active }: { info?: ClineApiReqInfo; ac
 
 	return (
 		<div className="text-xs text-vscode-descriptionForeground flex flex-wrap items-center gap-x-3 gap-y-0.5 min-w-0">
+			{preparationDelayed && (
+				<span className="basis-full" role="status">
+					Still preparing locally. The provider request has not started, so this timer does not indicate
+					API-key validity. Use Check connection / API key in provider settings to test access separately. If
+					preparation stays stuck, cancel and inspect the Roo output or diagnostics.
+				</span>
+			)}
 			{timing && end !== undefined && (
 				<span title={t("chat:apiRequest.metrics.timingHelp")}>
 					{t("chat:apiRequest.metrics.preparation", {

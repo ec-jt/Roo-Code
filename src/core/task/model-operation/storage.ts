@@ -238,7 +238,12 @@ async function readEnvelope(
 }
 
 async function syncFile(filePath: string): Promise<void> {
-	const handle = await fs.open(filePath, "r")
+	// Windows implements fsync with FlushFileBuffers, which requires a writable
+	// handle for regular files. A read-only handle fails with EPERM there, while
+	// POSIX permits it. Directories cannot be opened "r+" and are only synced on
+	// POSIX, where "r" is valid.
+	const isDirectory = (await fs.lstat(filePath)).isDirectory()
+	const handle = await fs.open(filePath, isDirectory ? "r" : "r+")
 	try {
 		await handle.sync()
 	} finally {
