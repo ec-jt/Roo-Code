@@ -896,7 +896,7 @@ describe("summarizeConversation", () => {
 		expect(mockApiHandler.createMessage).toHaveBeenCalledWith(
 			expect.stringContaining("You are a helpful AI assistant tasked with summarizing conversations."),
 			expect.any(Array),
-			undefined, // metadata is undefined when not passed to summarizeConversation
+			expect.objectContaining({ taskId, suppressPreviousResponseId: true }),
 		)
 		// Verify the CRITICAL instructions are included in the prompt
 		const actualPrompt = (mockApiHandler.createMessage as Mock).mock.calls[0][0]

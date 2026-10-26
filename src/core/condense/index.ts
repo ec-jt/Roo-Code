@@ -235,6 +235,7 @@ export type SummarizeConversationOptions = {
 	filesReadByRoo?: string[]
 	cwd?: string
 	rooIgnoreController?: RooIgnoreController
+	signal?: AbortSignal
 }
 
 /**
@@ -331,20 +332,30 @@ export async function summarizeConversation(options: SummarizeConversationOption
 	let outputTokens = 0
 
 	try {
-		const stream = apiHandler.createMessage(promptToUse, requestMessages, metadata)
+		options.signal?.throwIfAborted()
+		// Tool blocks are text now. Do not attach the normal tool catalog or an
+		// unrelated cached provider conversation to this standalone summary request.
+		const stream = apiHandler.createMessage(promptToUse, requestMessages, {
+			taskId,
+			mode: metadata?.mode,
+			store: metadata?.store,
+			suppressPreviousResponseId: true,
+		})
 
 		for await (const chunk of stream) {
+			options.signal?.throwIfAborted()
 			if (chunk.type === "error") {
 				throw Object.assign(new Error(chunk.message), { code: chunk.error })
 			} else if (chunk.type === "text") {
 				summary += chunk.text
 			} else if (chunk.type === "usage") {
-				// Record final usage chunk only
 				cost = chunk.totalCost ?? 0
 				outputTokens = chunk.outputTokens ?? 0
 			}
 		}
+		options.signal?.throwIfAborted()
 	} catch (error) {
+		if (options.signal?.aborted) throw error
 		if (
 			checkContextWindowExceededError(error) ||
 			(error instanceof ModelDispatchControl && error.code === "context-limit")
@@ -352,7 +363,7 @@ export async function summarizeConversation(options: SummarizeConversationOption
 			return {
 				...response,
 				cost,
-				error: "Compaction exceeded the provider context limit.",
+				error: "The summary request exceeded the provider context limit. No summary was applied. Use a model with a larger context window or reduce the requested output budget, then compact again. Roo did not split or re-summarize the conversation.",
 				failureKind: "context-limit",
 			}
 		if (error instanceof ModelDispatchControl) throw error
@@ -518,6 +529,7 @@ ${commandBlocks}
 	}
 
 	const newContextTokens = messageTokens + toolTokens
+	options.signal?.throwIfAborted()
 	return { messages: newMessages, summary, cost, newContextTokens, condenseId }
 }
 

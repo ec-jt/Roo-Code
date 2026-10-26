@@ -135,6 +135,7 @@ export function willManageContext(options: WillManageContextOptions): boolean {
 export type ContextManagementOptions = Omit<WillManageContextOptions, "lastMessageTokens"> & {
 	messages: ApiMessage[]
 	allowOverflowTruncation?: boolean
+	signal?: AbortSignal
 	apiHandler: ApiHandler
 	systemPrompt: string
 	taskId: string
@@ -183,6 +184,7 @@ export async function manageContext(options: ContextManagementOptions): Promise<
 		filesReadByRoo: options.filesReadByRoo,
 		cwd: options.cwd,
 		rooIgnoreController: options.rooIgnoreController,
+		signal: options.signal,
 	})
 	if (result.failureKind) {
 		if (options.allowOverflowTruncation === false) {

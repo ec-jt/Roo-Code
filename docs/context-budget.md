@@ -24,6 +24,10 @@ The percentage and profile-threshold settings from older versions remain readabl
 
 ## Manual compaction
 
+Compaction makes one standalone summary request using the effective history. It converts tool calls/results to text, omits the normal tool-definition catalog, and suppresses previous-response chaining. The next chat request still uses its normal tools. Roo does not split the conversation into separately summarized sections or summarize intermediate summaries, because that would compound information loss.
+
+If the summary request itself exceeds the provider limit, manual compaction leaves history unchanged and reports that no summary was applied. A summary still needs its input plus reserved output to fit: use a larger-context model or reduce the configured output budget before trying again. Removing tool overhead can help near the limit, but cannot make arbitrarily large history fit. Automatic overflow recovery retains the separate truncation-fallback policy described above; turn **Allow truncation fallback** off to prohibit that exclusion of unsummarized older exchanges.
+
 Context-limit errors distinguish disabled automatic recovery from a request that still overflowed after its single recovery retry. If the retry fails, Roo does not start another compaction/truncation cycle automatically.
 
 Turn off **Compact on context overflow** for manual-only behavior. A context-limit rejection then stops the request without automatically changing history. Use the existing context-compaction button while the task is idle, or switch to a suitable model before retrying.
