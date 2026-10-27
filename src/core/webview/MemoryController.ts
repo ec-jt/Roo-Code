@@ -30,7 +30,13 @@ export class MemoryController {
 					(project) => new MemoryStore(this.provider.context.globalStorageUri.fsPath, project),
 				),
 			}
-		return this.fallback.promise
+		const entry = this.fallback
+		try {
+			return await entry.promise
+		} catch (error) {
+			if (this.fallback === entry) this.fallback = undefined
+			throw error
+		}
 	}
 	async enabled(): Promise<boolean> {
 		try {

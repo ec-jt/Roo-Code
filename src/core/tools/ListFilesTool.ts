@@ -3,13 +3,13 @@ import * as path from "path"
 import { type ClineSayTool } from "@roo-code/types"
 
 import { Task } from "../task/Task"
-import { formatResponse } from "../prompts/responses"
-import { listFiles } from "../../services/glob/list-files"
 import { getReadablePath } from "../../utils/path"
 import { isPathOutsideWorkspace } from "../../utils/pathUtils"
 import type { ToolUse } from "../../shared/tools"
 
 import { BaseTool, ToolCallbacks } from "./BaseTool"
+import { runReadOnlyTool } from "./runReadOnlyTool"
+import { listDirectory } from "./listDirectory"
 
 interface ListFilesParams {
 	path: string
@@ -37,32 +37,22 @@ export class ListFilesTool extends BaseTool<"list_files"> {
 			const absolutePath = path.resolve(task.cwd, relDirPath)
 			const isOutsideWorkspace = isPathOutsideWorkspace(absolutePath)
 
-			const [files, didHitLimit] = await listFiles(absolutePath, recursive || false, 200)
-			const { showRooIgnoredFiles = false } = (await task.providerRef.deref()?.getState()) ?? {}
-
-			const result = formatResponse.formatFilesList(
-				absolutePath,
-				files,
-				didHitLimit,
-				task.rooIgnoreController,
-				showRooIgnoredFiles,
-				task.rooProtectedController,
-			)
-
 			const sharedMessageProps: ClineSayTool = {
 				tool: !recursive ? "listFilesTopLevel" : "listFilesRecursive",
 				path: getReadablePath(task.cwd, relDirPath),
 				isOutsideWorkspace,
 			}
 
-			const completeMessage = JSON.stringify({ ...sharedMessageProps, content: result } satisfies ClineSayTool)
+			const completeMessage = JSON.stringify({ ...sharedMessageProps, content: "" } satisfies ClineSayTool)
 			const didApprove = await askApproval("tool", completeMessage)
 
 			if (!didApprove) {
 				return
 			}
 
-			pushToolResult(result)
+			await runReadOnlyTool(this.name, task, callbacks, (signal) =>
+				listDirectory(task, absolutePath, recursive || false, signal),
+			)
 		} catch (error) {
 			await handleError("listing files", error)
 		}

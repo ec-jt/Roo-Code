@@ -5,13 +5,13 @@ import { type ClineSayTool } from "@roo-code/types"
 import { Task } from "../task/Task"
 import { formatResponse } from "../prompts/responses"
 import { extractTextFromFile } from "../../integrations/misc/extract-text"
-import { listFiles } from "../../services/glob/list-files"
 import { regexSearchFiles } from "../../services/ripgrep"
 import { getReadablePath } from "../../utils/path"
 import { isPathOutsideWorkspace } from "../../utils/pathUtils"
 import type { ToolUse } from "../../shared/tools"
 import { BaseTool, ToolCallbacks } from "./BaseTool"
 import { runReadOnlyTool } from "./runReadOnlyTool"
+import { listDirectory } from "./listDirectory"
 
 type Params = {
 	action: "read_text_file" | "list_directory" | "search_files"
@@ -70,18 +70,9 @@ export class FileSystemTool extends BaseTool<"file_system"> {
 		}
 
 		if (action === "list_directory") {
-			await runReadOnlyTool(this.name, task, callbacks, async () => {
-				const [files, didHitLimit] = await listFiles(absolutePath, recursive || false, 200)
-				const { showRooIgnoredFiles = false } = (await task.providerRef.deref()?.getState()) ?? {}
-				return formatResponse.formatFilesList(
-					absolutePath,
-					files,
-					didHitLimit,
-					task.rooIgnoreController,
-					showRooIgnoredFiles,
-					task.rooProtectedController,
-				)
-			})
+			await runReadOnlyTool(this.name, task, callbacks, (signal) =>
+				listDirectory(task, absolutePath, recursive || false, signal),
+			)
 			return
 		}
 

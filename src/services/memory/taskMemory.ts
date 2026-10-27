@@ -29,7 +29,14 @@ export async function getTaskMemoryStore(task: Task): Promise<MemoryStore> {
 		})
 		stores.set(task, store)
 	}
-	const result = await store
+	let result: MemoryStore
+	try {
+		result = await store
+	} catch (error) {
+		// Retry transient resolution failures without discarding a newer cached store.
+		if (stores.get(task) === store) stores.delete(task)
+		throw error
+	}
 	assertMemoryTaskOpen(task)
 	return result
 }

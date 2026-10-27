@@ -346,6 +346,26 @@ describe("MemoryStore", () => {
 describe("resolveMemoryProject", () => {
 	const git = (cwd: string, args: string[]) => exec("git", args, { cwd, timeout: 5000, maxBuffer: 64 * 1024 })
 
+	it("reports missing folders without creating or selecting a replacement", async () => {
+		const missing = path.join(temp, "missing-project")
+		await expect(resolveMemoryProject(missing)).rejects.toMatchObject({
+			code: "UNAVAILABLE",
+			message: expect.stringContaining("extension host"),
+		})
+		await expect(resolveMemoryProject(missing)).rejects.not.toThrow("ENOENT")
+		await expect(fs.stat(missing)).rejects.toMatchObject({ code: "ENOENT" })
+		await fs.mkdir(missing)
+		expect((await resolveMemoryProject(missing)).rootPath).toBe(await fs.realpath(missing))
+	})
+	it.each(["", "relative-folder"])("refuses an unselected or relative project (%s)", async (cwd) => {
+		await expect(resolveMemoryProject(cwd)).rejects.toMatchObject({ code: "UNAVAILABLE" })
+	})
+	it("reports a file in place of the project directory", async () => {
+		const file = path.join(temp, "not-a-directory")
+		await fs.writeFile(file, "test")
+		await expect(resolveMemoryProject(file)).rejects.toMatchObject({ code: "UNAVAILABLE" })
+	})
+
 	it("shares linked worktrees/subdirectories but separates clones, nested repositories and submodules", async () => {
 		const repo = path.join(temp, "repo")
 		await fs.mkdir(repo)

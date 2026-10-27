@@ -1,5 +1,6 @@
 import type { Task } from "../../task/Task"
 import type { ToolCallbacks } from "../BaseTool"
+import { ListFilesTool } from "../ListFilesTool"
 import { FileSystemTool } from "../FileSystemTool"
 import { MarkdownifyTool } from "../MarkdownifyTool"
 import { extractTextFromFile } from "../../../integrations/misc/extract-text"
@@ -15,6 +16,7 @@ vi.mock("../../../utils/path", () => ({ getReadablePath: (_cwd: string, value: s
 const filesystem = new FileSystemTool()
 const markdownify = new MarkdownifyTool()
 const cases = [
+	{ name: "list files", tool: new ListFilesTool(), params: { path: "." }, operation: listFiles },
 	{
 		name: "filesystem read",
 		tool: filesystem,

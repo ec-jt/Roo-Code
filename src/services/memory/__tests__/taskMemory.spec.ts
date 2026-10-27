@@ -56,6 +56,13 @@ describe("task memory recall", () => {
 		expect(resolveMemoryProject).toHaveBeenCalledTimes(1)
 		expect(MemoryStore).toHaveBeenCalledWith("/global", expect.objectContaining({ rootPath: "/workspace" }))
 	})
+	it("retries failed resolution on the same task without switching its project", async () => {
+		vi.mocked(resolveMemoryProject).mockRejectedValueOnce(new Error("Unavailable folder"))
+		await expect(getTaskMemoryStore(task)).rejects.toThrow("Unavailable folder")
+		await expect(getTaskMemoryStore(task)).resolves.toBe(store)
+		expect(resolveMemoryProject).toHaveBeenCalledTimes(2)
+		expect(resolveMemoryProject).toHaveBeenNthCalledWith(2, "/workspace")
+	})
 	it("does not access storage while untrusted", async () => {
 		Object.assign(vscode.workspace, { isTrusted: false })
 		expect(await getTaskMemoryContext(task)).toBe("")

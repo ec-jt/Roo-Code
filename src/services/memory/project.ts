@@ -5,13 +5,27 @@ import * as path from "node:path"
 import { devNull } from "node:os"
 import { promisify } from "node:util"
 import type { MemoryProject } from "./types"
+import { MemoryError } from "./types"
 
 const execFileAsync = promisify(execFile)
 
 /** Local identity only. No remotes, hooks, shell, repository configuration, or network operations. */
 export async function resolveMemoryProject(cwd: string): Promise<MemoryProject> {
-	const rootPath = await fs.realpath(cwd)
-	if (!(await fs.stat(rootPath)).isDirectory()) throw new Error("Memory project must be a directory")
+	if (!cwd || !path.isAbsolute(cwd))
+		throw new MemoryError("UNAVAILABLE", "Open a project folder on the current extension host to use memory.")
+	let rootPath: string
+	try {
+		rootPath = await fs.realpath(cwd)
+		if (!(await fs.stat(rootPath)).isDirectory()) throw new Error("Not a directory")
+	} catch {
+		throw new MemoryError(
+			"UNAVAILABLE",
+			"The selected task or project folder is unavailable on this extension host. " +
+				"Open the correct project folder. If the selected task belongs to another machine or a moved folder, " +
+				"close that task before opening Memory again. For SSH, containers, or browser VS Code, the extension host may differ from your Mac. " +
+				"Memory has not switched projects or created a replacement folder.",
+		)
+	}
 	let identity = `folder:${rootPath}`
 	let label = path.basename(rootPath) || rootPath
 	// Drop every inherited Git override, including GIT_CONFIG_COUNT and GIT_DIR.

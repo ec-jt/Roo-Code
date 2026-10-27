@@ -88,3 +88,17 @@ it("does not open storage in an untrusted workspace", async () => {
 	expect(await controller.enabled()).toBe(false)
 	expect(resolveMemoryProject).not.toHaveBeenCalled()
 })
+it("retries project resolution after a missing folder becomes available", async () => {
+	vi.mocked(resolveMemoryProject).mockRejectedValueOnce(new Error("Project folder unavailable"))
+	await expect(controller.store()).rejects.toThrow("Project folder unavailable")
+	await expect(controller.store()).resolves.toBe(store)
+	expect(resolveMemoryProject).toHaveBeenCalledTimes(2)
+	expect(resolveMemoryProject).toHaveBeenNthCalledWith(2, "/workspace")
+})
+it("does not replace an unavailable selected task folder with the editor workspace", async () => {
+	provider.getCurrentTask = () => ({ cwd: "/missing-task-folder", abort: true })
+	vi.mocked(resolveMemoryProject).mockRejectedValue(new Error("Project folder unavailable"))
+	await expect(controller.store()).rejects.toThrow("Project folder unavailable")
+	expect(resolveMemoryProject).toHaveBeenCalledWith("/missing-task-folder")
+	expect(MemoryStore).not.toHaveBeenCalled()
+})
