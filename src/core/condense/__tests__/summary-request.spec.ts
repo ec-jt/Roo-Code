@@ -75,6 +75,70 @@ it.each(["throw", "chunk", "mediated"])("does not retry or alter history on %s o
 	expect(input).toEqual(before)
 	expect(apiHandler.createMessage).toHaveBeenCalledTimes(1)
 	expect(result.condenseId).toBeUndefined()
+	expect(result.errorDetails).toContain("Failure: context-limit")
+	expect(result.errorDetails).toContain("Provider-reported input tokens: 100")
+	expect(result.errorDetails).toContain("Provider-reported output tokens: 5")
+	expect(result.errorDetails).not.toContain("Incomplete summary")
+})
+
+it("reports only effective request sizes and safe error fields on overflow", async () => {
+	const apiHandler = handler()
+	apiHandler.createMessage = vi.fn(async function* () {
+		yield { type: "usage" as const, inputTokens: 42, outputTokens: 0 }
+		throw Object.assign(new Error("private-token https://private.example"), {
+			status: 400,
+			code: "context_length_exceeded",
+			body: { secret: "private-token" },
+			response: { headers: { authorization: "private-token" } },
+		})
+	})
+	const input: ApiMessage[] = [
+		{ role: "user", content: "hidden-private-text".repeat(1000), condenseParent: "summary" },
+		{ role: "user", content: "current-private-summary", isSummary: true, condenseId: "summary" },
+		...messages().slice(1),
+	]
+	const result = await summarizeConversation({ messages: input, apiHandler, systemPrompt: "system", taskId: "task" })
+	expect(result.errorDetails).toContain("HTTP status: 400")
+	expect(result.errorDetails).toContain("Error code: context_length_exceeded")
+	expect(result.errorDetails).toContain("Stored messages in summary prefix: 4")
+	expect(result.errorDetails).toContain("Effective history messages: 3")
+	expect(result.errorDetails).toContain("Advertised context window: 8192")
+	const [prompt, sent] = vi.mocked(apiHandler.createMessage).mock.calls[0]
+	const chars =
+		prompt.length +
+		sent.reduce(
+			(sum, message) =>
+				sum +
+				(typeof message.content === "string"
+					? message.content.length
+					: message.content.reduce(
+							(total, block) => total + (block.type === "text" ? block.text.length : 0),
+							0,
+						)),
+			0,
+		)
+	expect(result.errorDetails).toContain(`Total request text characters: ${chars}`)
+	expect(result.errorDetails).not.toMatch(
+		/private-token|private\.example|hidden-private|current-private|important output|file\.ts|authorization/,
+	)
+	expect(apiHandler.countTokens).not.toHaveBeenCalled()
+})
+
+it("reports empty summaries with unavailable usage rather than invented zero counts", async () => {
+	const apiHandler = handler()
+	apiHandler.createMessage = vi.fn(async function* () {
+		yield { type: "text" as const, text: " " }
+	})
+	const result = await summarizeConversation({
+		messages: messages(),
+		apiHandler,
+		systemPrompt: "system",
+		taskId: "task",
+	})
+	expect(result.failureKind).toBe("empty-summary")
+	expect(result.errorDetails).toContain("Failure: empty-summary")
+	expect(result.errorDetails).toContain("Provider-reported input tokens: unavailable")
+	expect(result.errorDetails).toContain("Provider-reported output tokens: unavailable")
 })
 
 it("does not dispatch an already cancelled summary", async () => {

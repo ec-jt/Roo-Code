@@ -11,6 +11,7 @@ import { findLast } from "../../shared/array"
 import { supportPrompt } from "../../shared/support-prompt"
 import { RooIgnoreController } from "../ignore/RooIgnoreController"
 import { generateFoldedFileContext } from "./foldedFileContext"
+import { summaryFailureDiagnostics } from "./diagnostics"
 
 export type { FoldedFileContextResult, FoldedFileContextOptions } from "./foldedFileContext"
 
@@ -330,6 +331,20 @@ export async function summarizeConversation(options: SummarizeConversationOption
 	let summary = ""
 	let cost = 0
 	let outputTokens = 0
+	let reportedInputTokens: number | undefined
+	let reportedOutputTokens: number | undefined
+	const diagnostics = (failure: "context-limit" | "empty-summary", error?: unknown) =>
+		summaryFailureDiagnostics({
+			failure,
+			error,
+			storedMessages: messages.length,
+			effectiveMessages: messagesToSummarize.length,
+			requestMessages,
+			systemPrompt: promptToUse,
+			contextWindow: apiHandler.getModel().info.contextWindow,
+			inputTokens: reportedInputTokens,
+			outputTokens: reportedOutputTokens,
+		})
 
 	try {
 		options.signal?.throwIfAborted()
@@ -351,6 +366,8 @@ export async function summarizeConversation(options: SummarizeConversationOption
 			} else if (chunk.type === "usage") {
 				cost = chunk.totalCost ?? 0
 				outputTokens = chunk.outputTokens ?? 0
+				reportedInputTokens = chunk.inputTokens ?? reportedInputTokens
+				reportedOutputTokens = chunk.outputTokens ?? reportedOutputTokens
 			}
 		}
 		options.signal?.throwIfAborted()
@@ -365,6 +382,7 @@ export async function summarizeConversation(options: SummarizeConversationOption
 				cost,
 				error: "The summary request exceeded the provider context limit. No summary was applied. Use a model with a larger context window or reduce the requested output budget, then compact again. Roo did not split or re-summarize the conversation.",
 				failureKind: "context-limit",
+				errorDetails: diagnostics("context-limit", error),
 			}
 		if (error instanceof ModelDispatchControl) throw error
 		console.error("Error during condensing API call:", error)
@@ -412,7 +430,7 @@ export async function summarizeConversation(options: SummarizeConversationOption
 
 	if (summary.length === 0) {
 		const error = t("common:errors.condense_failed")
-		return { ...response, cost, error, failureKind: "empty-summary" }
+		return { ...response, cost, error, failureKind: "empty-summary", errorDetails: diagnostics("empty-summary") }
 	}
 
 	// Extract command blocks from the first message (original task)

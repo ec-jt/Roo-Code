@@ -196,6 +196,15 @@ export async function manageContext(options: ContextManagementOptions): Promise<
 			}
 		}
 		const fallback = await truncateAfterOverflow({ ...options, tools: options.metadata?.tools })
+		if (fallback.error) {
+			return {
+				...unchanged,
+				cost: result.cost,
+				error: `${result.error || "Context compaction failed."}\n\nTruncation fallback could not be applied. History was not changed. ${fallback.error}`,
+				errorDetails: result.errorDetails,
+				fallbackReason: result.failureKind,
+			}
+		}
 		return { ...unchanged, ...fallback, cost: result.cost, fallbackReason: result.failureKind }
 	}
 	if (result.error || !result.summary)
