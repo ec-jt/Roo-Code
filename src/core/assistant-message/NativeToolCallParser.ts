@@ -1,3 +1,4 @@
+import { taskStateArgsSchema } from "../prompts/tools/native-tools/task_state"
 import { parseJSON } from "partial-json"
 import { memoryArgsSchema } from "../prompts/tools/native-tools/memory"
 
@@ -812,6 +813,9 @@ export class NativeToolCallParser {
 			let usedLegacyFormat = false
 
 			switch (resolvedName) {
+				case "task_state":
+					nativeArgs = taskStateArgsSchema.parse(args)
+					break
 				case "memory":
 					nativeArgs = memoryArgsSchema.parse(args)
 					break

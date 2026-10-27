@@ -18,6 +18,7 @@ export const toolNames = [
 	"execute_command",
 	"managed_environment",
 	"memory",
+	"task_state",
 	"browser_action",
 	"read_file",
 	"read_command_output",

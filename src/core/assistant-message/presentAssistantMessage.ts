@@ -1,3 +1,4 @@
+import { taskStateTool } from "../tools/TaskStateTool"
 import { serializeError } from "serialize-error"
 import { Anthropic } from "@anthropic-ai/sdk"
 
@@ -722,6 +723,13 @@ export async function presentAssistantMessage(cline: Task) {
 							break
 						case "managed_environment":
 							await managedEnvironmentTool.handle(cline, block as ToolUse<"managed_environment">, {
+								askApproval,
+								handleError,
+								pushToolResult,
+							})
+							break
+						case "task_state":
+							await taskStateTool.handle(cline, block as ToolUse<"task_state">, {
 								askApproval,
 								handleError,
 								pushToolResult,

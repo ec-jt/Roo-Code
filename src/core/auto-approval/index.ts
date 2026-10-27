@@ -78,6 +78,7 @@ export async function checkAutoApproval({
 	if (ask === "tool") {
 		try {
 			const tool = JSON.parse(text || "{}") as ClineSayTool
+			if (tool.tool === "taskState") return { decision: "ask" }
 			if (tool.tool === "memory") {
 				return {
 					decision:

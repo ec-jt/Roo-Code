@@ -42,6 +42,7 @@ import { ModelOperationPanel, ModelOperationProvider } from "./ModelOperationCon
 import WarningRow from "./WarningRow"
 import { ChatTextArea } from "./ChatTextArea"
 import TaskHeader from "./TaskHeader"
+import { TaskStatePanel } from "./task-state/TaskStatePanel"
 import ProfileViolationWarning from "./ProfileViolationWarning"
 import { CheckpointWarning } from "./CheckpointWarning"
 import { QueuedMessages } from "./QueuedMessages"
@@ -1768,6 +1769,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 						todos={latestTodos}
 					/>
 					{chatWindow && <ChatWindowControls window={chatWindow} />}
+					{currentTaskItem?.id && <TaskStatePanel taskId={currentTaskItem.id} />}
 
 					{checkpointWarning && (
 						<div className="px-3">

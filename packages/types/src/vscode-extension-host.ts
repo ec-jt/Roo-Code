@@ -1,3 +1,4 @@
+import type { TaskStateNativeRequest, TaskStateNativeResponse } from "./task-state.js"
 import { z } from "zod"
 
 import type { GlobalSettings, RooCodeSettings } from "./global-settings.js"
@@ -206,6 +207,7 @@ export interface ExtensionMessage {
 		| "state"
 		| "runningTaskUpdated"
 		| "commandActivitiesUpdated"
+		| "taskStateResponse"
 		| "memoryBrowser"
 		| "modelOperationStatus"
 		| "taskHistoryUpdated"
@@ -318,6 +320,7 @@ export interface ExtensionMessage {
 	state?: Partial<ExtensionState>
 	runningTask?: RunningTaskInfo
 	commandActivities?: CommandActivityInfo[]
+	taskStateResponse?: TaskStateNativeResponse
 	memoryBrowser?: MemoryBrowserState
 	memoryError?: string
 	assistantMessageEditResult?: AssistantMessageEditResult
@@ -654,6 +657,7 @@ export interface WebviewMessage {
 		| "foregroundTask"
 		| "cancelBackgroundTask"
 		| "commandActivityControl"
+		| "taskStateRequest"
 		| "memoryBrowserRequest"
 		| "modelOperation"
 		| "queueTaskProfile"
@@ -839,6 +843,7 @@ export interface WebviewMessage {
 	assistantMessageEdit?: AssistantMessageEdit
 	chatFileChangesOpen?: { taskId: string; instanceId: string; path: string }
 	commandActivityControl?: { id: string; action: "stop" | "show" }
+	taskStateRequest?: TaskStateNativeRequest
 	memoryBrowserRequest?: MemoryBrowserRequest
 	modelOperation?: ModelOperation
 	modelOperationApproval?: ModelOperationApproval
@@ -1040,6 +1045,7 @@ export interface ClineSayTool {
 		| "imageGenerated"
 		| "fileSystem"
 		| "managedEnvironment"
+		| "taskState"
 		| "memory"
 		| "markdownify"
 		| "gitRepoResearch"

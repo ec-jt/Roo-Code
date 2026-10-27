@@ -1,3 +1,4 @@
+import { handleTaskStateRequest } from "./taskStateMessageHandler"
 import { safeWriteJson } from "../../utils/safeWriteJson"
 import * as path from "path"
 import * as os from "os"
@@ -533,6 +534,9 @@ export const webviewMessageHandler = async (
 		case "chatMessageEdit":
 		case "chatFileChangesOpen":
 			await provider.handleChatWindowMessage(message)
+			break
+		case "taskStateRequest":
+			await handleTaskStateRequest(provider, message.taskStateRequest)
 			break
 		case "memoryBrowserRequest":
 			await provider.memoryController.handle(message.memoryBrowserRequest)

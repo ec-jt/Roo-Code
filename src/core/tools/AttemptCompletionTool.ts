@@ -1,3 +1,4 @@
+import { taskCompletionGate } from "../../services/task-state/continuation"
 import * as vscode from "vscode"
 
 import { RooCodeEventName, type HistoryItem } from "@roo-code/types"
@@ -81,6 +82,17 @@ export class AttemptCompletionTool extends BaseTool<"attempt_completion"> {
 
 			task.consecutiveMistakeCount = 0
 
+			const gate = await taskCompletionGate(task)
+			if (gate?.continue) {
+				pushToolResult(gate.message)
+				return
+			}
+			if (gate && !gate.completed) {
+				await task.say("completion_result", `${gate.message}\n\n${result}`, undefined, false)
+				await task.ask("completion_result", "", false)
+				return
+			}
+			if (gate) await task.say("text", gate.message)
 			await task.say("completion_result", result, undefined, false)
 
 			// Completed children reopened for inspection retain ordinary completion behavior.

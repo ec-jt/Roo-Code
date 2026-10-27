@@ -25,6 +25,7 @@ import { formatPathTooltip } from "@src/utils/formatPathTooltip"
 import { ToolUseBlock, ToolUseBlockHeader } from "../common/ToolUseBlock"
 import UpdateTodoListToolBlock from "./UpdateTodoListToolBlock"
 import { TodoChangeDisplay } from "./TodoChangeDisplay"
+import { TaskStateToolApproval } from "./task-state/TaskStateToolApproval"
 import CodeAccordion from "../common/CodeAccordion"
 import MarkdownBlock from "../common/MarkdownBlock"
 import { ReasoningBlock } from "./ReasoningBlock"
@@ -390,6 +391,8 @@ export const ChatRowContent = ({
 		)
 
 		switch (tool.tool as string) {
+			case "taskState":
+				return <TaskStateToolApproval content={tool.content} />
 			case "editedExistingFile":
 			case "appliedDiff":
 			case "newFileCreated":

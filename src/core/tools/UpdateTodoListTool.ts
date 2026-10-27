@@ -1,3 +1,4 @@
+import { syncTaskStateTodos } from "../../services/task-state/taskState"
 import { Task } from "../task/Task"
 import { formatResponse } from "../prompts/responses"
 import { BaseTool, ToolCallbacks } from "./BaseTool"
@@ -42,11 +43,16 @@ export class UpdateTodoListTool extends BaseTool<"update_todo_list"> {
 				return
 			}
 
-			let normalizedTodos: TodoItem[] = todos.map((t) => ({
-				id: t.id,
-				content: t.content,
-				status: normalizeStatus(t.status),
-			}))
+			const remainingPrevious = [...(task.todoList ?? [])]
+			let normalizedTodos: TodoItem[] = todos.map((t) => {
+				const match = remainingPrevious.findIndex((previous) => previous.content === t.content)
+				const previous = match < 0 ? undefined : remainingPrevious.splice(match, 1)[0]
+				return {
+					id: previous?.id ?? t.id,
+					content: t.content,
+					status: normalizeStatus(t.status),
+				}
+			})
 
 			const approvalMsg = JSON.stringify({
 				tool: "updateTodoList",
@@ -73,7 +79,9 @@ export class UpdateTodoListTool extends BaseTool<"update_todo_list"> {
 				)
 			}
 
+			const previousTodos = task.todoList ?? []
 			await setTodoListForTask(task, normalizedTodos)
+			await syncTaskStateTodos(task, previousTodos)
 
 			if (isTodoListChanged) {
 				const md = todoListToMarkdown(normalizedTodos)
