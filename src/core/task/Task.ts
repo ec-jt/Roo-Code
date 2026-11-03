@@ -258,6 +258,8 @@ export interface TaskOptions extends CreateTaskOptions {
 	/** Opt-in, instance-local streaming model admission. Not persisted or inherited. */
 	modelDispatchRuntime?: ModelDispatchRuntime
 	apiConfiguration: ProviderSettings
+	/** Explicit identity for delegated tasks, independent of global UI defaults. */
+	initialTaskContext?: { mode: string; apiConfigName: string | undefined }
 	enableCheckpoints?: boolean
 	checkpointTimeout?: number
 	consecutiveMistakeLimit?: number
@@ -1043,6 +1045,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		approvalPort,
 		modelDispatchRuntime,
 		apiConfiguration,
+		initialTaskContext,
 		enableCheckpoints = true,
 		checkpointTimeout = DEFAULT_CHECKPOINT_TIMEOUT_SECONDS,
 		consecutiveMistakeLimit = DEFAULT_CONSECUTIVE_MISTAKE_LIMIT,
@@ -1208,6 +1211,11 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		if (historyItem) {
 			this._taskMode = historyItem.mode || defaultModeSlug
 			this._taskApiConfigName = historyItem.apiConfigName
+			this.taskModeReady = Promise.resolve()
+			this.taskApiConfigReady = Promise.resolve()
+		} else if (initialTaskContext) {
+			this._taskMode = initialTaskContext.mode
+			this._taskApiConfigName = initialTaskContext.apiConfigName
 			this.taskModeReady = Promise.resolve()
 			this.taskApiConfigReady = Promise.resolve()
 		} else {

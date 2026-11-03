@@ -24,6 +24,9 @@ function fixture(depth = 1) {
 		instanceId: "instance-1",
 		parentTaskId: depth ? `task-${depth - 1}` : undefined,
 		api: {},
+		apiConfiguration: {},
+		getTaskMode: vi.fn(async () => state.mode),
+		getTaskApiConfigName: vi.fn().mockResolvedValue("default"),
 		modelOperationState: { revision: 0, requiresToolApproval: false } as ModelOperationState,
 		assertCanDelegate: vi.fn().mockResolvedValue(undefined),
 		flushPendingToolResultsToHistory: vi.fn().mockResolvedValue(true),
@@ -43,6 +46,8 @@ function fixture(depth = 1) {
 	const child = { taskId: "new-child", start: vi.fn() }
 	const provider = Object.assign(Object.create(ClineProvider.prototype), {
 		delegationRevision: 0,
+		context: { workspaceState: { get: vi.fn().mockReturnValue(false) } },
+		updateGlobalState: vi.fn(),
 		getCurrentTask: vi.fn(() => parent),
 		getState: vi.fn(async () => state),
 		getTaskWithId: vi.fn(async (id: string) => {
@@ -370,8 +375,13 @@ describe("durable delegation policy", () => {
 			return APPROVE as never
 		})
 		await f.provider.delegateParentAndOpenChild(request)
-		expect(f.provider.handleModeSwitch).toHaveBeenCalledWith("code")
-		expect(f.provider.createTask).toHaveBeenCalledWith(f.request.message, undefined, f.parent, expect.anything())
+		expect(f.provider.handleModeSwitch).not.toHaveBeenCalled()
+		expect(f.provider.createTask).toHaveBeenCalledWith(
+			f.request.message,
+			undefined,
+			f.parent,
+			expect.objectContaining({ initialTaskContext: { mode: "code", apiConfigName: "default" } }),
+		)
 	})
 
 	it.each([false, true])(

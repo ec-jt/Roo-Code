@@ -87,7 +87,7 @@ import { forceFullModelDetailsLoad, hasLoadedFullDetails } from "../../api/provi
 import { ContextProxy } from "../config/ContextProxy"
 import { ProviderSettingsManager } from "../config/ProviderSettingsManager"
 import { CustomModesManager } from "../config/CustomModesManager"
-import { Task } from "../task/Task"
+import { Task, type TaskOptions } from "../task/Task"
 import { readContextRecoverySnapshot } from "../context-management/context-recovery"
 import { formatSubtaskHandoff } from "../task/subtask-handoff"
 import { ModelOperationCoordinator, ModelOperationBlocked } from "../task/model-operation/coordinator"
@@ -3677,7 +3677,7 @@ export class ClineProvider
 		text?: string,
 		images?: string[],
 		parentTask?: Task,
-		options: CreateTaskOptions = {},
+		options: CreateTaskOptions & Partial<Pick<TaskOptions, "apiConfiguration" | "initialTaskContext">> = {},
 		configuration: RooCodeSettings = {},
 	): Promise<Task> {
 		if (!parentTask) this.assertTaskForegrounded()
@@ -3721,8 +3721,9 @@ export class ClineProvider
 			}
 		}
 
-		const { apiConfiguration, organizationAllowList, enableCheckpoints, checkpointTimeout, experiments } =
-			await this.getState()
+		const state = await this.getState()
+		const { organizationAllowList, enableCheckpoints, checkpointTimeout, experiments } = state
+		const apiConfiguration = options.apiConfiguration ?? state.apiConfiguration
 
 		// Single-open-task invariant: always enforce for user-initiated top-level tasks
 		if (!parentTask) {
@@ -3759,7 +3760,7 @@ export class ClineProvider
 		})
 
 		await this.addClineToStack(task)
-		task.start()
+		if (options.startTask !== false) task.start()
 
 		this.log(
 			`[createTask] ${task.parentTask ? "child" : "parent"} task ${task.taskId}.${task.instanceId} instantiated`,
@@ -3973,6 +3974,18 @@ export class ClineProvider
 			throw new Error("Cannot delegate: parent history could not be saved. Resolve the storage error and retry.")
 		}
 
+		// Read the active task identity, not the UI defaults or a queued next-request profile.
+		const parentMode = await parent.getTaskMode()
+		const parentApiConfigName = await parent.getTaskApiConfigName()
+		const inheritConfiguration =
+			mode === parentMode || this.context.workspaceState.get("lockApiConfigAcrossModes", false)
+		const inheritedOptions = inheritConfiguration
+			? {
+					apiConfiguration: structuredClone(parent.apiConfiguration),
+					initialTaskContext: { mode, apiConfigName: parentApiConfigName },
+				}
+			: {}
+
 		await revalidate()
 		assertCurrent()
 
@@ -3981,18 +3994,16 @@ export class ClineProvider
 		//    Await abort completion to ensure clean disposal and prevent unhandled rejections.
 		await this.removeClineFromStack({ internal: true })
 
-		// 3) Switch provider mode to child's requested mode BEFORE creating the child task
-		//    This ensures the child's system prompt and configuration are based on the correct mode.
-		//    The mode switch must happen before createTask() because the Task constructor
-		//    initializes its mode from provider.getState() during initializeTaskMode().
-		try {
+		// Same-mode delegation is not a mode switch: reloading its saved profile would
+		// discard task-local model selection and unsaved settings. Keep global profile
+		// defaults untouched. Locked mode changes also inherit the active configuration.
+		if (inheritConfiguration) {
+			await this.updateGlobalState("mode", mode)
+			this.emit(RooCodeEventName.ModeChanged, mode)
+		} else {
+			// Fail closed if selecting the destination profile fails. Never start a child
+			// with the previous mode/provider after a partially completed mode switch.
 			await this.handleModeSwitch(mode as any)
-		} catch (e) {
-			this.log(
-				`[delegateParentAndOpenChild] handleModeSwitch failed for mode '${mode}': ${
-					(e as Error)?.message ?? String(e)
-				}`,
-			)
 		}
 
 		// 4) Create child as sole active (parent reference preserved for lineage)
@@ -4010,6 +4021,7 @@ export class ClineProvider
 			initialTodos,
 			initialStatus: "active",
 			startTask: false,
+			...inheritedOptions,
 		})
 
 		// 5) Persist parent delegation metadata BEFORE the child starts writing.
@@ -4018,6 +4030,8 @@ export class ClineProvider
 			const childIds = Array.from(new Set([...(historyItem.childIds ?? []), child.taskId]))
 			const updatedHistory: typeof historyItem = {
 				...historyItem,
+				mode: parentMode,
+				apiConfigName: parentApiConfigName,
 				status: "delegated",
 				delegatedToId: child.taskId,
 				awaitingChildId: child.taskId,

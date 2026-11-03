@@ -35,6 +35,8 @@ describe("ClineProvider.delegateParentAndOpenChild()", () => {
 		const providerEmit = vi.fn()
 		const parentTask = {
 			taskId: "parent-1",
+			getTaskMode: vi.fn().mockResolvedValue("orchestrator"),
+			getTaskApiConfigName: vi.fn().mockResolvedValue("parent-profile"),
 			emit: vi.fn(),
 			assertCanDelegate: vi.fn(),
 			flushPendingToolResultsToHistory: vi.fn().mockResolvedValue(true),
@@ -71,6 +73,7 @@ describe("ClineProvider.delegateParentAndOpenChild()", () => {
 		})
 
 		const provider = {
+			context: { workspaceState: { get: vi.fn().mockReturnValue(false) } },
 			emit: providerEmit,
 			getCurrentTask: vi.fn(() => parentTask),
 			removeClineFromStack,
@@ -133,6 +136,9 @@ describe("ClineProvider.delegateParentAndOpenChild()", () => {
 
 		const parentTask = {
 			taskId: "parent-1",
+			getTaskMode: vi.fn().mockResolvedValue("code"),
+			getTaskApiConfigName: vi.fn().mockResolvedValue("parent-profile"),
+			apiConfiguration: { apiProvider: "anthropic" },
 			emit: vi.fn(),
 			assertCanDelegate: vi.fn(),
 			flushPendingToolResultsToHistory: vi.fn().mockResolvedValue(true),
@@ -161,6 +167,7 @@ describe("ClineProvider.delegateParentAndOpenChild()", () => {
 
 		const provider = {
 			emit: vi.fn(),
+			updateGlobalState: vi.fn(),
 			getCurrentTask: vi.fn(() => parentTask),
 			removeClineFromStack,
 			createTask,
@@ -181,5 +188,109 @@ describe("ClineProvider.delegateParentAndOpenChild()", () => {
 
 		// Verify ordering: createTask → updateTaskHistory → child.start
 		expect(callOrder).toEqual(["createTask", "updateTaskHistory", "child.start"])
+	})
+
+	function profileFixture(parentMode = "code", locked = false) {
+		const parent = {
+			taskId: "parent-1",
+			instanceId: "parent-instance",
+			api: {},
+			apiConfiguration: {
+				id: "active-id",
+				apiProvider: "openai",
+				openAiModelId: "active-model",
+				openAiHeaders: { "X-Custom": "unsaved-override" },
+			},
+			getTaskMode: vi.fn().mockResolvedValue(parentMode),
+			getTaskApiConfigName: vi.fn().mockResolvedValue("active-profile"),
+			assertCanDelegate: vi.fn(),
+			flushPendingToolResultsToHistory: vi.fn().mockResolvedValue(true),
+			modelOperationState: { revision: 0, nextProfileId: "queued-id" },
+		}
+		const child = { taskId: "child-1", start: vi.fn() }
+		const provider = Object.assign(Object.create(ClineProvider.prototype), {
+			delegationRevision: 0,
+			context: { workspaceState: { get: vi.fn().mockReturnValue(locked) } },
+			getCurrentTask: vi.fn(() => parent),
+			getState: vi.fn().mockResolvedValue({
+				mode: "architect",
+				currentApiConfigName: "global-profile",
+				apiConfiguration: { id: "global-id", apiProvider: "litellm", litellmModelId: "global-model" },
+			}),
+			getTaskWithId: vi.fn().mockResolvedValue({ historyItem: { id: parent.taskId } }),
+			removeClineFromStack: vi.fn(),
+			handleModeSwitch: vi.fn(),
+			updateGlobalState: vi.fn(),
+			updateTaskHistory: vi.fn(),
+			createTask: vi.fn().mockResolvedValue(child),
+			emit: vi.fn(),
+			log: vi.fn(),
+		})
+		const request = { parentTaskId: parent.taskId, mode: "code", message: "child", initialTodos: [] }
+		return { parent, provider, child, request }
+	}
+
+	it.each([false, true])(
+		"inherits active same-mode settings rather than global or queued settings (lock=%s)",
+		async (locked) => {
+			const { parent, provider, request } = profileFixture("code", locked)
+			await provider.delegateParentAndOpenChild(request)
+			const options = provider.createTask.mock.calls[0][3]
+			expect(options.apiConfiguration).toEqual(parent.apiConfiguration)
+			expect(options.apiConfiguration).not.toBe(parent.apiConfiguration)
+			expect(options.apiConfiguration.openAiHeaders).not.toBe(parent.apiConfiguration.openAiHeaders)
+			expect(options.initialTaskContext).toEqual({ mode: "code", apiConfigName: "active-profile" })
+			expect(provider.handleModeSwitch).not.toHaveBeenCalled()
+			expect(parent.modelOperationState.nextProfileId).toBe("queued-id")
+			expect(provider.updateTaskHistory).toHaveBeenCalledWith(
+				expect.objectContaining({ mode: "code", apiConfigName: "active-profile", status: "delegated" }),
+			)
+		},
+	)
+
+	it("keeps destination mode profile selection for an unlocked different-mode child", async () => {
+		const { provider, request } = profileFixture("architect")
+		provider.removeClineFromStack.mockImplementation(async () => {
+			provider.getCurrentTask.mockReturnValue(undefined)
+		})
+		provider.handleModeSwitch = ClineProvider.prototype.handleModeSwitch
+		provider.providerSettingsManager = {
+			getModeConfigId: vi.fn().mockResolvedValue("code-profile-id"),
+			listConfig: vi.fn().mockResolvedValue([{ id: "code-profile-id", name: "code-profile" }]),
+			getProfile: vi.fn().mockResolvedValue({ apiProvider: "anthropic" }),
+		}
+		provider.activateProviderProfile = vi.fn()
+		provider.postStateToWebview = vi.fn()
+		await provider.delegateParentAndOpenChild(request)
+		expect(provider.providerSettingsManager.getModeConfigId).toHaveBeenCalledWith("code")
+		expect(provider.activateProviderProfile).toHaveBeenCalledWith({ name: "code-profile" })
+		expect(provider.createTask.mock.calls[0][3]).not.toHaveProperty("apiConfiguration")
+	})
+
+	it("inherits active settings across modes when configuration is locked", async () => {
+		const { parent, provider, request } = profileFixture("architect", true)
+		await provider.delegateParentAndOpenChild(request)
+		expect(provider.handleModeSwitch).not.toHaveBeenCalled()
+		expect(provider.createTask.mock.calls[0][3].apiConfiguration).toEqual(parent.apiConfiguration)
+		expect(provider.updateGlobalState).toHaveBeenCalledWith("mode", "code")
+	})
+
+	it("does not create or dispatch a child if destination profile selection fails", async () => {
+		const { provider, child, request } = profileFixture("architect")
+		provider.handleModeSwitch.mockRejectedValue(new Error("profile unavailable"))
+		await expect(provider.delegateParentAndOpenChild(request)).rejects.toThrow("profile unavailable")
+		expect(provider.createTask).not.toHaveBeenCalled()
+		expect(child.start).not.toHaveBeenCalled()
+	})
+
+	it("rechecks task identity after awaiting the parent profile metadata", async () => {
+		const { parent, provider, request } = profileFixture()
+		parent.getTaskApiConfigName.mockImplementation(async () => {
+			provider.delegationRevision++
+			return "active-profile"
+		})
+		await expect(provider.delegateParentAndOpenChild(request)).rejects.toThrow("Delegation cancelled")
+		expect(provider.removeClineFromStack).not.toHaveBeenCalled()
+		expect(provider.createTask).not.toHaveBeenCalled()
 	})
 })

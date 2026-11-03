@@ -2,7 +2,7 @@
 
 import * as vscode from "vscode"
 
-import type { ProviderSettings } from "@roo-code/types"
+import type { ProviderSettings, ProviderSettingsWithId } from "@roo-code/types"
 import { Task } from "../Task"
 import { ClineProvider } from "../../webview/ClineProvider"
 
@@ -81,6 +81,71 @@ vi.mock("delay", () => ({
 }))
 
 describe("Task - sticky provider profile init race", () => {
+	it.each(["active-profile", undefined])(
+		"creates a deferred child with explicit identity (%s), not UI defaults",
+		async (apiConfigName) => {
+			const inheritedConfiguration: ProviderSettingsWithId = {
+				id: "active-id",
+				apiProvider: "anthropic",
+				apiModelId: "claude-3-5-sonnet-20241022",
+				modelTemperature: 0.42,
+			}
+			const provider = Object.assign(Object.create(ClineProvider.prototype), {
+				context: { globalStorageUri: { fsPath: "/test/storage" } },
+				clineStack: [],
+				setValues: vi.fn(),
+				getState: vi.fn().mockResolvedValue({
+					mode: "architect",
+					currentApiConfigName: "global-profile",
+					apiConfiguration: { apiProvider: "litellm", litellmModelId: "global-model" },
+					organizationAllowList: { allowAll: true, providers: {} },
+				}),
+				addClineToStack: vi.fn(),
+				log: vi.fn(),
+				on: vi.fn(),
+				off: vi.fn(),
+			})
+			const start = vi.spyOn(Task.prototype, "start").mockImplementation(() => {})
+			try {
+				const child = await provider.createTask(
+					"child",
+					undefined,
+					{ workspacePath: "/test/workspace" } as Task,
+					{
+						startTask: false,
+						apiConfiguration: inheritedConfiguration,
+						initialTaskContext: { mode: "code", apiConfigName },
+					},
+				)
+				expect(child.apiConfiguration).toEqual(inheritedConfiguration)
+				expect(await child.getTaskMode()).toBe("code")
+				expect(await child.getTaskApiConfigName()).toBe(apiConfigName)
+				expect(child.modelOperationState.nextProfileId).toBeUndefined()
+				expect(start).not.toHaveBeenCalled()
+			} finally {
+				start.mockRestore()
+			}
+		},
+	)
+
+	it("validates the inherited configuration against the organization allowlist", async () => {
+		const provider = Object.assign(Object.create(ClineProvider.prototype), {
+			setValues: vi.fn(),
+			getState: vi.fn().mockResolvedValue({
+				apiConfiguration: { apiProvider: "anthropic" },
+				organizationAllowList: { allowAll: false, providers: { anthropic: { allowAll: true } } },
+			}),
+			addClineToStack: vi.fn(),
+		})
+		await expect(
+			provider.createTask("child", undefined, {} as Task, {
+				startTask: false,
+				apiConfiguration: { apiProvider: "litellm" },
+			}),
+		).rejects.toThrow()
+		expect(provider.addClineToStack).not.toHaveBeenCalled()
+	})
+
 	it("does not overwrite task apiConfigName if set during async initialization", async () => {
 		const apiConfig: ProviderSettings = {
 			apiProvider: "anthropic",
