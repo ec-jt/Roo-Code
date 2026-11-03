@@ -13,6 +13,7 @@ import { sanitizeOpenAiCallId } from "../../utils/tool-id"
 
 import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata } from "../index"
 import { RouterProvider } from "./router-provider"
+import { getReasoningDelta } from "./utils/reasoning-delta"
 
 /**
  * LiteLLM provider handler
@@ -228,8 +229,11 @@ export class LiteLLMHandler extends RouterProvider implements SingleCompletionHa
 			let lastUsage
 
 			for await (const chunk of completion) {
-				const delta = chunk.choices[0]?.delta
+				const delta = chunk.choices?.[0]?.delta
 				const usage = chunk.usage as LiteLLMUsage
+
+				const reasoning = getReasoningDelta(delta)
+				if (reasoning !== undefined) yield { type: "reasoning", text: reasoning }
 
 				if (delta?.content) {
 					yield { type: "text", text: delta.content }

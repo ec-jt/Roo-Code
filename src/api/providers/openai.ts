@@ -25,6 +25,7 @@ import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata } from ".
 import { getApiRequestTimeout } from "./utils/timeout-config"
 import { configureApiRequestTimeout } from "./utils/sdk-timeout"
 import { handleOpenAIError } from "./utils/openai-error-handler"
+import { getReasoningDelta } from "./utils/reasoning-delta"
 
 // TODO: Rename this to OpenAICompatibleHandler. Also, I think the
 // `OpenAINativeHandler` can subclass from this, since it's obviously
@@ -200,16 +201,12 @@ export class OpenAiHandler extends BaseProvider implements SingleCompletionHandl
 				const delta = chunk.choices?.[0]?.delta ?? {}
 				const finishReason = chunk.choices?.[0]?.finish_reason
 
+				const reasoning = getReasoningDelta(delta)
+				if (reasoning !== undefined) yield { type: "reasoning", text: reasoning }
+
 				if (delta.content) {
 					for (const chunk of matcher.update(delta.content)) {
 						yield chunk
-					}
-				}
-
-				if ("reasoning_content" in delta && delta.reasoning_content) {
-					yield {
-						type: "reasoning",
-						text: (delta.reasoning_content as string | undefined) || "",
 					}
 				}
 
@@ -443,6 +440,9 @@ export class OpenAiHandler extends BaseProvider implements SingleCompletionHandl
 			const finishReason = chunk.choices?.[0]?.finish_reason
 
 			if (delta) {
+				const reasoning = getReasoningDelta(delta)
+				if (reasoning !== undefined) yield { type: "reasoning", text: reasoning }
+
 				if (delta.content) {
 					yield {
 						type: "text",
