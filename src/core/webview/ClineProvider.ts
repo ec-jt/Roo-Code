@@ -2093,6 +2093,9 @@ export class ClineProvider
 		const task = this.getCurrentTask()
 
 		if (task) {
+			// An actual, unlocked mode change deliberately selects that mode's profile.
+			if (task.taskMode !== newMode && !this.context.workspaceState.get("lockApiConfigAcrossModes", false))
+				task.releaseInheritedApiConfigurationLock?.()
 			task.emit(RooCodeEventName.TaskModeSwitched, task.taskId, newMode)
 
 			try {
@@ -2192,6 +2195,17 @@ export class ClineProvider
 		const task = this.getCurrentTask()
 		if (!task) return
 
+		// Delegation-inherited children pin the parent's active configuration
+		// (same mode or lock-across-modes). An incidental `activateProviderProfile`
+		// targeting an unrelated profile - triggered by UI reconciliation, save,
+		// rename, delete, or history resume - must not rewrite the child's
+		// task-local apiConfiguration. This protection lasts beyond the first request.
+		// Explicit per-task changes release the lock first; this guard only fires
+		// on incidental activations.
+		if (task.hasInheritedApiConfiguration === true) {
+			return
+		}
+
 		const { forceRebuild = false } = options
 
 		// Determine if we need to rebuild using the previous configuration snapshot
@@ -2232,6 +2246,7 @@ export class ClineProvider
 		activate: boolean = true,
 	): Promise<string | undefined> {
 		this.delegationRevision++
+		const targetTask = this.getCurrentTask()
 		try {
 			// TODO: Do we need to be calling `activateProfile`? It's not
 			// clear to me what the source of truth should be; in some cases
@@ -2262,10 +2277,11 @@ export class ClineProvider
 
 				// Change the provider for the current task.
 				// TODO: We should rename `buildApiHandler` for clarity (e.g. `getProviderClient`).
-				this.updateTaskApiHandlerIfNeeded(providerSettings, { forceRebuild: true })
-
-				// Keep the current task's sticky provider profile in sync with the newly-activated profile.
-				await this.persistStickyProviderProfileToCurrentTask(name)
+				if (this.getCurrentTask() === targetTask) {
+					targetTask?.releaseInheritedApiConfigurationLock?.()
+					this.updateTaskApiHandlerIfNeeded(providerSettings, { forceRebuild: true })
+					await this.persistStickyProviderProfileToCurrentTask(name)
+				}
 			} else {
 				await this.updateGlobalState("listApiConfigMeta", await this.providerSettingsManager.listConfig())
 			}
@@ -2311,6 +2327,13 @@ export class ClineProvider
 			return
 		}
 
+		// An inherited delegation child must not have its task-local sticky
+		// profile name rewritten by an incidental global activation. Explicit
+		// per-task changes release `hasInheritedApiConfiguration` first.
+		if (task.hasInheritedApiConfiguration === true) {
+			return
+		}
+
 		try {
 			// Update in-memory state immediately so sticky behavior works even before the task has
 			// been persisted into taskHistory (it will be captured on the next save).
@@ -2335,9 +2358,10 @@ export class ClineProvider
 
 	async activateProviderProfile(
 		args: { name: string } | { id: string },
-		options?: { persistModeConfig?: boolean; persistTaskHistory?: boolean },
+		options?: { persistModeConfig?: boolean; persistTaskHistory?: boolean; explicitTaskSelection?: boolean },
 	) {
 		this.delegationRevision++
+		const targetTask = this.getCurrentTask()
 		const { name, id, ...providerSettings } = await this.providerSettingsManager.activateProfile(args)
 
 		const persistModeConfig = options?.persistModeConfig ?? true
@@ -2357,17 +2381,20 @@ export class ClineProvider
 		}
 
 		// Change the provider for the current task.
-		this.updateTaskApiHandlerIfNeeded(providerSettings, { forceRebuild: true })
+		if (this.getCurrentTask() === targetTask) {
+			if (options?.explicitTaskSelection) targetTask?.releaseInheritedApiConfigurationLock?.()
+			this.updateTaskApiHandlerIfNeeded(providerSettings, { forceRebuild: true })
 
-		// Update the current task's sticky provider profile, unless this activation is
-		// being used purely as a non-persisting restoration (e.g., reopening a task from history).
-		if (persistTaskHistory) {
-			await this.persistStickyProviderProfileToCurrentTask(name)
+			// Update the current task's sticky provider profile, unless this activation is
+			// being used purely as a non-persisting restoration (e.g., reopening a task from history).
+			if (persistTaskHistory) {
+				await this.persistStickyProviderProfileToCurrentTask(name)
+			}
 		}
 
 		await this.postStateToWebview()
 
-		if (providerSettings.apiProvider) {
+		if (providerSettings.apiProvider && this.getCurrentTask() === targetTask) {
 			this.emit(RooCodeEventName.ProviderProfileChanged, { name, provider: providerSettings.apiProvider })
 		}
 	}
@@ -3909,7 +3936,7 @@ export class ClineProvider
 	}
 
 	public async setProviderProfile(name: string): Promise<void> {
-		await this.activateProviderProfile({ name })
+		await this.activateProviderProfile({ name }, { explicitTaskSelection: true })
 	}
 
 	public get cwd() {

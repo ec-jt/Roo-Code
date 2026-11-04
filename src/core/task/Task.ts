@@ -592,6 +592,25 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	private modelOperationRequestPreparing = false
 	private deferredApiConfiguration?: ProviderSettings
 	private nextTaskProfile?: { id: string; name: string; settings: ProviderSettings }
+	/**
+	 * When true, this task's `apiConfiguration` was inherited from its parent at
+	 * delegation (same-mode or lock-across-modes). Global `ProviderProfileChanged`
+	 * events must not overwrite it with the global `apiConfiguration`, because
+	 * global state may hold a different (user-edited) profile. Cleared by any
+	 * explicit per-task change (`submitUserMessage({providerProfile})`,
+	 * `queueProfileForNextRequest`). Starting a request does not release it.
+	 */
+	private inheritedApiConfigurationLock = false
+	/** Invalidates an asynchronous global-profile read after an explicit selection. */
+	private inheritedApiConfigurationEpoch = 0
+	public get hasInheritedApiConfiguration(): boolean {
+		return this.inheritedApiConfigurationLock
+	}
+	/** Release only for an explicit per-task selection, never an incidental global refresh. */
+	public releaseInheritedApiConfigurationLock(): void {
+		this.inheritedApiConfigurationLock = false
+		this.inheritedApiConfigurationEpoch++
+	}
 
 	public queueProfileForNextRequest(id: string, name: string, settings: ProviderSettings): void {
 		if (
@@ -609,6 +628,9 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				"The active mediated runtime supports Anthropic only. Reopen the task with the desired provider.",
 			)
 		this.nextTaskProfile = { id, name, settings: structuredClone(settings) }
+		// An explicit queued per-task profile is a deliberate user choice; release
+		// the delegation-inherited lock so the queued profile is applied normally.
+		this.releaseInheritedApiConfigurationLock()
 	}
 
 	private applyNextTaskProfile(): void {
@@ -1218,6 +1240,13 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			this._taskApiConfigName = initialTaskContext.apiConfigName
 			this.taskModeReady = Promise.resolve()
 			this.taskApiConfigReady = Promise.resolve()
+			// `initialTaskContext` is populated by `performDelegation` only when the
+			// child inherits the parent's active configuration (same mode, or lock-
+			// across-modes). Pin the inherited configuration so incidental global
+			// `ProviderProfileChanged` events, mode-switch profile restores, or
+			// provider-level direct writes do not clobber the task-local settings
+			// until an explicit task profile or unlocked mode change.
+			this.inheritedApiConfigurationLock = true
 		} else {
 			this._taskMode = undefined
 			this._taskApiConfigName = undefined
@@ -1337,8 +1366,35 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		}
 
 		this.providerProfileChangeListener = async () => {
+			// Identity + epoch gate: only apply global profile changes to the task
+			// that is currently foregrounded on this provider. Background and
+			// already-disposed tasks must not have their task-local configuration
+			// rewritten by an event aimed at the user's UI selection.
+			if (this.abort || this.abandoned || this.modelOperationClosed || provider.getCurrentTask?.() !== this) {
+				return
+			}
+			// Delegation-inherited configuration must survive incidental global
+			// activations until an explicit task selection. Explicit changes clear
+			// `inheritedApiConfigurationLock`.
+			if (this.inheritedApiConfigurationLock) {
+				return
+			}
 			try {
+				const selectionEpoch = this.inheritedApiConfigurationEpoch
 				const newState = await provider.getState()
+				// Re-check identity after the awaited state read: the current task
+				// may have changed, or the inherited lock may have engaged for a
+				// newly promoted child, while we were awaiting.
+				if (
+					this.abort ||
+					this.abandoned ||
+					this.modelOperationClosed ||
+					provider.getCurrentTask?.() !== this ||
+					this.inheritedApiConfigurationLock ||
+					selectionEpoch !== this.inheritedApiConfigurationEpoch
+				) {
+					return
+				}
 				if (newState?.apiConfiguration) {
 					this.updateApiConfiguration(newState.apiConfiguration)
 				}
@@ -2700,6 +2756,10 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				}
 
 				if (providerProfile) {
+					// Explicit per-task profile change clears the delegation-
+					// inherited lock so the activation and its resulting
+					// `ProviderProfileChanged` event actually take effect.
+					this.releaseInheritedApiConfigurationLock()
 					await provider.setProviderProfile(providerProfile)
 
 					// Update this task's API configuration to match the new profile

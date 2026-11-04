@@ -186,4 +186,95 @@ describe("Task - sticky provider profile init race", () => {
 
 		expect(task.taskApiConfigName).toBe("new-profile")
 	})
+
+	it("ignores incidental ProviderProfileChanged while the child's inherited configuration is pinned", async () => {
+		const inherited: ProviderSettings = {
+			apiProvider: "anthropic",
+			apiModelId: "claude-3-5-sonnet-20241022",
+			apiKey: "parent-key",
+		} as any
+
+		const listeners = new Map<string, Array<() => void | Promise<void>>>()
+		const provider = {
+			context: { globalStorageUri: { fsPath: "/test/storage" } },
+			getState: vi.fn().mockResolvedValue({
+				mode: "code",
+				currentApiConfigName: "global-profile",
+				apiConfiguration: { apiProvider: "litellm", litellmModelId: "incidental-model" },
+			}),
+			getCurrentTask: vi.fn(),
+			log: vi.fn(),
+			on: vi.fn((event: string, handler: () => void) => {
+				if (!listeners.has(event)) listeners.set(event, [])
+				listeners.get(event)!.push(handler)
+			}),
+			off: vi.fn(),
+			postStateToWebview: vi.fn().mockResolvedValue(undefined),
+			postStateToWebviewWithoutTaskHistory: vi.fn().mockResolvedValue(undefined),
+			updateTaskHistory: vi.fn().mockResolvedValue(undefined),
+		} as unknown as ClineProvider
+
+		const task = new Task({
+			provider,
+			apiConfiguration: inherited,
+			task: "child",
+			startTask: false,
+			initialTaskContext: { mode: "code", apiConfigName: "parent-profile" },
+		})
+		// Delegation inheritance engaged
+		expect((task as any).hasInheritedApiConfiguration).toBe(true)
+		;(provider.getCurrentTask as any).mockReturnValue(task)
+
+		// Fire an incidental global ProviderProfileChanged (e.g., from webview launch
+		// reconciliation, profile upsert, rename, or history resume on a sibling).
+		const handlers = listeners.get("providerProfileChanged") ?? []
+		expect(handlers.length).toBeGreaterThan(0)
+		for (const handler of handlers) await handler()
+
+		// Inherited configuration must survive: no rebuild, no key change.
+		expect(task.apiConfiguration.apiProvider).toBe("anthropic")
+		expect(task.apiConfiguration.apiModelId).toBe("claude-3-5-sonnet-20241022")
+		expect((task.apiConfiguration as any).apiKey).toBe("parent-key")
+
+		// Clearing the lock lets the next event take effect normally.
+		;(task as any).releaseInheritedApiConfigurationLock()
+		for (const handler of handlers) await handler()
+		expect(task.apiConfiguration.apiProvider).toBe("litellm")
+	})
+
+	it("ignores ProviderProfileChanged addressed to a non-current (background) task", async () => {
+		const inherited: ProviderSettings = { apiProvider: "anthropic", apiModelId: "claude-m" } as any
+		const listeners = new Map<string, Array<() => void | Promise<void>>>()
+		const provider = {
+			context: { globalStorageUri: { fsPath: "/test/storage" } },
+			getState: vi.fn().mockResolvedValue({
+				apiConfiguration: { apiProvider: "litellm", litellmModelId: "incidental-model" },
+			}),
+			getCurrentTask: vi.fn().mockReturnValue(undefined),
+			log: vi.fn(),
+			on: vi.fn((event: string, handler: () => void) => {
+				if (!listeners.has(event)) listeners.set(event, [])
+				listeners.get(event)!.push(handler)
+			}),
+			off: vi.fn(),
+			postStateToWebview: vi.fn().mockResolvedValue(undefined),
+			postStateToWebviewWithoutTaskHistory: vi.fn().mockResolvedValue(undefined),
+			updateTaskHistory: vi.fn().mockResolvedValue(undefined),
+		} as unknown as ClineProvider
+
+		const task = new Task({
+			provider,
+			apiConfiguration: inherited,
+			task: "non-current",
+			startTask: false,
+		})
+		// Not inherited; the identity gate alone must block cross-task writes.
+		expect((task as any).hasInheritedApiConfiguration).toBe(false)
+
+		const handlers = listeners.get("providerProfileChanged") ?? []
+		for (const handler of handlers) await handler()
+
+		expect(task.apiConfiguration.apiProvider).toBe("anthropic")
+		expect(task.apiConfiguration.apiModelId).toBe("claude-m")
+	})
 })

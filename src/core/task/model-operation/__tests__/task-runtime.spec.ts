@@ -645,6 +645,42 @@ describe("Task model-operation runtime", () => {
 		expect(task.getModelOperationEvidence().snapshot?.clineMessages).toEqual([source.clineMessages[0]])
 		await iterator.next()
 	})
+	it("retains inherited configuration through first dispatch and later global profile events", async () => {
+		const listeners: Array<() => Promise<void>> = []
+		provider.on.mockImplementation((event: string, listener: () => Promise<void>) => {
+			if (event === "providerProfileChanged") listeners.push(listener)
+		})
+		;(task as any).debouncedEmitTokenUsage.cancel()
+		task = new Task({
+			provider,
+			apiConfiguration: { apiProvider: "anthropic", apiModelId: "inherited-model" },
+			initialTaskContext: { mode: "code", apiConfigName: "inherited-profile" },
+			startTask: false,
+			workspacePath: "/workspace",
+		})
+		provider.getCurrentTask = () => task
+		task.apiConversationHistory = structuredClone(source.apiMessages)
+		;(task as any).getSystemPrompt = async () => "system"
+		const originalGetState = provider.getState.getMockImplementation()!
+		let reconciling = false
+		provider.getState.mockImplementation(async () => {
+			// Reconciliation can run after the handler is captured but before dispatch.
+			if (!reconciling) {
+				reconciling = true
+				for (const listener of listeners) await listener()
+				reconciling = false
+			}
+			return { ...(await originalGetState()), apiConfiguration: { apiProvider: "litellm" } }
+		})
+		for await (const _chunk of task.attemptApiRequest()) {
+			/* consume synthetic stream */
+		}
+		expect(handler.createMessage).toHaveBeenCalledOnce()
+		expect(task.hasInheritedApiConfiguration).toBe(true)
+		for (const listener of listeners) await listener()
+		expect(task.apiConfiguration.apiModelId).toBe("inherited-model")
+		expect(task.taskApiConfigName).toBe("inherited-profile")
+	})
 
 	it("fails closed before dispatch when the snapshot cannot be saved", async () => {
 		await task.prepareModelOperationPrefix(source, "profile", provenance)

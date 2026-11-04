@@ -1944,7 +1944,7 @@ export const webviewMessageHandler = async (
 
 					// Re-activate to update the global settings related to the
 					// currently activated provider profile.
-					await provider.activateProviderProfile({ name: newName })
+					await provider.activateProviderProfile({ name: newName }, { explicitTaskSelection: true })
 				} catch (error) {
 					provider.log(
 						`Error rename api configuration: ${JSON.stringify(error, Object.getOwnPropertyNames(error), 2)}`,
@@ -1957,7 +1957,7 @@ export const webviewMessageHandler = async (
 		case "loadApiConfiguration":
 			if (message.text) {
 				try {
-					await provider.activateProviderProfile({ name: message.text })
+					await provider.activateProviderProfile({ name: message.text }, { explicitTaskSelection: true })
 				} catch (error) {
 					provider.log(
 						`Error load api configuration: ${JSON.stringify(error, Object.getOwnPropertyNames(error), 2)}`,
@@ -1969,7 +1969,7 @@ export const webviewMessageHandler = async (
 		case "loadApiConfigurationById":
 			if (message.text) {
 				try {
-					await provider.activateProviderProfile({ id: message.text })
+					await provider.activateProviderProfile({ id: message.text }, { explicitTaskSelection: true })
 				} catch (error) {
 					provider.log(
 						`Error load api configuration by ID: ${JSON.stringify(error, Object.getOwnPropertyNames(error), 2)}`,
@@ -2003,7 +2003,7 @@ export const webviewMessageHandler = async (
 
 				try {
 					await provider.providerSettingsManager.deleteConfig(oldName)
-					await provider.activateProviderProfile({ name: newName })
+					await provider.activateProviderProfile({ name: newName }, { explicitTaskSelection: true })
 				} catch (error) {
 					provider.log(
 						`Error delete api configuration: ${JSON.stringify(error, Object.getOwnPropertyNames(error), 2)}`,
