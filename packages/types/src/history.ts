@@ -23,6 +23,9 @@ export const historyItemSchema = z.object({
 	status: z.enum(["active", "completed", "delegated"]).optional(),
 	delegatedToId: z.string().optional(), // Last child this parent delegated to
 	childIds: z.array(z.string()).optional(), // All children spawned by this task
+	// Maps the new_task message timestamp to the child task ID it created.
+	// Authoritative for subtask links; childIds order is only a legacy fallback.
+	newTaskChildLinks: z.record(z.string(), z.string()).optional(),
 	awaitingChildId: z.string().optional(), // Child currently awaited (set when delegated)
 	completedByChildId: z.string().optional(), // Child that completed and resumed this parent
 	completionResultSummary: z.string().optional(), // Summary from completed child

@@ -3966,7 +3966,7 @@ export class ClineProvider
 	}
 
 	private async performDelegation(params: DelegationRequest): Promise<Task> {
-		const { parentTaskId, message, initialTodos, mode } = params
+		const { parentTaskId, message, initialTodos, mode, newTaskMessageTs } = params
 
 		// Metadata-driven delegation is always enabled
 
@@ -4047,6 +4047,12 @@ export class ClineProvider
 		try {
 			const { historyItem } = await this.getTaskWithId(parentTaskId)
 			const childIds = Array.from(new Set([...(historyItem.childIds ?? []), child.taskId]))
+			// Record the exact new_task row that created this child. childIds order
+			// alone is ambiguous when UI history is replayed or a delegation retries.
+			const newTaskChildLinks =
+				newTaskMessageTs === undefined
+					? historyItem.newTaskChildLinks
+					: { ...(historyItem.newTaskChildLinks ?? {}), [String(newTaskMessageTs)]: child.taskId }
 			const updatedHistory: typeof historyItem = {
 				...historyItem,
 				mode: parentMode,
@@ -4055,6 +4061,7 @@ export class ClineProvider
 				delegatedToId: child.taskId,
 				awaitingChildId: child.taskId,
 				childIds,
+				...(newTaskChildLinks ? { newTaskChildLinks } : {}),
 			}
 			await this.updateTaskHistory(updatedHistory)
 		} catch (err) {

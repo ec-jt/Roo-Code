@@ -64,6 +64,8 @@ export interface DelegationRequest {
 	initialTodos: TodoItem[]
 	mode: string
 	reason?: string
+	/** Timestamp of the approved new_task message, used to link that row to its child. */
+	newTaskMessageTs?: number
 }
 
 /** Nested auto-approval is a separate opt-in, never implied by ordinary subtasks or all-actions. */

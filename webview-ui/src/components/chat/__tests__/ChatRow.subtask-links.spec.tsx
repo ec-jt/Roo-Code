@@ -137,6 +137,55 @@ describe("ChatRow - subtask links", () => {
 			})
 		})
 
+		it("uses the explicit message-to-child link instead of childIds order", () => {
+			const message = {
+				ts: 5000,
+				type: "ask" as const,
+				ask: "tool" as const,
+				text: JSON.stringify({ tool: "newTask", mode: "code", content: "Second subtask" }),
+			}
+
+			// childIds order is stale: the newest child is last, but this row must
+			// resolve to the child recorded for its own timestamp.
+			renderChatRow(message, {
+				childIds: ["older-child", "newest-child"],
+				newTaskChildLinks: { "5000": "newest-child" },
+			})
+
+			fireEvent.click(screen.getByText("Go to subtask"))
+			expect(mockPostMessage).toHaveBeenCalledWith({ type: "showTaskWithId", text: "newest-child" })
+		})
+
+		it("falls back to childIds order for legacy tasks without explicit links", () => {
+			const message = {
+				ts: 6000,
+				type: "ask" as const,
+				ask: "tool" as const,
+				text: JSON.stringify({ tool: "newTask", mode: "code", content: "Legacy subtask" }),
+			}
+
+			renderChatRow(message, { childIds: ["legacy-child"] })
+
+			fireEvent.click(screen.getByText("Go to subtask"))
+			expect(mockPostMessage).toHaveBeenCalledWith({ type: "showTaskWithId", text: "legacy-child" })
+		})
+
+		it("ignores a link that is not present in childIds", () => {
+			const message = {
+				ts: 7000,
+				type: "ask" as const,
+				ask: "tool" as const,
+				text: JSON.stringify({ tool: "newTask", mode: "code", content: "Unapproved subtask" }),
+			}
+
+			renderChatRow(message, {
+				childIds: [],
+				newTaskChildLinks: { "7000": "not-a-child" },
+			})
+
+			expect(screen.queryByText("Go to subtask")).toBeNull()
+		})
+
 		it("should not display 'Go to subtask' link when no child task exists", () => {
 			const message = {
 				ts: Date.now(),

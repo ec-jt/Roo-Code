@@ -272,6 +272,25 @@ describe("ClineProvider.delegateParentAndOpenChild()", () => {
 		expect(provider.createTask.mock.calls[0][3].apiConfiguration).not.toBe(parent.apiConfiguration)
 	})
 
+	it("records the new_task message timestamp against the created child", async () => {
+		const { provider, request } = profileFixture("architect")
+		await provider.delegateParentAndOpenChild({ ...request, newTaskMessageTs: 123456 })
+		expect(provider.updateTaskHistory).toHaveBeenCalledWith(
+			expect.objectContaining({ newTaskChildLinks: { "123456": "child-1" } }),
+		)
+	})
+
+	it("preserves existing links and ignores a missing timestamp", async () => {
+		const { provider, request } = profileFixture("architect")
+		provider.getTaskWithId.mockResolvedValue({
+			historyItem: { id: "parent-1", newTaskChildLinks: { "1": "older-child" } },
+		})
+		await provider.delegateParentAndOpenChild({ ...request, newTaskMessageTs: 2 })
+		expect(provider.updateTaskHistory).toHaveBeenCalledWith(
+			expect.objectContaining({ newTaskChildLinks: { "1": "older-child", "2": "child-1" } }),
+		)
+	})
+
 	it("inherits active settings across modes when configuration is locked", async () => {
 		const { parent, provider, request } = profileFixture("architect", true)
 		await provider.delegateParentAndOpenChild(request)

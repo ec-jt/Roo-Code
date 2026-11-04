@@ -111,6 +111,11 @@ export class NewTaskTool extends BaseTool<"new_task"> {
 				return
 			}
 
+			// Capture the approval message timestamp before delegation. The parent
+			// history records it against the child ID so the UI can resolve this
+			// exact new_task row instead of relying on childIds array order.
+			const newTaskMessageTs = task.lastMessageTs
+
 			// Delegate parent and open child as sole active task
 			const child = await provider.delegateParentAndOpenChild({
 				parentTaskId: task.taskId,
@@ -120,6 +125,7 @@ export class NewTaskTool extends BaseTool<"new_task"> {
 				initialTodos: todoItems,
 				mode,
 				reason,
+				newTaskMessageTs,
 			})
 
 			// Reflect delegation in tool result (no pause/unpause, no wait)
