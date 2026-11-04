@@ -12,7 +12,17 @@ function fixture() {
 		sessionId: "session",
 		generation: 0,
 		tabId: "tab",
-		capabilities: { status: true, navigate: true, tabs: true, snapshot: true },
+		capabilities: {
+			status: true,
+			navigate: true,
+			tabs: true,
+			snapshot: true,
+			performance: true,
+			click_ref: true,
+			fill_ref: true,
+			select_ref: true,
+			select_tab: true,
+		},
 		extensionHost: { hostname: "test", platform: "linux" },
 	}
 	const provider = {
@@ -117,6 +127,37 @@ describe("rich browser approval", () => {
 		await f.run({ action: "tabs" })
 		expect(f.task.browserSession.control).toHaveBeenCalledExactlyOnceWith({ action: "tabs" })
 		expect(f.push).toHaveBeenCalledWith(expect.stringContaining("enter task history and model context"))
+	})
+	it("reuses one read-only approval per task and session", async () => {
+		const f = fixture()
+		vi.mocked(vscode.window.showWarningMessage).mockResolvedValue("Approve this command" as any)
+		await f.run({ action: "tabs" })
+		await f.run({ action: "snapshot", sessionId: "session", tabId: "tab" })
+		await f.run({ action: "performance", sessionId: "session", tabId: "tab" })
+		expect(vscode.window.showWarningMessage).toHaveBeenCalledOnce()
+		expect(f.task.browserSession.control).toHaveBeenCalledTimes(3)
+	})
+	it("requires a fresh read-only approval after the browser session changes", async () => {
+		const f = fixture()
+		vi.mocked(vscode.window.showWarningMessage).mockResolvedValue("Approve this command" as any)
+		await f.run({ action: "tabs" })
+		f.changeSession()
+		await f.run({ action: "tabs" })
+		expect(vscode.window.showWarningMessage).toHaveBeenCalledTimes(2)
+	})
+	it.each([
+		{ action: "navigate", url: "https://example.org" },
+		{ action: "click_ref", sessionId: "session", tabId: "tab", ref: "ref" },
+		{ action: "fill_ref", sessionId: "session", tabId: "tab", ref: "ref", text: "x" },
+		{ action: "select_ref", sessionId: "session", tabId: "tab", ref: "ref", values: ["a"] },
+		{ action: "select_tab", sessionId: "session", tabId: "tab" },
+	])("always requires explicit approval for %s", async (command) => {
+		const f = fixture()
+		vi.mocked(vscode.window.showWarningMessage).mockResolvedValue("Approve this command" as any)
+		await f.run({ action: "tabs" })
+		await f.run(command)
+		await f.run(command)
+		expect(vscode.window.showWarningMessage).toHaveBeenCalledTimes(3)
 	})
 	it("discards a result if the session changes during transcript persistence", async () => {
 		const f = fixture()

@@ -36,6 +36,19 @@ describe("browser control native schema", () => {
 		}
 	})
 
+	it("uses only strict-schema-safe keywords", () => {
+		// Strict providers reject format:"uri" and similar annotation keywords.
+		const unsupported = new Set(["format", "default", "examples", "patternProperties", "dependencies"])
+		const walk = (node: unknown, path: string) => {
+			if (!node || typeof node !== "object") return
+			if (Array.isArray(node)) return node.forEach((item, index) => walk(item, `${path}[${index}]`))
+			for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+				expect({ path, key, unsupported: unsupported.has(key) }).toEqual({ path, key, unsupported: false })
+				walk(value, `${path}.${key}`)
+			}
+		}
+		walk(browserControlJsonSchema, "$")
+	})
 	it("requires the documented identifiers for selected and reference commands", () => {
 		for (const variant of variants) {
 			const action = (variant.properties.action as { enum: string[] }).enum[0]

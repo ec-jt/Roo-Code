@@ -29,7 +29,8 @@ export const browserControlJsonSchema = {
 			{
 				url: {
 					type: "string",
-					format: "uri",
+					// Strict providers reject unsupported keywords such as format:"uri".
+					// The pattern and runtime validation remain authoritative.
 					pattern: "^https?://",
 					maxLength: 8192,
 					description:

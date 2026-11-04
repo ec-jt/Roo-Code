@@ -21,7 +21,7 @@ URLs omit user credentials, query and fragment. Paths remain visible and can con
 
 The existing browser action tool accepts an outer control action and a typed command object. The native schema describes every command field. JSON-encoded command objects are also validated at the parser boundary. Unknown fields, model-provided approval flags, unsupported actions and invalid limits are rejected before approval.
 
-Every rich command, including local status, requires a separate native modal confirmation. Generic browser and all-tools auto-approval do not approve these commands. Mode/tool restrictions and task-operation cancellation still apply. The implementation rechecks task identity, operation revision and session selection around asynchronous approval/settings boundaries.
+Read-only commands (status, tabs, snapshot, console, network, inspect, styles and performance) require one native confirmation per task and browser session. Later read-only commands in the same session run without another prompt. A new session or task requires a fresh confirmation. Mutating commands (navigate, click_ref, fill_ref, select_ref) and select_tab always require explicit approval for each call. Generic browser and all-tools auto-approval do not approve any of these commands. Mode/tool restrictions and task-operation cancellation still apply. The implementation rechecks task identity, operation revision and session selection around asynchronous approval/settings boundaries.
 
 Supported commands:
 
