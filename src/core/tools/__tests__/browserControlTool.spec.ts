@@ -27,7 +27,12 @@ function fixture() {
 	}
 	const provider = {
 		getCurrentTask: vi.fn(() => task),
-		getState: vi.fn(async () => ({ mode: "code", disabledTools: [] })),
+		getState: vi.fn(async () => ({
+			mode: "code",
+			disabledTools: [],
+			autoApprovalEnabled: false,
+			alwaysAllowBrowser: false,
+		})),
 		isTaskBackgrounded: false,
 	}
 	const task = {
@@ -158,6 +163,50 @@ describe("rich browser approval", () => {
 		await f.run(command)
 		await f.run(command)
 		expect(vscode.window.showWarningMessage).toHaveBeenCalledTimes(3)
+	})
+	it("skips the modal for every command when browser auto-approval is enabled", async () => {
+		const f = fixture()
+		f.provider.getState.mockResolvedValue({
+			mode: "code",
+			disabledTools: [],
+			autoApprovalEnabled: true,
+			alwaysAllowBrowser: true,
+		} as never)
+		for (const command of [
+			{ action: "tabs" },
+			{ action: "navigate", url: "https://example.org" },
+			{ action: "click_ref", sessionId: "session", tabId: "tab", ref: "ref" },
+			{ action: "select_tab", sessionId: "session", tabId: "tab" },
+		])
+			await f.run(command)
+		expect(vscode.window.showWarningMessage).not.toHaveBeenCalled()
+		expect(f.task.browserSession.control).toHaveBeenCalledTimes(4)
+	})
+	it("still prompts when auto-approval is enabled but the browser toggle is off", async () => {
+		const f = fixture()
+		f.provider.getState.mockResolvedValue({
+			mode: "code",
+			disabledTools: [],
+			autoApprovalEnabled: true,
+			alwaysAllowBrowser: false,
+		} as never)
+		vi.mocked(vscode.window.showWarningMessage).mockResolvedValue("Approve this command" as any)
+		await f.run({ action: "tabs" })
+		expect(vscode.window.showWarningMessage).toHaveBeenCalledOnce()
+	})
+	it("keeps capability and session fences under browser auto-approval", async () => {
+		const f = fixture()
+		f.provider.getState.mockResolvedValue({
+			mode: "code",
+			disabledTools: [],
+			autoApprovalEnabled: true,
+			alwaysAllowBrowser: true,
+		} as never)
+		await expect(
+			f.run({ action: "evaluate", sessionId: "session", tabId: "tab", expression: "1" }),
+		).rejects.toThrow()
+		await expect(f.run({ action: "snapshot", sessionId: "stale", tabId: "tab" })).rejects.toThrow("stale session")
+		expect(f.task.browserSession.control).not.toHaveBeenCalled()
 	})
 	it("discards a result if the session changes during transcript persistence", async () => {
 		const f = fixture()

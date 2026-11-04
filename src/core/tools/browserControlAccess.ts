@@ -36,10 +36,14 @@ export function browserControlFence(task: Task, idle = false) {
 		)
 			throw new Error("Browser session changed. Refresh before retrying.")
 	}
+	let browserAutoApproved = false
 	const authorize = async (block?: ToolUse) => {
 		assert()
 		const state = await provider!.getState()
 		assert()
+		// The browser tool's existing auto-approval covers rich controls too.
+		// It never bypasses the fences above or the capability/session checks below.
+		browserAutoApproved = state.autoApprovalEnabled === true && state.alwaysAllowBrowser === true
 		validateToolUse(
 			"browser_action",
 			state.mode ?? defaultModeSlug,
@@ -53,5 +57,5 @@ export function browserControlFence(task: Task, idle = false) {
 		}
 	}
 	assert()
-	return { assert, authorize, initial }
+	return { assert, authorize, initial, isBrowserAutoApproved: () => browserAutoApproved }
 }

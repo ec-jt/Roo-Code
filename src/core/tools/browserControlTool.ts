@@ -40,8 +40,11 @@ export async function browserControlTool(task: Task, block: ToolUse, pushToolRes
 		if ("sessionId" in command && command.sessionId !== fence.initial.sessionId)
 			throw new Error("Browser command uses a stale session. Refresh status before retrying.")
 		await fence.authorize(block)
+		// The browser tool's auto-approval covers every rich command, including
+		// mutations. Fences, capability checks and session checks still apply.
 		const alreadyApproved =
-			isReadOnlyBrowserControl(command.action) && readOnlyApprovals.get(task) === fence.initial.sessionId
+			fence.isBrowserAutoApproved() ||
+			(isReadOnlyBrowserControl(command.action) && readOnlyApprovals.get(task) === fence.initial.sessionId)
 		if (alreadyApproved) {
 			const result = await task.browserSession.control(command)
 			fence.assert(false)
