@@ -13,6 +13,7 @@ function command(action: string, fields: Record<string, unknown> = {}, optional:
 		type: "object",
 		additionalProperties: false,
 		properties: { action: { type: "string", enum: [action] }, ...fields, ...optional },
+		// Optional fields must not appear in `required`; strict providers reject that mismatch.
 		required: ["action", ...Object.keys(fields)],
 	}
 }

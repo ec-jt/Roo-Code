@@ -277,9 +277,25 @@ export class OpenAiCodexHandler extends BaseProvider implements SingleCompletion
 		reasoningEffort: ReasoningEffortExtended | undefined,
 		metadata?: ApiHandlerCreateMessageMetadata,
 	): any {
+		const isObjectSchema = (schema: any) =>
+			!!schema && typeof schema === "object" && (schema.type === "object" || !!schema.properties)
+
 		const ensureAllRequired = (schema: any): any => {
-			if (!schema || typeof schema !== "object" || schema.type !== "object") {
-				return schema
+			if (!schema || typeof schema !== "object") return schema
+			if (Array.isArray(schema)) return schema.map(ensureAllRequired)
+			if (!isObjectSchema(schema)) {
+				// Still descend into containers so nested object schemas become strict.
+				const result = { ...schema }
+				if (result.items) result.items = ensureAllRequired(result.items)
+				for (const key of ["anyOf", "oneOf", "allOf"] as const) {
+					if (Array.isArray(result[key])) result[key] = result[key].map(ensureAllRequired)
+				}
+				if (result.$defs && typeof result.$defs === "object" && !Array.isArray(result.$defs)) {
+					result.$defs = Object.fromEntries(
+						Object.entries(result.$defs).map(([name, definition]) => [name, ensureAllRequired(definition)]),
+					)
+				}
+				return result
 			}
 
 			const result = { ...schema }
@@ -293,25 +309,45 @@ export class OpenAiCodexHandler extends BaseProvider implements SingleCompletion
 
 				const newProps = { ...result.properties }
 				for (const key of allKeys) {
-					const prop = newProps[key]
-					if (prop.type === "object") {
-						newProps[key] = ensureAllRequired(prop)
-					} else if (prop.type === "array" && prop.items?.type === "object") {
-						newProps[key] = {
-							...prop,
-							items: ensureAllRequired(prop.items),
-						}
-					}
+					newProps[key] = ensureAllRequired(newProps[key])
 				}
 				result.properties = newProps
+			}
+
+			// Strict mode requires every declared property to be required at every
+			// object level, including union branches. Leaving anyOf/oneOf/allOf
+			// untouched produces schemas the API rejects before the request runs.
+			for (const key of ["anyOf", "oneOf", "allOf"] as const) {
+				if (Array.isArray(result[key])) result[key] = result[key].map(ensureAllRequired)
+			}
+
+			if (result.$defs && typeof result.$defs === "object" && !Array.isArray(result.$defs)) {
+				result.$defs = Object.fromEntries(
+					Object.entries(result.$defs).map(([name, definition]) => [name, ensureAllRequired(definition)]),
+				)
 			}
 
 			return result
 		}
 
 		const ensureAdditionalPropertiesFalse = (schema: any): any => {
-			if (!schema || typeof schema !== "object" || schema.type !== "object") {
-				return schema
+			if (!schema || typeof schema !== "object") return schema
+			if (Array.isArray(schema)) return schema.map(ensureAdditionalPropertiesFalse)
+			if (!isObjectSchema(schema)) {
+				const result = { ...schema }
+				if (result.items) result.items = ensureAdditionalPropertiesFalse(result.items)
+				for (const key of ["anyOf", "oneOf", "allOf"] as const) {
+					if (Array.isArray(result[key])) result[key] = result[key].map(ensureAdditionalPropertiesFalse)
+				}
+				if (result.$defs && typeof result.$defs === "object" && !Array.isArray(result.$defs)) {
+					result.$defs = Object.fromEntries(
+						Object.entries(result.$defs).map(([name, definition]) => [
+							name,
+							ensureAdditionalPropertiesFalse(definition),
+						]),
+					)
+				}
+				return result
 			}
 
 			const result = { ...schema }
@@ -322,17 +358,22 @@ export class OpenAiCodexHandler extends BaseProvider implements SingleCompletion
 			if (result.properties) {
 				const newProps = { ...result.properties }
 				for (const key of Object.keys(result.properties)) {
-					const prop = newProps[key]
-					if (prop && prop.type === "object") {
-						newProps[key] = ensureAdditionalPropertiesFalse(prop)
-					} else if (prop && prop.type === "array" && prop.items?.type === "object") {
-						newProps[key] = {
-							...prop,
-							items: ensureAdditionalPropertiesFalse(prop.items),
-						}
-					}
+					newProps[key] = ensureAdditionalPropertiesFalse(newProps[key])
 				}
 				result.properties = newProps
+			}
+
+			for (const key of ["anyOf", "oneOf", "allOf"] as const) {
+				if (Array.isArray(result[key])) result[key] = result[key].map(ensureAdditionalPropertiesFalse)
+			}
+
+			if (result.$defs && typeof result.$defs === "object" && !Array.isArray(result.$defs)) {
+				result.$defs = Object.fromEntries(
+					Object.entries(result.$defs).map(([name, definition]) => [
+						name,
+						ensureAdditionalPropertiesFalse(definition),
+					]),
+				)
 			}
 
 			return result
