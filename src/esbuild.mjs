@@ -129,7 +129,10 @@ async function main() {
 	 */
 	const workerConfig = {
 		...buildOptions,
-		entryPoints: ["workers/countTokens.ts"],
+		entryPoints: {
+			countTokens: "workers/countTokens.ts",
+			pdfExtraction: "integrations/misc/pdfExtraction.worker.ts",
+		},
 		outdir: "dist/workers",
 	}
 

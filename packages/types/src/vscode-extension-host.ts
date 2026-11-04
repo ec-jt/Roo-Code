@@ -2,6 +2,8 @@ import type { TaskStateNativeRequest, TaskStateNativeResponse } from "./task-sta
 import { z } from "zod"
 
 import type { GlobalSettings, RooCodeSettings } from "./global-settings.js"
+import type { BrowserSessionRequest, BrowserSessionResponse } from "./browser-session-protocol.js"
+import type { BrowserControlAction } from "./browser-control.js"
 import type { ProviderSettings, ProviderSettingsEntry } from "./provider-settings.js"
 import type { HistoryItem } from "./history.js"
 import type { ModeConfig, PromptComponent } from "./mode.js"
@@ -208,6 +210,7 @@ export interface ExtensionMessage {
 		| "runningTaskUpdated"
 		| "commandActivitiesUpdated"
 		| "taskStateResponse"
+		| "browserControlResponse"
 		| "memoryBrowser"
 		| "modelOperationStatus"
 		| "taskHistoryUpdated"
@@ -321,6 +324,7 @@ export interface ExtensionMessage {
 	runningTask?: RunningTaskInfo
 	commandActivities?: CommandActivityInfo[]
 	taskStateResponse?: TaskStateNativeResponse
+	browserControlResponse?: BrowserSessionResponse
 	memoryBrowser?: MemoryBrowserState
 	memoryError?: string
 	assistantMessageEditResult?: AssistantMessageEditResult
@@ -658,6 +662,7 @@ export interface WebviewMessage {
 		| "cancelBackgroundTask"
 		| "commandActivityControl"
 		| "taskStateRequest"
+		| "browserControlRequest"
 		| "memoryBrowserRequest"
 		| "modelOperation"
 		| "queueTaskProfile"
@@ -844,6 +849,7 @@ export interface WebviewMessage {
 	chatFileChangesOpen?: { taskId: string; instanceId: string; path: string }
 	commandActivityControl?: { id: string; action: "stop" | "show" }
 	taskStateRequest?: TaskStateNativeRequest
+	browserControlRequest?: BrowserSessionRequest
 	memoryBrowserRequest?: MemoryBrowserRequest
 	modelOperation?: ModelOperation
 	modelOperationApproval?: ModelOperationApproval
@@ -1119,6 +1125,7 @@ export interface ClineSayTool {
 }
 
 export const browserActions = [
+	"control",
 	"launch",
 	"click",
 	"hover",
@@ -1138,6 +1145,7 @@ export type BrowserAction = (typeof browserActions)[number]
 
 export interface ClineSayBrowserAction {
 	action: BrowserAction
+	controlAction?: BrowserControlAction
 	coordinate?: string
 	size?: string
 	text?: string

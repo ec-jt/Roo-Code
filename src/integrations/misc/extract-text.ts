@@ -1,17 +1,15 @@
 import * as path from "path"
-// @ts-ignore-next-line
-import pdf from "pdf-parse/lib/pdf-parse"
 import mammoth from "mammoth"
 import fs from "fs/promises"
 import { isBinaryFile } from "isbinaryfile"
 import { extractTextFromXLSX } from "./extract-text-from-xlsx"
 import { readWithSlice } from "./indentation-reader"
 import { DEFAULT_LINE_LIMIT } from "../../core/prompts/tools/native-tools/read_file"
+import { extractPdfFile } from "./pdf-extraction"
 
 async function extractTextFromPDF(filePath: string): Promise<string> {
-	const dataBuffer = await fs.readFile(filePath)
-	const data = await pdf(dataBuffer)
-	return addLineNumbers(data.text)
+	const result = await extractPdfFile(filePath)
+	return addLineNumbers(result.warning ? `${result.text}\n[${result.warning}]` : result.text)
 }
 
 async function extractTextFromDOCX(filePath: string): Promise<string> {
@@ -64,6 +62,9 @@ export interface ExtractTextResult {
 	wasTruncated: boolean
 	/** Line range shown [start, end] (1-based) */
 	linesShown?: [number, number]
+	/** PDF parser limits can make totalLines a count of the extracted prefix only. */
+	totalLinesIsEstimate?: boolean
+	warning?: string
 }
 
 /**
@@ -86,6 +87,29 @@ export async function extractTextFromFileWithMetadata(
 	}
 
 	const fileExtension = path.extname(filePath).toLowerCase()
+	if (fileExtension === ".pdf") {
+		const pdf = await extractPdfFile(filePath)
+		if (!pdf.text) {
+			return {
+				content: pdf.warning ? `[${pdf.warning}]` : "",
+				totalLines: 0,
+				returnedLines: 0,
+				wasTruncated: pdf.truncated,
+				totalLinesIsEstimate: pdf.truncated,
+				warning: pdf.warning,
+			}
+		}
+		const result = readWithSlice(pdf.text, 0, limit)
+		return {
+			content: result.content + (pdf.warning ? `\n[${pdf.warning}]` : ""),
+			totalLines: result.totalLines,
+			returnedLines: result.returnedLines,
+			wasTruncated: pdf.truncated || result.wasTruncated,
+			linesShown: result.includedRanges.length > 0 ? result.includedRanges[0] : undefined,
+			totalLinesIsEstimate: pdf.truncated,
+			warning: pdf.warning,
+		}
+	}
 
 	// Check if we have a specific extractor for this format
 	const extractor = SUPPORTED_BINARY_FORMATS[fileExtension as keyof typeof SUPPORTED_BINARY_FORMATS]

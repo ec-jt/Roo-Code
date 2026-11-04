@@ -36,6 +36,7 @@ describe("ClineProvider.delegateParentAndOpenChild()", () => {
 		const parentTask = {
 			taskId: "parent-1",
 			getTaskMode: vi.fn().mockResolvedValue("orchestrator"),
+			apiConfiguration: { apiProvider: "openai", openAiModelId: "parent-model" },
 			getTaskApiConfigName: vi.fn().mockResolvedValue("parent-profile"),
 			emit: vi.fn(),
 			assertCanDelegate: vi.fn(),
@@ -81,6 +82,7 @@ describe("ClineProvider.delegateParentAndOpenChild()", () => {
 			getTaskWithId,
 			updateTaskHistory,
 			handleModeSwitch,
+			updateGlobalState: vi.fn(),
 			log: vi.fn(),
 			getState: vi.fn().mockResolvedValue({ mode: "orchestrator" }),
 		} as unknown as ClineProvider
@@ -101,6 +103,8 @@ describe("ClineProvider.delegateParentAndOpenChild()", () => {
 		expect(removeClineFromStack).toHaveBeenCalledTimes(1)
 		// Child task is created with startTask: false and initialStatus: "active"
 		expect(createTask).toHaveBeenCalledWith("Do something", undefined, parentTask, {
+			apiConfiguration: parentTask.apiConfiguration,
+			initialTaskContext: { mode: "code", apiConfigName: "parent-profile" },
 			initialTodos: [],
 			initialStatus: "active",
 			startTask: false,
@@ -128,7 +132,7 @@ describe("ClineProvider.delegateParentAndOpenChild()", () => {
 		expect(providerEmit).toHaveBeenCalledWith(RooCodeEventName.TaskDelegated, "parent-1", "child-1")
 
 		// Mode switch
-		expect(handleModeSwitch).toHaveBeenCalledWith("code")
+		expect(handleModeSwitch).not.toHaveBeenCalled()
 	})
 
 	it("calls child.start() only after parent metadata is persisted (no race condition)", async () => {
@@ -248,8 +252,8 @@ describe("ClineProvider.delegateParentAndOpenChild()", () => {
 		},
 	)
 
-	it("keeps destination mode profile selection for an unlocked different-mode child", async () => {
-		const { provider, request } = profileFixture("architect")
+	it("inherits the active model instead of the destination profile for an unlocked different-mode child", async () => {
+		const { parent, provider, request } = profileFixture("architect")
 		provider.removeClineFromStack.mockImplementation(async () => {
 			provider.getCurrentTask.mockReturnValue(undefined)
 		})
@@ -262,9 +266,10 @@ describe("ClineProvider.delegateParentAndOpenChild()", () => {
 		provider.activateProviderProfile = vi.fn()
 		provider.postStateToWebview = vi.fn()
 		await provider.delegateParentAndOpenChild(request)
-		expect(provider.providerSettingsManager.getModeConfigId).toHaveBeenCalledWith("code")
-		expect(provider.activateProviderProfile).toHaveBeenCalledWith({ name: "code-profile" })
-		expect(provider.createTask.mock.calls[0][3]).not.toHaveProperty("apiConfiguration")
+		expect(provider.providerSettingsManager.getModeConfigId).not.toHaveBeenCalled()
+		expect(provider.activateProviderProfile).not.toHaveBeenCalled()
+		expect(provider.createTask.mock.calls[0][3].apiConfiguration).toEqual(parent.apiConfiguration)
+		expect(provider.createTask.mock.calls[0][3].apiConfiguration).not.toBe(parent.apiConfiguration)
 	})
 
 	it("inherits active settings across modes when configuration is locked", async () => {
@@ -275,10 +280,10 @@ describe("ClineProvider.delegateParentAndOpenChild()", () => {
 		expect(provider.updateGlobalState).toHaveBeenCalledWith("mode", "code")
 	})
 
-	it("does not create or dispatch a child if destination profile selection fails", async () => {
+	it("does not create or dispatch a child if destination mode persistence fails", async () => {
 		const { provider, child, request } = profileFixture("architect")
-		provider.handleModeSwitch.mockRejectedValue(new Error("profile unavailable"))
-		await expect(provider.delegateParentAndOpenChild(request)).rejects.toThrow("profile unavailable")
+		provider.updateGlobalState.mockRejectedValue(new Error("mode persistence failed"))
+		await expect(provider.delegateParentAndOpenChild(request)).rejects.toThrow("mode persistence failed")
 		expect(provider.createTask).not.toHaveBeenCalled()
 		expect(child.start).not.toHaveBeenCalled()
 	})

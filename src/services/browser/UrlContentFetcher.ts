@@ -1,7 +1,7 @@
 import * as vscode from "vscode"
 import * as fs from "fs/promises"
 import * as path from "path"
-import { Browser, Page, launch } from "puppeteer-core"
+import { Browser, Page, launch, type HTTPResponse } from "puppeteer-core"
 import * as cheerio from "cheerio"
 import TurndownService from "turndown"
 // @ts-ignore
@@ -12,6 +12,7 @@ import { validateWebUrl } from "./validateWebUrl"
 import { BrowserLifecycle } from "./BrowserLifecycle"
 import { browserLaunchError } from "./browserLaunchError"
 import { restrictWebNavigation, validatePageUrl } from "./webNavigation"
+import { fetchPdfUrl, formatPdfText, isPdfContentType, isPdfUrl } from "./pdfContent"
 
 // Timeout constants
 const URL_FETCH_TIMEOUT = 30_000 // 30 seconds
@@ -120,9 +121,10 @@ export class UrlContentFetcher {
 		return this.lifecycle.run(async () => {
 			signal.throwIfAborted()
 			try {
+				if (isPdfUrl(url)) return formatPdfText(await fetchPdfUrl(url, { signal }))
 				await this.launchBrowserNow()
 				signal.throwIfAborted()
-				const markdown = await this.urlToMarkdownNow(url)
+				const markdown = await this.urlToMarkdownNow(url, signal)
 				signal.throwIfAborted()
 				return markdown
 			} finally {
@@ -131,8 +133,9 @@ export class UrlContentFetcher {
 		})
 	}
 
-	private async urlToMarkdownNow(url: string): Promise<string> {
+	private async urlToMarkdownNow(url: string, signal?: AbortSignal): Promise<string> {
 		this.lifecycle.assertOpen()
+		if (isPdfUrl(url)) return formatPdfText(await fetchPdfUrl(url, { signal }))
 		if (!this.browser || !this.page) {
 			throw new Error("Browser not initialized")
 		}
@@ -141,12 +144,25 @@ export class UrlContentFetcher {
 		- "domcontentloaded" is when the basic DOM is loaded.
 		This should be sufficient for most doc sites.
 		*/
+		let pdfResponseUrl: string | undefined
+		const onResponse = (response: HTTPResponse) => {
+			if (
+				response.request().isNavigationRequest() &&
+				response.request().frame() === this.page?.mainFrame() &&
+				isPdfContentType(response.headers()["content-type"])
+			)
+				pdfResponseUrl = response.url()
+		}
+		this.page.on("response", onResponse)
 		try {
-			await this.page.goto(url, {
+			const response = await this.page.goto(url, {
 				timeout: URL_FETCH_TIMEOUT,
 				waitUntil: ["domcontentloaded", "networkidle2"],
 			})
+			if (response && isPdfContentType(response.headers()["content-type"])) pdfResponseUrl = response.url()
 		} catch (error) {
+			// PDF navigation may abort when Chromium hands the response to its viewer/download manager.
+			if (pdfResponseUrl) return formatPdfText(await fetchPdfUrl(pdfResponseUrl, { signal }))
 			// Use serialize-error to safely extract error information
 			const serializedError = serializeError(error)
 			const errorMessage = serializedError.message || String(error)
@@ -165,15 +181,19 @@ export class UrlContentFetcher {
 				console.warn(
 					`Failed to load ${url} with networkidle2, retrying with domcontentloaded only: ${errorMessage}`,
 				)
-				await this.page.goto(url, {
+				const response = await this.page.goto(url, {
 					timeout: URL_FETCH_FALLBACK_TIMEOUT,
 					waitUntil: ["domcontentloaded"],
 				})
+				if (response && isPdfContentType(response.headers()["content-type"])) pdfResponseUrl = response.url()
 			} else {
 				// For other errors, throw them as-is
 				throw error
 			}
+		} finally {
+			this.page.off("response", onResponse)
 		}
+		if (pdfResponseUrl) return formatPdfText(await fetchPdfUrl(pdfResponseUrl, { signal }))
 
 		validatePageUrl(this.page)
 		const content = await this.page.content()

@@ -1,0 +1,26 @@
+body {
+	width: 340px;
+	padding: 12px;
+	font:
+		14px system-ui,
+		sans-serif;
+}
+h1 {
+	font-size: 18px;
+}
+label {
+	display: block;
+	margin: 12px 0;
+}
+input {
+	box-sizing: border-box;
+	display: block;
+	width: 100%;
+}
+button {
+	margin: 4px 0;
+	padding: 6px;
+}
+code {
+	overflow-wrap: anywhere;
+}

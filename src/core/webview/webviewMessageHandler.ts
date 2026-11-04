@@ -1,4 +1,5 @@
 import { handleTaskStateRequest } from "./taskStateMessageHandler"
+import { handleBrowserControlRequest } from "./browserControlMessageHandler"
 import { safeWriteJson } from "../../utils/safeWriteJson"
 import * as path from "path"
 import * as os from "os"
@@ -537,6 +538,9 @@ export const webviewMessageHandler = async (
 			break
 		case "taskStateRequest":
 			await handleTaskStateRequest(provider, message.taskStateRequest)
+			break
+		case "browserControlRequest":
+			await handleBrowserControlRequest(provider, message.browserControlRequest)
 			break
 		case "memoryBrowserRequest":
 			await provider.memoryController.handle(message.memoryBrowserRequest)

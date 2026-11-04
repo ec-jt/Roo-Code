@@ -71,6 +71,34 @@ describe("sandboxed browser launch", () => {
 		expect(close).toHaveBeenCalledOnce()
 	})
 
+	it("isolates a native-approved certificate exception and resets it on close", async () => {
+		const authorize = vi.fn().mockResolvedValue(undefined)
+		await session.launchIsolatedCertificateSession(authorize)
+		expect(authorize).toHaveBeenCalledTimes(2)
+		expect(launch).toHaveBeenCalledWith(
+			expect.objectContaining({
+				acceptInsecureCerts: true,
+				args: [],
+				userDataDir: "/tmp/roo-browser-profile-test",
+			}),
+		)
+		expect((session as any).certificateException).toBe(true)
+		await session.closeBrowser()
+		expect((session as any).certificateException).toBe(false)
+		expect(fs.rm).toHaveBeenCalledWith("/tmp/roo-browser-profile-test", { recursive: true, force: true })
+	})
+	it("never changes an attached browser or falls back from remote configuration for an exception", async () => {
+		settings.remoteBrowserEnabled = true
+		await expect(session.launchIsolatedCertificateSession(vi.fn())).rejects.toThrow("disconnected local")
+		expect(launch).not.toHaveBeenCalled()
+		expect(connect).not.toHaveBeenCalled()
+	})
+	it("rechecks native authorization immediately before certificate-session launch", async () => {
+		const authorize = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("stale"))
+		await expect(session.launchIsolatedCertificateSession(authorize)).rejects.toThrow("Could not launch")
+		expect(launch).not.toHaveBeenCalled()
+		expect((session as any).certificateException).toBe(false)
+	})
 	it("uses Wayland for a Wayland-only visible session", async () => {
 		settings.browserHeaded = true
 		vi.stubEnv("DISPLAY", "")

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<title>Roo tab bridge</title>
+		<link rel="stylesheet" href="popup.css" />
+	</head>
+	<body>
+		<h1>Roo tab bridge</h1>
+		<p>
+			Pair and attach only the active HTTP(S) tab. Roo can read bounded DOM metadata after separate native
+			approvals. Do not attach sensitive tabs. Chrome debugger permission is powerful.
+		</p>
+		<p>Extension ID: <code id="extension-id"></code></p>
+		<label
+			>Loopback endpoint
+			<input id="endpoint" autocomplete="off" spellcheck="false" placeholder="http://127.0.0.1:port"
+		/></label>
+		<label
+			>One-time pairing secret <input id="secret" type="password" autocomplete="off" spellcheck="false"
+		/></label>
+		<button id="pair" type="button">Pair and attach active tab</button>
+		<button id="revoke" type="button">Revoke and detach</button>
+		<p id="status" role="status"></p>
+		<script type="module" src="popup.js"></script>
+	</body>
+</html>

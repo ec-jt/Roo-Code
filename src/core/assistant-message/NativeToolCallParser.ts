@@ -1,6 +1,7 @@
 import { taskStateArgsSchema } from "../prompts/tools/native-tools/task_state"
 import { parseJSON } from "partial-json"
 import { memoryArgsSchema } from "../prompts/tools/native-tools/memory"
+import { parseBrowserControlCommand } from "../tools/browserControlCommand"
 
 import { type ToolName, toolNames, type FileEntry } from "@roo-code/types"
 import { customToolRegistry } from "@roo-code/core"
@@ -476,6 +477,7 @@ export class NativeToolCallParser {
 						size: partialArgs.size,
 						text: partialArgs.text,
 						path: partialArgs.path,
+						command: partialArgs.command,
 					}
 				}
 				break
@@ -899,6 +901,7 @@ export class NativeToolCallParser {
 					if (args.action !== undefined) {
 						nativeArgs = {
 							action: args.action,
+							command: args.action === "control" ? parseBrowserControlCommand(args.command) : undefined,
 							url: args.url,
 							coordinate: args.coordinate,
 							size: args.size,

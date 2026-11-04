@@ -90,6 +90,8 @@ const BrowserActionRow = memo(({ message, nextMessage, actionIndex, totalActions
 			getViewportCoordinateShared(coord, viewportDimensions?.width ?? 0, viewportDimensions?.height ?? 0)
 
 		switch (browserAction.action) {
+			case "control":
+				return `CDP: ${browserAction.controlAction ?? "control"}`
 			case "launch":
 				return t("chat:browser.actions.launched")
 			case "click":
@@ -124,7 +126,7 @@ const BrowserActionRow = memo(({ message, nextMessage, actionIndex, totalActions
 	// 2. Regular actions - only open panel if user hasn't manually closed it, let internal auto-advance logic handle step
 	// Only run this once per action to avoid re-sending messages when scrolling
 	useEffect(() => {
-		if (!isBrowserSessionActive || hasHandledAutoOpenRef.current) {
+		if (browserAction?.action === "control" || !isBrowserSessionActive || hasHandledAutoOpenRef.current) {
 			return
 		}
 
@@ -156,6 +158,22 @@ const BrowserActionRow = memo(({ message, nextMessage, actionIndex, totalActions
 		gap: "10px",
 		marginBottom: "10px",
 		wordBreak: "break-word",
+	}
+
+	if (browserAction?.action === "control") {
+		return (
+			<div className="px-4 py-2">
+				<strong>{actionText}</strong>
+				{nextMessage?.say === "browser_action_result" && (
+					<details>
+						<summary>Structured browser result (stored in task history)</summary>
+						<pre className="max-h-80 overflow-auto whitespace-pre-wrap break-all text-xs">
+							{nextMessage.text}
+						</pre>
+					</details>
+				)}
+			</div>
+		)
 	}
 
 	return (

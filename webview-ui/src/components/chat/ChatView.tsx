@@ -35,6 +35,7 @@ import VersionIndicator from "../common/VersionIndicator"
 import HistoryPreview from "../history/HistoryPreview"
 import Announcement from "./Announcement"
 import BrowserActionRow from "./BrowserActionRow"
+import { BrowserControlPanel } from "./BrowserControlPanel"
 import BrowserSessionStatusRow from "./BrowserSessionStatusRow"
 import ChatRow from "./ChatRow"
 import { AlwaysAllowReadOnlyButton } from "./AlwaysAllowReadOnlyButton"
@@ -1770,6 +1771,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 					/>
 					{chatWindow && <ChatWindowControls window={chatWindow} />}
 					{currentTaskItem?.id && <TaskStatePanel taskId={currentTaskItem.id} />}
+					{currentTaskItem?.id && <BrowserControlPanel taskId={currentTaskItem.id} />}
 
 					{checkpointWarning && (
 						<div className="px-3">

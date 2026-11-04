@@ -103,7 +103,8 @@ export interface Size {
 }
 
 export interface BrowserActionParams {
-	action: "launch" | "click" | "hover" | "type" | "scroll_down" | "scroll_up" | "resize" | "close" | "screenshot"
+	action: import("./vscode-extension-host.js").BrowserAction
+	command?: import("./browser-control.js").BrowserControlCommand
 	url?: string
 	coordinate?: Coordinate
 	size?: Size

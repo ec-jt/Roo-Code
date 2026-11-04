@@ -13,6 +13,7 @@ import { validateToolUse } from "./validateToolUse"
 import { validateScreenshotPath } from "../../services/browser/screenshotPath"
 import { validateWebUrl } from "../../services/browser/validateWebUrl"
 import { fileExistsAtPath } from "../../utils/fs"
+import { browserControlTool } from "./browserControlTool"
 
 export async function browserActionTool(
 	cline: Task,
@@ -59,6 +60,10 @@ export async function browserActionTool(
 	}
 
 	try {
+		if (action === "control") {
+			await browserControlTool(cline, block, pushToolResult)
+			return
+		}
 		if (block.partial) {
 			if (action === "launch") {
 				await cline.ask("browser_action_launch", url ?? "", block.partial).catch(() => {})

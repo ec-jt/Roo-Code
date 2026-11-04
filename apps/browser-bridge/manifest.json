@@ -1,0 +1,14 @@
+{
+	"manifest_version": 3,
+	"name": "Roo per-tab browser bridge (unpacked)",
+	"version": "0.1.0",
+	"minimum_chrome_version": "118",
+	"description": "Explicitly pair one HTTP(S) tab with a native Roo session. No automatic attachment.",
+	"permissions": ["debugger", "activeTab"],
+	"host_permissions": ["http://127.0.0.1/*"],
+	"background": { "service_worker": "worker.js", "type": "module" },
+	"action": { "default_popup": "popup.html", "default_title": "Roo tab bridge" },
+	"content_security_policy": {
+		"extension_pages": "script-src 'self'; object-src 'none'; connect-src http://127.0.0.1:*"
+	}
+}

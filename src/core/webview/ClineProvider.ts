@@ -2085,17 +2085,16 @@ export class ClineProvider
 	}
 
 	/**
-	 * Handle switching to a new mode, including updating the associated API configuration
+	 * Change task instructions/tools without changing its selected provider configuration.
+	 * Mode-associated profiles are defaults only when no task is open.
 	 * @param newMode The mode to switch to
 	 */
 	public async handleModeSwitch(newMode: Mode) {
-		this.delegationRevision++
 		const task = this.getCurrentTask()
+		if ((task ? task.taskMode : this.getGlobalState("mode")) === newMode) return
+		this.delegationRevision++
 
 		if (task) {
-			// An actual, unlocked mode change deliberately selects that mode's profile.
-			if (task.taskMode !== newMode && !this.context.workspaceState.get("lockApiConfigAcrossModes", false))
-				task.releaseInheritedApiConfigurationLock?.()
 			task.emit(RooCodeEventName.TaskModeSwitched, task.taskId, newMode)
 
 			try {
@@ -2121,13 +2120,17 @@ export class ClineProvider
 			}
 		}
 
+		if (this.getCurrentTask() !== task)
+			throw new Error("Task changed during mode switch. Retry on the current task.")
 		await this.updateGlobalState("mode", newMode)
 
 		this.emit(RooCodeEventName.ModeChanged, newMode)
 
-		// If workspace lock is on, keep the current API config — don't load mode-specific config
+		// A running task owns its model, profile and unsaved overrides. Switching mode
+		// is not permission to select a different model, even with the workspace lock off.
+		// Keep delegation inheritance protection until an explicit profile selection.
 		const lockApiConfigAcrossModes = this.context.workspaceState.get("lockApiConfigAcrossModes", false)
-		if (lockApiConfigAcrossModes) {
+		if (task || lockApiConfigAcrossModes) {
 			await this.postStateToWebview()
 			return
 		}
@@ -4004,14 +4007,10 @@ export class ClineProvider
 		// Read the active task identity, not the UI defaults or a queued next-request profile.
 		const parentMode = await parent.getTaskMode()
 		const parentApiConfigName = await parent.getTaskApiConfigName()
-		const inheritConfiguration =
-			mode === parentMode || this.context.workspaceState.get("lockApiConfigAcrossModes", false)
-		const inheritedOptions = inheritConfiguration
-			? {
-					apiConfiguration: structuredClone(parent.apiConfiguration),
-					initialTaskContext: { mode, apiConfigName: parentApiConfigName },
-				}
-			: {}
+		const inheritedOptions = {
+			apiConfiguration: structuredClone(parent.apiConfiguration),
+			initialTaskContext: { mode, apiConfigName: parentApiConfigName },
+		}
 
 		await revalidate()
 		assertCurrent()
@@ -4021,17 +4020,10 @@ export class ClineProvider
 		//    Await abort completion to ensure clean disposal and prevent unhandled rejections.
 		await this.removeClineFromStack({ internal: true })
 
-		// Same-mode delegation is not a mode switch: reloading its saved profile would
-		// discard task-local model selection and unsaved settings. Keep global profile
-		// defaults untouched. Locked mode changes also inherit the active configuration.
-		if (inheritConfiguration) {
-			await this.updateGlobalState("mode", mode)
-			this.emit(RooCodeEventName.ModeChanged, mode)
-		} else {
-			// Fail closed if selecting the destination profile fails. Never start a child
-			// with the previous mode/provider after a partially completed mode switch.
-			await this.handleModeSwitch(mode as any)
-		}
+		// A different child mode changes tools/instructions, not the model. Do not
+		// load a saved mode profile after disposing the parent or use global UI defaults.
+		await this.updateGlobalState("mode", mode)
+		this.emit(RooCodeEventName.ModeChanged, mode)
 
 		// 4) Create child as sole active (parent reference preserved for lineage)
 		// Pass initialStatus: "active" to ensure the child task's historyItem is created

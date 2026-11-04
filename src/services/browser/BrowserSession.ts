@@ -19,6 +19,13 @@ import { validateWebUrl } from "./validateWebUrl"
 import { BrowserLifecycle } from "./BrowserLifecycle"
 import { browserLaunchError } from "./browserLaunchError"
 import { restrictWebNavigation, validatePageUrl } from "./webNavigation"
+import { BrowserControl } from "./cdp/BrowserControl"
+import { BrowserExtensionBridge } from "./bridge/BrowserExtensionBridge"
+import type {
+	BrowserControlCommand,
+	BrowserControlResult,
+	BrowserControlState,
+} from "../../../packages/types/src/browser-control"
 
 // Timeout constants
 const BROWSER_NAVIGATION_TIMEOUT = 10_000 // 10 seconds
@@ -45,6 +52,95 @@ export class BrowserSession {
 	private lastViewportHeight?: number
 	private userDataDir?: string
 	private browserTempDir?: string
+	private readonly ownedPages = new WeakSet<Page>()
+	private bridge?: BrowserExtensionBridge
+	private certificateException = false
+	private readonly controls = new BrowserControl({
+		getBrowser: () => this.browser,
+		getCertificatePolicy: () => (this.certificateException ? "isolated-session-exception" : "verify"),
+		isAttached: () => this.isUsingRemoteBrowser,
+		isOwnedPage: (page) => !this.isUsingRemoteBrowser || this.ownedPages.has(page),
+		newPage: async () => {
+			if (!this.browser) throw new Error("Browser is not launched")
+			const page = await this.browser.newPage()
+			this.ownedPages.add(page)
+			return page
+		},
+		selectPage: (page) => {
+			this.page = page
+		},
+		guardPage: (page) => this.guardPage(page),
+		releasePage: async (page) => {
+			const cleanup = this.navigationGuards.get(page)
+			this.navigationGuards.delete(page)
+			await cleanup?.()
+		},
+		extensionHost: { platform: process.platform, hostname: os.hostname(), remoteName: vscode.env?.remoteName },
+	})
+
+	/** Typed controls share the lifecycle queue; they never call queued legacy actions. */
+	control(command: BrowserControlCommand): Promise<BrowserControlResult> {
+		return this.lifecycle.run(async () => {
+			this.lifecycle.assertOpen()
+			return this.bridge ? this.bridge.control(command) : this.controls.control(command)
+		})
+	}
+
+	getControlState(): BrowserControlState {
+		return this.bridge?.getState() ?? this.controls.getState()
+	}
+
+	/** Native review only. Never accepts a model-supplied approval flag or changes an attached browser. */
+	launchIsolatedCertificateSession(authorize: () => Promise<void>): Promise<void> {
+		return this.lifecycle.run(async () => {
+			this.lifecycle.assertOpen()
+			if (this.bridge || this.browser || this.context.globalState.get<boolean>("remoteBrowserEnabled")) {
+				throw new Error(
+					"Certificate sessions require a disconnected local browser configuration. Attached browsers are never changed.",
+				)
+			}
+			await authorize()
+			this.lifecycle.assertOpen()
+			try {
+				await this.launchLocalBrowser(true, authorize)
+				this.certificateException = true
+				this.onStateChange?.(true)
+			} catch {
+				await this.closeBrowserNow()
+				throw new Error(
+					"Could not launch the isolated certificate-exception browser. No attached browser was changed.",
+				)
+			}
+		})
+	}
+
+	/** Native panel only. The returned credentials must not enter model or webview messages. */
+	startExtensionBridge(extensionId: string): Promise<{ endpoint: string; secret: string }> {
+		return this.lifecycle.run(async () => {
+			this.lifecycle.assertOpen()
+			if (this.bridge || this.browser) throw new Error("Disconnect the existing browser transport first.")
+			const bridge = new BrowserExtensionBridge({
+				platform: process.platform,
+				hostname: os.hostname(),
+				remoteName: vscode.env?.remoteName,
+			})
+			this.bridge = bridge
+			try {
+				return await bridge.start(extensionId)
+			} catch {
+				bridge.stop()
+				this.bridge = undefined
+				throw new Error("Could not start the Chrome extension bridge.")
+			}
+		})
+	}
+
+	private assertLegacyTransport(): void {
+		if (this.bridge)
+			throw new Error(
+				"Chrome extension transport is active. Use supported typed controls or explicitly disconnect it first. No other browser was launched.",
+			)
+	}
 
 	constructor(context: vscode.ExtensionContext, onStateChange?: (isActive: boolean) => void) {
 		this.context = context
@@ -93,7 +189,7 @@ export class BrowserSession {
 	/**
 	 * Launches a local browser instance
 	 */
-	private async launchLocalBrowser(): Promise<void> {
+	private async launchLocalBrowser(certificateException = false, authorize?: () => Promise<void>): Promise<void> {
 		console.log("Launching local browser")
 		const requestedHeaded = this.context.globalState.get<boolean>("browserHeaded") ?? false
 		const isRoot = process.platform === "linux" && process.getuid?.() === 0
@@ -115,9 +211,11 @@ export class BrowserSession {
 		this.userDataDir = await fs.mkdtemp(path.join(tmpBaseDir, "roo-browser-profile-"))
 		this.browserTempDir = tmpBaseDir
 		try {
+			await authorize?.()
 			this.lifecycle.assertOpen()
 			const browser = await stats.puppeteer.launch({
 				headless: !headed,
+				...(certificateException ? { acceptInsecureCerts: true } : {}),
 				args:
 					headed && process.platform === "linux" && !process.env.DISPLAY && process.env.WAYLAND_DISPLAY
 						? ["--ozone-platform=wayland"]
@@ -211,6 +309,7 @@ export class BrowserSession {
 	launchBrowser(): Promise<void> {
 		return this.lifecycle.run(async () => {
 			this.lifecycle.assertOpen()
+			this.assertLegacyTransport()
 			await this.closeBrowserNow()
 			this.lifecycle.assertOpen()
 			try {
@@ -233,18 +332,23 @@ export class BrowserSession {
 	}
 
 	closeBrowser(): Promise<BrowserActionResult> {
+		this.bridge?.stop()
 		return this.lifecycle.run(() => this.closeBrowserNow())
 	}
 
 	/** Permanent task teardown, unlike a user-requested browser close. */
 	dispose(): Promise<void> {
+		this.bridge?.stop()
 		return this.lifecycle.dispose(async () => {
 			await this.closeBrowserNow()
 		})
 	}
 
 	private async closeBrowserNow(): Promise<BrowserActionResult> {
+		this.bridge?.stop()
+		this.bridge = undefined
 		const wasActive = !!(this.browser || this.page)
+		await this.controls.dispose()
 		for (const cleanup of this.navigationGuards.values()) await cleanup().catch(() => {})
 		this.navigationGuards.clear()
 		if (this.isUsingRemoteBrowser) {
@@ -269,6 +373,7 @@ export class BrowserSession {
 	 * Resets all browser state variables
 	 */
 	private resetBrowserState(): void {
+		this.certificateException = false
 		this.browser = undefined
 		this.page = undefined
 		this.currentMousePosition = undefined
@@ -318,6 +423,8 @@ export class BrowserSession {
 
 	private async doActionNow(action: (page: Page) => Promise<void>): Promise<BrowserActionResult> {
 		this.lifecycle.assertOpen()
+		this.assertLegacyTransport()
+		await this.controls.suspendForLegacyAction()
 		if (!this.page) {
 			throw new Error(
 				"Cannot perform browser action: no active browser session. The browser must be launched first using the 'launch' action before other browser actions can be performed.",
@@ -463,6 +570,7 @@ export class BrowserSession {
 
 		// Create a new page
 		const newPage = await this.browser.newPage()
+		this.ownedPages.add(newPage)
 
 		await this.guardPage(newPage)
 		// Set the new page as the active page
@@ -483,6 +591,8 @@ export class BrowserSession {
 
 	private async navigateToUrlNow(url: string): Promise<BrowserActionResult> {
 		this.lifecycle.assertOpen()
+		this.assertLegacyTransport()
+		await this.controls.suspendForLegacyAction()
 		if (!this.browser) {
 			throw new Error("Browser is not launched")
 		}
@@ -1023,6 +1133,8 @@ export class BrowserSession {
 
 	private async captureFullPageNow(responsive: boolean): Promise<BrowserActionResult> {
 		this.lifecycle.assertOpen()
+		this.assertLegacyTransport()
+		await this.controls.suspendForLegacyAction()
 		if (!this.page) {
 			throw new Error("Browser is not launched")
 		}
@@ -1114,6 +1226,8 @@ export class BrowserSession {
 		validateAccess?: () => Promise<void>,
 	): Promise<BrowserActionResult> {
 		this.lifecycle.assertOpen()
+		this.assertLegacyTransport()
+		await this.controls.suspendForLegacyAction()
 		await validateAccess?.()
 		await validateScreenshotPath(filePath, cwd)
 		if (!this.page) throw new Error("Browser is not launched")

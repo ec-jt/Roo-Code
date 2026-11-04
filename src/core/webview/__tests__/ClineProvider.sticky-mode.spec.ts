@@ -1112,7 +1112,12 @@ describe("ClineProvider - Sticky Mode", () => {
 			getCurrentTaskSpy.mockReturnValue(task3 as any)
 			const switch3 = provider.handleModeSwitch("code")
 
-			await Promise.all([switch1, switch2, switch3])
+			// History updates belong to each captured task, but stale requests must
+			// not change the replacement task's global mode/profile after awaiting.
+			const outcomes = await Promise.allSettled([switch1, switch2, switch3])
+			expect(outcomes.map((outcome) => outcome.status)).toEqual(["rejected", "rejected", "fulfilled"])
+			expect((outcomes[0] as PromiseRejectedResult).reason.message).toContain("Task changed")
+			expect((outcomes[1] as PromiseRejectedResult).reason.message).toContain("Task changed")
 
 			// Verify each task was updated with its new mode
 			expect(task1._taskMode).toBe("architect")
