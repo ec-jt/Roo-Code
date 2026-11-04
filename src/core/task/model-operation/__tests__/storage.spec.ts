@@ -2,6 +2,7 @@ import { createHash } from "node:crypto"
 import * as fs from "node:fs/promises"
 import * as os from "node:os"
 import * as path from "node:path"
+import { SNAPSHOT_LIMITS } from "../snapshot-blocks"
 
 import {
 	BRANCH_COMMAND_ARTIFACT_LIMITS,
@@ -75,6 +76,31 @@ async function editRecord(file: string, edit: (record: any) => void, rehash = fa
 	await fs.writeFile(file, JSON.stringify(record))
 }
 
+async function writeLegacySnapshot(input = snapshot()): Promise<void> {
+	const record = {
+		version: 1,
+		recordType: "requestSnapshot",
+		taskId: input.taskId,
+		requestId: input.requestId,
+		payload: input,
+	}
+	await fs.mkdir(path.dirname(snapshotPath()), { recursive: true })
+	await fs.writeFile(
+		snapshotPath(),
+		JSON.stringify({ ...record, checksum: createHash("sha256").update(stable(record)).digest("hex") }),
+	)
+}
+
+const blockPath = (hash: string) => path.join(path.dirname(snapshotPath()), "blocks", hash.slice(0, 2), `${hash}.json`)
+const diskManifest = async () => JSON.parse(await fs.readFile(snapshotPath(), "utf8"))
+
+async function writeTestBlock(block: unknown): Promise<string> {
+	const hash = createHash("sha256").update(stable(block)).digest("hex")
+	await fs.mkdir(path.dirname(blockPath(hash)), { recursive: true })
+	await fs.writeFile(blockPath(hash), JSON.stringify(block))
+	return hash
+}
+
 beforeEach(async () => {
 	root = await fs.mkdtemp(path.join(os.tmpdir(), "model-operation-"))
 })
@@ -94,7 +120,8 @@ describe("request snapshot storage", () => {
 		const disk = JSON.parse(await fs.readFile(snapshotPath(), "utf8"))
 		expect(disk.checksum).toMatch(/^[a-f0-9]{64}$/)
 		expect(disk.recordType).toBe("requestSnapshot")
-		expect(await fs.readdir(path.dirname(snapshotPath()))).toEqual(["request-request-1.json"])
+		expect(disk.version).toBe(2)
+		expect(await fs.readdir(path.dirname(snapshotPath()))).toEqual(["blocks", "request-request-1.json"])
 	})
 
 	it("detaches before asynchronous work and returns fresh copies on every read", async () => {
@@ -126,7 +153,7 @@ describe("request snapshot storage", () => {
 		input.clineMessages[0].progressStatus = { text: "progress", future: { value: "original" } } as any
 		await saveRequestSnapshot(root, input)
 		expect(await readRequestSnapshot(root, "task-1", "request-1")).toEqual(input)
-		expect(JSON.parse(await fs.readFile(snapshotPath(), "utf8")).payload).toEqual(input)
+		expect((await diskManifest()).payload.encoding).toBe("blocks-v1")
 		;(input.clineMessages[0].progressStatus as any).future.value = "changed"
 		await expect(saveRequestSnapshot(root, input)).rejects.toThrow("collision")
 	})
@@ -140,7 +167,7 @@ describe("request snapshot storage", () => {
 		}
 		const winner = outcomes.findIndex((result) => result.status === "fulfilled")
 		expect(await readRequestSnapshot(root, "task-1", "request-1")).toEqual(values[winner])
-		expect(await fs.readdir(path.dirname(snapshotPath()))).toHaveLength(1)
+		expect(await fs.readdir(path.dirname(snapshotPath()))).toEqual(["blocks", "request-request-1.json"])
 	})
 
 	it("accepts concurrent identical saves and independent request IDs", async () => {
@@ -270,7 +297,7 @@ describe("request snapshot storage", () => {
 		(record: any) => (record.recordType = "branchProvenance"),
 		(record: any) => (record.payload.apiMessages = [{ role: "assistant", content: "response" }]),
 	])("validates versions, identities and prefixes even with a matching checksum (%#)", async (edit) => {
-		await saveRequestSnapshot(root, snapshot())
+		await writeLegacySnapshot()
 		await editRecord(snapshotPath(), edit, true)
 		await expect(readRequestSnapshot(root, "task-1", "request-1")).rejects.toThrow()
 	})
@@ -296,6 +323,202 @@ describe("request snapshot storage", () => {
 		await fs.symlink(path.join(root, "outside/record.json"), snapshotPath())
 		await expect(readRequestSnapshot(root, "task-1", "request-1")).rejects.toThrow("symlinks")
 	})
+})
+
+describe("deduplicated request snapshots", () => {
+	it("reads legacy bytes and retries without upgrading, replacing or adding blocks", async () => {
+		await writeLegacySnapshot()
+		const bytes = await fs.readFile(snapshotPath())
+		const before = await fs.stat(snapshotPath())
+		expect(await readRequestSnapshot(root, "task-1", "request-1")).toEqual(snapshot())
+		await saveRequestSnapshot(root, snapshot())
+		expect(await fs.readFile(snapshotPath())).toEqual(bytes)
+		expect((await fs.stat(snapshotPath())).ino).toBe(before.ino)
+		expect((await fs.stat(snapshotPath())).mtimeMs).toBe(before.mtimeMs)
+		expect(await fs.readdir(path.dirname(snapshotPath()))).toEqual(["request-request-1.json"])
+		await expect(saveRequestSnapshot(root, { ...snapshot(), systemPrompt: "changed" })).rejects.toThrow("collision")
+	})
+
+	it("reuses all content for independent request IDs without changing existing block inodes", async () => {
+		const input = { ...snapshot(), clineMessages: [] }
+		await saveRequestSnapshot(root, input)
+		const first = await diskManifest()
+		const file = blockPath(first.payload.apiMessages.root)
+		const before = await fs.stat(file)
+		await Promise.all(
+			["request-2", "request-3"].map((requestId) => saveRequestSnapshot(root, { ...input, requestId })),
+		)
+		const next = JSON.parse(
+			await fs.readFile(path.join(path.dirname(snapshotPath()), "request-request-2.json"), "utf8"),
+		)
+		expect(next.payload.apiMessages).toEqual(first.payload.apiMessages)
+		expect(next.payload.systemPrompt).toEqual(first.payload.systemPrompt)
+		expect((await fs.stat(file)).ino).toBe(before.ino)
+		expect((await fs.stat(file)).mtimeMs).toBe(before.mtimeMs)
+	})
+
+	it.each(["missing", "corrupt", "directory", "symlink", "oversized"])(
+		"fails closed for a %s content block on read and retry",
+		async (kind) => {
+			await saveRequestSnapshot(root, snapshot())
+			const file = blockPath((await diskManifest()).payload.systemPrompt)
+			if (kind === "corrupt") await fs.writeFile(file, '{"version":1,"kind":"system-prompt","value":"tampered"}')
+			else if (kind === "oversized") await fs.truncate(file, SNAPSHOT_LIMITS.maxBlockBytes + 1)
+			else {
+				await fs.unlink(file)
+				if (kind === "directory") await fs.mkdir(file)
+				if (kind === "symlink") await fs.symlink(snapshotPath(), file)
+			}
+			await expect(readRequestSnapshot(root, "task-1", "request-1")).rejects.toThrow()
+			await expect(saveRequestSnapshot(root, snapshot())).rejects.toThrow()
+		},
+	)
+
+	it("rejects a symlinked block store before writing", async () => {
+		await fs.mkdir(path.dirname(snapshotPath()), { recursive: true })
+		const outside = path.join(root, "outside")
+		await fs.mkdir(outside)
+		await fs.symlink(outside, path.join(path.dirname(snapshotPath()), "blocks"), "dir")
+		await expect(saveRequestSnapshot(root, snapshot())).rejects.toThrow("symlinks")
+		expect(await fs.readdir(outside)).toEqual([])
+		expect(await readRequestSnapshot(root, "task-1", "request-1")).toBeUndefined()
+	})
+
+	it.each([
+		(record: any) => (record.version = 3),
+		(record: any) => (record.payload.metadata.taskId = "other"),
+		(record: any) => (record.payload.metadata.requestId = "other"),
+		(record: any) => (record.payload.metadata.version = 2),
+		(record: any) => (record.payload.metadata.systemPrompt = "injected"),
+		(record: any) => (record.payload.apiMessages.root = "../escape"),
+		(record: any) => (record.payload.apiMessages.count = SNAPSHOT_LIMITS.maxMessages + 1),
+		(record: any) => (record.payload.apiMessages.count = 2),
+		(record: any) => (record.payload.apiMessages.root = record.payload.systemPrompt),
+		(record: any) => (record.payload.clineMessages.root = null),
+	])("rejects malformed manifests with valid checksums (%#)", async (edit) => {
+		await saveRequestSnapshot(root, snapshot())
+		await editRecord(snapshotPath(), edit, true)
+		await expect(readRequestSnapshot(root, "task-1", "request-1")).rejects.toThrow()
+	})
+
+	it("rejects invalid tree levels and types even when every block hash matches", async () => {
+		await saveRequestSnapshot(root, snapshot())
+		const prompt = (await diskManifest()).payload.systemPrompt
+		for (const block of [
+			{ version: 1, kind: "sequence", level: 1, refs: [prompt] },
+			{ version: 1, kind: "sequence", level: 0, refs: [prompt] },
+		]) {
+			const hash = await writeTestBlock(block)
+			await editRecord(snapshotPath(), (record) => (record.payload.apiMessages = { root: hash, count: 1 }), true)
+			await expect(readRequestSnapshot(root, "task-1", "request-1")).rejects.toThrow()
+		}
+	})
+
+	it("rejects a cyclic reference before traversal can loop", async () => {
+		await saveRequestSnapshot(root, snapshot())
+		const hash = (await diskManifest()).payload.apiMessages.root
+		await fs.writeFile(
+			blockPath(hash),
+			JSON.stringify({ version: 1, kind: "sequence", level: 0, refs: [hash, hash, hash] }),
+		)
+		await expect(readRequestSnapshot(root, "task-1", "request-1")).rejects.toThrow("checksum")
+	})
+
+	it.each(["link", "sync"])("never publishes a manifest after a block %s failure", async (failure) => {
+		if (failure === "link") {
+			vi.spyOn(fs, "link").mockRejectedValueOnce(new Error("block publication failed"))
+		} else {
+			const open = fs.open
+			vi.spyOn(fs, "open").mockImplementation(async (...args) => {
+				const handle = await open(...args)
+				if (String(args[0]).includes(`${path.sep}blocks${path.sep}`))
+					vi.spyOn(handle, "sync").mockRejectedValue(new Error("block publication failed"))
+				return handle
+			})
+		}
+		await expect(saveRequestSnapshot(root, snapshot())).rejects.toThrow("block publication failed")
+		expect(await readRequestSnapshot(root, "task-1", "request-1")).toBeUndefined()
+		vi.restoreAllMocks()
+		await saveRequestSnapshot(root, snapshot())
+		expect(await readRequestSnapshot(root, "task-1", "request-1")).toEqual(snapshot())
+	})
+
+	it("keeps edited, compacted, multimodal and tool-call histories exact", async () => {
+		const original = snapshot()
+		original.apiMessages = [
+			{
+				role: "assistant",
+				content: [{ type: "tool_use", id: "call-1", name: "fake", input: { nested: [1, true] } }],
+			},
+			{
+				role: "user",
+				content: [
+					{ type: "tool_result", tool_use_id: "call-1", content: "result" },
+					{ type: "image", source: { type: "base64", media_type: "image/png", data: "fake" } },
+				],
+			},
+		]
+		const edited = structuredClone(original)
+		edited.requestId = "edited"
+		edited.apiMessages[1].content = "edited input"
+		const compacted = {
+			...edited,
+			requestId: "compacted",
+			apiMessages: [{ role: "user" as const, content: "summary" }],
+			clineMessages: [],
+		}
+		for (const input of [original, edited, compacted]) await saveRequestSnapshot(root, input)
+		for (const input of [original, edited, compacted])
+			expect(await readRequestSnapshot(root, input.taskId, input.requestId)).toEqual(input)
+	})
+
+	it("stores append-only history well below full-copy growth with constant-sized manifests", async () => {
+		const input = {
+			...snapshot(),
+			apiMessages: [] as RequestSnapshot["apiMessages"],
+			clineMessages: [] as RequestSnapshot["clineMessages"],
+		}
+		let fullCopyBytes = 0
+		const manifestSizes: number[] = []
+		const N = 96
+		for (let index = 0; index < N; index++) {
+			const text = `${index}:` + "x".repeat(1000)
+			input.apiMessages.push({ role: "user", content: text })
+			input.clineMessages.push({ ts: index, type: "say", say: "text", text })
+			input.requestId = `growth-${String(index).padStart(3, "0")}`
+			await saveRequestSnapshot(root, input)
+			fullCopyBytes += Buffer.byteLength(JSON.stringify(input))
+			manifestSizes.push(
+				(await fs.stat(path.join(path.dirname(snapshotPath()), `request-${input.requestId}.json`))).size,
+			)
+		}
+		let bytes = 0
+		let blocks = 0
+		let allocatedBytes = 0
+		const inodes = new Set<number>()
+		const walk = async (directory: string): Promise<void> => {
+			for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
+				const file = path.join(directory, entry.name)
+				if (entry.isDirectory()) await walk(file)
+				else {
+					const stat = await fs.stat(file)
+					bytes += stat.size
+					allocatedBytes += stat.blocks * 512
+					inodes.add(stat.ino)
+					if (/^[a-f0-9]{64}\.json$/.test(entry.name)) blocks++
+				}
+			}
+		}
+		await walk(path.dirname(snapshotPath()))
+		expect(bytes).toBeLessThan(fullCopyBytes / 8)
+		expect(allocatedBytes).toBeLessThan(fullCopyBytes / 2)
+		expect(blocks).toBeLessThan(N * 7)
+		expect(inodes.size).toBe(blocks + N)
+		expect(Math.max(...manifestSizes) - Math.min(...manifestSizes)).toBeLessThan(10)
+		expect(await readRequestSnapshot(root, input.taskId, input.requestId)).toEqual(input)
+		const early = await readRequestSnapshot(root, input.taskId, "growth-000")
+		expect(early?.apiMessages).toEqual(input.apiMessages.slice(0, 1))
+	}, 60_000)
 })
 
 describe("branch provenance storage", () => {
@@ -384,7 +607,13 @@ describe.each(["snapshot", "provenance"])("%s durability", (kind) => {
 			const open = fs.open
 			const spy = vi.spyOn(fs, "open").mockImplementation(async (...args) => {
 				const handle = await open(...args)
-				if (String(args[0]) === path.dirname(file())) {
+				if (
+					String(args[0]) === path.dirname(file()) &&
+					(await fs.stat(file()).then(
+						() => true,
+						() => false,
+					))
+				) {
 					vi.spyOn(handle, "sync").mockRejectedValue(new Error("directory sync failed"))
 				}
 				return handle

@@ -7,7 +7,16 @@ import { z } from "zod"
 import { clineMessageSchema, type ClineMessage } from "@roo-code/types"
 
 import type { ApiMessage } from "../../task-persistence/apiMessages"
-import { safeWriteJson } from "../../../utils/safeWriteJson"
+import {
+	assertNoSymlinks,
+	canonicalJson,
+	hasCode,
+	hashJson,
+	publishImmutableJson,
+	readJsonFile,
+	syncPublishedRecord,
+} from "./immutable-json"
+import { readSnapshotBlocks, saveSnapshotBlocks, SNAPSHOT_LIMITS, validateManifest } from "./snapshot-blocks"
 
 /**
  * Capture immediately BEFORE dispatch, using the effective API history, not the
@@ -90,7 +99,7 @@ const provenanceSchema = z
 	)
 const envelopeSchema = z
 	.object({
-		version: z.literal(1),
+		version: z.union([z.literal(1), z.literal(2)]),
 		recordType: z.enum(["requestSnapshot", "branchProvenance"]),
 		taskId: pathIdSchema,
 		requestId: pathIdSchema.optional(),
@@ -100,52 +109,8 @@ const envelopeSchema = z
 	.strict()
 type Envelope = z.infer<typeof envelopeSchema>
 
-// Stable JSON both detaches caller-owned data before the first await and makes
-// retries insensitive to object insertion order. JSON.stringify is only used for
-// canonicalization/hashing; ALL JSON file writes go through safeWriteJson.
-// Inputs must be passive plain data, not hostile proxies. Undefined object fields
-// are omitted like JSON; other lossy values, accessors and cycles are rejected.
-function canonicalJson(value: unknown, ancestors = new Set<object>(), depth = 0): string {
-	if (depth > 100) throw new Error("Model-operation record exceeds JSON nesting limit")
-	if (value === null || typeof value === "string" || typeof value === "boolean") return JSON.stringify(value)
-	if (typeof value === "number" && Number.isFinite(value)) return JSON.stringify(value)
-	if (typeof value !== "object" || value === null) throw new Error("Model-operation record must be plain JSON")
-	if (ancestors.has(value)) throw new Error("Model-operation record contains a cycle")
-	ancestors.add(value)
-	try {
-		const keys = Reflect.ownKeys(value)
-		const get = (key: string): unknown => {
-			const descriptor = Object.getOwnPropertyDescriptor(value, key)
-			if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) {
-				throw new Error("Model-operation record contains an accessor or non-enumerable field")
-			}
-			return descriptor.value
-		}
-		if (Array.isArray(value)) {
-			if (Object.getPrototypeOf(value) !== Array.prototype || keys.length !== value.length + 1) {
-				throw new Error("Model-operation record contains a non-plain array")
-			}
-			return `[${Array.from({ length: value.length }, (_, i) => canonicalJson(get(String(i)), ancestors, depth + 1)).join(",")}]`
-		}
-		const prototype = Object.getPrototypeOf(value)
-		if (prototype !== Object.prototype && prototype !== null)
-			throw new Error("Model-operation record must be plain JSON")
-		const fields: string[] = []
-		for (const key of keys.sort()) {
-			if (typeof key !== "string" || key === "__proto__" || key === "constructor" || key === "prototype") {
-				throw new Error("Model-operation record contains an unsafe key")
-			}
-			const item = get(key)
-			if (item !== undefined) fields.push(`${JSON.stringify(key)}:${canonicalJson(item, ancestors, depth + 1)}`)
-		}
-		return `{${fields.join(",")}}`
-	} finally {
-		ancestors.delete(value)
-	}
-}
-
 function digest(record: Omit<Envelope, "checksum">): string {
-	return createHash("sha256").update(canonicalJson(record)).digest("hex")
+	return hashJson(record)
 }
 
 function validateSnapshot(payload: unknown): RequestSnapshot {
@@ -184,26 +149,6 @@ function recordPath(globalStoragePath: string, taskId: string, requestId?: strin
 	)
 }
 
-function hasCode(error: unknown, code: string): boolean {
-	return error !== null && typeof error === "object" && "code" in error && error.code === code
-}
-
-// The supplied root is trusted. Refuse existing symlinks beneath it; this is not
-// a sandbox against an adversary concurrently replacing directories on disk.
-async function assertNoSymlinks(root: string, filePath: string): Promise<void> {
-	let current = path.resolve(root)
-	for (const part of path.relative(current, filePath).split(path.sep)) {
-		current = path.join(current, part)
-		try {
-			if ((await fs.lstat(current)).isSymbolicLink())
-				throw new Error("Model-operation storage cannot contain symlinks")
-		} catch (error) {
-			if (hasCode(error, "ENOENT")) return
-			throw error
-		}
-	}
-}
-
 async function readEnvelope(
 	root: string,
 	filePath: string,
@@ -211,88 +156,40 @@ async function readEnvelope(
 	taskId: string,
 	requestId?: string,
 ): Promise<Envelope | undefined> {
-	await assertNoSymlinks(root, filePath)
-	let text: string
-	try {
-		if (!(await fs.lstat(filePath)).isFile()) throw new Error("Model-operation record must be a regular file")
-		text = await fs.readFile(filePath, "utf8")
-	} catch (error) {
-		if (hasCode(error, "ENOENT")) return undefined
-		throw error
-	}
-	const envelope = envelopeSchema.parse(JSON.parse(text))
+	// Bound allocation for legacy envelopes too; manifests have a tighter limit below.
+	const file = await readJsonFile(root, filePath, 512 * 1024 * 1024)
+	if (!file) return undefined
+	const envelope = envelopeSchema.parse(file.value)
+	if (envelope.version === 2 && file.bytes > SNAPSHOT_LIMITS.maxManifestBytes)
+		throw new Error("Request snapshot manifest size limit exceeded")
 	const { checksum, ...record } = envelope
 	if (record.recordType !== recordType || record.taskId !== taskId || record.requestId !== requestId) {
 		throw new Error("Model-operation record identity mismatch")
 	}
 	if (digest(record) !== checksum) throw new Error("Model-operation record checksum mismatch")
 	if (recordType === "requestSnapshot") {
-		const snapshot = validateSnapshot(record.payload)
-		if (snapshot.taskId !== taskId || snapshot.requestId !== requestId) {
-			throw new Error("Request snapshot identity mismatch")
+		if (record.version === 1) {
+			const snapshot = validateSnapshot(record.payload)
+			if (snapshot.taskId !== taskId || snapshot.requestId !== requestId)
+				throw new Error("Request snapshot identity mismatch")
+		} else {
+			validateManifest(record.payload)
 		}
 	} else {
+		if (record.version !== 1) throw new Error("Unsupported provenance version")
 		provenanceSchema.parse(record.payload)
 	}
 	return envelope
 }
 
-async function syncFile(filePath: string): Promise<void> {
-	// Windows implements fsync with FlushFileBuffers, which requires a writable
-	// handle for regular files. A read-only handle fails with EPERM there, while
-	// POSIX permits it. Directories cannot be opened "r+" and are only synced on
-	// POSIX, where "r" is valid.
-	const isDirectory = (await fs.lstat(filePath)).isDirectory()
-	const handle = await fs.open(filePath, isDirectory ? "r" : "r+")
-	try {
-		await handle.sync()
-	} finally {
-		await handle.close()
-	}
-}
-
-async function syncPublishedRecord(root: string, filePath: string): Promise<void> {
-	// An existing record may come from a writer that failed or crashed after link().
-	// Re-establish durability even for identical retries and concurrent winners.
-	await syncFile(filePath)
-	if (process.platform === "win32") return
-	const storageRoot = path.resolve(root)
-	let directory = path.dirname(filePath)
-	while (true) {
-		await syncFile(directory)
-		if (directory === storageRoot) break
-		directory = path.dirname(directory)
-	}
-}
-
 async function saveImmutable(root: string, filePath: string, record: Omit<Envelope, "checksum">): Promise<void> {
 	const checksum = digest(record)
-	const existing = await readEnvelope(root, filePath, record.recordType, record.taskId, record.requestId)
-	if (existing) {
+	await publishImmutableJson(root, filePath, { ...record, checksum }, async () => {
+		const existing = await readEnvelope(root, filePath, record.recordType, record.taskId, record.requestId)
+		if (!existing) return false
 		if (existing.checksum !== checksum) throw new Error("Immutable model-operation record collision")
-		await syncPublishedRecord(root, filePath)
-		return
-	}
-	const stagingPath = path.join(path.dirname(filePath), `.pending-${randomUUID()}.json`)
-	try {
-		// safeWriteJson creates parents. A same-directory hard link publishes a
-		// complete inode without overwriting: atomic across processes, no stale lock.
-		await safeWriteJson(stagingPath, { ...record, checksum })
-		await syncFile(stagingPath)
-		await assertNoSymlinks(root, filePath)
-		try {
-			await fs.link(stagingPath, filePath)
-		} catch (error) {
-			if (!hasCode(error, "EEXIST")) throw error
-			const winner = await readEnvelope(root, filePath, record.recordType, record.taskId, record.requestId)
-			if (winner?.checksum !== checksum) throw new Error("Immutable model-operation record collision")
-		}
-		// Persist every newly created directory entry through the trusted root,
-		// not only the leaf containing the record. Any sync failure is surfaced.
-		await syncPublishedRecord(root, filePath)
-	} finally {
-		await fs.rm(stagingPath, { force: true })
-	}
+		return true
+	})
 }
 
 /**
@@ -305,15 +202,27 @@ async function saveImmutable(root: string, filePath: string, record: Omit<Envelo
  * has no directory-fsync power-loss guarantee.
  */
 export async function saveRequestSnapshot(globalStoragePath: string, snapshot: RequestSnapshot): Promise<void> {
-	const copy = validateSnapshot(JSON.parse(canonicalJson(snapshot)))
+	const text = canonicalJson(snapshot)
+	const copy = validateSnapshot(JSON.parse(text))
 	const filePath = recordPath(globalStoragePath, copy.taskId, copy.requestId)
-	await saveImmutable(globalStoragePath, filePath, {
-		version: 1,
-		recordType: "requestSnapshot",
+	const existing = await readRequestSnapshot(globalStoragePath, copy.taskId, copy.requestId)
+	if (existing) {
+		if (canonicalJson(existing) !== text) throw new Error("Immutable model-operation record collision")
+		// Never upgrade or rewrite existing records, including legacy retries.
+		await syncPublishedRecord(globalStoragePath, filePath)
+		return
+	}
+	const payload = await saveSnapshotBlocks(globalStoragePath, path.dirname(filePath), copy)
+	const record = {
+		version: 2 as const,
+		recordType: "requestSnapshot" as const,
 		taskId: copy.taskId,
 		requestId: copy.requestId,
-		payload: copy,
-	})
+		payload,
+	}
+	if (Buffer.byteLength(canonicalJson({ ...record, checksum: digest(record) })) > SNAPSHOT_LIMITS.maxManifestBytes)
+		throw new Error("Request snapshot manifest size limit exceeded")
+	await saveImmutable(globalStoragePath, filePath, record)
 }
 
 /** Missing means unavailable; malformed, mismatched or corrupt records throw. */
@@ -329,7 +238,19 @@ export async function readRequestSnapshot(
 		taskId,
 		requestId,
 	)
-	return envelope ? validateSnapshot(envelope.payload) : undefined
+	if (!envelope) return undefined
+	const snapshot = validateSnapshot(
+		envelope.version === 1
+			? envelope.payload
+			: await readSnapshotBlocks(
+					globalStoragePath,
+					path.dirname(recordPath(globalStoragePath, taskId, requestId)),
+					envelope.payload,
+				),
+	)
+	if (snapshot.taskId !== taskId || snapshot.requestId !== requestId)
+		throw new Error("Request snapshot identity mismatch")
+	return snapshot
 }
 
 /** Persist independently of UI/API history before exposing or executing a branch. */
