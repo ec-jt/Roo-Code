@@ -49,6 +49,7 @@ import { Package } from "../../shared/package"
 import { chatMessageText } from "../../shared/chat-preview"
 import { findLast } from "../../shared/array"
 import { newTaskContent } from "../task/subtask-links"
+import { canRecoverSubtaskReturn } from "../task/subtask-return"
 import { supportPrompt } from "../../shared/support-prompt"
 import { GlobalFileNames } from "../../shared/globalFileNames"
 import { Mode, defaultModeSlug, getModeBySlug } from "../../shared/modes"
@@ -4138,16 +4139,17 @@ export class ClineProvider
 			assertCurrent()
 			await child!.assertCanDelegate()
 			assertCurrent()
-			const { historyItem } = await this.getTaskWithId(parentTaskId)
+			let { historyItem } = await this.getTaskWithId(parentTaskId)
 			const { historyItem: childHistory } = await this.getTaskWithId(childTaskId)
 			assertCurrent()
+			const hasPendingReturn = historyItem.status === "delegated" && historyItem.awaitingChildId === childTaskId
+			const mayHaveViewedParent = historyItem.status === "active" && historyItem.awaitingChildId === undefined
 			if (
 				parentTaskId === childTaskId ||
 				childHistory.id !== childTaskId ||
 				childHistory.parentTaskId !== parentTaskId ||
 				historyItem.id !== parentTaskId ||
-				historyItem.status !== "delegated" ||
-				historyItem.awaitingChildId !== childTaskId ||
+				(!hasPendingReturn && !mayHaveViewedParent) ||
 				(historyItem.delegatedToId && historyItem.delegatedToId !== childTaskId) ||
 				!historyItem.childIds?.includes(childTaskId) ||
 				childHistory.awaitingChildId ||
@@ -4172,6 +4174,18 @@ export class ClineProvider
 				throw new Error(
 					"Cannot return subtask: parent conversation history is missing or unreadable. Restore its history and retry.",
 				)
+			}
+			if (!hasPendingReturn) {
+				if (!canRecoverSubtaskReturn(historyItem, childHistory, parentClineMessages, parentApiMessages)) {
+					throw new Error(
+						"Cannot return subtask: the parent no longer has an unanswered delegation to this child. Its conversation has changed or the child link cannot be verified.",
+					)
+				}
+				// Restore the verified link before writing either history so interrupted
+				// delivery can retry through the ordinary pending-return path.
+				historyItem = { ...historyItem, status: "delegated", awaitingChildId: childTaskId }
+				await this.updateTaskHistory(historyItem)
+				assertCurrent()
 			}
 			const ts = Date.now()
 			// A retry after a partial write may already have appended the UI summary.

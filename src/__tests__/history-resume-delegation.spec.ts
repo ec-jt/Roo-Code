@@ -295,6 +295,35 @@ describe("automatic delegation return", () => {
 		expect(f.parent.initiateTaskLoop).toHaveBeenCalledOnce()
 	})
 
+	it.each(["metadata", "api"])("safely retries recovered delegation after %s persistence fails", async (failure) => {
+		const f = fixture()
+		Object.assign(f.histories.parent, { status: "active", awaitingChildId: undefined })
+		f.histories.child.task = "Child task"
+		f.ui().push({
+			ts: 2,
+			type: "ask",
+			ask: "tool",
+			text: JSON.stringify({ tool: "newTask", content: "Child task" }),
+			subtaskId: "child",
+		})
+		f.api()[0].content[0].input.message = "Child task"
+		if (failure === "metadata") f.provider.updateTaskHistory.mockRejectedValueOnce(new Error("disk full"))
+		else vi.mocked(saveApiMessages).mockRejectedValueOnce(new Error("disk full"))
+		await f.complete()
+		expect(f.callbacks.handleError).toHaveBeenCalledOnce()
+		expect(f.parent.initiateTaskLoop).not.toHaveBeenCalled()
+		if (failure === "metadata") {
+			expect(saveTaskMessages).not.toHaveBeenCalled()
+			expect(saveApiMessages).not.toHaveBeenCalled()
+		} else {
+			expect(f.histories.parent).toMatchObject({ status: "delegated", awaitingChildId: "child" })
+		}
+		await f.complete()
+		expect(f.ui().filter((m) => m.say === "subtask_result")).toHaveLength(1)
+		expect(f.api().filter((m) => m.role === "user")).toHaveLength(1)
+		expect(f.parent.initiateTaskLoop).toHaveBeenCalledOnce()
+	})
+
 	it("retries legacy plain-text delivery without duplicating an already-written result", async () => {
 		const f = fixture()
 		vi.mocked(readApiMessages).mockResolvedValueOnce([{ role: "user", content: "Legacy parent task" }])

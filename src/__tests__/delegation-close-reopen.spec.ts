@@ -14,6 +14,11 @@ vi.mock("vscode", () => ({
 	Uri: { file: (path: string) => ({ fsPath: path }) },
 }))
 vi.mock("../core/task/Task", () => ({ Task: vi.fn() }))
+// This fixture exercises delegation, without an opt-in task-state ledger.
+vi.mock("../services/task-state/continuation", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../services/task-state/continuation")>()),
+	taskCompletionGate: vi.fn(async () => undefined),
+}))
 vi.mock("../core/task-persistence/taskMessages", () => ({
 	readTaskMessages: vi.fn(async () => [{ type: "say", say: "text", text: "Parent request", ts: 1 }]),
 }))
@@ -28,7 +33,8 @@ vi.mock("../core/task-persistence", () => ({
 import { ClineProvider } from "../core/webview/ClineProvider"
 import { Task } from "../core/task/Task"
 import { attemptCompletionTool } from "../core/tools/AttemptCompletionTool"
-import { saveApiMessages, saveTaskMessages } from "../core/task-persistence"
+import { readApiMessages, saveApiMessages, saveTaskMessages } from "../core/task-persistence"
+import { readTaskMessages } from "../core/task-persistence/taskMessages"
 
 function fixture() {
 	const histories: Record<string, HistoryItem> = Object.fromEntries(
@@ -156,6 +162,37 @@ describe("delegated child suspension and history resume", () => {
 		await f.complete()
 		expect(f.callbacks.handleError).not.toHaveBeenCalled()
 		expect(f.histories.child.status).toBe("completed")
+	})
+
+	it("returns the child after viewing its parent without continuing it", async () => {
+		const f = fixture()
+		await f.open("child")
+		await f.open("parent")
+		expect(f.histories.parent).toMatchObject({ status: "active", awaitingChildId: undefined })
+		await f.open("child")
+		vi.mocked(readTaskMessages).mockResolvedValueOnce([
+			{
+				ts: 1,
+				type: "ask",
+				ask: "tool",
+				text: JSON.stringify({ tool: "newTask", content: "child" }),
+				subtaskId: "child",
+				isAnswered: true,
+			},
+			{ ts: 2, type: "ask", ask: "resume_task" },
+		])
+		vi.mocked(readApiMessages).mockResolvedValueOnce([
+			{
+				role: "assistant",
+				content: [{ type: "tool_use", id: "delegation-1", name: "new_task", input: { message: "child" } }],
+			},
+		])
+		await f.complete()
+		expect(f.callbacks.handleError).not.toHaveBeenCalled()
+		expect(f.histories.child.status).toBe("completed")
+		expect(f.histories.parent.completedByChildId).toBe("child")
+		expect(f.provider.getCurrentTask()!.taskId).toBe("parent")
+		expect(f.provider.getCurrentTask()!.resumeAfterDelegation).toHaveBeenCalledOnce()
 	})
 
 	it.each(["resumed-parent", "completed-parent", "different-child", "legacy-cleared-link"])(
