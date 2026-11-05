@@ -430,6 +430,15 @@ export class BrowserSession {
 				"Cannot perform browser action: no active browser session. The browser must be launched first using the 'launch' action before other browser actions can be performed.",
 			)
 		}
+		// A closed or detached page cannot be screenshotted. Fail with a clear,
+		// retryable message instead of a raw CDP "Not attached to an active page".
+		if (this.page.isClosed() || !this.browser?.connected) {
+			this.resetBrowserState()
+			this.onStateChange?.(false)
+			throw new Error(
+				"The browser page was closed or detached. Relaunch the browser before retrying; the previous action was not retried.",
+			)
+		}
 
 		await this.guardPage(this.page)
 		const logs: string[] = []

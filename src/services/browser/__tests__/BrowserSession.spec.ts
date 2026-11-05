@@ -372,6 +372,24 @@ describe("sandboxed browser launch", () => {
 		expect(fs.rm).toHaveBeenNthCalledWith(2, "/tmp/profile-b", { recursive: true, force: true })
 	})
 
+	it("fails clearly instead of a raw CDP error when the page is already closed", async () => {
+		await session.launchBrowser()
+		const page = { isClosed: () => true, url: () => "https://example.com" }
+		;(session as any).page = page
+		await expect(session.click("10,10")).rejects.toThrow("closed or detached")
+		expect((session as any).page).toBeUndefined()
+		expect(onStateChange).toHaveBeenLastCalledWith(false)
+	})
+
+	it("fails clearly when the browser disconnected while a page reference remains", async () => {
+		await session.launchBrowser()
+		const page = { isClosed: () => false, url: () => "https://example.com" }
+		;(session as any).page = page
+		;(session as any).browser = { connected: false }
+		await expect(session.click("10,10")).rejects.toThrow("closed or detached")
+		expect((session as any).page).toBeUndefined()
+	})
+
 	it("waits for a pending page action before closing its browser", async () => {
 		await session.launchBrowser()
 		let finish!: (result: object) => void
