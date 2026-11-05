@@ -120,29 +120,46 @@ export async function syncFile(filePath: string): Promise<void> {
 	}
 }
 
-export async function syncPublishedRecord(root: string, filePath: string): Promise<void> {
+export async function syncPublishedRecord(
+	root: string,
+	filePath: string,
+	deferredDirectories?: Set<string>,
+): Promise<void> {
 	// Re-establish durability after a concurrent winner or a crash after link().
 	await syncFile(filePath)
 	if (process.platform === "win32") return
 	const storageRoot = path.resolve(root)
 	let directory = path.dirname(filePath)
 	while (true) {
-		await syncFile(directory)
+		if (deferredDirectories) deferredDirectories.add(directory)
+		else await syncFile(directory)
 		if (directory === storageRoot) break
 		directory = path.dirname(directory)
 	}
 }
 
-/** Caller validates existing bytes and identity. No overwrite, even across processes. */
+/** Flush children before parents, once per batch, before publishing a referring manifest. */
+export async function syncPublishedDirectories(directories: Set<string>): Promise<void> {
+	for (const directory of [...directories].sort((a, b) => b.split(path.sep).length - a.split(path.sep).length)) {
+		await syncFile(directory)
+	}
+}
+
+/**
+ * Caller validates existing bytes and identity. No overwrite, even across processes.
+ * If directory syncs are deferred, the caller must flush them before publishing
+ * any record that references these files.
+ */
 export async function publishImmutableJson(
 	root: string,
 	filePath: string,
 	value: unknown,
 	verifyExisting: () => Promise<boolean>,
+	deferredDirectories?: Set<string>,
 ): Promise<void> {
 	await assertNoSymlinks(root, filePath)
 	if (await verifyExisting()) {
-		await syncPublishedRecord(root, filePath)
+		await syncPublishedRecord(root, filePath, deferredDirectories)
 		return
 	}
 	const stagingPath = path.join(path.dirname(filePath), `.pending-${randomUUID()}.json`)
@@ -157,7 +174,7 @@ export async function publishImmutableJson(
 			if (!hasCode(error, "EEXIST")) throw error
 			if (!(await verifyExisting())) throw new Error("Immutable model-operation record disappeared")
 		}
-		await syncPublishedRecord(root, filePath)
+		await syncPublishedRecord(root, filePath, deferredDirectories)
 	} finally {
 		await fs.rm(stagingPath, { force: true })
 	}

@@ -374,6 +374,80 @@ describe("deduplicated request snapshots", () => {
 		},
 	)
 
+	it.skipIf(process.platform === "win32")(
+		"flushes each block directory once after all block files and before publishing the manifest",
+		async () => {
+			const events: { kind: "file" | "directory" | "link"; file: string }[] = []
+			const open = fs.open
+			vi.spyOn(fs, "open").mockImplementation(async (...args) => {
+				const handle = await open(...args)
+				const sync = handle.sync.bind(handle)
+				vi.spyOn(handle, "sync").mockImplementation(async () => {
+					events.push({
+						kind: (await handle.stat()).isDirectory() ? "directory" : "file",
+						file: String(args[0]),
+					})
+					await sync()
+				})
+				return handle
+			})
+			const link = fs.link
+			vi.spyOn(fs, "link").mockImplementation(async (...args) => {
+				events.push({ kind: "link", file: String(args[1]) })
+				await link(...args)
+			})
+			// The second request reuses every block, but still re-establishes durability.
+			for (const requestId of ["request-1", "request-2"]) {
+				events.length = 0
+				await saveRequestSnapshot(root, { ...snapshot(), requestId })
+				const manifest = path.join(path.dirname(snapshotPath()), `request-${requestId}.json`)
+				const manifestIndex = events.findIndex((event) => event.kind === "link" && event.file === manifest)
+				expect(manifestIndex).toBeGreaterThan(0)
+				const beforeManifest = events.slice(0, manifestIndex)
+				const directories = beforeManifest
+					.filter((event) => event.kind === "directory")
+					.map((event) => event.file)
+				expect(directories.length).toBe(new Set(directories).size)
+				expect(directories.slice(-5)).toEqual([
+					path.join(path.dirname(snapshotPath()), "blocks"),
+					path.dirname(snapshotPath()),
+					path.dirname(path.dirname(snapshotPath())),
+					path.join(root, "tasks"),
+					root,
+				])
+				const files = beforeManifest.filter(
+					(event) => event.kind === "file" && event.file.includes(`${path.sep}blocks${path.sep}`),
+				)
+				expect(files.length).toBeGreaterThan(0)
+				const firstDirectoryIndex = beforeManifest.findIndex((event) => event.kind === "directory")
+				for (const event of files) {
+					expect(directories).toContain(path.dirname(event.file))
+					expect(beforeManifest.indexOf(event)).toBeLessThan(firstDirectoryIndex)
+				}
+			}
+		},
+	)
+
+	it.skipIf(process.platform === "win32")(
+		"does not publish a manifest when a batched directory flush fails, including retries",
+		async () => {
+			const open = fs.open
+			const spy = vi.spyOn(fs, "open").mockImplementation(async (...args) => {
+				const handle = await open(...args)
+				if (String(args[0]) === path.join(path.dirname(snapshotPath()), "blocks"))
+					vi.spyOn(handle, "sync").mockRejectedValue(new Error("block directory sync failed"))
+				return handle
+			})
+			for (let attempt = 0; attempt < 2; attempt++) {
+				await expect(saveRequestSnapshot(root, snapshot())).rejects.toThrow("block directory sync failed")
+				expect(await readRequestSnapshot(root, "task-1", "request-1")).toBeUndefined()
+			}
+			spy.mockRestore()
+			await saveRequestSnapshot(root, snapshot())
+			expect(await readRequestSnapshot(root, "task-1", "request-1")).toEqual(snapshot())
+		},
+	)
+
 	it("rejects a symlinked block store before writing", async () => {
 		await fs.mkdir(path.dirname(snapshotPath()), { recursive: true })
 		const outside = path.join(root, "outside")
@@ -441,6 +515,50 @@ describe("deduplicated request snapshots", () => {
 		vi.restoreAllMocks()
 		await saveRequestSnapshot(root, snapshot())
 		expect(await readRequestSnapshot(root, "task-1", "request-1")).toEqual(snapshot())
+	})
+
+	it("waits for in-flight block writes before returning a failed save", async () => {
+		let release!: () => void
+		let blocked!: () => void
+		let failed!: () => void
+		const gate = new Promise<void>((resolve) => (release = resolve))
+		const secondStarted = new Promise<void>((resolve) => (blocked = resolve))
+		const firstFailed = new Promise<void>((resolve) => (failed = resolve))
+		let calls = 0
+		let active = 0
+		const link = fs.link
+		vi.spyOn(fs, "link").mockImplementation(async (...args) => {
+			active++
+			const call = ++calls
+			try {
+				if (call === 1) {
+					await secondStarted
+					failed()
+					throw new Error("block publication failed")
+				}
+				if (call === 2) {
+					blocked()
+					await gate
+				}
+				await link(...args)
+			} finally {
+				active--
+			}
+		})
+		let settled = false
+		const pending = saveRequestSnapshot(root, snapshot()).finally(() => (settled = true))
+		const rejected = expect(pending).rejects.toThrow("block publication failed")
+		try {
+			await firstFailed
+			await new Promise((resolve) => setImmediate(resolve))
+			expect(settled).toBe(false)
+			expect(active).toBeGreaterThan(0)
+		} finally {
+			release()
+		}
+		await rejected
+		expect(active).toBe(0)
+		expect(await readRequestSnapshot(root, "task-1", "request-1")).toBeUndefined()
 	})
 
 	it("keeps edited, compacted, multimodal and tool-call histories exact", async () => {
@@ -518,7 +636,8 @@ describe("deduplicated request snapshots", () => {
 		expect(await readRequestSnapshot(root, input.taskId, input.requestId)).toEqual(input)
 		const early = await readRequestSnapshot(root, input.taskId, "growth-000")
 		expect(early?.apiMessages).toEqual(input.apiMessages.slice(0, 1))
-	}, 60_000)
+		// This integration test performs thousands of real fsyncs, including on APFS.
+	}, 180_000)
 })
 
 describe("branch provenance storage", () => {

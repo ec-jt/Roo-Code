@@ -1,7 +1,7 @@
 import * as path from "node:path"
 import { z } from "zod"
 
-import { canonicalJson, hashJson, publishImmutableJson, readJsonFile } from "./immutable-json"
+import { canonicalJson, hashJson, publishImmutableJson, readJsonFile, syncPublishedDirectories } from "./immutable-json"
 import type { RequestSnapshot } from "./storage"
 
 // Per-operation safety guards, not retention or a total task storage quota.
@@ -12,6 +12,8 @@ export const SNAPSHOT_LIMITS = Object.freeze({
 	maxMessages: 1_000_000,
 })
 const FANOUT = 32
+// Bound filesystem pressure and in-flight block buffers for large histories.
+const BLOCK_CONCURRENCY = 8
 const hashSchema = z.string().regex(/^[a-f0-9]{64}$/)
 const sequenceSchema = z
 	.object({ root: hashSchema.nullable(), count: z.number().int().min(0).max(SNAPSHOT_LIMITS.maxMessages) })
@@ -69,6 +71,7 @@ export async function saveSnapshotBlocks(
 ): Promise<SnapshotManifest> {
 	let totalBytes = 0
 	const saved = new Set<string>()
+	const directories = new Set<string>()
 	const put = async (block: unknown): Promise<string> => {
 		const text = canonicalJson(block)
 		const bytes = Buffer.byteLength(text)
@@ -78,13 +81,19 @@ export async function saveSnapshotBlocks(
 		const hash = hashJson(block)
 		if (!saved.has(hash)) {
 			const file = blockPath(directory, hash)
-			await publishImmutableJson(root, file, block, async () => {
-				const existing = await readJsonFile(root, file, SNAPSHOT_LIMITS.maxBlockBytes)
-				if (!existing) return false
-				if (canonicalJson(existing.value) !== text)
-					throw new Error("Immutable snapshot block checksum collision")
-				return true
-			})
+			await publishImmutableJson(
+				root,
+				file,
+				block,
+				async () => {
+					const existing = await readJsonFile(root, file, SNAPSHOT_LIMITS.maxBlockBytes)
+					if (!existing) return false
+					if (canonicalJson(existing.value) !== text)
+						throw new Error("Immutable snapshot block checksum collision")
+					return true
+				},
+				directories,
+			)
 			saved.add(hash)
 		}
 		return hash
@@ -92,7 +101,16 @@ export async function saveSnapshotBlocks(
 	const sequence = async (messages: unknown[], kind: ValueKind): Promise<Sequence> => {
 		if (messages.length > SNAPSHOT_LIMITS.maxMessages) throw new Error("Request snapshot message limit exceeded")
 		let refs: string[] = []
-		for (const value of messages) refs.push(await put({ version: 1, kind, value }))
+		for (let index = 0; index < messages.length; index += BLOCK_CONCURRENCY) {
+			const results = await Promise.allSettled(
+				messages.slice(index, index + BLOCK_CONCURRENCY).map((value) => put({ version: 1, kind, value })),
+			)
+			// Drain the batch even on failure so no block writes outlive a failed save.
+			for (const result of results) {
+				if (result.status === "rejected") throw result.reason
+				refs.push(result.value)
+			}
+		}
 		if (refs.length === 0) return { root: null, count: 0 }
 		let level = 0
 		do {
@@ -108,13 +126,17 @@ export async function saveSnapshotBlocks(
 		return { root: refs[0], count: messages.length }
 	}
 	const { apiMessages, clineMessages, systemPrompt, ...metadata } = snapshot
-	return {
+	const manifest: SnapshotManifest = {
 		encoding: "blocks-v1",
 		metadata,
 		apiMessages: await sequence(apiMessages, "api-message"),
 		clineMessages: await sequence(clineMessages, "cline-message"),
 		systemPrompt: await put({ version: 1, kind: "system-prompt", value: systemPrompt }),
 	}
+	// Every block is validated and file-synced above. Shared directories only need
+	// one final flush, after all links exist and before the manifest can be saved.
+	await syncPublishedDirectories(directories)
+	return manifest
 }
 
 /** No recursion or cross-task lookup. Counts and decreasing levels bound traversal. */
