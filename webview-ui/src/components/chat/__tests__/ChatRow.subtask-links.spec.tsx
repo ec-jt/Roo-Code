@@ -74,203 +74,45 @@ function renderChatRow(message: any, currentTaskItem?: Partial<HistoryItem>, cli
 }
 
 describe("ChatRow - subtask links", () => {
-	beforeEach(() => {
-		mockPostMessage.mockClear()
+	beforeEach(() => mockPostMessage.mockClear())
+	const creation = (subtaskId?: string): ClineMessage => ({
+		ts: 1000,
+		type: "ask",
+		ask: "tool",
+		subtaskId,
+		text: JSON.stringify({ tool: "newTask", mode: "code", content: "Latest task" }),
 	})
-
-	describe("newTask tool", () => {
-		it("should display 'Go to subtask' link when currentTaskItem has childIds", () => {
-			const message = {
-				ts: Date.now(),
-				type: "ask" as const,
-				ask: "tool" as const,
-				text: JSON.stringify({
-					tool: "newTask",
-					mode: "code",
-					content: "Implement feature X",
-				}),
-			}
-
-			// childIds maps by index to newTask messages - first newTask gets childIds[0]
-			renderChatRow(message, {
-				childIds: ["child-task-123"],
-			})
-
-			const goToSubtaskButton = screen.getByText("Go to subtask")
-			expect(goToSubtaskButton).toBeInTheDocument()
-
-			fireEvent.click(goToSubtaskButton)
-
-			expect(mockPostMessage).toHaveBeenCalledWith({
-				type: "showTaskWithId",
-				text: "child-task-123",
-			})
-		})
-
-		it("should display 'Go to subtask' link using index-matched childId for multiple newTasks", () => {
-			const message = {
-				ts: Date.now(),
-				type: "ask" as const,
-				ask: "tool" as const,
-				text: JSON.stringify({
-					tool: "newTask",
-					mode: "architect",
-					content: "Design system architecture",
-				}),
-			}
-
-			// The implementation maps newTask messages to childIds by index
-			// Since this is the first (and only) newTask message, it gets childIds[0]
-			renderChatRow(message, {
-				childIds: ["first-child", "second-child"],
-			})
-
-			const goToSubtaskButton = screen.getByText("Go to subtask")
-			expect(goToSubtaskButton).toBeInTheDocument()
-
-			fireEvent.click(goToSubtaskButton)
-
-			// First newTask message maps to first childId
-			expect(mockPostMessage).toHaveBeenCalledWith({
-				type: "showTaskWithId",
-				text: "first-child",
-			})
-		})
-
-		it("uses the explicit message-to-child link instead of childIds order", () => {
-			const message = {
-				ts: 5000,
-				type: "ask" as const,
-				ask: "tool" as const,
-				text: JSON.stringify({ tool: "newTask", mode: "code", content: "Second subtask" }),
-			}
-
-			// childIds order is stale: the newest child is last, but this row must
-			// resolve to the child recorded for its own timestamp.
-			renderChatRow(message, {
-				childIds: ["older-child", "newest-child"],
-				newTaskChildLinks: { "5000": "newest-child" },
-			})
-
-			fireEvent.click(screen.getByText("Go to subtask"))
-			expect(mockPostMessage).toHaveBeenCalledWith({ type: "showTaskWithId", text: "newest-child" })
-		})
-
-		it("falls back to childIds order for legacy tasks without explicit links", () => {
-			const message = {
-				ts: 6000,
-				type: "ask" as const,
-				ask: "tool" as const,
-				text: JSON.stringify({ tool: "newTask", mode: "code", content: "Legacy subtask" }),
-			}
-
-			renderChatRow(message, { childIds: ["legacy-child"] })
-
-			fireEvent.click(screen.getByText("Go to subtask"))
-			expect(mockPostMessage).toHaveBeenCalledWith({ type: "showTaskWithId", text: "legacy-child" })
-		})
-
-		it("ignores a link that is not present in childIds", () => {
-			const message = {
-				ts: 7000,
-				type: "ask" as const,
-				ask: "tool" as const,
-				text: JSON.stringify({ tool: "newTask", mode: "code", content: "Unapproved subtask" }),
-			}
-
-			renderChatRow(message, {
-				childIds: [],
-				newTaskChildLinks: { "7000": "not-a-child" },
-			})
-
-			expect(screen.queryByText("Go to subtask")).toBeNull()
-		})
-
-		it("should not display 'Go to subtask' link when no child task exists", () => {
-			const message = {
-				ts: Date.now(),
-				type: "ask" as const,
-				ask: "tool" as const,
-				text: JSON.stringify({
-					tool: "newTask",
-					mode: "code",
-					content: "Implement feature X",
-				}),
-			}
-
-			renderChatRow(message, undefined)
-
-			const goToSubtaskButton = screen.queryByText("Go to subtask")
-			expect(goToSubtaskButton).toBeNull()
-		})
-
-		it("should not display 'Go to subtask' link when directly followed by subtask_result", () => {
-			const newTaskMessage = {
-				ts: 1000,
-				type: "ask" as const,
-				ask: "tool" as const,
-				text: JSON.stringify({
-					tool: "newTask",
-					mode: "code",
-					content: "Implement feature X",
-				}),
-			}
-
-			const subtaskResultMessage = {
-				ts: 1001,
-				type: "say" as const,
-				say: "subtask_result" as const,
-				text: "The subtask has been completed successfully.",
-			}
-
-			// Pass both messages in the clineMessages array
-			renderChatRow(newTaskMessage, { delegatedToId: "child-task-123" }, [
-				newTaskMessage,
-				subtaskResultMessage,
-			] as ClineMessage[])
-
-			// Button should be hidden because next message is subtask_result
-			const goToSubtaskButton = screen.queryByText("Go to subtask")
-			expect(goToSubtaskButton).toBeNull()
-		})
+	it("opens the card's durable ID when earlier creations are outside the visible page", () => {
+		const message = creation("latest-child")
+		renderChatRow(message, { childIds: ["old-child", "latest-child"] }, [message])
+		fireEvent.click(screen.getByText("Go to subtask"))
+		expect(mockPostMessage).toHaveBeenCalledWith({ type: "showTaskWithId", text: "latest-child" })
 	})
-
-	describe("subtask_result say message", () => {
-		it("should display 'Go to subtask' link when currentTaskItem has completedByChildId", () => {
-			const message = {
-				ts: Date.now(),
-				type: "say" as const,
-				say: "subtask_result" as const,
-				text: "The subtask has been completed successfully.",
-			}
-
-			renderChatRow(message, {
-				completedByChildId: "completed-child-456",
-			})
-
-			const goToSubtaskButton = screen.getByText("Go to subtask")
-			expect(goToSubtaskButton).toBeInTheDocument()
-
-			fireEvent.click(goToSubtaskButton)
-
-			expect(mockPostMessage).toHaveBeenCalledWith({
-				type: "showTaskWithId",
-				text: "completed-child-456",
-			})
-		})
-
-		it("should not display 'Go to subtask' link when no completedByChildId exists", () => {
-			const message = {
-				ts: Date.now(),
-				type: "say" as const,
-				say: "subtask_result" as const,
-				text: "The subtask has been completed successfully.",
-			}
-
-			renderChatRow(message, undefined)
-
-			const goToSubtaskButton = screen.queryByText("Go to subtask")
-			expect(goToSubtaskButton).toBeNull()
-		})
+	it("does not guess from array offsets or stale delegation metadata", () => {
+		renderChatRow(creation(), { childIds: ["old-child"], delegatedToId: "old-child" })
+		expect(screen.queryByText("Go to subtask")).toBeNull()
+	})
+	it("hides the creation link when its result follows immediately", () => {
+		const message = creation("child")
+		renderChatRow(message, undefined, [
+			message,
+			{ ts: 1001, type: "say", say: "subtask_result", subtaskId: "child" },
+		])
+		expect(screen.queryByText("Go to subtask")).toBeNull()
+	})
+	it("opens an older result's own child, not the latest completed child", () => {
+		renderChatRow(
+			{ ts: 1000, type: "say", say: "subtask_result", text: "Done", subtaskId: "older-child" },
+			{ completedByChildId: "latest-child" },
+		)
+		fireEvent.click(screen.getByText("Go to subtask"))
+		expect(mockPostMessage).toHaveBeenCalledWith({ type: "showTaskWithId", text: "older-child" })
+	})
+	it("does not link an unresolved result to unrelated completion metadata", () => {
+		renderChatRow(
+			{ ts: 1000, type: "say", say: "subtask_result", text: "Done" },
+			{ completedByChildId: "latest-child" },
+		)
+		expect(screen.queryByText("Go to subtask")).toBeNull()
 	})
 })

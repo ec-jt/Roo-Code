@@ -187,7 +187,6 @@ export const ChatRowContent = ({
 		alwaysAllowMcp,
 		currentCheckpoint,
 		clineMessages: windowMessages,
-		currentTaskItem,
 		chatWindow,
 	} = useExtensionState()
 	const clineMessages = useMemo(() => {
@@ -793,32 +792,7 @@ export const ChatRowContent = ({
 					</>
 				)
 			case "newTask":
-				// Find all newTask messages to determine which child task ID corresponds to this message
-				const newTaskMessages = clineMessages.filter((msg) => {
-					if (msg.type === "ask" && msg.ask === "tool") {
-						const t = safeJsonParse<ClineSayTool>(msg.text)
-						return t?.tool === "newTask"
-					}
-					return false
-				})
-				const thisNewTaskIndex = newTaskMessages.findIndex((msg) => msg.ts === message.ts)
-				const childIds = currentTaskItem?.childIds || []
-
-				// Prefer the explicit message-to-child link recorded at delegation time.
-				// Indexing childIds by new_task position is only a legacy fallback: it
-				// shifts to older children when UI history is replayed or a delegation
-				// retries, which is the reported "wrong subtask" bug.
-				const linkedChildId = currentTaskItem?.newTaskChildLinks?.[String(message.ts)]
-				// Only get the child task ID if this newTask has been approved (has a corresponding entry in childIds)
-				// This prevents showing a link to a previous task when the current newTask is still awaiting approval
-				// Note: We don't use delegatedToId here because it persists after child tasks complete and would
-				// incorrectly point to the previous task when a new newTask is awaiting approval
-				const childTaskId =
-					linkedChildId && childIds.includes(linkedChildId)
-						? linkedChildId
-						: thisNewTaskIndex >= 0 && thisNewTaskIndex < childIds.length
-							? childIds[thisNewTaskIndex]
-							: undefined
+				const childTaskId = message.subtaskId
 
 				// Check if the next message is a subtask_result - if so, don't show the button
 				// since the result is displayed right after this message
@@ -1036,7 +1010,7 @@ export const ChatRowContent = ({
 					)
 				case "subtask_result":
 					// Get the child task ID that produced this result
-					const completedChildTaskId = currentTaskItem?.completedByChildId
+					const completedChildTaskId = message.subtaskId
 					return (
 						<div className="border-l border-muted-foreground/80 ml-2 pl-4 pt-2 pb-1 -mt-5">
 							<div style={headerStyle}>

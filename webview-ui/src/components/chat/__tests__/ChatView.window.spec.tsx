@@ -284,7 +284,14 @@ describe("bounded chat view", () => {
 		fireEvent.click(screen.getByRole("button", { name: "Edit" }))
 		expect(vscode.postMessage).toHaveBeenCalledWith({
 			type: "chatMessageEdit",
-			chatMessageEdit: { taskId: "task", instanceId: "instance", ts: 150, index: 149, revision: 8 },
+			chatMessageEdit: {
+				taskId: "task",
+				instanceId: "instance",
+				ts: 150,
+				index: 149,
+				revision: 8,
+				operationId: expect.any(String),
+			},
 		})
 	})
 	it("pages replace rows, preserve draft/images, and block historical sends and approvals", () => {
@@ -340,5 +347,26 @@ describe("bounded chat view", () => {
 		expect(screen.queryByText("old command")).not.toBeInTheDocument()
 		expect(screen.getByLabelText("Draft")).toHaveValue("keep draft")
 		expect(screen.getByTestId("images")).toHaveTextContent("1")
+	})
+})
+
+describe("subtask history previews", () => {
+	it.each([true, false])("opens the durable child from a truncated preview (following=%s)", (following) => {
+		vi.mocked(vscode.postMessage).mockClear()
+		render(
+			<PlainHistoryMessage
+				window={page(1, following)}
+				message={{
+					ts: 8,
+					type: "ask",
+					ask: "tool",
+					text: '{"tool":"newTask","content":"truncated',
+					subtaskId: "correct-child",
+					chatPreview: { index: 7, truncated: true, label: "newTask", hasContent: true },
+				}}
+			/>,
+		)
+		fireEvent.click(screen.getByText("subtasks.goToSubtask"))
+		expect(vscode.postMessage).toHaveBeenCalledWith({ type: "showTaskWithId", text: "correct-child" })
 	})
 })

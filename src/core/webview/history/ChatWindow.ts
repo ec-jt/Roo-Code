@@ -59,6 +59,7 @@ function preview(message: ClineMessage, limit = CHAT_PREVIEW_BYTES) {
 		reasoning,
 		partial: message.partial,
 		isAnswered: message.isAnswered,
+		subtaskId: message.subtaskId,
 		isProtected: message.isProtected,
 		apiProtocol: message.apiProtocol,
 		conversationHistoryIndex: message.conversationHistoryIndex,
@@ -100,6 +101,7 @@ function preview(message: ClineMessage, limit = CHAT_PREVIEW_BYTES) {
 						: utf8Preview(chatMessageText(message) ?? "", Math.floor(limit / 6)),
 				partial: message.partial,
 				isAnswered: message.isAnswered,
+				subtaskId: message.subtaskId,
 			},
 			truncated: true,
 		}

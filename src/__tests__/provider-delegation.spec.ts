@@ -3,6 +3,8 @@
 import { describe, it, expect, vi } from "vitest"
 import { RooCodeEventName } from "@roo-code/types"
 import { ClineProvider } from "../core/webview/ClineProvider"
+import * as taskMessages from "../core/task-persistence/taskMessages"
+import * as persistence from "../core/task-persistence"
 
 describe("ClineProvider.delegateParentAndOpenChild()", () => {
 	it("does not detach the parent or create a child after persistence retries fail", async () => {
@@ -316,5 +318,41 @@ describe("ClineProvider.delegateParentAndOpenChild()", () => {
 		await expect(provider.delegateParentAndOpenChild(request)).rejects.toThrow("Delegation cancelled")
 		expect(provider.removeClineFromStack).not.toHaveBeenCalled()
 		expect(provider.createTask).not.toHaveBeenCalled()
+	})
+	it("persists the originating card ID after disposal and before starting the child", async () => {
+		const { parent, provider, request, child } = profileFixture()
+		const card = { ts: 42, type: "ask", ask: "tool", text: JSON.stringify({ tool: "newTask", content: "child" }) }
+		Object.assign(parent, { clineMessages: [card] })
+		provider.contextProxy = { globalStorageUri: { fsPath: "/test" } }
+		const disk = structuredClone([card])
+		const read = vi.spyOn(taskMessages, "readTaskMessages").mockResolvedValue(disk as any)
+		const save = vi.spyOn(persistence, "saveTaskMessages").mockImplementation(async ({ messages }) => {
+			expect(provider.removeClineFromStack).toHaveBeenCalled()
+			expect(child.start).not.toHaveBeenCalled()
+			expect(messages[0].subtaskId).toBe("child-1")
+		})
+		try {
+			await provider.delegateParentAndOpenChild(request)
+			expect(save).toHaveBeenCalledWith(expect.objectContaining({ taskId: "parent-1", barrier: true }))
+			expect(child.start).toHaveBeenCalledOnce()
+		} finally {
+			read.mockRestore()
+			save.mockRestore()
+		}
+	})
+	it("does not start the child if persisting its card link fails", async () => {
+		const { parent, provider, request, child } = profileFixture()
+		const card = { ts: 42, type: "ask", ask: "tool", text: JSON.stringify({ tool: "newTask", content: "child" }) }
+		Object.assign(parent, { clineMessages: [card] })
+		provider.contextProxy = { globalStorageUri: { fsPath: "/test" } }
+		const read = vi.spyOn(taskMessages, "readTaskMessages").mockResolvedValue([card] as any)
+		const save = vi.spyOn(persistence, "saveTaskMessages").mockRejectedValue(new Error("disk full"))
+		try {
+			await expect(provider.delegateParentAndOpenChild(request)).rejects.toThrow("disk full")
+			expect(child.start).not.toHaveBeenCalled()
+		} finally {
+			read.mockRestore()
+			save.mockRestore()
+		}
 	})
 })

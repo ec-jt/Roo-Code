@@ -15,6 +15,7 @@ import { v7 as uuidv7 } from "uuid"
 import EventEmitter from "events"
 
 import { AskIgnoredError } from "./AskIgnoredError"
+import { recoverSubtaskLinks } from "./subtask-links"
 import { isAuthorizationAsk, type TaskApprovalPort } from "../tool-execution/approval"
 import {
 	compatibilityToolPolicy,
@@ -1956,7 +1957,9 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 	private async getSavedClineMessages(): Promise<ClineMessage[]> {
 		await this.flushPersistence()
-		return readTaskMessages({ taskId: this.taskId, globalStoragePath: this.globalStoragePath })
+		const messages = await readTaskMessages({ taskId: this.taskId, globalStoragePath: this.globalStoragePath })
+		const history = this.providerRef.deref()?.taskHistoryStore?.getAll() ?? []
+		return recoverSubtaskLinks(messages, this.taskId, history)
 	}
 
 	private async addToClineMessages(message: ClineMessage) {
