@@ -293,6 +293,8 @@ export const clineMessageSchema = z.object({
 	isProtected: z.boolean().optional(),
 	apiProtocol: z.union([z.literal("openai"), z.literal("anthropic")]).optional(),
 	isAnswered: z.boolean().optional(),
+	/** Durable child identity for a newTask card or its subtask_result. */
+	subtaskId: z.string().min(1).max(128).optional(),
 })
 
 export type ClineMessage = z.infer<typeof clineMessageSchema>

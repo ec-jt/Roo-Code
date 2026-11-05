@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { useTranslation } from "react-i18next"
 import { Pencil } from "lucide-react"
 import { ContextRecoveryButton } from "./context-management/ContextRecoveryButton"
 import { UserMessageEditor } from "./UserMessageEditor"
@@ -69,6 +70,7 @@ export function ChatWindowControls({ window }: { window: ChatWindowState }) {
 }
 
 export function PlainHistoryMessage({ message, window }: { message: ClineMessage; window: ChatWindowState }) {
+	const { t } = useTranslation()
 	const [expanded, setExpanded] = useState(false)
 	const [editing, setEditing] = useState(false)
 	const index = message.chatPreview?.index
@@ -149,6 +151,14 @@ export function PlainHistoryMessage({ message, window }: { message: ClineMessage
 					)}
 				</div>
 			</div>
+			{message.subtaskId && (
+				<Button
+					size="sm"
+					variant="secondary"
+					onClick={() => vscode.postMessage({ type: "showTaskWithId", text: message.subtaskId })}>
+					{t("chat:subtasks.goToSubtask")}
+				</Button>
+			)}
 			<ContextRecoveryButton
 				eventId={message.contextCondense?.condenseId ?? message.contextTruncation?.truncationId}
 			/>

@@ -177,7 +177,9 @@ describe("automatic delegation return", () => {
 				content: formatSubtaskHandoff("child", "Child summary"),
 			},
 		])
-		expect(f.ui().filter((m) => m.say === "subtask_result")).toHaveLength(1)
+		expect(f.ui().filter((m) => m.say === "subtask_result")).toEqual([
+			expect.objectContaining({ subtaskId: "child" }),
+		])
 		expect(f.parent.resumeAfterDelegation).toHaveBeenCalledOnce()
 		expect(f.parent.skipPrevResponseIdOnce).toBe(true)
 		expect(f.parent.initiateTaskLoop).toHaveBeenCalledExactlyOnceWith([])
@@ -188,7 +190,7 @@ describe("automatic delegation return", () => {
 			completedByChildId: "child",
 			awaitingChildId: undefined,
 		})
-		expect(f.provider.removeClineFromStack).toHaveBeenCalledWith()
+		expect(f.provider.removeClineFromStack).toHaveBeenCalledWith({ internal: true })
 		const events = f.provider.emit.mock.calls.map((c: any[]) => c[0])
 		expect(events).toEqual([
 			RooCodeEventName.TaskCompleted,
@@ -286,7 +288,9 @@ describe("automatic delegation return", () => {
 		await f.complete()
 		expect(f.callbacks.handleError).toHaveBeenCalledOnce()
 		await f.complete()
-		expect(f.ui().filter((m) => m.say === "subtask_result")).toHaveLength(1)
+		expect(f.ui().filter((m) => m.say === "subtask_result")).toEqual([
+			expect.objectContaining({ subtaskId: "child" }),
+		])
 		expect(f.api().filter((m) => m.role === "user")).toHaveLength(1)
 		expect(f.parent.initiateTaskLoop).toHaveBeenCalledOnce()
 	})

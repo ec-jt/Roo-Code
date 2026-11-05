@@ -48,6 +48,7 @@ import { fileDiffs } from "./history/ChatHistoryIndex"
 import { Package } from "../../shared/package"
 import { chatMessageText } from "../../shared/chat-preview"
 import { findLast } from "../../shared/array"
+import { newTaskContent } from "../task/subtask-links"
 import { supportPrompt } from "../../shared/support-prompt"
 import { GlobalFileNames } from "../../shared/globalFileNames"
 import { Mode, defaultModeSlug, getModeBySlug } from "../../shared/modes"
@@ -4015,6 +4016,7 @@ export class ClineProvider
 
 		await revalidate()
 		assertCurrent()
+		const delegationMessage = findLast(parent.clineMessages ?? [], (entry) => newTaskContent(entry) === message)
 
 		// 3) Enforce single-open invariant by closing/disposing the parent first
 		//    This ensures we never have >1 tasks open at any time during delegation.
@@ -4072,6 +4074,20 @@ export class ClineProvider
 				}`,
 			)
 			throw err
+		}
+
+		// Bind the originating card after creation succeeds and after the parent's
+		// writers have drained. Never infer this identity from a webview row offset.
+		if (delegationMessage) {
+			const globalStoragePath = this.contextProxy.globalStorageUri.fsPath
+			const messages = await readTaskMessages({ taskId: parentTaskId, globalStoragePath })
+			const card = findLast(
+				messages,
+				(entry) => entry.ts === delegationMessage.ts && entry.text === delegationMessage.text,
+			)
+			if (!card) throw new Error("Cannot persist subtask link: originating message is missing.")
+			card.subtaskId = child.taskId
+			await saveTaskMessages({ messages, taskId: parentTaskId, globalStoragePath, barrier: true })
 		}
 
 		// 6) Start the child task now that parent metadata is safely persisted.
@@ -4162,7 +4178,15 @@ export class ClineProvider
 			// A retry after a partial write may already have appended the UI summary.
 			const lastUi = parentClineMessages.at(-1)
 			if (lastUi?.say !== "subtask_result" || lastUi.text !== completionResultSummary) {
-				parentClineMessages.push({ type: "say", say: "subtask_result", text: completionResultSummary, ts })
+				parentClineMessages.push({
+					type: "say",
+					say: "subtask_result",
+					text: completionResultSummary,
+					ts,
+					subtaskId: childTaskId,
+				})
+			} else {
+				lastUi.subtaskId = childTaskId
 			}
 			await saveTaskMessages({
 				messages: parentClineMessages,
