@@ -145,6 +145,8 @@ export type ContextManagementOptions = Omit<WillManageContextOptions, "lastMessa
 	filesReadByRoo?: string[]
 	cwd?: string
 	rooIgnoreController?: RooIgnoreController
+	/** Deterministic task-state recall, when the task has an enabled ledger. */
+	taskStateRecall?: string
 }
 
 export type ContextManagementResult = SummarizeResponse & {
@@ -185,6 +187,7 @@ export async function manageContext(options: ContextManagementOptions): Promise<
 		cwd: options.cwd,
 		rooIgnoreController: options.rooIgnoreController,
 		signal: options.signal,
+		taskStateRecall: options.taskStateRecall,
 	})
 	if (result.failureKind) {
 		if (options.allowOverflowTruncation === false) {
