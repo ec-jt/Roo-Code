@@ -2804,6 +2804,20 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		}
 	}
 
+	/**
+	 * Deterministic ledger recall for compaction. Returns "" when the task has no
+	 * enabled ledger, so compaction behaves exactly as before. Failures are logged
+	 * and treated as absent rather than blocking compaction.
+	 */
+	private async getCondenseTaskStateRecall(): Promise<string> {
+		try {
+			return await pinTaskStateRecall(this)
+		} catch (error) {
+			console.error("[Task#getCondenseTaskStateRecall] Failed to read task state:", error)
+			return ""
+		}
+	}
+
 	public async condenseContext(): Promise<void> {
 		if (this.isAssistantMessageEditing || this.modelOperationClosed) throw new Error("Task dispatch is closed")
 		this.assistantEditContextOperation = true
@@ -3204,6 +3218,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			filesReadByRoo,
 			cwd: this.cwd,
 			rooIgnoreController: this.rooIgnoreController,
+			taskStateRecall: await this.getCondenseTaskStateRecall(),
 		})
 		if (this.modelDispatchRuntime) {
 			if (this.abort || this.abandoned || signal?.aborted) throw new ModelDispatchControl("cancelled")
@@ -5552,6 +5567,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			const systemPrompt = await this.getSystemPrompt()
 			const environmentDetails = await getEnvironmentDetails(this, true)
 			assertCurrent()
+			const taskStateRecall = await this.getCondenseTaskStateRecall()
+			assertCurrent()
 			const result = await abortable(
 				signal,
 				() =>
@@ -5572,6 +5589,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 						systemPrompt,
 						taskId: this.taskId,
 						customCondensingPrompt: state?.customSupportPrompts?.CONDENSE,
+						taskStateRecall,
 						metadata: {
 							...requestMetadata,
 							taskId: this.taskId,
