@@ -758,6 +758,33 @@ describe("useSelectedModel", () => {
 			} as any)
 		})
 
+		it("reports the configured model instead of the provider default while model data loads", () => {
+			// A dynamic provider with no cached router data is not ready yet.
+			mockUseRouterModels.mockReturnValue({
+				data: undefined,
+				isLoading: true,
+				isError: false,
+			} as unknown as ReturnType<typeof useRouterModels>)
+			mockUseOpenRouterModelProviders.mockReturnValue({
+				data: undefined,
+				isLoading: false,
+				isError: false,
+			} as unknown as ReturnType<typeof useOpenRouterModelProviders>)
+
+			const apiConfiguration: ProviderSettings = {
+				apiProvider: "openrouter",
+				openRouterModelId: "user/chosen-model",
+			}
+
+			const wrapper = createWrapper()
+			const { result } = renderHook(() => useSelectedModel(apiConfiguration), { wrapper })
+
+			// Must not fall back to openRouterDefaultModelId, which the settings view
+			// would then persist over the user's selection.
+			expect(result.current.id).toBe("user/chosen-model")
+			expect(result.current.id).not.toBe(openRouterDefaultModelId)
+		})
+
 		it("should return default minimax model when no custom model is specified", () => {
 			const apiConfiguration: ProviderSettings = {
 				apiProvider: "minimax",

@@ -50,6 +50,43 @@ function getValidatedModelId(
 	return configuredId && availableModels?.[configuredId] ? configuredId : defaultModelId
 }
 
+/** The model the user actually configured, without falling back to a provider default. */
+function configuredModelId(
+	apiConfiguration: ProviderSettings | undefined,
+	provider: ProviderName | undefined,
+): string | undefined {
+	if (!apiConfiguration || !provider) return undefined
+	const field = MODEL_ID_FIELD_BY_PROVIDER[provider]
+	const value = field ? apiConfiguration[field] : undefined
+	return typeof value === "string" && value.length > 0 ? value : undefined
+}
+
+const MODEL_ID_FIELD_BY_PROVIDER: Partial<Record<ProviderName, keyof ProviderSettings>> = {
+	openrouter: "openRouterModelId",
+	requesty: "requestyModelId",
+	unbound: "unboundModelId",
+	litellm: "litellmModelId",
+	lmstudio: "lmStudioModelId",
+	ollama: "ollamaModelId",
+	anthropic: "apiModelId",
+	bedrock: "apiModelId",
+	vertex: "apiModelId",
+	gemini: "apiModelId",
+	deepseek: "apiModelId",
+	moonshot: "apiModelId",
+	minimax: "apiModelId",
+	zai: "apiModelId",
+	"openai-native": "apiModelId",
+	"openai-codex": "apiModelId",
+	"qwen-code": "apiModelId",
+	mistral: "apiModelId",
+	xai: "apiModelId",
+	sambanova: "apiModelId",
+	fireworks: "apiModelId",
+	baseten: "apiModelId",
+	"vscode-lm": "vsCodeLmModelSelector",
+}
+
 export const useSelectedModel = (apiConfiguration?: ProviderSettings, liteLLMModels?: ModelRecord) => {
 	const provider = apiConfiguration?.apiProvider || "openrouter"
 	const activeProvider: ProviderName | undefined = isRetiredProvider(provider) ? undefined : provider
@@ -93,6 +130,10 @@ export const useSelectedModel = (apiConfiguration?: ProviderSettings, liteLLMMod
 		hasValidRouterData &&
 		(!needOpenRouterProviders || typeof openRouterModelProviders.data !== "undefined")
 
+	// While model data is still loading, report the configured model rather than the
+	// provider default. Returning the default here lets the settings view write it
+	// back into apiModelId, which silently replaces a running task's model with
+	// whatever the default constant currently points at.
 	const { id, info } =
 		apiConfiguration && isReady && activeProvider
 			? getSelectedModel({
@@ -103,7 +144,12 @@ export const useSelectedModel = (apiConfiguration?: ProviderSettings, liteLLMMod
 					lmStudioModels: (lmStudioModels.data || undefined) as ModelRecord | undefined,
 					ollamaModels: (ollamaModels.data || undefined) as ModelRecord | undefined,
 				})
-			: { id: getProviderDefaultModelId(activeProvider ?? "openrouter"), info: undefined }
+			: {
+					id:
+						configuredModelId(apiConfiguration, activeProvider) ??
+						getProviderDefaultModelId(activeProvider ?? "openrouter"),
+					info: undefined,
+				}
 
 	return {
 		provider,
