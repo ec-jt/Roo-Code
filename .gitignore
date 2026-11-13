@@ -55,3 +55,11 @@ qdrant_storage/
 plans/
 
 roo-cli-*.tar.gz*
+
+# Local build artifacts (published only as GitHub release assets)
+bin/
+
+# Local research clones and scratch apps
+research/
+apps/tetris/
+images/dress.png
