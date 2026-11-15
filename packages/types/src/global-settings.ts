@@ -141,6 +141,7 @@ export const globalSettingsSchema = z.object({
 	autoCondenseContext: z.boolean().optional(),
 	/** Allow guarded truncation after eligible overflow-compaction failure. Defaults to true for compatibility. */
 	allowOverflowTruncation: z.boolean().optional(),
+	pruneToolResultsOnOverflow: z.boolean().optional(),
 	/** @deprecated Retained for settings import compatibility; no proactive percentage trigger. */
 	autoCondenseContextPercent: z.number().optional(),
 

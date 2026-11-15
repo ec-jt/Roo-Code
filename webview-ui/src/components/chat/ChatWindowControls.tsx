@@ -160,7 +160,11 @@ export function PlainHistoryMessage({ message, window }: { message: ClineMessage
 				</Button>
 			)}
 			<ContextRecoveryButton
-				eventId={message.contextCondense?.condenseId ?? message.contextTruncation?.truncationId}
+				eventId={
+					message.contextCondense?.condenseId ??
+					message.contextTruncation?.truncationId ??
+					message.contextPrune?.pruneId
+				}
 			/>
 			{editing && index !== undefined && (
 				<UserMessageEditor message={message} window={window} onClose={() => setEditing(false)} />

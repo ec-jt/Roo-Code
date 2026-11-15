@@ -320,6 +320,11 @@
 			"messagesRemoved": "{{count}} mesaj kaldırıldı",
 			"messagesRemoved_other": "{{count}} mesaj kaldırıldı",
 			"description": "Bağlam penceresi sınırında kalmak için eski mesajlar konuşmadan kaldırıldı. Bu, yoğunlaştırmaya kıyasla hızlı ancak daha az bağlam koruyucu bir yaklaşımdır."
+		},
+		"prune": {
+			"title": "Araç sonuçları kısaltıldı",
+			"description": "{{count}} büyük eski araç sonucu kısaltıldı. Tam metin görev klasörüne kaydedildi.",
+			"description_other": "{{count}} büyük eski araç sonucu kısaltıldı. Tam metin görev klasörüne kaydedildi."
 		}
 	},
 	"skill": {

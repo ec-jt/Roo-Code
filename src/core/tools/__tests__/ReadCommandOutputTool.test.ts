@@ -402,6 +402,9 @@ describe("ReadCommandOutputTool", () => {
 				"cmd-<script>alert()</script>.txt",
 				"cmd-.txt",
 				"invalid-format.txt",
+				"tool-abc.txt",
+				"../x",
+				"tool-1.txt/..",
 			]
 
 			for (const invalidId of invalidIds) {
@@ -420,8 +423,7 @@ describe("ReadCommandOutputTool", () => {
 			}
 		})
 
-		it("should accept valid artifact_id format", async () => {
-			const validId = "cmd-1706119234567.txt"
+		it.each(["cmd-1706119234567.txt", "tool-123.txt"])("should accept valid artifact_id %s", async (validId) => {
 			const content = "Test"
 			const buffer = Buffer.from(content)
 

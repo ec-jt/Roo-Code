@@ -319,6 +319,11 @@
 			"messagesRemoved": "{{count}}개 메시지 제거됨",
 			"messagesRemoved_other": "{{count}}개 메시지 제거됨",
 			"description": "컨텍스트 윈도우 제한 내에 유지하기 위해 대화에서 오래된 메시지가 제거되었습니다. 이것은 압축에 비해 빠르지만 컨텍스트 보존 능력이 낮은 접근 방식입니다."
+		},
+		"prune": {
+			"title": "도구 결과 정리됨",
+			"description": "오래된 큰 도구 결과 {{count}}개를 줄였습니다. 전체 텍스트는 작업 폴더에 저장되어 있습니다.",
+			"description_other": "오래된 큰 도구 결과 {{count}}개를 줄였습니다. 전체 텍스트는 작업 폴더에 저장되어 있습니다."
 		}
 	},
 	"skill": {

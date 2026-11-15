@@ -173,6 +173,7 @@ export const clineSays = [
 	"condense_context",
 	"condense_context_error",
 	"sliding_window_truncation",
+	"context_pruned",
 	"codebase_search_result",
 	"user_edit_todos",
 	"too_many_tools_warning",
@@ -247,6 +248,22 @@ export const contextTruncationSchema = z.object({
 export type ContextTruncation = z.infer<typeof contextTruncationSchema>
 
 /**
+ * ContextPrune
+ *
+ * Data associated with an overflow recovery that pruned large old tool results
+ * (full text saved as task artifacts) without summarizing.
+ * Attached to messages with `say: "context_pruned"`.
+ */
+export const contextPruneSchema = z.object({
+	pruneId: z.string(),
+	prunedCount: z.number(),
+	prevContextTokens: z.number(),
+	newContextTokens: z.number(),
+})
+
+export type ContextPrune = z.infer<typeof contextPruneSchema>
+
+/**
  * ClineMessage
  *
  * The main message type used for communication between the extension and webview.
@@ -290,6 +307,11 @@ export const clineMessageSchema = z.object({
 	 * Present when `say: "sliding_window_truncation"`.
 	 */
 	contextTruncation: contextTruncationSchema.optional(),
+	/**
+	 * Data for tool-result pruning during overflow recovery.
+	 * Present when `say: "context_pruned"`.
+	 */
+	contextPrune: contextPruneSchema.optional(),
 	isProtected: z.boolean().optional(),
 	apiProtocol: z.union([z.literal("openai"), z.literal("anthropic")]).optional(),
 	isAnswered: z.boolean().optional(),

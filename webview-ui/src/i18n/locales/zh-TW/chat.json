@@ -213,6 +213,11 @@
 			"messagesRemoved": "已移除 {{count}} 則訊息",
 			"messagesRemoved_other": "已移除 {{count}} 則訊息",
 			"description": "為保持在上下文視窗限制內，已從對話中移除較舊的訊息。與壓縮相比，這是一種快速但上下文保留較少的方法。"
+		},
+		"prune": {
+			"title": "工具結果已精簡",
+			"description": "已縮短 {{count}} 個較舊的大型工具結果。完整文字已儲存在任務資料夾中。",
+			"description_other": "已縮短 {{count}} 個較舊的大型工具結果。完整文字已儲存在任務資料夾中。"
 		}
 	},
 	"skill": {

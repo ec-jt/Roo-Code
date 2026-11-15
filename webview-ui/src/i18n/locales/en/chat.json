@@ -283,6 +283,11 @@
 			"messagesRemoved": "{{count}} message removed",
 			"messagesRemoved_other": "{{count}} messages removed",
 			"description": "Older messages were removed from the conversation to stay within the context window limit. This is a fast but less context-preserving approach compared to condensation."
+		},
+		"prune": {
+			"title": "Tool Results Pruned",
+			"description": "Shortened {{count}} large older tool result. The full text is saved in the task folder.",
+			"description_other": "Shortened {{count}} large older tool results. The full text is saved in the task folder."
 		}
 	},
 	"skill": {

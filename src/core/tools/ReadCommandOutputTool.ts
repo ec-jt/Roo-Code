@@ -215,7 +215,7 @@ export class ReadCommandOutputTool extends BaseTool<"read_command_output"> {
 	private isValidArtifactId(artifactId: string): boolean {
 		// Only allow alphanumeric, hyphens, underscores, and dots
 		// Must match pattern cmd-{digits}.txt
-		const validPattern = /^cmd-\d+\.txt$/
+		const validPattern = /^(cmd|tool)-\d+\.txt$/
 		return validPattern.test(artifactId)
 	}
 

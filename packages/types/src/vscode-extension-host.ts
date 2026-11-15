@@ -589,6 +589,7 @@ export type ExtensionState = Pick<
 
 	autoCondenseContext: boolean
 	allowOverflowTruncation?: boolean
+	pruneToolResultsOnOverflow?: boolean
 	autoCondenseContextPercent: number
 	marketplaceItems?: MarketplaceItem[]
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any

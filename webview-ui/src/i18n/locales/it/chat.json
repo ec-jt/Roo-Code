@@ -319,6 +319,11 @@
 			"messagesRemoved": "{{count}} messaggio rimosso",
 			"messagesRemoved_other": "{{count}} messaggi rimossi",
 			"description": "I messaggi più vecchi sono stati rimossi dalla conversazione per rimanere entro il limite della finestra di contesto. Questo è un approccio veloce ma meno conservativo del contesto rispetto alla condensazione."
+		},
+		"prune": {
+			"title": "Risultati degli strumenti ridotti",
+			"description": "Accorciato {{count}} risultato di strumento vecchio e grande. Il testo completo è salvato nella cartella dell'attività.",
+			"description_other": "Accorciati {{count}} risultati di strumenti vecchi e grandi. Il testo completo è salvato nella cartella dell'attività."
 		}
 	},
 	"skill": {

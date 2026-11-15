@@ -319,6 +319,11 @@
 			"messagesRemoved": "{{count}} mensaje eliminado",
 			"messagesRemoved_other": "{{count}} mensajes eliminados",
 			"description": "Se eliminaron mensajes más antiguos de la conversación para mantenerse dentro del límite de la ventana de contexto. Este es un enfoque rápido pero menos conservador del contexto en comparación con la condensación."
+		},
+		"prune": {
+			"title": "Resultados de herramientas recortados",
+			"description": "Se acortó {{count}} resultado de herramienta antiguo y grande. El texto completo se guarda en la carpeta de la tarea.",
+			"description_other": "Se acortaron {{count}} resultados de herramientas antiguos y grandes. El texto completo se guarda en la carpeta de la tarea."
 		}
 	},
 	"skill": {

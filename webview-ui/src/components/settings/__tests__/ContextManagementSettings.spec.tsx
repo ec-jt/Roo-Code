@@ -362,6 +362,26 @@ describe("ContextManagementSettings", () => {
 			expect(setCachedStateField).not.toHaveBeenCalledWith("autoCondenseContext", expect.anything())
 		})
 
+		it("toggles tool-result pruning and defaults it on", () => {
+			const setCachedStateField = vitest.fn()
+			render(
+				<ContextManagementSettings
+					{...autoCondenseProps}
+					pruneToolResultsOnOverflow={undefined}
+					setCachedStateField={setCachedStateField}
+				/>,
+			)
+			const checkbox = screen.getByTestId("prune-tool-results-checkbox")
+			expect(checkbox.querySelector('input[type="checkbox"]')).toBeChecked()
+			fireEvent.click(checkbox)
+			expect(setCachedStateField).toHaveBeenCalledWith("pruneToolResultsOnOverflow", false)
+		})
+
+		it("disables tool-result pruning in manual-only mode", () => {
+			render(<ContextManagementSettings {...defaultProps} pruneToolResultsOnOverflow={true} />)
+			expect(screen.getByTestId("prune-tool-results-checkbox")).toHaveAttribute("disabled")
+		})
+
 		it("keeps the fallback preference visible but disabled in manual-only mode", () => {
 			render(<ContextManagementSettings {...defaultProps} allowOverflowTruncation={true} />)
 			expect(screen.getByTestId("overflow-truncation-checkbox")).toHaveAttribute("disabled")

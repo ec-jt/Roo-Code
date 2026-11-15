@@ -330,4 +330,77 @@ describe("Context Management", () => {
 			expect(result.error).toBe("provider limit")
 		})
 	})
+
+	describe("tool-result pruning before summary", () => {
+		const big = "x".repeat(20_000)
+		const history: ApiMessage[] = [
+			{ role: "user", content: "task" },
+			{ role: "assistant", content: [{ type: "tool_use", id: "old", name: "read_file", input: {} }] },
+			{ role: "user", content: [{ type: "tool_result", tool_use_id: "old", content: big }] },
+			{ role: "assistant", content: "ok" },
+			{ role: "user", content: "latest input" },
+		]
+		const base = {
+			messages: history,
+			totalTokens: 50_000,
+			contextWindow: 100_000,
+			maxTokens: 10_000,
+			apiHandler: mockApiHandler,
+			autoCondenseContext: true,
+			contextLimitExceeded: true,
+			systemPrompt: "system",
+			taskId,
+		}
+		const summaryResult = {
+			messages: [{ role: "user" as const, content: "summary", isSummary: true }],
+			summary: "summary",
+			cost: 0.01,
+			condenseId: "c1",
+		}
+		afterEach(() => vi.restoreAllMocks())
+
+		it("returns a prune-only result and skips the summary when the estimate fits", async () => {
+			const summarize = vi.spyOn(condenseModule, "summarizeConversation")
+			vi.spyOn(mockApiHandler, "countTokens").mockResolvedValue(1_000)
+			const saveArtifact = vi.fn(async () => "tool-1.txt")
+			const result = await manageContext({ ...base, saveArtifact })
+			expect(summarize).not.toHaveBeenCalled()
+			expect(saveArtifact).toHaveBeenCalledWith(big)
+			expect(result.pruneId).toEqual(expect.any(String))
+			expect(result.prunedCount).toBe(1)
+			expect(result.summary).toBe("")
+			expect(result.newContextTokens).toBe(1_000)
+			expect(JSON.stringify(result.messages[2])).toContain("tool result middle pruned")
+			expect(result.messages.at(-1)).toBe(history.at(-1))
+		})
+
+		it("summarizes the pruned history when the estimate is still too large", async () => {
+			const summarize = vi.spyOn(condenseModule, "summarizeConversation").mockResolvedValue(summaryResult)
+			vi.spyOn(mockApiHandler, "countTokens").mockResolvedValue(90_000)
+			const result = await manageContext({ ...base, saveArtifact: async () => "tool-1.txt" })
+			expect(summarize).toHaveBeenCalledTimes(1)
+			expect(JSON.stringify(summarize.mock.calls[0][0].messages)).toContain("tool result middle pruned")
+			expect(result.pruneId).toBeUndefined()
+			expect(result.summary).toBe("summary")
+		})
+
+		it("falls through to the summary when countTokens throws", async () => {
+			const summarize = vi.spyOn(condenseModule, "summarizeConversation").mockResolvedValue(summaryResult)
+			vi.spyOn(mockApiHandler, "countTokens")
+				.mockRejectedValueOnce(new Error("count failed"))
+				.mockResolvedValue(10)
+			const result = await manageContext({ ...base, saveArtifact: async () => "tool-1.txt" })
+			expect(summarize).toHaveBeenCalledTimes(1)
+			expect(result.summary).toBe("summary")
+			expect(result.error).toBeUndefined()
+		})
+
+		it("skips pruning when disabled", async () => {
+			const summarize = vi.spyOn(condenseModule, "summarizeConversation").mockResolvedValue(summaryResult)
+			const saveArtifact = vi.fn(async () => "tool-1.txt")
+			await manageContext({ ...base, pruneToolResults: false, saveArtifact })
+			expect(saveArtifact).not.toHaveBeenCalled()
+			expect(summarize.mock.calls[0][0].messages).toEqual(history.slice(0, 4))
+		})
+	})
 })

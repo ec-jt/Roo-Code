@@ -15,6 +15,7 @@ import { SearchableSetting } from "./SearchableSetting"
 type ContextManagementSettingsProps = HTMLAttributes<HTMLDivElement> & {
 	autoCondenseContext: boolean
 	allowOverflowTruncation?: boolean
+	pruneToolResultsOnOverflow?: boolean
 	autoCondenseContextPercent: number
 	listApiConfigMeta: any[]
 	maxOpenTabsContext: number
@@ -35,6 +36,7 @@ type ContextManagementSettingsProps = HTMLAttributes<HTMLDivElement> & {
 	setCachedStateField: SetCachedStateField<
 		| "autoCondenseContext"
 		| "allowOverflowTruncation"
+		| "pruneToolResultsOnOverflow"
 		| "autoCondenseContextPercent"
 		| "maxOpenTabsContext"
 		| "maxWorkspaceFiles"
@@ -55,6 +57,7 @@ type ContextManagementSettingsProps = HTMLAttributes<HTMLDivElement> & {
 export const ContextManagementSettings = ({
 	autoCondenseContext,
 	allowOverflowTruncation,
+	pruneToolResultsOnOverflow,
 	autoCondenseContextPercent: _legacyPercent,
 	profileThresholds: _legacyProfileThresholds,
 	listApiConfigMeta: _legacyProfiles,
@@ -452,6 +455,23 @@ export const ContextManagementSettings = ({
 					exceeding its context limit. When disabled, compaction is manual only. No percentage threshold or
 					output reserve triggers automatic compaction or truncation. The context percentage is informational.
 					You can still use Compact now at any time when the task is idle.
+				</p>
+				<SearchableSetting
+					settingId="context-prune-tool-results"
+					section="contextManagement"
+					label="Prune large tool results first">
+					<VSCodeCheckbox
+						checked={pruneToolResultsOnOverflow ?? true}
+						disabled={!autoCondenseContext}
+						onChange={(e: any) => setCachedStateField("pruneToolResultsOnOverflow", e.target.checked)}
+						data-testid="prune-tool-results-checkbox">
+						<span className="font-medium">Prune large tool results first</span>
+					</VSCodeCheckbox>
+				</SearchableSetting>
+				<p className="text-sm text-vscode-descriptionForeground">
+					After an explicit context-limit rejection, shorten large older tool results to their beginning and end
+					before summarizing. The full text is saved in the task folder and can be read back with
+					read_command_output. If this alone fits the request, no summary is made.
 				</p>
 				<SearchableSetting
 					settingId="context-overflow-truncation"

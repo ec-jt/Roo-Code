@@ -319,6 +319,11 @@
 			"messagesRemoved": "{{count}} mensagem removida",
 			"messagesRemoved_other": "{{count}} mensagens removidas",
 			"description": "Mensagens mais antigas foram removidas da conversa para permanecer dentro do limite da janela de contexto. Esta é uma abordagem rápida, mas menos preservadora de contexto em comparação com a condensação."
+		},
+		"prune": {
+			"title": "Resultados de ferramentas reduzidos",
+			"description": "{{count}} resultado de ferramenta antigo e grande foi encurtado. O texto completo está salvo na pasta da tarefa.",
+			"description_other": "{{count}} resultados de ferramentas antigos e grandes foram encurtados. O texto completo está salvo na pasta da tarefa."
 		}
 	},
 	"skill": {

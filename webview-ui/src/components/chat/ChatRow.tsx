@@ -48,7 +48,13 @@ import { Markdown } from "./Markdown"
 import { CommandExecution } from "./CommandExecution"
 import { CommandExecutionError } from "./CommandExecutionError"
 import { AutoApprovedRequestLimitWarning } from "./AutoApprovedRequestLimitWarning"
-import { InProgressRow, CondensationResultRow, CondensationErrorRow, TruncationResultRow } from "./context-management"
+import {
+	InProgressRow,
+	CondensationResultRow,
+	CondensationErrorRow,
+	TruncationResultRow,
+	PruneResultRow,
+} from "./context-management"
 import CodebaseSearchResultsDisplay from "./CodebaseSearchResultsDisplay"
 import { McpExecution } from "./McpExecution"
 import { UserMessageEditor } from "./UserMessageEditor"
@@ -1349,6 +1355,8 @@ export const ChatRowContent = ({
 						return <TruncationResultRow data={message.contextTruncation} />
 					}
 					return null
+				case "context_pruned":
+					return message.contextPrune ? <PruneResultRow data={message.contextPrune} /> : null
 				case "codebase_search_result":
 					let parsed: {
 						content: {

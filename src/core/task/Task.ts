@@ -45,6 +45,7 @@ import {
 	type ToolName,
 	type ContextCondense,
 	type ContextTruncation,
+	type ContextPrune,
 	type ClineMessage,
 	type AssistantMessageEdit,
 	type ChatMessageEditIdentity,
@@ -3282,6 +3283,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		} = {},
 		contextCondense?: ContextCondense,
 		contextTruncation?: ContextTruncation,
+		contextPrune?: ContextPrune,
 	): Promise<undefined> {
 		if (this.abort) {
 			throw new Error(`[RooCode#say] task ${this.taskId}.${this.instanceId} aborted`)
@@ -3380,6 +3382,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				checkpoint,
 				contextCondense,
 				contextTruncation,
+				...(contextPrune ? { contextPrune } : {}),
 			})
 		}
 	}
@@ -5529,6 +5532,21 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		})()
 	}
 
+	private toolResultArtifactCounter = 0
+
+	/** Saves pruned tool-result text as `command-output/tool-<n>.txt`; readable via read_command_output. */
+	private async saveToolResultArtifact(text: string): Promise<string | undefined> {
+		try {
+			const directory = path.join(await getTaskDirectoryPath(this.globalStoragePath, this.taskId), "command-output")
+			await fs.promises.mkdir(directory, { recursive: true })
+			const artifactId = `tool-${Date.now()}${String(this.toolResultArtifactCounter++).padStart(4, "0")}.txt`
+			await fs.promises.writeFile(path.join(directory, artifactId), text, { encoding: "utf8", flag: "wx" })
+			return artifactId
+		} catch {
+			return undefined
+		}
+	}
+
 	private async handleContextWindowExceededError(
 		requestRevision: number,
 		handler: ApiHandler,
@@ -5584,6 +5602,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 						apiHandler: handler,
 						autoCondenseContext: true,
 						allowOverflowTruncation: state?.allowOverflowTruncation ?? true,
+						pruneToolResults: state?.pruneToolResultsOnOverflow ?? true,
+						saveArtifact: (text: string) => this.saveToolResultArtifact(text),
 						contextLimitExceeded: true,
 						signal,
 						systemPrompt,
@@ -5603,14 +5623,14 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			assertCurrent()
 			if (originalHistory !== JSON.stringify(this.apiConversationHistory))
 				throw new ContextRecoveryError("History changed during context recovery.")
-			if (result.error || (!result.summary && !result.truncationId))
+			if (result.error || (!result.summary && !result.truncationId && !result.pruneId))
 				throw new ContextRecoveryError(
 					result.error || "Context compaction produced no summary. Compact manually before retrying.",
 				)
 			await saveContextRecoverySnapshot(this.globalStoragePath, {
 				version: 1,
 				taskId: this.taskId,
-				eventId: (result.truncationId ?? result.condenseId)!,
+				eventId: (result.truncationId ?? result.condenseId ?? result.pruneId)!,
 				apiMessages: JSON.parse(originalHistory),
 				clineMessages: recoveryUi,
 			})
@@ -5618,6 +5638,27 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			await this.overwriteApiConversationHistory(result.messages)
 			assertCurrent()
 			this.skipPrevResponseIdOnce = true
+			if (result.pruneId) {
+				await this.say(
+					"context_pruned",
+					undefined,
+					undefined,
+					undefined,
+					undefined,
+					undefined,
+					{ isNonInteractive: true },
+					undefined,
+					undefined,
+					{
+						pruneId: result.pruneId,
+						prunedCount: result.prunedCount ?? 0,
+						prevContextTokens: result.prevContextTokens,
+						newContextTokens: result.newContextTokens ?? 0,
+					},
+				)
+				assertCurrent()
+				return
+			}
 			if (result.truncationId) {
 				await this.say(
 					"sliding_window_truncation",

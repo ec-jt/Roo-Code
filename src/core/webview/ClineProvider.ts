@@ -2641,7 +2641,8 @@ export class ClineProvider
 				!source.clineMessages.some(
 					(message) =>
 						message.contextCondense?.condenseId === request.eventId ||
-						message.contextTruncation?.truncationId === request.eventId,
+						message.contextTruncation?.truncationId === request.eventId ||
+						message.contextPrune?.pruneId === request.eventId,
 				)
 			) {
 				throw new Error("Context event is no longer available in this task")
@@ -3019,6 +3020,7 @@ export class ClineProvider
 			allowedMaxCost,
 			autoCondenseContext,
 			allowOverflowTruncation,
+			pruneToolResultsOnOverflow,
 			autoCondenseContextPercent,
 			soundEnabled,
 			ttsEnabled,
@@ -3123,6 +3125,7 @@ export class ClineProvider
 			allowedMaxCost,
 			autoCondenseContext: autoCondenseContext ?? true,
 			allowOverflowTruncation: allowOverflowTruncation ?? true,
+			pruneToolResultsOnOverflow: pruneToolResultsOnOverflow ?? true,
 			autoCondenseContextPercent: autoCondenseContextPercent ?? 100,
 			uriScheme: vscode.env.uriScheme,
 			currentTaskId: currentTask?.taskId,
@@ -3308,6 +3311,7 @@ export class ClineProvider
 			allowedMaxCost: stateValues.allowedMaxCost,
 			autoCondenseContext: stateValues.autoCondenseContext ?? true,
 			allowOverflowTruncation: stateValues.allowOverflowTruncation ?? true,
+			pruneToolResultsOnOverflow: stateValues.pruneToolResultsOnOverflow ?? true,
 			autoCondenseContextPercent: stateValues.autoCondenseContextPercent ?? 100,
 			taskHistory: this.taskHistoryStore.getAll(),
 			allowedCommands: stateValues.allowedCommands,

@@ -496,6 +496,41 @@ describe("Task opt-in model dispatch", () => {
 				])
 		},
 	)
+	it("accepts a prune-only recovery, snapshots under the prune id, and retries once", async () => {
+		await enableOverflow(false)
+		const contextManagement = await import("../../context-management")
+		const pruned = structuredClone(task.apiConversationHistory)
+		const manage = vi.spyOn(contextManagement, "manageContext").mockResolvedValue({
+			messages: pruned,
+			summary: "",
+			cost: 0,
+			prevContextTokens: 5000,
+			newContextTokens: 1000,
+			pruneId: "prune-1",
+			prunedCount: 2,
+		})
+		create.mockRejectedValueOnce(overflow()).mockResolvedValueOnce(response("answer"))
+		await consume(task.attemptApiRequest())
+		expect(create).toHaveBeenCalledTimes(2)
+		expect(manage.mock.calls[0][0]).toMatchObject({ pruneToolResults: true, saveArtifact: expect.any(Function) })
+		expect(saveContextRecoverySnapshot).toHaveBeenCalledWith(
+			"/storage",
+			expect.objectContaining({ eventId: "prune-1" }),
+		)
+		expect(task.say).toHaveBeenCalledWith(
+			"context_pruned",
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			{ isNonInteractive: true },
+			undefined,
+			undefined,
+			{ pruneId: "prune-1", prunedCount: 2, prevContextTokens: 5000, newContextTokens: 1000 },
+		)
+		manage.mockRestore()
+	})
 	it.each([false, true])("stops after second rejection despite auto approval, mediated=%s", async (mediated) => {
 		await enableOverflow(mediated)
 		const backoff = vi.spyOn(task as any, "backoffAndAnnounce")

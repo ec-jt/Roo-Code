@@ -320,6 +320,11 @@
 			"messagesRemoved": "已移除 {{count}} 条消息",
 			"messagesRemoved_other": "已移除 {{count}} 条消息",
 			"description": "为保持在上下文窗口限制内，已从对话中移除较旧的消息。与压缩相比，这是一种快速但上下文保留较少的方法。"
+		},
+		"prune": {
+			"title": "工具结果已精简",
+			"description": "已缩短 {{count}} 个较旧的大型工具结果。完整文本已保存在任务文件夹中。",
+			"description_other": "已缩短 {{count}} 个较旧的大型工具结果。完整文本已保存在任务文件夹中。"
 		}
 	},
 	"skill": {

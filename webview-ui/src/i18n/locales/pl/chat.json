@@ -319,6 +319,11 @@
 			"messagesRemoved": "{{count}} wiadomość usunięta",
 			"messagesRemoved_other": "{{count}} wiadomości usunięte",
 			"description": "Starsze wiadomości zostały usunięte z konwersacji, aby pozostać w granicach okna kontekstu. To szybsze, ale mniej zachowujące kontekst podejście w porównaniu z kondensacją."
+		},
+		"prune": {
+			"title": "Wyniki narzędzi przycięte",
+			"description": "Skrócono {{count}} duży starszy wynik narzędzia. Pełny tekst zapisano w folderze zadania.",
+			"description_other": "Skrócono {{count}} dużych starszych wyników narzędzi. Pełny tekst zapisano w folderze zadania."
 		}
 	},
 	"skill": {

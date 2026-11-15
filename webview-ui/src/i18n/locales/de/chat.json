@@ -319,6 +319,11 @@
 			"messagesRemoved": "{{count}} Nachricht entfernt",
 			"messagesRemoved_other": "{{count}} Nachrichten entfernt",
 			"description": "Ältere Nachrichten wurden aus der Konversation entfernt, um innerhalb des Kontextfenster-Limits zu bleiben. Dies ist ein schnellerer, aber weniger kontexterhaltender Ansatz im Vergleich zur Komprimierung."
+		},
+		"prune": {
+			"title": "Tool-Ergebnisse gekürzt",
+			"description": "{{count}} großes älteres Tool-Ergebnis gekürzt. Der vollständige Text ist im Aufgabenordner gespeichert.",
+			"description_other": "{{count}} große ältere Tool-Ergebnisse gekürzt. Der vollständige Text ist im Aufgabenordner gespeichert."
 		}
 	},
 	"skill": {

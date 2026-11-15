@@ -6,6 +6,21 @@ import { summarizeConversation, SummarizeResponse } from "../condense"
 import { ApiMessage } from "../task-persistence/apiMessages"
 import { RooIgnoreController } from "../ignore/RooIgnoreController"
 import { truncateAfterOverflow } from "./overflow-truncation"
+import {
+	DEFAULT_PRUNE_HEAD_CHARS,
+	DEFAULT_PRUNE_TAIL_CHARS,
+	DEFAULT_PRUNE_THRESHOLD_CHARS,
+	pruneToolResults,
+} from "./prune-tool-results"
+
+/** Fraction of the input budget kept free when deciding whether pruning alone is enough. */
+const PRUNE_SAFETY_MARGIN = 0.1
+
+function messageContentBlocks(messages: ApiMessage[]): Array<Anthropic.Messages.ContentBlockParam> {
+	return messages.flatMap((message) =>
+		typeof message.content === "string" ? [{ type: "text" as const, text: message.content }] : message.content,
+	)
+}
 
 /**
  * Counts tokens for user content using the provider's token counting implementation.
@@ -147,6 +162,10 @@ export type ContextManagementOptions = Omit<WillManageContextOptions, "lastMessa
 	rooIgnoreController?: RooIgnoreController
 	/** Deterministic task-state recall, when the task has an enabled ledger. */
 	taskStateRecall?: string
+	/** Prune large old tool results before summarizing. Default true; needs `saveArtifact`. */
+	pruneToolResults?: boolean
+	/** Saves full tool-result text as a task artifact and returns its id. */
+	saveArtifact?: (text: string) => Promise<string | undefined>
 }
 
 export type ContextManagementResult = SummarizeResponse & {
@@ -154,6 +173,9 @@ export type ContextManagementResult = SummarizeResponse & {
 	truncationId?: string
 	messagesRemoved?: number
 	fallbackReason?: "context-limit" | "empty-summary"
+	/** Set when pruning alone brought the request under the budget. */
+	pruneId?: string
+	prunedCount?: number
 }
 
 /** Summarize only on explicit overflow; truncate only for an eligible summary failure. */
@@ -174,8 +196,42 @@ export async function manageContext(options: ContextManagementOptions): Promise<
 	if (preserveFrom < 2)
 		return { ...unchanged, error: "Not enough earlier history to compact. Use manual context management." }
 
+	// Step 1: prune large old tool results. If that is enough, skip the summary.
+	let working = messages
+	if (options.pruneToolResults !== false && options.saveArtifact) {
+		const pruned = await pruneToolResults(messages, preserveFrom, {
+			thresholdChars: DEFAULT_PRUNE_THRESHOLD_CHARS,
+			headChars: DEFAULT_PRUNE_HEAD_CHARS,
+			tailChars: DEFAULT_PRUNE_TAIL_CHARS,
+			save: options.saveArtifact,
+		})
+		if (pruned.prunedCount > 0) {
+			working = pruned.messages
+			try {
+				const estimate = await options.apiHandler.countTokens([
+					{ type: "text", text: options.systemPrompt },
+					...messageContentBlocks(working),
+				])
+				const budget = (options.contextWindow - (options.maxTokens ?? 0)) * (1 - PRUNE_SAFETY_MARGIN)
+				if (estimate <= budget) {
+					return {
+						messages: working,
+						summary: "",
+						cost: 0,
+						prevContextTokens,
+						newContextTokens: estimate,
+						pruneId: crypto.randomUUID(),
+						prunedCount: pruned.prunedCount,
+					}
+				}
+			} catch {
+				// Estimation failed: continue with summarizing the pruned history.
+			}
+		}
+	}
+
 	const result = await summarizeConversation({
-		messages: structuredClone(messages.slice(0, preserveFrom)),
+		messages: structuredClone(working.slice(0, preserveFrom)),
 		apiHandler: options.apiHandler,
 		systemPrompt: options.systemPrompt,
 		taskId: options.taskId,
@@ -198,7 +254,7 @@ export async function manageContext(options: ContextManagementOptions): Promise<
 				errorDetails: result.errorDetails,
 			}
 		}
-		const fallback = await truncateAfterOverflow({ ...options, tools: options.metadata?.tools })
+		const fallback = await truncateAfterOverflow({ ...options, messages: working, tools: options.metadata?.tools })
 		if (fallback.error) {
 			return {
 				...unchanged,
@@ -217,13 +273,8 @@ export async function manageContext(options: ContextManagementOptions): Promise<
 			error: result.error || "Context compaction produced no summary.",
 			errorDetails: result.errorDetails,
 		}
-	const retained = messages.slice(preserveFrom)
-	const retainedTokens = await estimateTokenCount(
-		retained.flatMap((message) =>
-			typeof message.content === "string" ? [{ type: "text" as const, text: message.content }] : message.content,
-		),
-		options.apiHandler,
-	)
+	const retained = working.slice(preserveFrom)
+	const retainedTokens = await estimateTokenCount(messageContentBlocks(retained), options.apiHandler)
 	return {
 		...result,
 		messages: [...result.messages, ...retained],

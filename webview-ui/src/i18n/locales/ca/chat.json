@@ -319,6 +319,11 @@
 			"messagesRemoved": "{{count}} missatge eliminat",
 			"messagesRemoved_other": "{{count}} missatges eliminats",
 			"description": "S'han eliminat missatges més antics de la conversa per mantenir-se dins del límit de la finestra de context. Aquest és un enfocament ràpid però menys conservador del context en comparació amb la condensació."
+		},
+		"prune": {
+			"title": "Resultats d'eines retallats",
+			"description": "S'ha escurçat {{count}} resultat d'eina antic i gran. El text complet es desa a la carpeta de la tasca.",
+			"description_other": "S'han escurçat {{count}} resultats d'eines antics i grans. El text complet es desa a la carpeta de la tasca."
 		}
 	},
 	"skill": {

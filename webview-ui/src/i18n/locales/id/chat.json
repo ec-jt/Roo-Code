@@ -216,6 +216,11 @@
 			"messagesRemoved": "{{count}} pesan dihapus",
 			"messagesRemoved_other": "{{count}} pesan dihapus",
 			"description": "Pesan lama telah dihapus dari percakapan untuk tetap dalam batas jendela konteks. Ini adalah pendekatan yang cepat tetapi kurang mempertahankan konteks dibandingkan dengan kondensasi."
+		},
+		"prune": {
+			"title": "Hasil Tool Dipangkas",
+			"description": "{{count}} hasil tool lama yang besar dipersingkat. Teks lengkap disimpan di folder tugas.",
+			"description_other": "{{count}} hasil tool lama yang besar dipersingkat. Teks lengkap disimpan di folder tugas."
 		}
 	},
 	"skill": {

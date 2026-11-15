@@ -341,6 +341,11 @@
 			"messagesRemoved": "{{count}} bericht verwijderd",
 			"messagesRemoved_other": "{{count}} berichten verwijderd",
 			"description": "Oudere berichten zijn uit het gesprek verwijderd om binnen de limiet van het contextvenster te blijven. Dit is een snelle maar minder contextbehoudende aanpak in vergelijking met samenvoeging."
+		},
+		"prune": {
+			"title": "Toolresultaten ingekort",
+			"description": "{{count}} groot ouder toolresultaat ingekort. De volledige tekst staat in de taakmap.",
+			"description_other": "{{count}} grote oudere toolresultaten ingekort. De volledige tekst staat in de taakmap."
 		}
 	},
 	"skill": {
