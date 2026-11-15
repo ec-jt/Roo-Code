@@ -1,7 +1,7 @@
 import type { TaskStateNativeRequest, TaskStateNativeResponse } from "./task-state.js"
 import { z } from "zod"
 
-import type { GlobalSettings, RooCodeSettings } from "./global-settings.js"
+import type { ArchitectureContextMode, GlobalSettings, RooCodeSettings } from "./global-settings.js"
 import type { BrowserSessionRequest, BrowserSessionResponse } from "./browser-session-protocol.js"
 import type { BrowserControlAction } from "./browser-control.js"
 import type { ProviderSettings, ProviderSettingsEntry } from "./provider-settings.js"
@@ -590,6 +590,7 @@ export type ExtensionState = Pick<
 	autoCondenseContext: boolean
 	allowOverflowTruncation?: boolean
 	pruneToolResultsOnOverflow?: boolean
+	architectureContextMode?: ArchitectureContextMode
 	autoCondenseContextPercent: number
 	marketplaceItems?: MarketplaceItem[]
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any

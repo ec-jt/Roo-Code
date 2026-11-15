@@ -330,7 +330,9 @@ describe("ContextManagementSettings", () => {
 		expect(autoCondenseCheckbox).toBeInTheDocument()
 
 		expect(screen.queryByTestId("condense-threshold-slider")).not.toBeInTheDocument()
-		expect(screen.queryByRole("combobox")).not.toBeInTheDocument()
+		// The legacy per-profile threshold select is gone; only the architecture context select remains.
+		expect(screen.getAllByRole("combobox")).toHaveLength(1)
+		expect(screen.getByTestId("architecture-context-mode-select")).toBeInTheDocument()
 		expect(screen.getByText("Compact on context overflow")).toBeInTheDocument()
 	})
 
@@ -375,6 +377,11 @@ describe("ContextManagementSettings", () => {
 			expect(checkbox.querySelector('input[type="checkbox"]')).toBeChecked()
 			fireEvent.click(checkbox)
 			expect(setCachedStateField).toHaveBeenCalledWith("pruneToolResultsOnOverflow", false)
+		})
+
+		it("shows the architecture context mode select, defaulting to off", () => {
+			render(<ContextManagementSettings {...autoCondenseProps} architectureContextMode={undefined} />)
+			expect(screen.getByTestId("architecture-context-mode-select")).toBeInTheDocument()
 		})
 
 		it("disables tool-result pruning in manual-only mode", () => {

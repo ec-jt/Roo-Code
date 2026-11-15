@@ -1,5 +1,10 @@
 import { pinTaskStateRecall, assertTaskStateDispatch, taskStateTransaction } from "../../services/task-state/taskState"
 import { appendTaskStateRecall, withoutTaskStateRecall } from "../../services/task-state/history"
+import {
+	appendArchitectureContext,
+	getArchitectureContext,
+	needsArchitectureContext,
+} from "../../services/architecture-context"
 import { renderTaskState } from "../../services/task-state/render"
 import {
 	reserveContinuationTurn,
@@ -588,6 +593,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	private modelOperationRequestPinned = false
 	private memoryContextForTurn = ""
 	private taskStateContextForTurn = ""
+	private architectureContextForTurn = ""
 	public get taskStateEpoch(): number {
 		return this.modelOperationRevision
 	}
@@ -3220,6 +3226,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			cwd: this.cwd,
 			rooIgnoreController: this.rooIgnoreController,
 			taskStateRecall: await this.getCondenseTaskStateRecall(),
+			architectureContext: this.architectureContextForTurn,
 		})
 		if (this.modelDispatchRuntime) {
 			if (this.abort || this.abandoned || signal?.aborted) throw new ModelDispatchControl("cancelled")
@@ -4182,6 +4189,12 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			// uses its exact imported snapshot and must never acquire fresh memory.
 			this.memoryContextForTurn = this.modelOperationPrepared ? "" : await getTaskMemoryContext(this)
 			this.taskStateContextForTurn = this.modelOperationPrepared ? "" : await pinTaskStateRecall(this)
+			this.architectureContextForTurn = this.modelOperationPrepared
+				? ""
+				: await getArchitectureContext(
+						this,
+						(await this.providerRef.deref()?.getState())?.architectureContextMode,
+					)
 			if (!this.modelOperationPrepared) await reserveContinuationTurn(this)
 			this.modelOperationRequestPinned = true
 			const currentItem = stack.pop()!
@@ -4319,6 +4332,11 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 					const history = getMessagesSinceLastSummary(getEffectiveApiHistory(this.apiConversationHistory))
 					finalUserContent = appendTaskMemoryContext(finalUserContent, this.memoryContextForTurn, history)
 					finalUserContent = appendTaskStateRecall(finalUserContent, this.taskStateContextForTurn, history)
+					finalUserContent = appendArchitectureContext(
+						finalUserContent,
+						this.architectureContextForTurn,
+						history,
+					)
 				}
 				await this.addToApiConversationHistory({ role: "user", content: finalUserContent })
 			}
@@ -5537,7 +5555,10 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	/** Saves pruned tool-result text as `command-output/tool-<n>.txt`; readable via read_command_output. */
 	private async saveToolResultArtifact(text: string): Promise<string | undefined> {
 		try {
-			const directory = path.join(await getTaskDirectoryPath(this.globalStoragePath, this.taskId), "command-output")
+			const directory = path.join(
+				await getTaskDirectoryPath(this.globalStoragePath, this.taskId),
+				"command-output",
+			)
 			await fs.promises.mkdir(directory, { recursive: true })
 			const artifactId = `tool-${Date.now()}${String(this.toolResultArtifactCounter++).padStart(4, "0")}.txt`
 			await fs.promises.writeFile(path.join(directory, artifactId), text, { encoding: "utf8", flag: "wx" })
@@ -5610,6 +5631,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 						taskId: this.taskId,
 						customCondensingPrompt: state?.customSupportPrompts?.CONDENSE,
 						taskStateRecall,
+						architectureContext: this.architectureContextForTurn,
 						metadata: {
 							...requestMetadata,
 							taskId: this.taskId,
@@ -5900,6 +5922,19 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				const lastUser = [...this.apiConversationHistory].reverse().find((message) => message.role === "user")
 				if (lastUser && Array.isArray(lastUser.content)) {
 					lastUser.content = appendTaskMemoryContext(lastUser.content, this.memoryContextForTurn, history)
+				}
+			}
+		}
+		if (!this.modelOperationPrepared && this.architectureContextForTurn) {
+			const history = getMessagesSinceLastSummary(getEffectiveApiHistory(this.apiConversationHistory))
+			if (needsArchitectureContext(this.architectureContextForTurn, history)) {
+				const lastUser = [...this.apiConversationHistory].reverse().find((message) => message.role === "user")
+				if (lastUser && Array.isArray(lastUser.content)) {
+					lastUser.content = appendArchitectureContext(
+						lastUser.content,
+						this.architectureContextForTurn,
+						history,
+					)
 				}
 			}
 		}

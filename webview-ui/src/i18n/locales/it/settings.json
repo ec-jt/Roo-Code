@@ -669,6 +669,16 @@
 		"enableSubfolderRules": {
 			"label": "Abilita regole sottocartelle",
 			"description": "Scopri e carica ricorsivamente i file .roo/rules e AGENTS.md dalle sottodirectory. Utile per i monorepo con regole per pacchetto."
+		},
+		"architectureContext": {
+			"label": "Contesto di architettura",
+			"description": "Aggiunge i record di docs/architecture/ al contesto dell'attività. Indice e Vincoli cambiano solo quando cambiano i documenti, quindi la cache del prompt continua a funzionare. Completo aggiunge anche decisioni e rischi corrispondenti mentre Roo legge i file, con un costo maggiore in token.",
+			"modes": {
+				"off": "Disattivato",
+				"index": "Indice (ID e titoli)",
+				"constraints": "Vincoli (indice più vincoli e obiettivi di qualità completi)",
+				"full": "Completo (aggiunge decisioni e rischi dei file letti)"
+			}
 		}
 	},
 	"terminal": {

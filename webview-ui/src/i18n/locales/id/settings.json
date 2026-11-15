@@ -669,6 +669,16 @@
 		"enableSubfolderRules": {
 			"label": "Aktifkan aturan subfolder",
 			"description": "Temukan dan muat file .roo/rules dan AGENTS.md secara rekursif dari subdirektori. Berguna untuk monorepo dengan aturan per-paket."
+		},
+		"architectureContext": {
+			"label": "Konteks arsitektur",
+			"description": "Menambahkan catatan dari docs/architecture/ ke konteks tugas. Indeks dan Batasan hanya berubah saat dokumen berubah, sehingga cache prompt tetap bekerja. Lengkap juga menambahkan keputusan dan risiko yang cocok saat Roo membaca file, sehingga memakai lebih banyak token.",
+			"modes": {
+				"off": "Mati",
+				"index": "Indeks (ID dan judul)",
+				"constraints": "Batasan (indeks plus batasan dan sasaran kualitas lengkap)",
+				"full": "Lengkap (tambah keputusan dan risiko untuk file yang dibaca)"
+			}
 		}
 	},
 	"terminal": {

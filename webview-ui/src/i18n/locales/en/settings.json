@@ -724,6 +724,16 @@
 		}
 	},
 	"contextManagement": {
+		"architectureContext": {
+			"label": "Architecture context",
+			"description": "Adds records from docs/architecture/ to the task context. Index and Constraints change only when the docs change, so prompt caching keeps working. Full also adds matching decisions and risks as Roo reads files, which costs more tokens.",
+			"modes": {
+				"off": "Off",
+				"index": "Index (IDs and titles)",
+				"constraints": "Constraints (index plus full constraints and quality goals)",
+				"full": "Full (adds decisions and risks for files read)"
+			}
+		},
 		"description": "Control what information is included in the AI's context window, affecting token usage and response quality",
 		"autoCondenseContextPercent": {
 			"label": "Threshold to trigger intelligent context condensing",

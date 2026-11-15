@@ -669,6 +669,16 @@
 		"enableSubfolderRules": {
 			"label": "Włącz reguły podfolderów",
 			"description": "Rekursywnie odkrywaj i ładuj pliki .roo/rules i AGENTS.md z podkatalogów. Przydatne dla monorepo z regułami dla poszczególnych pakietów."
+		},
+		"architectureContext": {
+			"label": "Kontekst architektury",
+			"description": "Dodaje rekordy z docs/architecture/ do kontekstu zadania. Indeks i Ograniczenia zmieniają się tylko przy zmianie dokumentów, więc cache promptu nadal działa. Pełny dodaje też pasujące decyzje i ryzyka, gdy Roo czyta pliki, co kosztuje więcej tokenów.",
+			"modes": {
+				"off": "Wyłączony",
+				"index": "Indeks (ID i tytuły)",
+				"constraints": "Ograniczenia (indeks plus pełne ograniczenia i cele jakości)",
+				"full": "Pełny (dodaje decyzje i ryzyka dla czytanych plików)"
+			}
 		}
 	},
 	"terminal": {

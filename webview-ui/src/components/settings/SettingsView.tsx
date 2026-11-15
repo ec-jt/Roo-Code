@@ -173,6 +173,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 		autoCondenseContext,
 		allowOverflowTruncation,
 		pruneToolResultsOnOverflow,
+		architectureContextMode,
 		autoCondenseContextPercent,
 		browserToolEnabled,
 		browserViewportSize,
@@ -487,6 +488,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 					autoCondenseContext,
 					allowOverflowTruncation: allowOverflowTruncation ?? true,
 					pruneToolResultsOnOverflow: pruneToolResultsOnOverflow ?? true,
+					architectureContextMode: architectureContextMode ?? "off",
 					autoCondenseContextPercent,
 					browserToolEnabled: browserToolEnabled ?? true,
 					soundEnabled: soundEnabled ?? true,
@@ -989,6 +991,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 								autoCondenseContext={autoCondenseContext}
 								allowOverflowTruncation={allowOverflowTruncation}
 								pruneToolResultsOnOverflow={pruneToolResultsOnOverflow}
+								architectureContextMode={architectureContextMode}
 								autoCondenseContextPercent={autoCondenseContextPercent}
 								listApiConfigMeta={listApiConfigMeta ?? []}
 								maxOpenTabsContext={maxOpenTabsContext}

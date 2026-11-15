@@ -669,6 +669,16 @@
 		"enableSubfolderRules": {
 			"label": "Ativar regras de subpastas",
 			"description": "Descobrir e carregar recursivamente arquivos .roo/rules e AGENTS.md de subdiretórios. Útil para monorepos com regras por pacote."
+		},
+		"architectureContext": {
+			"label": "Contexto de arquitetura",
+			"description": "Adiciona registros de docs/architecture/ ao contexto da tarefa. Índice e Restrições só mudam quando os documentos mudam, então o cache do prompt continua funcionando. Completo também adiciona decisões e riscos correspondentes conforme o Roo lê arquivos, o que custa mais tokens.",
+			"modes": {
+				"off": "Desativado",
+				"index": "Índice (IDs e títulos)",
+				"constraints": "Restrições (índice mais restrições e metas de qualidade completas)",
+				"full": "Completo (adiciona decisões e riscos dos arquivos lidos)"
+			}
 		}
 	},
 	"terminal": {

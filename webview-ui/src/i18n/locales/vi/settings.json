@@ -669,6 +669,16 @@
 		"enableSubfolderRules": {
 			"label": "Bật quy tắc thư mục con",
 			"description": "Khám phá và tải đệ quy các tệp .roo/rules và AGENTS.md từ các thư mục con. Hữu ích cho monorepo có quy tắc theo gói."
+		},
+		"architectureContext": {
+			"label": "Ngữ cảnh kiến trúc",
+			"description": "Thêm các bản ghi từ docs/architecture/ vào ngữ cảnh tác vụ. Chỉ mục và Ràng buộc chỉ thay đổi khi tài liệu thay đổi, nên bộ nhớ đệm prompt vẫn hoạt động. Đầy đủ còn thêm các quyết định và rủi ro phù hợp khi Roo đọc tệp, tốn nhiều token hơn.",
+			"modes": {
+				"off": "Tắt",
+				"index": "Chỉ mục (ID và tiêu đề)",
+				"constraints": "Ràng buộc (chỉ mục và đầy đủ ràng buộc, mục tiêu chất lượng)",
+				"full": "Đầy đủ (thêm quyết định và rủi ro cho tệp đã đọc)"
+			}
 		}
 	},
 	"terminal": {

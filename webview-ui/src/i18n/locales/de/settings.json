@@ -669,6 +669,16 @@
 		"enableSubfolderRules": {
 			"label": "Unterordner-Regeln aktivieren",
 			"description": "Rekursiv .roo/rules und AGENTS.md-Dateien aus Unterverzeichnissen laden. Nützlich für Monorepos mit paketspezifischen Regeln."
+		},
+		"architectureContext": {
+			"label": "Architekturkontext",
+			"description": "Fügt Einträge aus docs/architecture/ zum Aufgabenkontext hinzu. Index und Einschränkungen ändern sich nur, wenn sich die Dokumente ändern, damit das Prompt-Caching weiter funktioniert. Vollständig fügt beim Lesen von Dateien auch passende Entscheidungen und Risiken hinzu, was mehr Token kostet.",
+			"modes": {
+				"off": "Aus",
+				"index": "Index (IDs und Titel)",
+				"constraints": "Einschränkungen (Index plus vollständige Einschränkungen und Qualitätsziele)",
+				"full": "Vollständig (plus Entscheidungen und Risiken für gelesene Dateien)"
+			}
 		}
 	},
 	"terminal": {

@@ -669,6 +669,16 @@
 		"enableSubfolderRules": {
 			"label": "하위 폴더 규칙 활성화",
 			"description": "하위 디렉토리에서 .roo/rules 및 AGENTS.md 파일을 재귀적으로 검색하고 로드합니다. 패키지별 규칙이 있는 모노레포에 유용합니다."
+		},
+		"architectureContext": {
+			"label": "아키텍처 컨텍스트",
+			"description": "docs/architecture/의 레코드를 작업 컨텍스트에 추가합니다. 인덱스와 제약은 문서가 바뀔 때만 바뀌므로 프롬프트 캐시가 계속 작동합니다. 전체는 Roo가 파일을 읽을 때 일치하는 결정과 위험도 추가하므로 token을 더 사용합니다.",
+			"modes": {
+				"off": "끄기",
+				"index": "인덱스 (ID와 제목)",
+				"constraints": "제약 (인덱스와 제약·품질 목표 전문)",
+				"full": "전체 (읽은 파일의 결정과 위험 추가)"
+			}
 		}
 	},
 	"terminal": {

@@ -669,6 +669,16 @@
 		"enableSubfolderRules": {
 			"label": "Activar reglas de subcarpetas",
 			"description": "Descubrir y cargar recursivamente archivos .roo/rules y AGENTS.md desde subdirectorios. Útil para monorepos con reglas por paquete."
+		},
+		"architectureContext": {
+			"label": "Contexto de arquitectura",
+			"description": "Añade registros de docs/architecture/ al contexto de la tarea. Índice y Restricciones solo cambian cuando cambian los documentos, así la caché del prompt sigue funcionando. Completo también añade decisiones y riesgos coincidentes mientras Roo lee archivos, lo que cuesta más tokens.",
+			"modes": {
+				"off": "Desactivado",
+				"index": "Índice (ID y títulos)",
+				"constraints": "Restricciones (índice más restricciones y objetivos de calidad completos)",
+				"full": "Completo (añade decisiones y riesgos de los archivos leídos)"
+			}
 		}
 	},
 	"terminal": {

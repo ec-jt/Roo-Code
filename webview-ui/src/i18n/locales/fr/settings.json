@@ -669,6 +669,16 @@
 		"enableSubfolderRules": {
 			"label": "Activer les règles des sous-dossiers",
 			"description": "Découvrir et charger récursivement les fichiers .roo/rules et AGENTS.md depuis les sous-répertoires. Utile pour les monorepos avec des règles par package."
+		},
+		"architectureContext": {
+			"label": "Contexte d'architecture",
+			"description": "Ajoute les enregistrements de docs/architecture/ au contexte de la tâche. Index et Contraintes ne changent que lorsque les documents changent, le cache du prompt continue donc de fonctionner. Complet ajoute aussi les décisions et risques correspondants au fil des fichiers lus, ce qui coûte plus de tokens.",
+			"modes": {
+				"off": "Désactivé",
+				"index": "Index (ID et titres)",
+				"constraints": "Contraintes (index plus contraintes et objectifs qualité complets)",
+				"full": "Complet (ajoute décisions et risques des fichiers lus)"
+			}
 		}
 	},
 	"terminal": {

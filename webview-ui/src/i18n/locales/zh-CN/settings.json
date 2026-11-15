@@ -669,6 +669,16 @@
 		"enableSubfolderRules": {
 			"label": "启用子文件夹规则",
 			"description": "递归发现并加载子目录中的 .roo/rules 和 AGENTS.md 文件。适用于具有每包规则的 monorepo。"
+		},
+		"architectureContext": {
+			"label": "架构上下文",
+			"description": "将 docs/architecture/ 中的记录加入任务上下文。索引和约束仅在文档变化时才变化，因此提示缓存仍然有效。完整模式会随着 Roo 读取文件加入匹配的决策和风险，消耗更多 token。",
+			"modes": {
+				"off": "关闭",
+				"index": "索引（ID 和标题）",
+				"constraints": "约束（索引加完整约束和质量目标）",
+				"full": "完整（加入已读文件相关的决策和风险）"
+			}
 		}
 	},
 	"terminal": {

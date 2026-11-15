@@ -16,6 +16,18 @@ import { toolNamesSchema } from "./tool.js"
 import { languagesSchema } from "./vscode.js"
 
 /**
+ * How project architecture records (docs/architecture/) are added to task context.
+ * - off: not added.
+ * - index: one line per record (ID, status, title, file, Paths). Changes only when the docs change.
+ * - constraints: index plus full constraints and accepted quality goals. Changes only when the docs change.
+ * - full: constraints plus accepted decisions and risks whose Paths match files read in the task.
+ *   Re-sent as more files are read, so it costs more tokens.
+ */
+export const architectureContextModes = ["off", "index", "constraints", "full"] as const
+export const architectureContextModeSchema = z.enum(architectureContextModes)
+export type ArchitectureContextMode = z.infer<typeof architectureContextModeSchema>
+
+/**
  * Default delay in milliseconds after writes to allow diagnostics to detect potential problems.
  * This delay is particularly important for Go and other languages where tools like goimports
  * need time to automatically clean up unused imports.
@@ -142,6 +154,7 @@ export const globalSettingsSchema = z.object({
 	/** Allow guarded truncation after eligible overflow-compaction failure. Defaults to true for compatibility. */
 	allowOverflowTruncation: z.boolean().optional(),
 	pruneToolResultsOnOverflow: z.boolean().optional(),
+	architectureContextMode: architectureContextModeSchema.optional(),
 	/** @deprecated Retained for settings import compatibility; no proactive percentage trigger. */
 	autoCondenseContextPercent: z.number().optional(),
 

@@ -669,6 +669,16 @@
 		"enableSubfolderRules": {
 			"label": "Activa les regles dels subdirectoris",
 			"description": "Descobreix i carrega recursivament fitxers .roo/rules i AGENTS.md des de subdirectoris. Útil per a monorepos amb regles per paquet."
+		},
+		"architectureContext": {
+			"label": "Context d'arquitectura",
+			"description": "Afegeix registres de docs/architecture/ al context de la tasca. Índex i Restriccions només canvien quan canvien els documents, així la memòria cau del prompt continua funcionant. Complet també afegeix decisions i riscos coincidents mentre Roo llegeix fitxers, cosa que costa més tokens.",
+			"modes": {
+				"off": "Desactivat",
+				"index": "Índex (ID i títols)",
+				"constraints": "Restriccions (índex més restriccions i objectius de qualitat complets)",
+				"full": "Complet (afegeix decisions i riscos dels fitxers llegits)"
+			}
 		}
 	},
 	"terminal": {

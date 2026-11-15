@@ -1,11 +1,22 @@
 import { HTMLAttributes } from "react"
+import type { ArchitectureContextMode } from "@roo-code/types"
 import { useAppTranslation } from "@/i18n/TranslationContext"
 import { VSCodeCheckbox, VSCodeTextArea } from "@vscode/webview-ui-toolkit/react"
 
 import { supportPrompt } from "@roo/support-prompt"
 
 import { cn } from "@/lib/utils"
-import { Input, Slider, Button, StandardTooltip } from "@/components/ui"
+import {
+	Input,
+	Slider,
+	Button,
+	StandardTooltip,
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui"
 
 import { SetCachedStateField } from "./types"
 import { SectionHeader } from "./SectionHeader"
@@ -16,6 +27,7 @@ type ContextManagementSettingsProps = HTMLAttributes<HTMLDivElement> & {
 	autoCondenseContext: boolean
 	allowOverflowTruncation?: boolean
 	pruneToolResultsOnOverflow?: boolean
+	architectureContextMode?: ArchitectureContextMode
 	autoCondenseContextPercent: number
 	listApiConfigMeta: any[]
 	maxOpenTabsContext: number
@@ -37,6 +49,7 @@ type ContextManagementSettingsProps = HTMLAttributes<HTMLDivElement> & {
 		| "autoCondenseContext"
 		| "allowOverflowTruncation"
 		| "pruneToolResultsOnOverflow"
+		| "architectureContextMode"
 		| "autoCondenseContextPercent"
 		| "maxOpenTabsContext"
 		| "maxWorkspaceFiles"
@@ -58,6 +71,7 @@ export const ContextManagementSettings = ({
 	autoCondenseContext,
 	allowOverflowTruncation,
 	pruneToolResultsOnOverflow,
+	architectureContextMode,
 	autoCondenseContextPercent: _legacyPercent,
 	profileThresholds: _legacyProfileThresholds,
 	listApiConfigMeta: _legacyProfiles,
@@ -469,8 +483,8 @@ export const ContextManagementSettings = ({
 					</VSCodeCheckbox>
 				</SearchableSetting>
 				<p className="text-sm text-vscode-descriptionForeground">
-					After an explicit context-limit rejection, shorten large older tool results to their beginning and end
-					before summarizing. The full text is saved in the task folder and can be read back with
+					After an explicit context-limit rejection, shorten large older tool results to their beginning and
+					end before summarizing. The full text is saved in the task folder and can be read back with
 					read_command_output. If this alone fits the request, no summary is made.
 				</p>
 				<SearchableSetting
@@ -498,6 +512,31 @@ export const ContextManagementSettings = ({
 							? "Current policy: compact on overflow and retry once. Truncation fallback is off."
 							: "Current policy: compact on overflow, allow eligible truncation fallback, and retry once."}{" "}
 					Save settings to apply changes. These controls do not resume a stopped task.
+				</p>
+				<SearchableSetting
+					settingId="context-architecture-mode"
+					section="contextManagement"
+					label={t("settings:contextManagement.architectureContext.label")}>
+					<span className="font-medium">{t("settings:contextManagement.architectureContext.label")}</span>
+					<Select
+						value={architectureContextMode ?? "off"}
+						onValueChange={(value) =>
+							setCachedStateField("architectureContextMode", value as ArchitectureContextMode)
+						}>
+						<SelectTrigger className="w-full mt-1" data-testid="architecture-context-mode-select">
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							{(["off", "index", "constraints", "full"] as const).map((mode) => (
+								<SelectItem key={mode} value={mode}>
+									{t(`settings:contextManagement.architectureContext.modes.${mode}`)}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+				</SearchableSetting>
+				<p className="text-sm text-vscode-descriptionForeground">
+					{t("settings:contextManagement.architectureContext.description")}
 				</p>
 			</Section>
 		</div>

@@ -669,6 +669,16 @@
 		"enableSubfolderRules": {
 			"label": "Alt klasör kurallarını etkinleştir",
 			"description": "Alt dizinlerden .roo/rules ve AGENTS.md dosyalarını yinelemeli olarak keşfet ve yükle. Paket başına kuralları olan monorepo'lar için kullanışlı."
+		},
+		"architectureContext": {
+			"label": "Mimari bağlamı",
+			"description": "docs/architecture/ kayıtlarını görev bağlamına ekler. Dizin ve Kısıtlar yalnızca belgeler değiştiğinde değişir, böylece istem önbelleği çalışmaya devam eder. Tam, Roo dosya okudukça eşleşen kararları ve riskleri de ekler; bu daha fazla token harcar.",
+			"modes": {
+				"off": "Kapalı",
+				"index": "Dizin (ID'ler ve başlıklar)",
+				"constraints": "Kısıtlar (dizin artı tam kısıtlar ve kalite hedefleri)",
+				"full": "Tam (okunan dosyalar için karar ve riskleri ekler)"
+			}
 		}
 	},
 	"terminal": {

@@ -669,6 +669,16 @@
 		"enableSubfolderRules": {
 			"label": "Submap-regels inschakelen",
 			"description": "Recursief .roo/rules en AGENTS.md-bestanden uit submappen ontdekken en laden. Handig voor monorepo's met regels per pakket."
+		},
+		"architectureContext": {
+			"label": "Architectuurcontext",
+			"description": "Voegt records uit docs/architecture/ toe aan de taakcontext. Index en Beperkingen veranderen alleen als de documenten veranderen, zodat promptcaching blijft werken. Volledig voegt ook passende beslissingen en risico's toe terwijl Roo bestanden leest, wat meer tokens kost.",
+			"modes": {
+				"off": "Uit",
+				"index": "Index (ID's en titels)",
+				"constraints": "Beperkingen (index plus volledige beperkingen en kwaliteitsdoelen)",
+				"full": "Volledig (plus beslissingen en risico's voor gelezen bestanden)"
+			}
 		}
 	},
 	"terminal": {
