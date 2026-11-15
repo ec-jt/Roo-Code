@@ -348,6 +348,7 @@ export const TOOL_GROUPS: Record<ToolGroup, ToolGroupConfig> = {
 			"read_file",
 			"search_files",
 			"list_files",
+			"read_command_output",
 			"codebase_search",
 			"file_system",
 			"markdownify",
@@ -367,7 +368,7 @@ export const TOOL_GROUPS: Record<ToolGroup, ToolGroupConfig> = {
 		tools: ["browser_action"],
 	},
 	command: {
-		tools: ["execute_command", "read_command_output", "managed_environment", "memory", "task_state"],
+		tools: ["execute_command", "managed_environment", "memory", "task_state"],
 	},
 	mcp: {
 		tools: ["use_mcp_tool", "access_mcp_resource"],

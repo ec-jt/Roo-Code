@@ -89,3 +89,22 @@ describe("filterNativeToolsForMode - disabledTools", () => {
 		expect(resultNames).not.toContain("edit")
 	})
 })
+
+describe("filterNativeToolsForMode - read_command_output", () => {
+	const nativeTools = [makeTool("read_command_output"), makeTool("execute_command"), makeTool("read_file")]
+
+	it.each(["architect", "ask", "code"])("is available in %s mode via the read group", (mode) => {
+		const names = filterNativeToolsForMode(nativeTools, mode, undefined, undefined, undefined, {}).map(
+			(t) => (t as any).function.name,
+		)
+		expect(names).toContain("read_command_output")
+		expect(names).toContain("read_file")
+	})
+
+	it("does not give read-only modes execute_command", () => {
+		const names = filterNativeToolsForMode(nativeTools, "ask", undefined, undefined, undefined, {}).map(
+			(t) => (t as any).function.name,
+		)
+		expect(names).not.toContain("execute_command")
+	})
+})
