@@ -162,6 +162,8 @@ export type ContextManagementOptions = Omit<WillManageContextOptions, "lastMessa
 	rooIgnoreController?: RooIgnoreController
 	/** Deterministic task-state recall, when the task has an enabled ledger. */
 	taskStateRecall?: string
+	/** Architecture context (cited records) passed to the summary request. */
+	architectureContext?: string
 	/** Prune large old tool results before summarizing. Default true; needs `saveArtifact`. */
 	pruneToolResults?: boolean
 	/** Saves full tool-result text as a task artifact and returns its id. */
@@ -244,6 +246,7 @@ export async function manageContext(options: ContextManagementOptions): Promise<
 		rooIgnoreController: options.rooIgnoreController,
 		signal: options.signal,
 		taskStateRecall: options.taskStateRecall,
+		architectureContext: options.architectureContext,
 	})
 	if (result.failureKind) {
 		if (options.allowOverflowTruncation === false) {

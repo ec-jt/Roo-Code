@@ -18,6 +18,7 @@ import {
 	toolResultToText,
 	convertToolBlocksToText,
 	transformMessagesForCondensing,
+	CONDENSE_PRESERVE_LINE,
 } from "../index"
 
 vi.mock("../../../api/transform/image-cleaning", () => ({
@@ -1188,7 +1189,7 @@ describe("summarizeConversation with custom settings", () => {
 		const requestMessages = createMessageCalls[0][1]
 		const lastMessage = requestMessages[requestMessages.length - 1]
 		expect(lastMessage.role).toBe("user")
-		expect(lastMessage.content).toBe(customPrompt)
+		expect(lastMessage.content).toBe(`${customPrompt}\n\n${CONDENSE_PRESERVE_LINE}`)
 	})
 
 	/**

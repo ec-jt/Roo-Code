@@ -1,7 +1,7 @@
 import type { ApiHandler, ApiHandlerCreateMessageMetadata } from "../../../api"
 import type { ApiMessage } from "../../task-persistence/apiMessages"
 import { ModelDispatchControl } from "../../../api/dispatch-admission"
-import { summarizeConversation } from "../index"
+import { CONDENSE_PRESERVE_LINE, summarizeConversation } from "../index"
 
 const messages = (): ApiMessage[] => [
 	{ role: "user", content: "Keep all decisions and pending work", ts: 1 },
@@ -49,7 +49,7 @@ it("sends all effective history once, without tools or previous-response chainin
 	const [, sent, meta] = vi.mocked(apiHandler.createMessage).mock.calls[0]
 	expect(JSON.stringify(sent)).toContain("important output")
 	expect(JSON.stringify(sent)).toContain("Keep all decisions")
-	expect(sent.at(-1)?.content).toBe("Custom instructions")
+	expect(sent.at(-1)?.content).toBe(`Custom instructions\n\n${CONDENSE_PRESERVE_LINE}`)
 	expect(meta).toEqual({ taskId: "task", mode: "code", store: false, suppressPreviousResponseId: true })
 	expect(metadata.tools).toHaveLength(1)
 	expect(input).toEqual(before)

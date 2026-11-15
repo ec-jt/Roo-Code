@@ -85,7 +85,10 @@ Before providing your final summary, wrap your analysis in <analysis> tags to or
 			6. All user messages: List ALL user messages that are not tool results. These are critical for understanding the users' feedback and changing intent.
 			7. Pending Tasks: Outline any pending tasks that you have explicitly been asked to work on.
 			8. Current Work: Describe in detail precisely what was being worked on immediately before this summary request, paying special attention to the most recent messages from both user and assistant. Include file names and code snippets where applicable.
-			9. Optional Next Step: List the next step that you will take that is related to the most recent work you were doing. IMPORTANT: ensure that this step is DIRECTLY in line with the user's most recent explicit requests, and the task you were working on immediately before this summary request. If your last task was concluded, then only list next steps if they are explicitly in line with the users request. Do not start on tangential requests or really old requests that were already completed without confirming with the user first.
+			9. Failed and Rejected Approaches: List approaches that were tried and abandoned or rejected, with the reason, so they are not retried.
+			10. Architecture IDs in Use: List the Q-, C-, R- and ADR- IDs cited or affected in this task, and any proposed architecture records.
+			11. Open Blockers: List unresolved blockers, including any recorded architecture drift.
+			12. Optional Next Step: List the next step that you will take that is related to the most recent work you were doing. IMPORTANT: ensure that this step is DIRECTLY in line with the user's most recent explicit requests, and the task you were working on immediately before this summary request. If your last task was concluded, then only list next steps if they are explicitly in line with the users request. Do not start on tangential requests or really old requests that were already completed without confirming with the user first.
 
 If there is a next step, include direct quotes from the most recent conversation showing exactly what task you were working on and where you left off. This should be verbatim to ensure there's no drift in task interpretation.
 
@@ -135,7 +138,19 @@ Here's an example of how your output should be structured:
 			8. Current Work:
 			   [Precise description of current work]
 			
-			9. Optional Next Step:
+			9. Failed and Rejected Approaches:
+			   - [Approach]: [Reason it was abandoned]
+			   - [...]
+			
+			10. Architecture IDs in Use:
+			   - [ID]: [How it applies]
+			   - [...]
+			
+			11. Open Blockers:
+			   - [Blocker]
+			   - [...]
+			
+			12. Optional Next Step:
 			   [Optional Next step to take]
 
 </summary>
