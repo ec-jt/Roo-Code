@@ -5,6 +5,7 @@ import { RooCodeEventName } from "@roo-code/types"
 import { ClineProvider } from "../core/webview/ClineProvider"
 import * as taskMessages from "../core/task-persistence/taskMessages"
 import * as persistence from "../core/task-persistence"
+import { renderArchitectureContext } from "../services/architecture-context/context"
 
 describe("ClineProvider.delegateParentAndOpenChild()", () => {
 	it("does not detach the parent or create a child after persistence retries fail", async () => {
@@ -272,6 +273,28 @@ describe("ClineProvider.delegateParentAndOpenChild()", () => {
 		expect(provider.activateProviderProfile).not.toHaveBeenCalled()
 		expect(provider.createTask.mock.calls[0][3].apiConfiguration).toEqual(parent.apiConfiguration)
 		expect(provider.createTask.mock.calls[0][3].apiConfiguration).not.toBe(parent.apiConfiguration)
+	})
+
+	it("appends cited architecture IDs that exist in the parent's architecture block", async () => {
+		const { parent, provider, request } = profileFixture("architect")
+		const block = renderArchitectureContext(
+			"Records\n- C-1 [accepted] Host\n- R-2 [proposed] Risk\n- Q-REL-1 [accepted] Goal",
+		)
+		;(parent as any).apiConversationHistory = [
+			{ role: "user", content: [{ type: "text", text: block }] },
+			{ role: "assistant", content: [{ type: "text", text: "This touches R-2 and Q-REL-1." }] },
+		]
+		await provider.delegateParentAndOpenChild({ ...request, message: "Implement it, respecting C-1 and C-99." })
+		const childMessage = provider.createTask.mock.calls[0][0] as string
+		const scopeLine = childMessage.split("\n").find((line) => line.startsWith("Architecture IDs in scope:"))
+		expect(scopeLine).toBe("Architecture IDs in scope: C-1, R-2, Q-REL-1")
+	})
+
+	it("adds no architecture line when the parent has no architecture block", async () => {
+		const { parent, provider, request } = profileFixture("architect")
+		;(parent as any).apiConversationHistory = [{ role: "assistant", content: [{ type: "text", text: "See C-1." }] }]
+		await provider.delegateParentAndOpenChild({ ...request, message: "Implement C-1." })
+		expect(provider.createTask.mock.calls[0][0]).not.toContain("Architecture IDs in scope")
 	})
 
 	it("records the new_task message timestamp against the created child", async () => {

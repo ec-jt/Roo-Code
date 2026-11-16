@@ -5,6 +5,7 @@ import type { Anthropic } from "@anthropic-ai/sdk"
 import type { ArchitectureContextMode } from "@roo-code/types"
 
 import type { Task } from "../../core/task/Task"
+import { extractCitedIds } from "../../shared/architecture-docs/parse"
 import {
 	buildArchitectureBody,
 	findArchitectureRoot,
@@ -39,6 +40,44 @@ export function appendArchitectureContext(
 ): Anthropic.Messages.ContentBlockParam[] {
 	const clean = content.filter((block) => block.type !== "text" || !isArchitectureContext(block.text))
 	return needsArchitectureContext(context, history) ? [...clean, { type: "text", text: context }] : clean
+}
+
+const MAX_DELEGATED_IDS = 30
+
+function textOf(content: Anthropic.Messages.MessageParam["content"]): string[] {
+	if (typeof content === "string") return [content]
+	return content.flatMap((block) => (block.type === "text" ? [block.text] : []))
+}
+
+/**
+ * IDs to pass to a subtask: IDs present in the parent's latest architecture block that the parent
+ * actually cited (in the delegation message, extra text such as the ledger, or its own assistant text).
+ * Returns [] when there is no block or nothing was cited.
+ */
+export function architectureIdsInScope(
+	history: Anthropic.Messages.MessageParam[],
+	delegationMessage: string,
+	extraText: string[] = [],
+): string[] {
+	let block: string | undefined
+	const cited: string[] = [delegationMessage, ...extraText]
+	for (let i = history.length - 1; i >= 0; i--) {
+		for (const text of textOf(history[i].content)) {
+			if (isArchitectureContext(text)) {
+				block ??= text
+			} else if (history[i].role === "assistant") {
+				cited.push(text)
+			}
+		}
+	}
+	if (!block) return []
+	const known = new Set(extractCitedIds(block))
+	const inScope: string[] = []
+	for (const id of extractCitedIds(cited.join("\n"))) {
+		if (known.has(id) && !inScope.includes(id)) inScope.push(id)
+		if (inScope.length >= MAX_DELEGATED_IDS) break
+	}
+	return inScope
 }
 
 async function notifyOnce(task: Task, notice: string) {

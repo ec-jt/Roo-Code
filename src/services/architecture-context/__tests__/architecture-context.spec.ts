@@ -16,6 +16,7 @@ import {
 import {
 	BOOTSTRAP_INSTRUCTION,
 	acceptancePolicyLine,
+	architectureIdsInScope,
 	appendArchitectureContext,
 	getArchitectureContext,
 	needsArchitectureContext,
@@ -255,5 +256,29 @@ describe("acceptancePolicyLine", () => {
 		expect(
 			acceptancePolicyLine({ architectureDecisionApproval: "agent", autoApprovalEnabled: true }, "t1"),
 		).toContain("Never reject, supersede, or weaken accepted items without asking the user")
+	})
+})
+
+describe("architectureIdsInScope", () => {
+	const block = renderArchitectureContext("- C-1 x\n- C-2 y\n- ADR-2026-01-01-condense z")
+	const history = [
+		{ role: "user" as const, content: [{ type: "text" as const, text: block }] },
+		{ role: "assistant" as const, content: "Considering ADR-2026-01-01-condense." },
+	]
+
+	it("returns only IDs that are both cited and present in the block, in citation order", () => {
+		expect(architectureIdsInScope(history, "Do C-2 and C-7.", ["ledger mentions C-1"])).toEqual([
+			"C-2",
+			"C-1",
+			"ADR-2026-01-01-condense",
+		])
+	})
+
+	it("returns nothing without an architecture block", () => {
+		expect(architectureIdsInScope([{ role: "assistant", content: "C-1" }], "C-1")).toEqual([])
+	})
+
+	it("ignores IDs that appear only inside the block", () => {
+		expect(architectureIdsInScope([history[0]], "no ids here")).toEqual([])
 	})
 })
