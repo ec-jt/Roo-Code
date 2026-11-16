@@ -678,6 +678,16 @@
 				"index": "Chỉ mục (ID và tiêu đề)",
 				"constraints": "Ràng buộc (chỉ mục và đầy đủ ràng buộc, mục tiêu chất lượng)",
 				"full": "Đầy đủ (thêm quyết định và rủi ro cho tệp đã đọc)"
+			},
+			"approval": {
+				"label": "Ai chấp nhận bản ghi kiến trúc",
+				"description": "Áp dụng cho tác vụ Kiến trúc sư. Tác tử cho phép Roo chấp nhận bản ghi và mục tiêu chất lượng khi tự động phê duyệt đang bật; đảo ngược một bản ghi đã chấp nhận luôn cần bạn.",
+				"user": "Bạn chấp nhận",
+				"agent": "Tác tử có thể chấp nhận (khi bật tự động phê duyệt)"
+			},
+			"bootstrap": {
+				"label": "Tạo tài liệu kiến trúc còn thiếu",
+				"description": "Khi tác vụ Kiến trúc sư bắt đầu trong không gian làm việc chưa có docs/architecture/, Roo khảo sát kho mã và tạo cấu trúc tối thiểu được đề xuất."
 			}
 		}
 	},

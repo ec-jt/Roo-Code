@@ -155,6 +155,8 @@ export const globalSettingsSchema = z.object({
 	allowOverflowTruncation: z.boolean().optional(),
 	pruneToolResultsOnOverflow: z.boolean().optional(),
 	architectureContextMode: architectureContextModeSchema.optional(),
+	architectureDecisionApproval: z.enum(["user", "agent"]).optional(),
+	architectureBootstrap: z.boolean().optional(),
 	/** @deprecated Retained for settings import compatibility; no proactive percentage trigger. */
 	autoCondenseContextPercent: z.number().optional(),
 

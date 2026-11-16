@@ -678,6 +678,16 @@
 				"index": "Dizin (ID'ler ve başlıklar)",
 				"constraints": "Kısıtlar (dizin artı tam kısıtlar ve kalite hedefleri)",
 				"full": "Tam (okunan dosyalar için karar ve riskleri ekler)"
+			},
+			"approval": {
+				"label": "Mimari kayıtları kim kabul eder",
+				"description": "Mimar görevleri için geçerlidir. Ajan seçeneği, otomatik onay açıkken Roo'nun kayıtları ve kalite hedeflerini kabul etmesine izin verir; kabul edilmiş bir kaydı geri almak her zaman sana bağlıdır.",
+				"user": "Sen kabul edersin",
+				"agent": "Ajan kabul edebilir (otomatik onayla)"
+			},
+			"bootstrap": {
+				"label": "Eksik mimari belgeleri oluştur",
+				"description": "docs/architecture/ olmayan bir çalışma alanında Mimar görevi başladığında Roo depoyu inceler ve önerilen asgari bir yapı oluşturur."
 			}
 		}
 	},

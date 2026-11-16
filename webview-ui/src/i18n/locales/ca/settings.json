@@ -678,6 +678,16 @@
 				"index": "Índex (ID i títols)",
 				"constraints": "Restriccions (índex més restriccions i objectius de qualitat complets)",
 				"full": "Complet (afegeix decisions i riscos dels fitxers llegits)"
+			},
+			"approval": {
+				"label": "Qui accepta els registres d'arquitectura",
+				"description": "S'aplica a les tasques d'Arquitecte. Agent permet que Roo accepti registres i objectius de qualitat quan l'aprovació automàtica està activada; revertir un registre acceptat sempre et necessita.",
+				"user": "Tu acceptes",
+				"agent": "L'agent pot acceptar (amb aprovació automàtica)"
+			},
+			"bootstrap": {
+				"label": "Crear documents d'arquitectura que falten",
+				"description": "Quan una tasca d'Arquitecte comença en un espai de treball sense docs/architecture/, Roo examina el repositori i crea una estructura mínima proposada."
 			}
 		}
 	},

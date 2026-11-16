@@ -678,6 +678,16 @@
 				"index": "Indeks (ID dan judul)",
 				"constraints": "Batasan (indeks plus batasan dan sasaran kualitas lengkap)",
 				"full": "Lengkap (tambah keputusan dan risiko untuk file yang dibaca)"
+			},
+			"approval": {
+				"label": "Siapa yang menerima catatan arsitektur",
+				"description": "Berlaku untuk tugas Arsitek. Agen mengizinkan Roo menerima catatan dan sasaran kualitas saat persetujuan otomatis aktif; membatalkan catatan yang sudah diterima selalu memerlukan kamu.",
+				"user": "Kamu yang menerima",
+				"agent": "Agen boleh menerima (dengan persetujuan otomatis)"
+			},
+			"bootstrap": {
+				"label": "Buat dokumen arsitektur yang belum ada",
+				"description": "Saat tugas Arsitek dimulai di workspace tanpa docs/architecture/, Roo meninjau repositori dan membuat struktur minimal yang diusulkan."
 			}
 		}
 	},

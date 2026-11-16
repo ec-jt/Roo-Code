@@ -678,6 +678,16 @@
 				"index": "Indice (ID e titoli)",
 				"constraints": "Vincoli (indice più vincoli e obiettivi di qualità completi)",
 				"full": "Completo (aggiunge decisioni e rischi dei file letti)"
+			},
+			"approval": {
+				"label": "Chi accetta i record di architettura",
+				"description": "Si applica alle attività Architetto. Agente consente a Roo di accettare record e obiettivi di qualità quando l'approvazione automatica è attiva; annullare un record accettato richiede sempre te.",
+				"user": "Accetti tu",
+				"agent": "L'agente può accettare (con approvazione automatica)"
+			},
+			"bootstrap": {
+				"label": "Crea i documenti di architettura mancanti",
+				"description": "Quando un'attività Architetto inizia in un workspace senza docs/architecture/, Roo esamina il repository e crea una struttura minima proposta."
 			}
 		}
 	},

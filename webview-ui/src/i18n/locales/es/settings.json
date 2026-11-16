@@ -678,6 +678,16 @@
 				"index": "Índice (ID y títulos)",
 				"constraints": "Restricciones (índice más restricciones y objetivos de calidad completos)",
 				"full": "Completo (añade decisiones y riesgos de los archivos leídos)"
+			},
+			"approval": {
+				"label": "Quién acepta los registros de arquitectura",
+				"description": "Se aplica a las tareas de Arquitecto. Agente permite que Roo acepte registros y objetivos de calidad cuando la aprobación automática está activa; revertir un registro aceptado siempre te necesita.",
+				"user": "Tú aceptas",
+				"agent": "El agente puede aceptar (con aprobación automática)"
+			},
+			"bootstrap": {
+				"label": "Crear documentos de arquitectura faltantes",
+				"description": "Cuando una tarea de Arquitecto empieza en un espacio de trabajo sin docs/architecture/, Roo revisa el repositorio y crea una estructura mínima propuesta."
 			}
 		}
 	},

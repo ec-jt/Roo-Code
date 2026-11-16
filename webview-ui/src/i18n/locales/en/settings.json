@@ -732,6 +732,16 @@
 				"index": "Index (IDs and titles)",
 				"constraints": "Constraints (index plus full constraints and quality goals)",
 				"full": "Full (adds decisions and risks for files read)"
+			},
+			"approval": {
+				"label": "Who accepts architecture records",
+				"description": "Applies to Architect tasks. Agent lets Roo accept records and quality goals when auto-approval is on; reversing an accepted record always needs you.",
+				"user": "You accept",
+				"agent": "Agent may accept (with auto-approval on)"
+			},
+			"bootstrap": {
+				"label": "Bootstrap missing architecture docs",
+				"description": "When an Architect task starts in a workspace without docs/architecture/, Roo surveys the repository and creates a minimal, proposed layout."
 			}
 		},
 		"description": "Control what information is included in the AI's context window, affecting token usage and response quality",

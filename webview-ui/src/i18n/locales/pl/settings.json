@@ -678,6 +678,16 @@
 				"index": "Indeks (ID i tytuły)",
 				"constraints": "Ograniczenia (indeks plus pełne ograniczenia i cele jakości)",
 				"full": "Pełny (dodaje decyzje i ryzyka dla czytanych plików)"
+			},
+			"approval": {
+				"label": "Kto akceptuje rekordy architektury",
+				"description": "Dotyczy zadań Architekta. Agent pozwala Roo akceptować rekordy i cele jakości, gdy automatyczne zatwierdzanie jest włączone; cofnięcie zaakceptowanego rekordu zawsze wymaga ciebie.",
+				"user": "Ty akceptujesz",
+				"agent": "Agent może akceptować (z automatycznym zatwierdzaniem)"
+			},
+			"bootstrap": {
+				"label": "Utwórz brakujące dokumenty architektury",
+				"description": "Gdy zadanie Architekta startuje w przestrzeni roboczej bez docs/architecture/, Roo przegląda repozytorium i tworzy minimalną, proponowaną strukturę."
 			}
 		}
 	},

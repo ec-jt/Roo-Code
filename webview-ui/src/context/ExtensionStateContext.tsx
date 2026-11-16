@@ -311,6 +311,8 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 		allowOverflowTruncation: true,
 		pruneToolResultsOnOverflow: true,
 		architectureContextMode: "off",
+		architectureDecisionApproval: "user",
+		architectureBootstrap: true,
 		autoCondenseContextPercent: 100,
 		profileThresholds: {},
 		codebaseIndexConfig: {

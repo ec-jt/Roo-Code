@@ -4193,7 +4193,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				? ""
 				: await getArchitectureContext(
 						this,
-						(await this.providerRef.deref()?.getState())?.architectureContextMode,
+						await this.providerRef.deref()?.getState(),
+						await this.getTaskMode(),
 					)
 			if (!this.modelOperationPrepared) await reserveContinuationTurn(this)
 			this.modelOperationRequestPinned = true

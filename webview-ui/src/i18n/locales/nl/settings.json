@@ -678,6 +678,16 @@
 				"index": "Index (ID's en titels)",
 				"constraints": "Beperkingen (index plus volledige beperkingen en kwaliteitsdoelen)",
 				"full": "Volledig (plus beslissingen en risico's voor gelezen bestanden)"
+			},
+			"approval": {
+				"label": "Wie architectuurrecords accepteert",
+				"description": "Geldt voor Architect-taken. Agent laat Roo records en kwaliteitsdoelen accepteren als automatische goedkeuring aanstaat; een geaccepteerd record terugdraaien heeft altijd jou nodig.",
+				"user": "Jij accepteert",
+				"agent": "Agent mag accepteren (met automatische goedkeuring)"
+			},
+			"bootstrap": {
+				"label": "Ontbrekende architectuurdocumenten aanmaken",
+				"description": "Als een Architect-taak start in een workspace zonder docs/architecture/, onderzoekt Roo de repository en maakt een minimale voorgestelde structuur."
 			}
 		}
 	},

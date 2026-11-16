@@ -28,6 +28,8 @@ type ContextManagementSettingsProps = HTMLAttributes<HTMLDivElement> & {
 	allowOverflowTruncation?: boolean
 	pruneToolResultsOnOverflow?: boolean
 	architectureContextMode?: ArchitectureContextMode
+	architectureDecisionApproval?: "user" | "agent"
+	architectureBootstrap?: boolean
 	autoCondenseContextPercent: number
 	listApiConfigMeta: any[]
 	maxOpenTabsContext: number
@@ -50,6 +52,8 @@ type ContextManagementSettingsProps = HTMLAttributes<HTMLDivElement> & {
 		| "allowOverflowTruncation"
 		| "pruneToolResultsOnOverflow"
 		| "architectureContextMode"
+		| "architectureDecisionApproval"
+		| "architectureBootstrap"
 		| "autoCondenseContextPercent"
 		| "maxOpenTabsContext"
 		| "maxWorkspaceFiles"
@@ -72,6 +76,8 @@ export const ContextManagementSettings = ({
 	allowOverflowTruncation,
 	pruneToolResultsOnOverflow,
 	architectureContextMode,
+	architectureDecisionApproval,
+	architectureBootstrap,
 	autoCondenseContextPercent: _legacyPercent,
 	profileThresholds: _legacyProfileThresholds,
 	listApiConfigMeta: _legacyProfiles,
@@ -537,6 +543,51 @@ export const ContextManagementSettings = ({
 				</SearchableSetting>
 				<p className="text-sm text-vscode-descriptionForeground">
 					{t("settings:contextManagement.architectureContext.description")}
+				</p>
+				<SearchableSetting
+					settingId="context-architecture-approval"
+					section="contextManagement"
+					label={t("settings:contextManagement.architectureContext.approval.label")}>
+					<span className="font-medium">
+						{t("settings:contextManagement.architectureContext.approval.label")}
+					</span>
+					<Select
+						value={architectureDecisionApproval ?? "user"}
+						disabled={(architectureContextMode ?? "off") === "off"}
+						onValueChange={(value) =>
+							setCachedStateField("architectureDecisionApproval", value as "user" | "agent")
+						}>
+						<SelectTrigger className="w-full mt-1" data-testid="architecture-approval-select">
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							{(["user", "agent"] as const).map((value) => (
+								<SelectItem key={value} value={value}>
+									{t(`settings:contextManagement.architectureContext.approval.${value}`)}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+				</SearchableSetting>
+				<p className="text-sm text-vscode-descriptionForeground">
+					{t("settings:contextManagement.architectureContext.approval.description")}
+				</p>
+				<SearchableSetting
+					settingId="context-architecture-bootstrap"
+					section="contextManagement"
+					label={t("settings:contextManagement.architectureContext.bootstrap.label")}>
+					<VSCodeCheckbox
+						checked={architectureBootstrap ?? true}
+						disabled={(architectureContextMode ?? "off") === "off"}
+						onChange={(e: any) => setCachedStateField("architectureBootstrap", e.target.checked)}
+						data-testid="architecture-bootstrap-checkbox">
+						<span className="font-medium">
+							{t("settings:contextManagement.architectureContext.bootstrap.label")}
+						</span>
+					</VSCodeCheckbox>
+				</SearchableSetting>
+				<p className="text-sm text-vscode-descriptionForeground">
+					{t("settings:contextManagement.architectureContext.bootstrap.description")}
 				</p>
 			</Section>
 		</div>

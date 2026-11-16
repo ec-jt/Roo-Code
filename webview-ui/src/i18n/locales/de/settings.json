@@ -678,6 +678,16 @@
 				"index": "Index (IDs und Titel)",
 				"constraints": "Einschränkungen (Index plus vollständige Einschränkungen und Qualitätsziele)",
 				"full": "Vollständig (plus Entscheidungen und Risiken für gelesene Dateien)"
+			},
+			"approval": {
+				"label": "Wer Architektureinträge akzeptiert",
+				"description": "Gilt für Architect-Aufgaben. Agent erlaubt Roo, Einträge und Qualitätsziele zu akzeptieren, wenn die automatische Genehmigung aktiv ist; das Zurücknehmen eines akzeptierten Eintrags braucht immer dich.",
+				"user": "Du akzeptierst",
+				"agent": "Agent darf akzeptieren (mit automatischer Genehmigung)"
+			},
+			"bootstrap": {
+				"label": "Fehlende Architekturdokumente anlegen",
+				"description": "Startet eine Architect-Aufgabe in einem Workspace ohne docs/architecture/, untersucht Roo das Repository und legt eine minimale, vorgeschlagene Struktur an."
 			}
 		}
 	},

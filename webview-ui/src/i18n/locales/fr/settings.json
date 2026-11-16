@@ -678,6 +678,16 @@
 				"index": "Index (ID et titres)",
 				"constraints": "Contraintes (index plus contraintes et objectifs qualité complets)",
 				"full": "Complet (ajoute décisions et risques des fichiers lus)"
+			},
+			"approval": {
+				"label": "Qui accepte les enregistrements d'architecture",
+				"description": "S'applique aux tâches Architecte. Agent permet à Roo d'accepter des enregistrements et des objectifs qualité lorsque l'approbation automatique est active ; revenir sur un enregistrement accepté nécessite toujours ton accord.",
+				"user": "Tu acceptes",
+				"agent": "L'agent peut accepter (avec approbation automatique)"
+			},
+			"bootstrap": {
+				"label": "Créer les documents d'architecture manquants",
+				"description": "Lorsqu'une tâche Architecte démarre dans un espace de travail sans docs/architecture/, Roo examine le dépôt et crée une structure minimale proposée."
 			}
 		}
 	},

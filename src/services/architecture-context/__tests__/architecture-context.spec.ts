@@ -13,7 +13,13 @@ import {
 	loadArchitectureRecords,
 	renderArchitectureContext,
 } from "../context"
-import { appendArchitectureContext, getArchitectureContext, needsArchitectureContext } from "../index"
+import {
+	BOOTSTRAP_INSTRUCTION,
+	acceptancePolicyLine,
+	appendArchitectureContext,
+	getArchitectureContext,
+	needsArchitectureContext,
+} from "../index"
 
 const files: Record<string, string> = {
 	"arc42.md": "# Index\n",
@@ -152,6 +158,7 @@ describe("getArchitectureContext", () => {
 	const task = (dir: string, filesRead: string[] = []) =>
 		({
 			cwd: dir,
+			taskId: "task-1",
 			say,
 			fileContextTracker: { getFilesReadByRoo: vi.fn(async () => filesRead.map((f) => path.join(dir, f))) },
 		}) as any
@@ -162,23 +169,27 @@ describe("getArchitectureContext", () => {
 	})
 
 	it("returns empty when off, untrusted, or without a layout", async () => {
-		expect(await getArchitectureContext(task(cwd), "off")).toBe("")
+		expect(await getArchitectureContext(task(cwd), { architectureContextMode: "off" })).toBe("")
 		expect(await getArchitectureContext(task(cwd), undefined)).toBe("")
 		;(vscode.workspace as any).isTrusted = false
-		expect(await getArchitectureContext(task(cwd), "index")).toBe("")
+		expect(await getArchitectureContext(task(cwd), { architectureContextMode: "index" })).toBe("")
 		;(vscode.workspace as any).isTrusted = true
-		expect(await getArchitectureContext(task(os.tmpdir()), "index")).toBe("")
+		expect(await getArchitectureContext(task(os.tmpdir()), { architectureContextMode: "index" })).toBe("")
 	})
 
 	it("returns a verifiable block, stable across files read in index mode", async () => {
-		const a = await getArchitectureContext(task(cwd), "index")
-		const b = await getArchitectureContext(task(cwd, ["src/core/condense/index.ts"]), "index")
+		const a = await getArchitectureContext(task(cwd), { architectureContextMode: "index" })
+		const b = await getArchitectureContext(task(cwd, ["src/core/condense/index.ts"]), {
+			architectureContextMode: "index",
+		})
 		expect(isArchitectureContext(a)).toBe(true)
 		expect(a).toBe(b)
 	})
 
 	it("uses workspace-relative files read in full mode", async () => {
-		const ctx = await getArchitectureContext(task(cwd, ["src/core/condense/index.ts"]), "full")
+		const ctx = await getArchitectureContext(task(cwd, ["src/core/condense/index.ts"]), {
+			architectureContextMode: "full",
+		})
 		expect(ctx).toContain("DECISION_BODY")
 	})
 
@@ -192,12 +203,57 @@ describe("getArchitectureContext", () => {
 		await fs.chmod(unreadable, 0o000)
 		try {
 			const t = task(broken)
-			expect(await getArchitectureContext(t, "index")).toBe("")
-			expect(await getArchitectureContext(t, "index")).toBe("")
+			expect(await getArchitectureContext(t, { architectureContextMode: "index" })).toBe("")
+			expect(await getArchitectureContext(t, { architectureContextMode: "index" })).toBe("")
 			expect(say).toHaveBeenCalledTimes(1)
 		} finally {
 			await fs.chmod(unreadable, 0o644)
 			await fs.rm(broken, { recursive: true, force: true })
 		}
+	})
+
+	it("adds the acceptance policy only for Architect tasks", async () => {
+		const settings = { architectureContextMode: "index" as const }
+		const code = await getArchitectureContext(task(cwd), settings, "code")
+		const architect = await getArchitectureContext(task(cwd), settings, "architect")
+		expect(code).not.toContain("Acceptance policy")
+		expect(architect).toContain("Acceptance policy: user")
+	})
+
+	it("returns a bootstrap block for Architect tasks without a layout, unless disabled", async () => {
+		const empty = await fs.mkdtemp(path.join(os.tmpdir(), "arch-empty-"))
+		try {
+			const on = await getArchitectureContext(task(empty), { architectureContextMode: "index" }, "architect")
+			expect(on).toContain(BOOTSTRAP_INSTRUCTION)
+			expect(isArchitectureContext(on)).toBe(true)
+			const off = await getArchitectureContext(
+				task(empty),
+				{ architectureContextMode: "index", architectureBootstrap: false },
+				"architect",
+			)
+			expect(off).toBe("")
+			expect(await getArchitectureContext(task(empty), { architectureContextMode: "index" }, "code")).toBe("")
+			expect(await getArchitectureContext(task(empty), { architectureContextMode: "off" }, "architect")).toBe("")
+		} finally {
+			await fs.rm(empty, { recursive: true, force: true })
+		}
+	})
+})
+
+describe("acceptancePolicyLine", () => {
+	it("allows agent acceptance only when auto-approval is on", () => {
+		expect(
+			acceptancePolicyLine({ architectureDecisionApproval: "agent", autoApprovalEnabled: true }, "t1"),
+		).toContain("Accepted-by: agent (task t1)")
+		expect(
+			acceptancePolicyLine({ architectureDecisionApproval: "agent", autoApprovalEnabled: false }, "t1"),
+		).toContain("Acceptance policy: user")
+		expect(acceptancePolicyLine({}, "t1")).toContain("Acceptance policy: user")
+	})
+
+	it("always reserves reversals for the user", () => {
+		expect(
+			acceptancePolicyLine({ architectureDecisionApproval: "agent", autoApprovalEnabled: true }, "t1"),
+		).toContain("Never reject, supersede, or weaken accepted items without asking the user")
 	})
 })

@@ -330,9 +330,10 @@ describe("ContextManagementSettings", () => {
 		expect(autoCondenseCheckbox).toBeInTheDocument()
 
 		expect(screen.queryByTestId("condense-threshold-slider")).not.toBeInTheDocument()
-		// The legacy per-profile threshold select is gone; only the architecture context select remains.
-		expect(screen.getAllByRole("combobox")).toHaveLength(1)
+		// The legacy per-profile threshold select is gone; only the architecture selects remain.
+		expect(screen.getAllByRole("combobox")).toHaveLength(2)
 		expect(screen.getByTestId("architecture-context-mode-select")).toBeInTheDocument()
+		expect(screen.getByTestId("architecture-approval-select")).toBeInTheDocument()
 		expect(screen.getByText("Compact on context overflow")).toBeInTheDocument()
 	})
 
@@ -382,6 +383,27 @@ describe("ContextManagementSettings", () => {
 		it("shows the architecture context mode select, defaulting to off", () => {
 			render(<ContextManagementSettings {...autoCondenseProps} architectureContextMode={undefined} />)
 			expect(screen.getByTestId("architecture-context-mode-select")).toBeInTheDocument()
+		})
+
+		it("disables architecture approval and bootstrap controls while architecture context is off", () => {
+			render(<ContextManagementSettings {...autoCondenseProps} architectureContextMode="off" />)
+			expect(screen.getByTestId("architecture-bootstrap-checkbox")).toHaveAttribute("disabled")
+		})
+
+		it("toggles architecture bootstrap when architecture context is on", () => {
+			const setCachedStateField = vitest.fn()
+			render(
+				<ContextManagementSettings
+					{...autoCondenseProps}
+					architectureContextMode="index"
+					architectureBootstrap={true}
+					setCachedStateField={setCachedStateField}
+				/>,
+			)
+			const checkbox = screen.getByTestId("architecture-bootstrap-checkbox")
+			expect(checkbox).not.toHaveAttribute("disabled")
+			fireEvent.click(checkbox)
+			expect(setCachedStateField).toHaveBeenCalledWith("architectureBootstrap", false)
 		})
 
 		it("disables tool-result pruning in manual-only mode", () => {

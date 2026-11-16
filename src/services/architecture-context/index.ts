@@ -47,16 +47,49 @@ async function notifyOnce(task: Task, notice: string) {
 	await task.say("text", notice)
 }
 
+export interface ArchitectureContextSettings {
+	architectureContextMode?: ArchitectureContextMode
+	architectureDecisionApproval?: "user" | "agent"
+	architectureBootstrap?: boolean
+	autoApprovalEnabled?: boolean
+}
+
+export const BOOTSTRAP_INSTRUCTION =
+	"No docs/architecture/ layout exists in this workspace. Before planning, survey the repository (manifests, entry points, directory structure, existing docs, AGENTS.md and rules files, tests, CI, recent history). Then create docs/architecture/arc42.md (an index of the 12 arc42 sections, each linking its owner document or marked not applicable), constraints.md, and only the records this plan needs. Record format: one `### <ID>: Title` heading per constraint (C-<n>), quality goal (Q-<AREA>-<n>) or risk (R-<n>); decisions as decisions/<status>/ADR-YYYY-MM-DD-<topic>.md with a `# <ID>: Title` heading. Each record has header lines `Status: proposed|accepted|rejected|superseded`, `Last-verified: YYYY-MM-DD`, and optional `Paths:`, `Source: inferred|reconstructed`; decisions have sections Problem, Proposal (Decision once accepted), Alternatives considered, Acceptance criteria and Risks (Consequences once accepted). Mark inferred content `Source: inferred` and leave it proposed. Report the created files to the user."
+
+/** Fixed per task, so it never changes the block digest within a task. */
+export function acceptancePolicyLine(settings: ArchitectureContextSettings, taskId: string): string {
+	const agent = settings.architectureDecisionApproval === "agent" && settings.autoApprovalEnabled === true
+	return agent
+		? `Acceptance policy: agent. You may accept records and quality goals: move them to accepted and write \`Accepted-by: agent (task ${taskId})\`, and state each acceptance in chat. Never reject, supersede, or weaken accepted items without asking the user.`
+		: "Acceptance policy: user. Leave new and changed records proposed and ask the user to accept them."
+}
+
 /**
  * Returns the architecture context block for the task, or "" when the mode is off, the workspace is
  * untrusted, there is no docs/architecture/arc42.md, or reading fails (one notice per task).
+ * Architect tasks also get the acceptance policy line, and a bootstrap instruction when the layout
+ * is missing and bootstrap is enabled.
  */
-export async function getArchitectureContext(task: Task, mode: ArchitectureContextMode | undefined): Promise<string> {
+export async function getArchitectureContext(
+	task: Task,
+	settings: ArchitectureContextSettings | undefined,
+	taskMode?: string,
+): Promise<string> {
+	const mode = settings?.architectureContextMode
 	if (!mode || mode === "off") return ""
 	if (vscode.workspace.isTrusted !== true) return ""
+	const isArchitect = taskMode === "architect"
 	try {
 		const root = await findArchitectureRoot(task.cwd)
-		if (!root) return ""
+		if (!root) {
+			if (isArchitect && settings?.architectureBootstrap !== false) {
+				return renderArchitectureContext(
+					`${BOOTSTRAP_INSTRUCTION}\n${acceptancePolicyLine(settings!, task.taskId)}`,
+				)
+			}
+			return ""
+		}
 		const records = await loadArchitectureRecords(root)
 		let filesRead: string[] = []
 		if (mode === "full") {
@@ -65,7 +98,10 @@ export async function getArchitectureContext(task: Task, mode: ArchitectureConte
 				(path.isAbsolute(file) ? path.relative(task.cwd, file) : file).split(path.sep).join("/"),
 			)
 		}
-		return renderArchitectureContext(buildArchitectureBody(records, { mode, filesRead }))
+		const body = buildArchitectureBody(records, { mode, filesRead })
+		return renderArchitectureContext(
+			isArchitect ? `${body}\n${acceptancePolicyLine(settings!, task.taskId)}` : body,
+		)
 	} catch {
 		await notifyOnce(task, "Architecture context unavailable. Check docs/architecture/ for unreadable files.")
 		return ""
