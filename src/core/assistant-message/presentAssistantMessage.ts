@@ -51,6 +51,7 @@ import { codebaseSearchTool } from "../tools/CodebaseSearchTool"
 
 import { formatResponse } from "../prompts/responses"
 import { sanitizeToolUseId } from "../../utils/tool-id"
+import { applyProfileToToolInputs } from "../task/cordis-profile"
 
 /**
  * Processes and presents assistant message content to the user interface.
@@ -648,8 +649,14 @@ export async function presentAssistantMessage(cline: Task) {
 						const includedTools = rawIncludedTools?.map((tool) => resolveToolAlias(tool))
 
 						try {
+							const profileInputs = applyProfileToToolInputs(
+								cline.profile,
+								mode ?? defaultModeSlug,
+								customModes,
+								disabledTools,
+							)
 							const toolRequirements =
-								disabledTools?.reduce(
+								profileInputs.disabledTools?.reduce(
 									(acc: Record<string, boolean>, tool: string) => {
 										acc[tool] = false
 										const resolvedToolName = resolveToolAlias(tool)
@@ -662,7 +669,7 @@ export async function presentAssistantMessage(cline: Task) {
 							validateToolUse(
 								block.name as ToolName,
 								mode ?? defaultModeSlug,
-								customModes ?? [],
+								profileInputs.customModes ?? [],
 								toolRequirements,
 								block.params,
 								stateExperiments,

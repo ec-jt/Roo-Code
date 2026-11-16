@@ -162,7 +162,8 @@
 		"organization_share_link_copied": "Enllaç de compartició d'organització copiat al porta-retalls!",
 		"public_share_link_copied": "Enllaç de compartició pública copiat al porta-retalls!",
 		"mode_exported": "Mode '{{mode}}' exportat correctament",
-		"mode_imported": "Mode importat correctament"
+		"mode_imported": "Mode importat correctament",
+		"cordis_mode_locked": "Aquesta tasca Cordis manté el mode amb què va començar. Inicia una tasca nova per fer servir un altre mode."
 	},
 	"answers": {
 		"yes": "Sí",

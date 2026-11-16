@@ -163,7 +163,8 @@
 		"organization_share_link_copied": "组织分享链接已复制到剪贴板！",
 		"public_share_link_copied": "公开分享链接已复制到剪贴板！",
 		"mode_exported": "模式 '{{mode}}' 已成功导出",
-		"mode_imported": "模式已成功导入"
+		"mode_imported": "模式已成功导入",
+		"cordis_mode_locked": "此 Cordis 任务会保持开始时的模式。要使用其他模式，请新建任务。"
 	},
 	"answers": {
 		"yes": "是",

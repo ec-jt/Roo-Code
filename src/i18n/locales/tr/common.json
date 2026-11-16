@@ -158,7 +158,8 @@
 		"organization_share_link_copied": "Kuruluş paylaşım bağlantısı panoya kopyalandı!",
 		"public_share_link_copied": "Herkese açık paylaşım bağlantısı panoya kopyalandı!",
 		"mode_exported": "'{{mode}}' modu başarıyla dışa aktarıldı",
-		"mode_imported": "Mod başarıyla içe aktarıldı"
+		"mode_imported": "Mod başarıyla içe aktarıldı",
+		"cordis_mode_locked": "Bu Cordis görevi başladığı modu korur. Başka bir mod kullanmak için yeni bir görev başlat."
 	},
 	"answers": {
 		"yes": "Evet",

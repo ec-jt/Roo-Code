@@ -14,6 +14,7 @@ import { validateScreenshotPath } from "../../services/browser/screenshotPath"
 import { validateWebUrl } from "../../services/browser/validateWebUrl"
 import { fileExistsAtPath } from "../../utils/fs"
 import { browserControlTool } from "./browserControlTool"
+import { applyProfileToToolInputs } from "../task/cordis-profile"
 
 export async function browserActionTool(
 	cline: Task,
@@ -36,11 +37,17 @@ export async function browserActionTool(
 		}
 		const state = await cline.providerRef.deref()?.getState()
 		if (!state) throw new Error("Cannot validate screenshot write permissions: task settings are unavailable.")
+		const profileInputs = applyProfileToToolInputs(
+			cline.profile,
+			state.mode,
+			state.customModes,
+			state.disabledTools,
+		)
 		validateToolUse(
 			"write_to_file",
 			state.mode ?? defaultModeSlug,
-			state.customModes ?? [],
-			Object.fromEntries((state.disabledTools ?? []).map((tool) => [tool, false])),
+			profileInputs.customModes ?? [],
+			Object.fromEntries((profileInputs.disabledTools ?? []).map((tool) => [tool, false])),
 			{ path: relativePath, content: "Browser screenshot" },
 		)
 	}

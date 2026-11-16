@@ -158,7 +158,8 @@
 		"organization_share_link_copied": "Organisations-Freigabelink in die Zwischenablage kopiert!",
 		"public_share_link_copied": "Öffentlicher Freigabelink in die Zwischenablage kopiert!",
 		"mode_exported": "Modus '{{mode}}' erfolgreich exportiert",
-		"mode_imported": "Modus erfolgreich importiert"
+		"mode_imported": "Modus erfolgreich importiert",
+		"cordis_mode_locked": "Diese Cordis-Aufgabe behält den Modus, mit dem sie gestartet wurde. Starte eine neue Aufgabe, um einen anderen Modus zu verwenden."
 	},
 	"answers": {
 		"yes": "Ja",

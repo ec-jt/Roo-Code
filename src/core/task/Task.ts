@@ -1,5 +1,6 @@
 import { pinTaskStateRecall, assertTaskStateDispatch, taskStateTransaction } from "../../services/task-state/taskState"
 import { appendTaskStateRecall, withoutTaskStateRecall } from "../../services/task-state/history"
+import { applyProfileToToolInputs, resolveTaskProfile } from "./cordis-profile"
 import {
 	appendArchitectureContext,
 	getArchitectureContext,
@@ -78,6 +79,8 @@ import {
 	MIN_CHECKPOINT_TIMEOUT_SECONDS,
 	MAX_MCP_TOOLS_THRESHOLD,
 	countEnabledMcpTools,
+	type ModeConfig,
+	type TaskProfile,
 } from "@roo-code/types"
 
 // api
@@ -311,6 +314,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 	readonly rootTask: Task | undefined = undefined
 	readonly parentTask: Task | undefined = undefined
+	/** Fixed at creation: "cordis" when cordisRuntimePreview was on, inherited by children, restored on resume. */
+	readonly profile: TaskProfile
 	readonly taskNumber: number
 	readonly workspacePath: string
 
@@ -1128,6 +1133,13 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				rootTask?.taskId ??
 				(parentTask?.parentTaskId ? undefined : parentTask?.taskId))
 		this.parentTaskId = historyItem ? historyItem.parentTaskId : parentTask?.taskId
+		this.profile = resolveTaskProfile({
+			stored: historyItem ? (historyItem.profile ?? "modes") : undefined,
+			parent: parentTask?.profile,
+			experiments: provider.contextProxy?.getValue
+				? provider.contextProxy.getValue("experiments")
+				: experimentsConfig,
+		})
 		this.childTaskId = undefined
 
 		this.metadata = {
@@ -2275,6 +2287,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				globalStoragePath: this.globalStoragePath,
 				workspace: this.cwd,
 				mode: this._taskMode || defaultModeSlug, // Use the task's own mode, not the current provider mode.
+				profile: this.profile,
 				apiConfigName: this._taskApiConfigName, // Use the task's own provider profile, not the current provider profile.
 				initialStatus: this.initialStatus,
 			})
@@ -2928,11 +2941,10 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				provider,
 				cwd: this.cwd,
 				mode: state.mode,
-				customModes: state.customModes,
+				...this.profileToolInputs(state.mode, state.customModes, state.disabledTools),
 				experiments: state.experiments,
 				apiConfiguration: state.apiConfiguration,
 				browserToolEnabled: state.browserToolEnabled ?? true,
-				disabledTools: state.disabledTools,
 				modelInfo: model.info,
 				includeAllToolsWithRestrictions: false,
 			})
@@ -3174,11 +3186,10 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				provider,
 				cwd: this.cwd,
 				mode,
-				customModes: state?.customModes,
+				...this.profileToolInputs(mode, state?.customModes, state?.disabledTools),
 				experiments: state?.experiments,
 				apiConfiguration,
 				browserToolEnabled: state?.browserToolEnabled ?? true,
-				disabledTools: state?.disabledTools,
 				modelInfo,
 				includeAllToolsWithRestrictions: false,
 			})
@@ -5457,6 +5468,15 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		return false
 	}
 
+	/** Tool-filtering inputs adjusted for the task profile (Cordis: all groups, no switch_mode). */
+	public profileToolInputs(
+		mode: string | undefined,
+		customModes: ModeConfig[] | undefined,
+		disabledTools: string[] | undefined,
+	): { customModes: ModeConfig[] | undefined; disabledTools: string[] | undefined } {
+		return applyProfileToToolInputs(this.profile, mode ?? defaultModeSlug, customModes, disabledTools)
+	}
+
 	private async getSystemPrompt(): Promise<string> {
 		if (this.modelOperationSystemPrompt !== undefined) return this.modelOperationSystemPrompt
 		const { mcpEnabled } = (await this.providerRef.deref()?.getState()) ?? {}
@@ -5992,11 +6012,10 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				provider,
 				cwd: this.cwd,
 				mode,
-				customModes: state?.customModes,
+				...this.profileToolInputs(mode, state?.customModes, state?.disabledTools),
 				experiments: state?.experiments,
 				apiConfiguration,
 				browserToolEnabled: state?.browserToolEnabled ?? true,
-				disabledTools: state?.disabledTools,
 				modelInfo,
 				includeAllToolsWithRestrictions: supportsAllowedFunctionNames,
 			})

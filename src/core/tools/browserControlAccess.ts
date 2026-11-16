@@ -2,6 +2,7 @@ import type { Task } from "../task/Task"
 import type { ToolUse } from "../../shared/tools"
 import { validateToolUse } from "./validateToolUse"
 import { defaultModeSlug } from "../../shared/modes"
+import { applyProfileToToolInputs } from "../task/cordis-profile"
 
 const busy = new WeakSet<Task>()
 export function acquireBrowserControl(task: Task): () => void {
@@ -44,11 +45,12 @@ export function browserControlFence(task: Task, idle = false) {
 		// The browser tool's existing auto-approval covers rich controls too.
 		// It never bypasses the fences above or the capability/session checks below.
 		browserAutoApproved = state.autoApprovalEnabled === true && state.alwaysAllowBrowser === true
+		const profileInputs = applyProfileToToolInputs(task.profile, state.mode, state.customModes, state.disabledTools)
 		validateToolUse(
 			"browser_action",
 			state.mode ?? defaultModeSlug,
-			state.customModes ?? [],
-			Object.fromEntries((state.disabledTools ?? []).map((tool) => [tool, false])),
+			profileInputs.customModes ?? [],
+			Object.fromEntries((profileInputs.disabledTools ?? []).map((tool) => [tool, false])),
 		)
 		if (block) {
 			const decision = await task.checkToolInvocation(block)

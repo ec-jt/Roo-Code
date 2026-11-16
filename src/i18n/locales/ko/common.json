@@ -158,7 +158,8 @@
 		"organization_share_link_copied": "조직 공유 링크가 클립보드에 복사되었습니다!",
 		"public_share_link_copied": "공개 공유 링크가 클립보드에 복사되었습니다!",
 		"mode_exported": "'{{mode}}' 모드가 성공적으로 내보내졌습니다",
-		"mode_imported": "모드를 성공적으로 가져왔습니다"
+		"mode_imported": "모드를 성공적으로 가져왔습니다",
+		"cordis_mode_locked": "이 Cordis 작업은 시작할 때의 모드를 유지합니다. 다른 모드를 사용하려면 새 작업을 시작하세요."
 	},
 	"answers": {
 		"yes": "예",

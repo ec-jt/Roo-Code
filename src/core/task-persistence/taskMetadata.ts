@@ -23,6 +23,8 @@ export type TaskMetadataOptions = {
 	globalStoragePath: string
 	workspace: string
 	mode?: string
+	/** Task profile fixed at creation (persisted only for cordis). */
+	profile?: "modes" | "cordis"
 	/** Provider profile name for the task (sticky profile feature) */
 	apiConfigName?: string
 	/** Initial status for the task (e.g., "active" for child tasks) */
@@ -39,6 +41,7 @@ export async function taskMetadata({
 	globalStoragePath,
 	workspace,
 	mode,
+	profile,
 	apiConfigName,
 	initialStatus,
 }: TaskMetadataOptions) {
@@ -114,6 +117,7 @@ export async function taskMetadata({
 		size: taskDirSize,
 		workspace,
 		mode,
+		...(profile === "cordis" ? { profile } : {}),
 		...(typeof apiConfigName === "string" && apiConfigName.length > 0 ? { apiConfigName } : {}),
 		...(initialStatus && { status: initialStatus }),
 	}

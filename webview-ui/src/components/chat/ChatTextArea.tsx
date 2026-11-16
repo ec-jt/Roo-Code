@@ -101,6 +101,7 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 			enterBehavior,
 			lockApiConfigAcrossModes,
 			modelOperation,
+			currentTaskItem,
 		} = useExtensionState()
 
 		// Find the ID and display text for the currently selected API configuration.
@@ -1321,6 +1322,7 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 					<div className="flex items-center gap-2 min-w-0 overflow-clip flex-1">
 						<ModeSelector
 							value={mode}
+							disabled={currentTaskItem?.profile === "cordis"}
 							title={t("chat:selectMode")}
 							onChange={handleModeChange}
 							triggerClassName="text-ellipsis overflow-hidden flex-shrink-0"

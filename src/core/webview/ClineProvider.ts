@@ -2096,6 +2096,12 @@ export class ClineProvider
 	public async handleModeSwitch(newMode: Mode) {
 		const task = this.getCurrentTask()
 		if ((task ? task.taskMode : this.getGlobalState("mode")) === newMode) return
+		// Cordis tasks keep the mode chosen at start once they have made a request.
+		if (task?.profile === "cordis" && (task.apiConversationHistory?.length ?? 0) > 0) {
+			void vscode.window.showInformationMessage(t("common:info.cordis_mode_locked"))
+			await this.postStateToWebview()
+			return
+		}
 		this.delegationRevision++
 
 		if (task) {

@@ -158,7 +158,8 @@
 		"organization_share_link_copied": "Link udostępniania organizacji skopiowany do schowka!",
 		"public_share_link_copied": "Publiczny link udostępniania skopiowany do schowka!",
 		"mode_exported": "Tryb '{{mode}}' pomyślnie wyeksportowany",
-		"mode_imported": "Tryb pomyślnie zaimportowany"
+		"mode_imported": "Tryb pomyślnie zaimportowany",
+		"cordis_mode_locked": "To zadanie Cordis zachowuje tryb, w którym się rozpoczęło. Rozpocznij nowe zadanie, aby użyć innego trybu."
 	},
 	"answers": {
 		"yes": "Tak",

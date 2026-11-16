@@ -312,6 +312,26 @@ describe("ClineProvider - Sticky Mode", () => {
 			)
 		})
 
+		it("keeps the mode of a Cordis task after its first request", async () => {
+			const mockTask = {
+				taskId: "cordis-task-id",
+				taskMode: "code",
+				profile: "cordis",
+				emit: vi.fn(),
+				saveClineMessages: vi.fn(),
+				clineMessages: [],
+				apiConversationHistory: [{ role: "user", content: "hi" }],
+				updateApiConfiguration: vi.fn(),
+			}
+			await provider.addClineToStack(mockTask as any)
+			vi.mocked(mockContext.globalState.update).mockClear()
+
+			await provider.handleModeSwitch("architect")
+
+			expect(mockTask.taskMode).toBe("code")
+			expect(mockContext.globalState.update).not.toHaveBeenCalledWith("mode", "architect")
+		})
+
 		it("should update task's taskMode property when switching modes", async () => {
 			// Create a mock task with initial mode
 			const mockTask = {

@@ -19,6 +19,8 @@ export const historyItemSchema = z.object({
 	size: z.number().optional(),
 	workspace: z.string().optional(),
 	mode: z.string().optional(),
+	/** Task profile fixed at creation. Missing means "modes". */
+	profile: z.enum(["modes", "cordis"]).optional(),
 	apiConfigName: z.string().optional(), // Provider profile name for sticky profile feature
 	status: z.enum(["active", "completed", "delegated"]).optional(),
 	delegatedToId: z.string().optional(), // Last child this parent delegated to
@@ -32,3 +34,6 @@ export const historyItemSchema = z.object({
 })
 
 export type HistoryItem = z.infer<typeof historyItemSchema>
+
+export const taskProfiles = ["modes", "cordis"] as const
+export type TaskProfile = (typeof taskProfiles)[number]

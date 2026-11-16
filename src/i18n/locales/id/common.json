@@ -158,7 +158,8 @@
 		"organization_share_link_copied": "Tautan berbagi organisasi disalin ke clipboard!",
 		"public_share_link_copied": "Tautan berbagi publik disalin ke clipboard!",
 		"mode_exported": "Mode '{{mode}}' berhasil diekspor",
-		"mode_imported": "Mode berhasil diimpor"
+		"mode_imported": "Mode berhasil diimpor",
+		"cordis_mode_locked": "Tugas Cordis ini tetap memakai mode awalnya. Mulai tugas baru untuk memakai mode lain."
 	},
 	"answers": {
 		"yes": "Ya",

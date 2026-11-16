@@ -158,7 +158,8 @@
 		"organization_share_link_copied": "Lien de partage d'organisation copié dans le presse-papiers !",
 		"public_share_link_copied": "Lien de partage public copié dans le presse-papiers !",
 		"mode_exported": "Mode '{{mode}}' exporté avec succès",
-		"mode_imported": "Mode importé avec succès"
+		"mode_imported": "Mode importé avec succès",
+		"cordis_mode_locked": "Cette tâche Cordis conserve le mode avec lequel elle a démarré. Lance une nouvelle tâche pour utiliser un autre mode."
 	},
 	"answers": {
 		"yes": "Oui",
