@@ -91,6 +91,7 @@ export const toolParamNames = [
 	// read_file legacy format parameter (backward compatibility)
 	"files",
 	"line_ranges",
+	"plan", // exit_plan parameter
 ] as const
 
 export type ToolParamName = (typeof toolParamNames)[number]
@@ -142,6 +143,7 @@ export type NativeToolArgs = {
 	skill: { skill: string; args?: string }
 	search_files: { path: string; regex: string; file_pattern?: string | null }
 	switch_mode: { mode_slug: string; reason: string }
+	exit_plan: { plan: string }
 	update_todo_list: { todos: string }
 	use_mcp_tool: { server_name: string; tool_name: string; arguments?: Record<string, unknown> }
 	write_to_file: { path: string; content: string }
@@ -269,6 +271,11 @@ export interface SwitchModeToolUse extends ToolUse<"switch_mode"> {
 	params: Partial<Pick<Record<ToolParamName, string>, "mode_slug" | "reason">>
 }
 
+export interface ExitPlanToolUse extends ToolUse<"exit_plan"> {
+	name: "exit_plan"
+	params: Partial<Pick<Record<ToolParamName, string>, "plan">>
+}
+
 export interface NewTaskToolUse extends ToolUse<"new_task"> {
 	name: "new_task"
 	params: Partial<Pick<Record<ToolParamName, string>, "mode" | "message" | "todos" | "reason">>
@@ -331,6 +338,7 @@ export const TOOL_DISPLAY_NAMES: Record<ToolName, string> = {
 	ask_followup_question: "ask questions",
 	attempt_completion: "complete tasks",
 	switch_mode: "switch modes",
+	exit_plan: "submit plan for review",
 	new_task: "create new task",
 	codebase_search: "codebase search",
 	update_todo_list: "update todo list",
@@ -384,6 +392,7 @@ export const ALWAYS_AVAILABLE_TOOLS: ToolName[] = [
 	"ask_followup_question",
 	"attempt_completion",
 	"switch_mode",
+	"exit_plan",
 	"new_task",
 	"update_todo_list",
 	"run_slash_command",

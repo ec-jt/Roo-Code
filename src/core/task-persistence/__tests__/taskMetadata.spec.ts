@@ -51,3 +51,21 @@ describe("taskMetadata indexed totals", () => {
 		expect(result.historyItem).toMatchObject({ tokensIn: 0, tokensOut: 0, totalCost: 0 })
 	})
 })
+
+describe("taskMetadata plan overlay", () => {
+	const messages: ClineMessage[] = [{ type: "say", say: "text", text: "Task", ts: 1 }]
+	const options = { taskId: "task", taskNumber: 1, messages, globalStoragePath: "/test", workspace: "/workspace" }
+
+	it("writes planOverlay only when it is on for a cordis task", async () => {
+		const on = await taskMetadata({ ...options, profile: "cordis", planOverlay: true })
+		expect(on.historyItem.planOverlay).toBe(true)
+		expect(on.historyItem.profile).toBe("cordis")
+
+		const off = await taskMetadata({ ...options, profile: "cordis", planOverlay: false })
+		expect(off.historyItem.planOverlay).toBeUndefined()
+
+		const modes = await taskMetadata({ ...options, profile: "modes", planOverlay: true })
+		expect(modes.historyItem.planOverlay).toBeUndefined()
+		expect("planOverlay" in modes.historyItem).toBe(false)
+	})
+})

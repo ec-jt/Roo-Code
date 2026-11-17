@@ -100,4 +100,24 @@ describe("alwaysAllowAll", () => {
 		})
 		expect(result.decision).toBe("timeout")
 	})
+
+	it("never auto-approves plan_review, including under alwaysAllowAll", async () => {
+		const states = [
+			{ ...baseState, alwaysAllowAll: true as const },
+			{
+				...baseState,
+				alwaysAllowAll: true as const,
+				alwaysAllowReadOnly: true as const,
+				alwaysAllowWrite: true as const,
+				alwaysAllowModeSwitch: true as const,
+				alwaysAllowSubtasks: true as const,
+				alwaysAllowFollowupQuestions: true as const,
+				followupAutoApproveTimeoutMs: 1,
+			},
+			{ ...baseState, autoApprovalEnabled: false },
+		]
+		for (const state of states) {
+			expect(await checkAutoApproval({ state, ask: "plan_review", text: "# Plan" })).toEqual({ decision: "ask" })
+		}
+	})
 })

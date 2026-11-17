@@ -24,6 +24,7 @@ import {
 	addCustomInstructions,
 	markdownFormattingSection,
 	getSkillsSection,
+	getCordisSection,
 } from "./sections"
 
 // Helper function to get prompt component, filtering out empty objects
@@ -80,6 +81,9 @@ async function generatePrompt(
 		getSkillsSection(skillsManager, mode as string),
 	])
 
+	// Cordis section: empty for modes tasks, so their prompt stays byte-identical.
+	const cordisSection = getCordisSection(settings?.profile, settings?.planOverlay)
+
 	// Tools catalog is not included in the system prompt.
 	const toolsCatalog = ""
 
@@ -109,7 +113,7 @@ ${await addCustomInstructions(baseInstructions, globalCustomInstructions || "", 
 	settings,
 })}
 
-Task delegation policy takes precedence over mode instructions encouraging delegation: ${delegationContext(settings?.delegationDepth, settings?.nestedSubtaskAutoApprovalEnabled)}`
+${cordisSection ? `${cordisSection}\n\n` : ""}Task delegation policy takes precedence over mode instructions encouraging delegation: ${delegationContext(settings?.delegationDepth, settings?.nestedSubtaskAutoApprovalEnabled)}`
 
 	return basePrompt
 }

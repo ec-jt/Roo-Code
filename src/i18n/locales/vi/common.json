@@ -159,7 +159,8 @@
 		"public_share_link_copied": "Liên kết chia sẻ công khai đã được sao chép vào clipboard!",
 		"mode_exported": "Chế độ '{{mode}}' đã được xuất thành công",
 		"mode_imported": "Chế độ đã được nhập thành công",
-		"cordis_mode_locked": "Tác vụ Cordis này giữ nguyên chế độ lúc bắt đầu. Hãy bắt đầu tác vụ mới để dùng chế độ khác."
+		"cordis_mode_locked": "Tác vụ Cordis này giữ nguyên chế độ lúc bắt đầu. Hãy bắt đầu tác vụ mới để dùng chế độ khác.",
+		"plan_overlay_cordis_only": "Lớp lập kế hoạch có sẵn trong các tác vụ xem trước Cordis."
 	},
 	"answers": {
 		"yes": "Có",

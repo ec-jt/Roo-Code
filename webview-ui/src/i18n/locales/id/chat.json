@@ -498,5 +498,14 @@
 		"message": "This provider is no longer supported. Please select a different provider in your API profile settings.",
 		"openSettings": "Buka Pengaturan",
 		"rooMessage": "The Roo Code Router is no longer available. It was a hosted service that has been discontinued."
+	},
+	"planReview": {
+		"title": "Rencana untuk ditinjau",
+		"approve": "Setujui rencana",
+		"keepPlanning": "Lanjutkan perencanaan"
+	},
+	"planOverlay": {
+		"badge": "Rencana",
+		"tooltip": "Mode rencana aktif: Roo menjelajah dan merancang sebelum membuat perubahan. Ketik /plan off untuk keluar dari mode rencana."
 	}
 }

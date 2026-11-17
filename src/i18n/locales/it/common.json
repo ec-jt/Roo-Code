@@ -159,7 +159,8 @@
 		"public_share_link_copied": "Link di condivisione pubblica copiato negli appunti!",
 		"mode_exported": "Modalità '{{mode}}' esportata con successo",
 		"mode_imported": "Modalità importata con successo",
-		"cordis_mode_locked": "Questa attività Cordis mantiene la modalità con cui è iniziata. Avvia una nuova attività per usare un'altra modalità."
+		"cordis_mode_locked": "Questa attività Cordis mantiene la modalità con cui è iniziata. Avvia una nuova attività per usare un'altra modalità.",
+		"plan_overlay_cordis_only": "L'overlay di pianificazione è disponibile nelle attività di anteprima Cordis."
 	},
 	"answers": {
 		"yes": "Sì",

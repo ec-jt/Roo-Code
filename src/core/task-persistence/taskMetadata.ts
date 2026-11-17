@@ -25,6 +25,8 @@ export type TaskMetadataOptions = {
 	mode?: string
 	/** Task profile fixed at creation (persisted only for cordis). */
 	profile?: "modes" | "cordis"
+	/** Plan overlay (persisted only when on for a cordis task). */
+	planOverlay?: boolean
 	/** Provider profile name for the task (sticky profile feature) */
 	apiConfigName?: string
 	/** Initial status for the task (e.g., "active" for child tasks) */
@@ -42,6 +44,7 @@ export async function taskMetadata({
 	workspace,
 	mode,
 	profile,
+	planOverlay,
 	apiConfigName,
 	initialStatus,
 }: TaskMetadataOptions) {
@@ -118,6 +121,8 @@ export async function taskMetadata({
 		workspace,
 		mode,
 		...(profile === "cordis" ? { profile } : {}),
+		// For cordis tasks an explicit undefined clears a stored overlay when the store merges items.
+		...(profile === "cordis" ? { planOverlay: planOverlay === true ? true : undefined } : {}),
 		...(typeof apiConfigName === "string" && apiConfigName.length > 0 ? { apiConfigName } : {}),
 		...(initialStatus && { status: initialStatus }),
 	}

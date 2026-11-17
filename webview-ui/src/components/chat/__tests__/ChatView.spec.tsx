@@ -401,6 +401,37 @@ it("preserves the composer draft across model-operation branch state and renders
 	expect(input).toHaveValue("Unsent draft survives branching")
 })
 
+it.each([
+	["/plan", { type: "setPlanOverlay", planOverlayOn: true, text: undefined, images: undefined }],
+	["/plan off", { type: "setPlanOverlay", planOverlayOn: false, text: undefined, images: undefined }],
+	[
+		"/plan Design the cache",
+		{ type: "setPlanOverlay", planOverlayOn: true, text: "Design the cache", images: undefined },
+	],
+])("intercepts %s and posts setPlanOverlay instead of a normal send", async (typed, expected) => {
+	const view = renderChatView()
+	act(() =>
+		window.dispatchEvent(
+			new MessageEvent("message", {
+				data: {
+					type: "state",
+					state: {
+						currentTaskId: "task",
+						clineMessages: [{ type: "say", say: "text", ts: 1, text: "Task" }],
+					},
+				},
+			}),
+		),
+	)
+	vi.mocked(vscode.postMessage).mockClear()
+	const input = view.getByTestId("chat-textarea").querySelector("input")!
+	fireEvent.change(input, { target: { value: typed } })
+	fireEvent.keyDown(input, { key: "Enter", code: "Enter" })
+	await waitFor(() => expect(vscode.postMessage).toHaveBeenCalledWith(expected))
+	expect(vscode.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: "askResponse" }))
+	expect(vscode.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: "newTask" }))
+})
+
 describe("ChatView - Sound Playing Tests", () => {
 	beforeEach(() => vi.clearAllMocks())
 

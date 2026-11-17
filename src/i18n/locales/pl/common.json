@@ -159,7 +159,8 @@
 		"public_share_link_copied": "Publiczny link udostępniania skopiowany do schowka!",
 		"mode_exported": "Tryb '{{mode}}' pomyślnie wyeksportowany",
 		"mode_imported": "Tryb pomyślnie zaimportowany",
-		"cordis_mode_locked": "To zadanie Cordis zachowuje tryb, w którym się rozpoczęło. Rozpocznij nowe zadanie, aby użyć innego trybu."
+		"cordis_mode_locked": "To zadanie Cordis zachowuje tryb, w którym się rozpoczęło. Rozpocznij nowe zadanie, aby użyć innego trybu.",
+		"plan_overlay_cordis_only": "Nakładka planowania jest dostępna w zadaniach podglądu Cordis."
 	},
 	"answers": {
 		"yes": "Tak",

@@ -2190,6 +2190,25 @@ export class ClineProvider
 		await this.postStateToWebview()
 	}
 
+	/**
+	 * Sets the plan overlay of a Cordis task, persists it to task history and posts state.
+	 * Returns false (and changes nothing) for tasks that are not Cordis tasks.
+	 */
+	public async setTaskPlanOverlay(task: Task, on: boolean): Promise<boolean> {
+		if (task.profile !== "cordis") return false
+		if (task.planOverlay !== on) {
+			task.planOverlay = on
+			const taskHistoryItem =
+				this.taskHistoryStore.get(task.taskId) ??
+				(this.getGlobalState("taskHistory") ?? []).find((item) => item.id === task.taskId)
+			if (taskHistoryItem) {
+				await this.updateTaskHistory({ ...taskHistoryItem, planOverlay: on ? true : undefined })
+			}
+		}
+		await this.postStateToWebview()
+		return true
+	}
+
 	// Provider Profile Management
 
 	/**

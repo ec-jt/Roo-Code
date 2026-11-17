@@ -360,6 +360,60 @@ describe("Task opt-in model dispatch", () => {
 		ordinary.dispose({ preserveArtifacts: true })
 	})
 
+	it("applies CreateTaskOptions.planOverlay only for cordis tasks", async () => {
+		const apiConfiguration = (await provider.getState()).apiConfiguration
+		await provider.contextProxy.setValue("experiments", { cordisRuntimePreview: true })
+		const cordis = new Task({
+			provider,
+			apiConfiguration,
+			startTask: false,
+			workspacePath: "/w",
+			planOverlay: true,
+		})
+		expect(cordis.profile).toBe("cordis")
+		expect(cordis.planOverlay).toBe(true)
+		cordis.dispose({ preserveArtifacts: true })
+
+		await provider.contextProxy.setValue("experiments", { cordisRuntimePreview: false })
+		const modes = new Task({ provider, apiConfiguration, startTask: false, workspacePath: "/w", planOverlay: true })
+		expect(modes.profile).toBe("modes")
+		expect(modes.planOverlay).toBe(false)
+		modes.dispose({ preserveArtifacts: true })
+	})
+
+	it("restores planOverlay from history on resume, only for cordis items", async () => {
+		const apiConfiguration = (await provider.getState()).apiConfiguration
+		const base = { number: 1, ts: 1, task: "t", tokensIn: 0, tokensOut: 0, totalCost: 0 }
+		const resumed = new Task({
+			provider,
+			apiConfiguration,
+			startTask: false,
+			historyItem: { ...base, id: "cordis-plan", profile: "cordis", planOverlay: true },
+		})
+		expect(resumed.planOverlay).toBe(true)
+		resumed.dispose({ preserveArtifacts: true })
+
+		const off = new Task({
+			provider,
+			apiConfiguration,
+			startTask: false,
+			historyItem: { ...base, id: "cordis-off", profile: "cordis" },
+			planOverlay: true,
+		})
+		expect(off.planOverlay).toBe(false)
+		off.dispose({ preserveArtifacts: true })
+
+		const legacy = new Task({
+			provider,
+			apiConfiguration,
+			startTask: false,
+			historyItem: { ...base, id: "modes-plan", planOverlay: true },
+		})
+		expect(legacy.profile).toBe("modes")
+		expect(legacy.planOverlay).toBe(false)
+		legacy.dispose({ preserveArtifacts: true })
+	})
+
 	it("unsubscribes preview settings at teardown", async () => {
 		task.dispose({ preserveArtifacts: true })
 		await provider.contextProxy.setValue("experiments", { cordisRuntimePreview: false })

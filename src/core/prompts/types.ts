@@ -14,4 +14,8 @@ export interface SystemPromptSettings {
 	newTaskRequireTodos: boolean
 	/** When true, model should hide vendor/company identity in responses */
 	isStealthModel?: boolean
+	/** Task profile. The Cordis section is included only for "cordis". */
+	profile?: import("@roo-code/types").TaskProfile
+	/** Plan overlay of a Cordis task. */
+	planOverlay?: boolean
 }

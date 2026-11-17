@@ -492,5 +492,14 @@
 		"message": "This provider is no longer supported. Please select a different provider in your API profile settings.",
 		"openSettings": "設定を開く",
 		"rooMessage": "The Roo Code Router is no longer available. It was a hosted service that has been discontinued."
+	},
+	"planReview": {
+		"title": "レビュー用のプラン",
+		"approve": "プランを承認",
+		"keepPlanning": "計画を続ける"
+	},
+	"planOverlay": {
+		"badge": "プラン",
+		"tooltip": "プランモードがオンです: Roo は変更を加える前に調査と設計を行います。プランモードを終了するには /plan off と入力してください。"
 	}
 }

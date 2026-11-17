@@ -52,6 +52,7 @@ import FileChangesPanel from "./FileChangesPanel"
 import { ChatWindowControls, PlainHistoryMessage } from "./ChatWindowControls"
 import { ReasoningBlock } from "./ReasoningBlock"
 import { useScrollLifecycle } from "@src/hooks/useScrollLifecycle"
+import { parsePlanCommand } from "@src/utils/planCommand"
 
 export interface ChatViewProps {
 	isHidden: boolean
@@ -456,6 +457,13 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 							}
 							setDidClickCancel(false) // special case where we reset the cancel button state
 							break
+						case "plan_review":
+							setSendingDisabled(isPartial)
+							setClineAsk("plan_review")
+							setEnableButtons(!isPartial)
+							setPrimaryButtonText(t("chat:planReview.approve"))
+							setSecondaryButtonText(t("chat:planReview.keepPlanning"))
+							break
 						case "resume_completed_task":
 							setSendingDisabled(false)
 							setClineAsk("resume_completed_task")
@@ -648,6 +656,25 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 			if (historicalRef.current) return
 			text = text.trim()
 
+			// "/plan", "/plan <text>" and "/plan off" toggle the Cordis plan overlay.
+			// They take precedence over a user-defined slash command named "plan".
+			const planCommand = parsePlanCommand(text)
+			if (planCommand) {
+				vscode.postMessage({
+					type: "setPlanOverlay",
+					planOverlayOn: planCommand.on,
+					text: planCommand.text,
+					images: planCommand.on && images.length > 0 ? images : undefined,
+				})
+				if (planCommand.on && (planCommand.text || images.length > 0)) {
+					userRespondedRef.current = true
+					handleChatReset()
+				} else {
+					setInputValue("")
+				}
+				return
+			}
+
 			if (text || images.length > 0) {
 				// Intercept when the active provider is retired — show a
 				// WarningRow instead of sending anything to the backend.
@@ -704,6 +731,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 						case "resume_task":
 						case "resume_completed_task":
 						case "mistake_limit_reached":
+						case "plan_review": // Typed text while a plan is under review is feedback (keep planning).
 							vscode.postMessage({
 								type: "askResponse",
 								askResponse: "messageResponse",
@@ -791,6 +819,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 				case "browser_action_launch":
 				case "use_mcp_server":
 				case "mistake_limit_reached":
+				case "plan_review":
 					// Only send text/images if they exist
 					if (trimmedInput || (images && images.length > 0)) {
 						vscode.postMessage({
@@ -876,6 +905,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 				case "tool":
 				case "browser_action_launch":
 				case "use_mcp_server":
+				case "plan_review": // Keep planning; typed text is sent as feedback.
 					// Only send text/images if they exist
 					if (trimmedInput || (images && images.length > 0)) {
 						vscode.postMessage({

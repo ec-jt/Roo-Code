@@ -245,6 +245,34 @@ describe("SYSTEM_PROMPT", () => {
 		},
 	)
 
+	it.each([
+		["modes", false, false, false],
+		["modes", true, false, false],
+		["cordis", false, true, false],
+		["cordis", true, true, true],
+	] as const)(
+		"includes the Cordis section for profile %s (overlay %s): drift=%s overlay=%s",
+		async (profile, planOverlay, hasDrift, hasOverlay) => {
+			const prompt = await SYSTEM_PROMPT(
+				mockContext,
+				"/test/path",
+				false,
+				undefined,
+				undefined,
+				defaultModeSlug,
+				undefined,
+				undefined,
+				undefined,
+				experiments,
+				undefined,
+				undefined,
+				{ todoListEnabled: true, useAgentRules: true, newTaskRequireTodos: false, profile, planOverlay },
+			)
+			expect(prompt.includes("CORDIS TASK")).toBe(hasDrift)
+			expect(prompt.includes("PLAN OVERLAY")).toBe(hasOverlay)
+		},
+	)
+
 	it("should maintain consistent system prompt", async () => {
 		const prompt = await SYSTEM_PROMPT(
 			mockContext,

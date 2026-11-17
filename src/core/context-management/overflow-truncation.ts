@@ -13,7 +13,13 @@ type OverflowTruncationResult = {
 
 // Treat feedback-looking text conservatively, even when it may be quoted output.
 const userFeedback = /<\s*(?:user_message|feedback|answer|user_input)\b/i
-const interactiveTools = new Set(["ask_followup_question", "attempt_completion", "new_task", "switch_mode"])
+const interactiveTools = new Set([
+	"ask_followup_question",
+	"attempt_completion",
+	"new_task",
+	"switch_mode",
+	"exit_plan",
+])
 
 /** Find complete, contiguous tool groups. Never split a parallel call batch. */
 function olderToolGroups(messages: ApiMessage[]): ApiMessage[][] {

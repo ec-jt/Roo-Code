@@ -12,6 +12,7 @@ import context7QueryDocs from "./context7_query_docs"
 import context7ResolveLibraryId from "./context7_resolve_library_id"
 import editTool from "./edit"
 import executeCommand from "./execute_command"
+import exitPlan from "./exit_plan"
 import fileSystem from "./file_system"
 import generateImage from "./generate_image"
 import generateVideo from "./generate_video"
@@ -72,6 +73,7 @@ export function getNativeTools(options: NativeToolsOptions = {}): OpenAI.Chat.Ch
 		context7QueryDocs,
 		context7ResolveLibraryId,
 		executeCommand,
+		exitPlan,
 		fileSystem,
 		generateImage,
 		generateVideo,

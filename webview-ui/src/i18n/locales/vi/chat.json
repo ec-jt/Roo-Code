@@ -493,5 +493,14 @@
 		"message": "This provider is no longer supported. Please select a different provider in your API profile settings.",
 		"openSettings": "Mở cài đặt",
 		"rooMessage": "The Roo Code Router is no longer available. It was a hosted service that has been discontinued."
+	},
+	"planReview": {
+		"title": "Kế hoạch cần xem xét",
+		"approve": "Phê duyệt kế hoạch",
+		"keepPlanning": "Tiếp tục lập kế hoạch"
+	},
+	"planOverlay": {
+		"badge": "Kế hoạch",
+		"tooltip": "Chế độ lập kế hoạch đang bật: Roo khám phá và thiết kế trước khi thực hiện thay đổi. Gõ /plan off để thoát chế độ lập kế hoạch."
 	}
 }

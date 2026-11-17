@@ -73,6 +73,11 @@ export async function checkAutoApproval({
 		return { decision: "approve" }
 	}
 
+	// Plan review is a user decision. It is never auto-approved, including in all-actions mode.
+	if (ask === "plan_review") {
+		return { decision: "ask" }
+	}
+
 	// Project opt-in is a separate grant, independent of general auto approval.
 	// Personal operations and malformed memory requests never inherit all-actions approval.
 	if (ask === "tool") {

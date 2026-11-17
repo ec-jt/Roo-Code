@@ -488,5 +488,14 @@
 		"message": "This provider is no longer supported. Please select a different provider in your API profile settings.",
 		"openSettings": "開啟設定",
 		"rooMessage": "The Roo Code Router is no longer available. It was a hosted service that has been discontinued."
+	},
+	"planReview": {
+		"title": "待審閱的計畫",
+		"approve": "核准計畫",
+		"keepPlanning": "繼續規劃"
+	},
+	"planOverlay": {
+		"badge": "計畫",
+		"tooltip": "計畫模式已開啟：Roo 會在修改前先探索和設計。輸入 /plan off 離開計畫模式。"
 	}
 }

@@ -159,7 +159,8 @@
 		"public_share_link_copied": "Tautan berbagi publik disalin ke clipboard!",
 		"mode_exported": "Mode '{{mode}}' berhasil diekspor",
 		"mode_imported": "Mode berhasil diimpor",
-		"cordis_mode_locked": "Tugas Cordis ini tetap memakai mode awalnya. Mulai tugas baru untuk memakai mode lain."
+		"cordis_mode_locked": "Tugas Cordis ini tetap memakai mode awalnya. Mulai tugas baru untuk memakai mode lain.",
+		"plan_overlay_cordis_only": "Overlay rencana tersedia di tugas pratinjau Cordis."
 	},
 	"answers": {
 		"yes": "Ya",

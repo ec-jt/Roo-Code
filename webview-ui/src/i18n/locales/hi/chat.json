@@ -492,5 +492,14 @@
 		"message": "This provider is no longer supported. Please select a different provider in your API profile settings.",
 		"openSettings": "सेटिंग्स खोलें",
 		"rooMessage": "The Roo Code Router is no longer available. It was a hosted service that has been discontinued."
+	},
+	"planReview": {
+		"title": "समीक्षा के लिए योजना",
+		"approve": "योजना स्वीकृत करें",
+		"keepPlanning": "योजना बनाना जारी रखें"
+	},
+	"planOverlay": {
+		"badge": "योजना",
+		"tooltip": "प्लान मोड चालू है: Roo बदलाव करने से पहले खोज और डिज़ाइन करता है। प्लान मोड छोड़ने के लिए /plan off टाइप करें।"
 	}
 }

@@ -316,6 +316,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	readonly parentTask: Task | undefined = undefined
 	/** Fixed at creation: "cordis" when cordisRuntimePreview was on, inherited by children, restored on resume. */
 	readonly profile: TaskProfile
+	/** Plan overlay (Cordis only). Restored on resume; changed by /plan and an approved exit_plan. */
+	planOverlay: boolean
 	readonly taskNumber: number
 	readonly workspacePath: string
 
@@ -1097,6 +1099,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		initialTodos,
 		workspacePath,
 		initialStatus,
+		planOverlay,
 	}: TaskOptions) {
 		super()
 		this.modelDispatchRuntime =
@@ -1140,6 +1143,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				? provider.contextProxy.getValue("experiments")
 				: experimentsConfig,
 		})
+		this.planOverlay =
+			this.profile === "cordis" && (historyItem ? historyItem.planOverlay === true : planOverlay === true)
 		this.childTaskId = undefined
 
 		this.metadata = {
@@ -2288,6 +2293,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				workspace: this.cwd,
 				mode: this._taskMode || defaultModeSlug, // Use the task's own mode, not the current provider mode.
 				profile: this.profile,
+				planOverlay: this.planOverlay,
 				apiConfigName: this._taskApiConfigName, // Use the task's own provider profile, not the current provider profile.
 				initialStatus: this.initialStatus,
 			})
@@ -2501,7 +2507,10 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			requiresToolApproval: this.modelOperationAdmission.requiresApproval,
 		})
 
-		if (approval.decision !== "approve" && (isAuthorizationAsk(type) || type === "followup")) {
+		if (
+			approval.decision !== "approve" &&
+			(isAuthorizationAsk(type) || type === "followup" || type === "plan_review")
+		) {
 			stopTaskContinuation(this, approval.decision === "deny" ? "denied" : "awaiting-approval")
 		}
 		if (approval.decision === "approve") {
@@ -5563,6 +5572,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 					isStealthModel: modelInfo?.isStealthModel,
 					delegationDepth,
 					nestedSubtaskAutoApprovalEnabled: canAutoApproveNestedSubtasks(state, this.modelOperationState),
+					profile: this.profile,
+					planOverlay: this.planOverlay,
 				},
 				undefined, // todoList
 				this.api.getModel().id,

@@ -159,7 +159,8 @@
 		"public_share_link_copied": "公開分享連結已複製到剪貼簿！",
 		"mode_exported": "模式 '{{mode}}' 已成功匯出",
 		"mode_imported": "模式已成功匯入",
-		"cordis_mode_locked": "此 Cordis 任務會保持開始時的模式。要使用其他模式，請建立新任務。"
+		"cordis_mode_locked": "此 Cordis 任務會保持開始時的模式。要使用其他模式，請建立新任務。",
+		"plan_overlay_cordis_only": "計畫疊加層僅在 Cordis 預覽任務中可用。"
 	},
 	"answers": {
 		"yes": "是",

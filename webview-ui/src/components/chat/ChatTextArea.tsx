@@ -33,6 +33,7 @@ import { MAX_IMAGES_PER_MESSAGE } from "./ChatView"
 import ContextMenu from "./ContextMenu"
 import { IndexingStatusBadge } from "./IndexingStatusBadge"
 import { usePromptHistory } from "./hooks/usePromptHistory"
+import { parsePlanCommand } from "@src/utils/planCommand"
 
 interface ChatTextAreaProps {
 	inputValue: string
@@ -427,7 +428,14 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 
 		const handleKeyDown = useCallback(
 			(event: React.KeyboardEvent<HTMLTextAreaElement>) => {
-				if (showContextMenu) {
+				// "/plan" and "/plan off" are built-in commands: Enter sends them even while the
+				// slash-command menu is open (this also shadows a user command named "plan").
+				const isPlanCommandEnter =
+					showContextMenu && event.key === "Enter" && !event.shiftKey && !!parsePlanCommand(inputValue)
+				if (isPlanCommandEnter) {
+					setShowContextMenu(false)
+				}
+				if (showContextMenu && !isPlanCommandEnter) {
 					if (event.key === "Escape") {
 						setSelectedType(null)
 						setSelectedMenuIndex(3) // File by default
@@ -1330,6 +1338,14 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 							customModes={customModes}
 							customModePrompts={customModePrompts}
 						/>
+						{currentTaskItem?.profile === "cordis" && currentTaskItem.planOverlay === true && (
+							<span
+								data-testid="plan-overlay-badge"
+								title={t("chat:planOverlay.tooltip")}
+								className="shrink-0 rounded px-1.5 py-0.5 text-xs bg-vscode-badge-background text-vscode-badge-foreground">
+								{t("chat:planOverlay.badge")}
+							</span>
+						)}
 						<ApiConfigSelector
 							value={currentConfigId}
 							displayName={displayName}

@@ -1384,3 +1384,86 @@ describe("webviewMessageHandler - Cordis preview persistence", () => {
 		expect(mockClineProvider.postStateToWebview).toHaveBeenCalledOnce()
 	})
 })
+
+describe("webviewMessageHandler - setPlanOverlay", () => {
+	function makeProvider(task: any, experiments: Record<string, boolean> = {}) {
+		return {
+			...mockClineProvider,
+			isTaskBackgrounded: false,
+			getState: vi.fn().mockResolvedValue({ experiments }),
+			getCurrentTask: vi.fn().mockReturnValue(task),
+			setTaskPlanOverlay: vi.fn(async (t: any, on: boolean) => {
+				if (t.profile !== "cordis") return false
+				t.planOverlay = on
+				return true
+			}),
+			createTask: vi.fn().mockResolvedValue({}),
+			postMessageToWebview: vi.fn(),
+		} as unknown as ClineProvider & Record<string, Mock>
+	}
+
+	beforeEach(() => vi.clearAllMocks())
+
+	it("sets the overlay on a cordis task and submits the text as the next message", async () => {
+		const task = {
+			profile: "cordis",
+			planOverlay: false,
+			isStreaming: false,
+			clineMessages: [{ type: "ask", ask: "completion_result", ts: 1 }],
+			submitUserMessage: vi.fn().mockResolvedValue(undefined),
+			messageQueueService: { addMessage: vi.fn() },
+		}
+		const provider = makeProvider(task)
+		await webviewMessageHandler(provider, { type: "setPlanOverlay", planOverlayOn: true, text: "Design auth" })
+		expect(provider.setTaskPlanOverlay).toHaveBeenCalledWith(task, true)
+		expect(task.planOverlay).toBe(true)
+		expect(task.submitUserMessage).toHaveBeenCalledWith("Design auth", expect.anything())
+		expect(vscode.window.showInformationMessage).not.toHaveBeenCalled()
+	})
+
+	it("turns the overlay off without sending anything", async () => {
+		const task = {
+			profile: "cordis",
+			planOverlay: true,
+			clineMessages: [],
+			submitUserMessage: vi.fn(),
+			messageQueueService: { addMessage: vi.fn() },
+		}
+		const provider = makeProvider(task)
+		await webviewMessageHandler(provider, { type: "setPlanOverlay", planOverlayOn: false })
+		expect(task.planOverlay).toBe(false)
+		expect(task.submitUserMessage).not.toHaveBeenCalled()
+		expect(task.messageQueueService.addMessage).not.toHaveBeenCalled()
+	})
+
+	it("shows info and does not send text for a modes task", async () => {
+		const task = {
+			profile: "modes",
+			planOverlay: false,
+			clineMessages: [{ type: "ask", ask: "completion_result", ts: 1 }],
+			submitUserMessage: vi.fn(),
+			messageQueueService: { addMessage: vi.fn() },
+		}
+		const provider = makeProvider(task, { cordisRuntimePreview: true })
+		await webviewMessageHandler(provider, { type: "setPlanOverlay", planOverlayOn: true, text: "Design auth" })
+		expect(task.planOverlay).toBe(false)
+		expect(vscode.window.showInformationMessage).toHaveBeenCalledWith("common:info.plan_overlay_cordis_only")
+		expect(task.submitUserMessage).not.toHaveBeenCalled()
+	})
+
+	it("creates a new task with the overlay on when there is no task and the preview is on", async () => {
+		const provider = makeProvider(undefined, { cordisRuntimePreview: true })
+		await webviewMessageHandler(provider, { type: "setPlanOverlay", planOverlayOn: true, text: "Design auth" })
+		expect(provider.createTask).toHaveBeenCalledWith("Design auth", expect.anything(), undefined, {
+			planOverlay: true,
+		})
+		expect(provider.postMessageToWebview).toHaveBeenCalledWith({ type: "invoke", invoke: "newChat" })
+	})
+
+	it("shows info and creates no task when a new task would use the modes profile", async () => {
+		const provider = makeProvider(undefined, { cordisRuntimePreview: false })
+		await webviewMessageHandler(provider, { type: "setPlanOverlay", planOverlayOn: true, text: "Design auth" })
+		expect(provider.createTask).not.toHaveBeenCalled()
+		expect(vscode.window.showInformationMessage).toHaveBeenCalledWith("common:info.plan_overlay_cordis_only")
+	})
+})

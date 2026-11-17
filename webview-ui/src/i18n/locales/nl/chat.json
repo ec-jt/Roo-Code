@@ -492,5 +492,14 @@
 		"message": "This provider is no longer supported. Please select a different provider in your API profile settings.",
 		"openSettings": "Instellingen openen",
 		"rooMessage": "The Roo Code Router is no longer available. It was a hosted service that has been discontinued."
+	},
+	"planReview": {
+		"title": "Plan ter beoordeling",
+		"approve": "Plan goedkeuren",
+		"keepPlanning": "Verder plannen"
+	},
+	"planOverlay": {
+		"badge": "Plan",
+		"tooltip": "Planmodus staat aan: Roo verkent en ontwerpt voordat er wijzigingen worden gemaakt. Typ /plan off om de planmodus te verlaten."
 	}
 }

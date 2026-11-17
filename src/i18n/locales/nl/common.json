@@ -159,7 +159,8 @@
 		"public_share_link_copied": "Openbare deel-link gekopieerd naar klembord!",
 		"mode_exported": "Modus '{{mode}}' succesvol geëxporteerd",
 		"mode_imported": "Modus succesvol geïmporteerd",
-		"cordis_mode_locked": "Deze Cordis-taak houdt de modus waarmee hij is gestart. Start een nieuwe taak om een andere modus te gebruiken."
+		"cordis_mode_locked": "Deze Cordis-taak houdt de modus waarmee hij is gestart. Start een nieuwe taak om een andere modus te gebruiken.",
+		"plan_overlay_cordis_only": "De plan-overlay is beschikbaar in Cordis-previewtaken."
 	},
 	"answers": {
 		"yes": "Ja",

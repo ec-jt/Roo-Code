@@ -688,6 +688,49 @@ export const webviewMessageHandler = async (
 				)
 			}
 			break
+		case "setPlanOverlay": {
+			// "/plan", "/plan <text>" and "/plan off" from the chat input. Cordis tasks only.
+			const on = message.planOverlayOn === true
+			const text = message.text?.trim() || undefined
+			const task = provider.getCurrentTask()
+			if (task) {
+				if (provider.isTaskBackgrounded) break
+				if (!(await provider.setTaskPlanOverlay(task, on))) {
+					void vscode.window.showInformationMessage(t("common:info.plan_overlay_cordis_only"))
+					break
+				}
+				if (text || message.images?.length) {
+					const resolved = await resolveIncomingImages({ text, images: message.images })
+					if (provider.getCurrentTask() !== task) break
+					const last = task.clineMessages?.at(-1)
+					const waitingForUser = last?.type === "ask" && !last.partial && !task.isStreaming
+					if (waitingForUser) {
+						await task.submitUserMessage(resolved.text, resolved.images)
+					} else {
+						task.messageQueueService.addMessage(resolved.text, resolved.images ?? [])
+					}
+				}
+				break
+			}
+			const { experiments } = await provider.getState()
+			if (experiments?.cordisRuntimePreview !== true) {
+				void vscode.window.showInformationMessage(t("common:info.plan_overlay_cordis_only"))
+				break
+			}
+			if (!on || !text) break
+			try {
+				const resolved = await resolveIncomingImages({ text, images: message.images })
+				await provider.createTask(resolved.text, resolved.images, undefined, { planOverlay: true })
+				await provider.postMessageToWebview({ type: "invoke", invoke: "newChat" })
+			} catch (error) {
+				if (provider.isTaskBackgrounded) break
+				await provider.postMessageToWebview({ type: "invoke", invoke: "newChat" })
+				vscode.window.showErrorMessage(
+					`Failed to create task: ${error instanceof Error ? error.message : String(error)}`,
+				)
+			}
+			break
+		}
 		case "customInstructions":
 			await provider.updateCustomInstructions(message.text)
 			break

@@ -493,5 +493,14 @@
 		"message": "This provider is no longer supported. Please select a different provider in your API profile settings.",
 		"openSettings": "Ayarları aç",
 		"rooMessage": "The Roo Code Router is no longer available. It was a hosted service that has been discontinued."
+	},
+	"planReview": {
+		"title": "İncelenecek plan",
+		"approve": "Planı onayla",
+		"keepPlanning": "Planlamaya devam et"
+	},
+	"planOverlay": {
+		"badge": "Plan",
+		"tooltip": "Plan modu açık: Roo değişiklik yapmadan önce keşfeder ve tasarlar. Plan modundan çıkmak için /plan off yaz."
 	}
 }

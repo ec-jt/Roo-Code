@@ -163,7 +163,8 @@
 		"public_share_link_copied": "Link de compartilhamento público copiado para a área de transferência!",
 		"mode_exported": "Modo '{{mode}}' exportado com sucesso",
 		"mode_imported": "Modo importado com sucesso",
-		"cordis_mode_locked": "Esta tarefa Cordis mantém o modo com que começou. Inicie uma nova tarefa para usar outro modo."
+		"cordis_mode_locked": "Esta tarefa Cordis mantém o modo com que começou. Inicie uma nova tarefa para usar outro modo.",
+		"plan_overlay_cordis_only": "A sobreposição de planejamento está disponível em tarefas de prévia do Cordis."
 	},
 	"answers": {
 		"yes": "Sim",

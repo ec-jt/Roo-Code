@@ -8,6 +8,9 @@ export const CORDIS_GROUPS = ["read", "edit", "browser", "command", "mcp"] as co
 /** Tools that Cordis tasks never get. */
 export const CORDIS_DISABLED_TOOLS = ["switch_mode"] as const
 
+/** Tools that only Cordis tasks get. They are disabled for the `modes` profile. */
+export const CORDIS_ONLY_TOOLS = ["exit_plan"] as const
+
 /**
  * Decides the profile for a new task. Resumed tasks keep their stored profile; children inherit
  * their parent's profile; otherwise the experiment flag at creation time decides. Missing means modes.
@@ -26,7 +29,7 @@ export function resolveTaskProfile(options: {
  * Returns the tool-filtering inputs for a task. For `cordis`, the active mode is overridden (as a
  * custom mode with the same slug, which takes precedence) with all tool groups and no fileRegex,
  * and switch_mode is disabled. Role and instructions of the mode are kept for the prompt.
- * For `modes`, the inputs are returned unchanged.
+ * For `modes`, the custom modes are returned unchanged and the Cordis-only tools (exit_plan) are disabled.
  */
 export function applyProfileToToolInputs(
 	profile: TaskProfile | undefined,
@@ -34,7 +37,9 @@ export function applyProfileToToolInputs(
 	customModes: ModeConfig[] | undefined,
 	disabledTools: string[] | undefined,
 ): { customModes: ModeConfig[] | undefined; disabledTools: string[] | undefined } {
-	if (profile !== "cordis") return { customModes, disabledTools }
+	if (profile !== "cordis") {
+		return { customModes, disabledTools: [...new Set([...(disabledTools ?? []), ...CORDIS_ONLY_TOOLS])] }
+	}
 	const base = getModeBySlug(modeSlug, customModes)
 	const override: ModeConfig = {
 		...(base ?? { slug: modeSlug, name: modeSlug, roleDefinition: "" }),

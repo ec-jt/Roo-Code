@@ -21,6 +21,8 @@ export const historyItemSchema = z.object({
 	mode: z.string().optional(),
 	/** Task profile fixed at creation. Missing means "modes". */
 	profile: z.enum(["modes", "cordis"]).optional(),
+	/** Plan overlay of a Cordis task. Missing means off. */
+	planOverlay: z.boolean().optional(),
 	apiConfigName: z.string().optional(), // Provider profile name for sticky profile feature
 	status: z.enum(["active", "completed", "delegated"]).optional(),
 	delegatedToId: z.string().optional(), // Last child this parent delegated to

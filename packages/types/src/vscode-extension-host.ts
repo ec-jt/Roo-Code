@@ -670,6 +670,7 @@ export interface WebviewMessage {
 		| "memoryBrowserRequest"
 		| "modelOperation"
 		| "queueTaskProfile"
+		| "setPlanOverlay"
 		| "modelOperationApproval"
 		| "deleteMultipleTasksWithIds"
 		| "currentApiConfigName"
@@ -857,6 +858,8 @@ export interface WebviewMessage {
 	memoryBrowserRequest?: MemoryBrowserRequest
 	modelOperation?: ModelOperation
 	modelOperationApproval?: ModelOperationApproval
+	/** For setPlanOverlay: turn the plan overlay on or off. */
+	planOverlayOn?: boolean
 	editedMessageContent?: string
 	tab?: "settings" | "history" | "mcp" | "modes" | "chat" | "marketplace" | "cloud"
 	disabled?: boolean

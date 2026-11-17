@@ -94,6 +94,8 @@ export interface CreateTaskOptions {
 	/** Whether to start the task loop immediately (default: true).
 	 *  When false, the caller must invoke `task.start()` manually. */
 	startTask?: boolean
+	/** Start the task with the plan overlay on. Ignored unless the resolved profile is "cordis". */
+	planOverlay?: boolean
 }
 
 export enum TaskStatus {

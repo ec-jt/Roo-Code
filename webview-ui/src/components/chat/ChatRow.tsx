@@ -1642,6 +1642,20 @@ export const ChatRowContent = ({
 							</div>
 						</>
 					)
+				case "plan_review":
+					return (
+						<div className="group">
+							<div className="flex items-center gap-2.5 mb-2.5 break-words">
+								<span className="codicon codicon-checklist text-vscode-foreground" />
+								<span className="font-bold text-vscode-foreground">{t("chat:planReview.title")}</span>
+								<div className="grow" />
+								{message.text && <OpenMarkdownPreviewButton markdown={message.text} />}
+							</div>
+							<div className="pt-1 border-l-2 border-vscode-panel-border pl-3">
+								<Markdown markdown={message.text ?? ""} partial={message.partial} />
+							</div>
+						</div>
+					)
 				case "completion_result":
 					if (message.text) {
 						return (

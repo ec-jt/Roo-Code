@@ -159,7 +159,8 @@
 		"public_share_link_copied": "Herkese açık paylaşım bağlantısı panoya kopyalandı!",
 		"mode_exported": "'{{mode}}' modu başarıyla dışa aktarıldı",
 		"mode_imported": "Mod başarıyla içe aktarıldı",
-		"cordis_mode_locked": "Bu Cordis görevi başladığı modu korur. Başka bir mod kullanmak için yeni bir görev başlat."
+		"cordis_mode_locked": "Bu Cordis görevi başladığı modu korur. Başka bir mod kullanmak için yeni bir görev başlat.",
+		"plan_overlay_cordis_only": "Plan katmanı Cordis önizleme görevlerinde kullanılabilir."
 	},
 	"answers": {
 		"yes": "Evet",

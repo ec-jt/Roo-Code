@@ -27,12 +27,18 @@ describe("resolveTaskProfile", () => {
 })
 
 describe("applyProfileToToolInputs", () => {
-	it("returns inputs unchanged for the modes profile", () => {
+	it("keeps custom modes for the modes profile and disables only the Cordis-only tools", () => {
 		const customModes: any[] = []
 		const disabledTools = ["browser_action"]
 		const result = applyProfileToToolInputs("modes", "architect", customModes, disabledTools)
 		expect(result.customModes).toBe(customModes)
-		expect(result.disabledTools).toBe(disabledTools)
+		expect(result.disabledTools).toEqual(["browser_action", "exit_plan"])
+		expect(disabledTools).toEqual(["browser_action"])
+	})
+
+	it("admits exit_plan for the cordis profile", () => {
+		const result = applyProfileToToolInputs("cordis", "code", undefined, ["browser_action"])
+		expect(result.disabledTools).not.toContain("exit_plan")
 	})
 
 	it("gives the mode all groups without file restrictions and disables switch_mode", () => {
@@ -95,5 +101,22 @@ describe("Cordis profile execution-time validation", () => {
 				mode_slug: "ask",
 			}),
 		).toThrow()
+	})
+
+	it("rejects exit_plan under the modes profile and admits it under the cordis profile", () => {
+		const modes = applyProfileToToolInputs("modes", "code", [], [])
+		expect(() =>
+			validateToolUse("exit_plan", "code", modes.customModes, requirements(modes.disabledTools), {
+				plan: "# Plan",
+			}),
+		).toThrow()
+		for (const mode of ["code", "architect", "ask"]) {
+			const cordis = applyProfileToToolInputs("cordis", mode, [], [])
+			expect(() =>
+				validateToolUse("exit_plan", mode, cordis.customModes, requirements(cordis.disabledTools), {
+					plan: "# Plan",
+				}),
+			).not.toThrow()
+		}
 	})
 })

@@ -576,6 +576,14 @@ export class NativeToolCallParser {
 				}
 				break
 
+			case "exit_plan":
+				if (partialArgs.plan !== undefined) {
+					nativeArgs = {
+						plan: partialArgs.plan,
+					}
+				}
+				break
+
 			case "update_todo_list":
 				if (partialArgs.todos !== undefined) {
 					nativeArgs = {
@@ -1026,6 +1034,14 @@ export class NativeToolCallParser {
 						nativeArgs = {
 							mode_slug: args.mode_slug,
 							reason: args.reason,
+						} as NativeArgsFor<ToolName>
+					}
+					break
+
+				case "exit_plan":
+					if (args.plan !== undefined) {
+						nativeArgs = {
+							plan: args.plan,
 						} as NativeArgsFor<ToolName>
 					}
 					break
