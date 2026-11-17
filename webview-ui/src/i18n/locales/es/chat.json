@@ -323,7 +323,9 @@
 		"prune": {
 			"title": "Resultados de herramientas recortados",
 			"description": "Se acortó {{count}} resultado de herramienta antiguo y grande. El texto completo se guarda en la carpeta de la tarea.",
-			"description_other": "Se acortaron {{count}} resultados de herramientas antiguos y grandes. El texto completo se guarda en la carpeta de la tarea."
+			"description_other": "Se acortaron {{count}} resultados de herramientas antiguos y grandes. El texto completo se guarda en la carpeta de la tarea.",
+			"offloaded": "Se guardó {{count}} imagen antigua en la carpeta de la tarea y se reemplazó por una referencia.",
+			"offloaded_other": "Se guardaron {{count}} imágenes antiguas en la carpeta de la tarea y se reemplazaron por referencias."
 		}
 	},
 	"skill": {

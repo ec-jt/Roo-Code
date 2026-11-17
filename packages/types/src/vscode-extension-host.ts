@@ -590,6 +590,7 @@ export type ExtensionState = Pick<
 	autoCondenseContext: boolean
 	allowOverflowTruncation?: boolean
 	pruneToolResultsOnOverflow?: boolean
+	offloadImagesOnOverflow?: boolean
 	architectureContextMode?: ArchitectureContextMode
 	architectureDecisionApproval?: "user" | "agent"
 	architectureBootstrap?: boolean

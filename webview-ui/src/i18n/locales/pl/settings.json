@@ -689,6 +689,10 @@
 				"label": "Utwórz brakujące dokumenty architektury",
 				"description": "Gdy zadanie Architekta startuje w przestrzeni roboczej bez docs/architecture/, Roo przegląda repozytorium i tworzy minimalną, proponowaną strukturę."
 			}
+		},
+		"offloadImages": {
+			"label": "Najpierw przenieś starsze obrazy",
+			"description": "Po wyraźnym odrzuceniu z powodu limitu kontekstu zapisuje starsze obrazy w folderze zadania i przed podsumowaniem zastępuje je odwołaniem do pliku. Dotyczy tylko modeli akceptujących obrazy. Jeśli to wystarczy, podsumowanie nie jest tworzone."
 		}
 	},
 	"terminal": {

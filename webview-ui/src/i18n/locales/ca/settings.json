@@ -689,6 +689,10 @@
 				"label": "Crear documents d'arquitectura que falten",
 				"description": "Quan una tasca d'Arquitecte comença en un espai de treball sense docs/architecture/, Roo examina el repositori i crea una estructura mínima proposada."
 			}
+		},
+		"offloadImages": {
+			"label": "Descarrega primer les imatges antigues",
+			"description": "Després d'un rebuig explícit per límit de context, desa les imatges antigues a la carpeta de la tasca i substitueix-les per una referència al fitxer abans de resumir. Només s'aplica a models que accepten imatges. Si això sol és suficient, no es fa cap resum."
 		}
 	},
 	"terminal": {

@@ -689,6 +689,10 @@
 				"label": "Buat dokumen arsitektur yang belum ada",
 				"description": "Saat tugas Arsitek dimulai di workspace tanpa docs/architecture/, Roo meninjau repositori dan membuat struktur minimal yang diusulkan."
 			}
+		},
+		"offloadImages": {
+			"label": "Lepaskan gambar lama terlebih dahulu",
+			"description": "Setelah penolakan eksplisit karena batas konteks, simpan gambar lama ke folder tugas dan ganti dengan referensi file sebelum meringkas. Hanya berlaku untuk model yang menerima gambar. Jika ini saja cukup, tidak ada ringkasan yang dibuat."
 		}
 	},
 	"terminal": {

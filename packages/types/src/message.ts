@@ -259,6 +259,8 @@ export type ContextTruncation = z.infer<typeof contextTruncationSchema>
 export const contextPruneSchema = z.object({
 	pruneId: z.string(),
 	prunedCount: z.number(),
+	/** Images saved to the task folder and replaced by a text reference. */
+	offloadedCount: z.number().optional(),
 	prevContextTokens: z.number(),
 	newContextTokens: z.number(),
 })

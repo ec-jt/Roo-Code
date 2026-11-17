@@ -27,6 +27,7 @@ type ContextManagementSettingsProps = HTMLAttributes<HTMLDivElement> & {
 	autoCondenseContext: boolean
 	allowOverflowTruncation?: boolean
 	pruneToolResultsOnOverflow?: boolean
+	offloadImagesOnOverflow?: boolean
 	architectureContextMode?: ArchitectureContextMode
 	architectureDecisionApproval?: "user" | "agent"
 	architectureBootstrap?: boolean
@@ -51,6 +52,7 @@ type ContextManagementSettingsProps = HTMLAttributes<HTMLDivElement> & {
 		| "autoCondenseContext"
 		| "allowOverflowTruncation"
 		| "pruneToolResultsOnOverflow"
+		| "offloadImagesOnOverflow"
 		| "architectureContextMode"
 		| "architectureDecisionApproval"
 		| "architectureBootstrap"
@@ -75,6 +77,7 @@ export const ContextManagementSettings = ({
 	autoCondenseContext,
 	allowOverflowTruncation,
 	pruneToolResultsOnOverflow,
+	offloadImagesOnOverflow,
 	architectureContextMode,
 	architectureDecisionApproval,
 	architectureBootstrap,
@@ -492,6 +495,21 @@ export const ContextManagementSettings = ({
 					After an explicit context-limit rejection, shorten large older tool results to their beginning and
 					end before summarizing. The full text is saved in the task folder and can be read back with
 					read_command_output. If this alone fits the request, no summary is made.
+				</p>
+				<SearchableSetting
+					settingId="context-offload-images"
+					section="contextManagement"
+					label={t("settings:contextManagement.offloadImages.label")}>
+					<VSCodeCheckbox
+						checked={offloadImagesOnOverflow ?? true}
+						disabled={!autoCondenseContext}
+						onChange={(e: any) => setCachedStateField("offloadImagesOnOverflow", e.target.checked)}
+						data-testid="offload-images-checkbox">
+						<span className="font-medium">{t("settings:contextManagement.offloadImages.label")}</span>
+					</VSCodeCheckbox>
+				</SearchableSetting>
+				<p className="text-sm text-vscode-descriptionForeground">
+					{t("settings:contextManagement.offloadImages.description")}
 				</p>
 				<SearchableSetting
 					settingId="context-overflow-truncation"

@@ -12,6 +12,7 @@ import {
 	DEFAULT_PRUNE_THRESHOLD_CHARS,
 	pruneToolResults,
 } from "./prune-tool-results"
+import { offloadImages, type SaveImage } from "./offload-images"
 
 /** Fraction of the input budget kept free when deciding whether pruning alone is enough. */
 const PRUNE_SAFETY_MARGIN = 0.1
@@ -168,6 +169,10 @@ export type ContextManagementOptions = Omit<WillManageContextOptions, "lastMessa
 	pruneToolResults?: boolean
 	/** Saves full tool-result text as a task artifact and returns its id. */
 	saveArtifact?: (text: string) => Promise<string | undefined>
+	/** Offload old images to files before summarizing. Default true; needs `saveImage` and an image model. */
+	offloadImages?: boolean
+	/** Saves image data in the task folder and returns its absolute path. */
+	saveImage?: SaveImage
 }
 
 export type ContextManagementResult = SummarizeResponse & {
@@ -178,6 +183,7 @@ export type ContextManagementResult = SummarizeResponse & {
 	/** Set when pruning alone brought the request under the budget. */
 	pruneId?: string
 	prunedCount?: number
+	offloadedCount?: number
 }
 
 /** Summarize only on explicit overflow; truncate only for an eligible summary failure. */
@@ -198,37 +204,48 @@ export async function manageContext(options: ContextManagementOptions): Promise<
 	if (preserveFrom < 2)
 		return { ...unchanged, error: "Not enough earlier history to compact. Use manual context management." }
 
-	// Step 1: prune large old tool results. If that is enough, skip the summary.
+	// Step 1: prune large old tool results. Step 2: offload old images to files.
+	// If that is enough, skip the summary.
 	let working = messages
+	let prunedCount = 0
+	let offloadedCount = 0
 	if (options.pruneToolResults !== false && options.saveArtifact) {
-		const pruned = await pruneToolResults(messages, preserveFrom, {
+		const pruned = await pruneToolResults(working, preserveFrom, {
 			thresholdChars: DEFAULT_PRUNE_THRESHOLD_CHARS,
 			headChars: DEFAULT_PRUNE_HEAD_CHARS,
 			tailChars: DEFAULT_PRUNE_TAIL_CHARS,
 			save: options.saveArtifact,
 		})
-		if (pruned.prunedCount > 0) {
-			working = pruned.messages
-			try {
-				const estimate = await options.apiHandler.countTokens([
-					{ type: "text", text: options.systemPrompt },
-					...messageContentBlocks(working),
-				])
-				const budget = (options.contextWindow - (options.maxTokens ?? 0)) * (1 - PRUNE_SAFETY_MARGIN)
-				if (estimate <= budget) {
-					return {
-						messages: working,
-						summary: "",
-						cost: 0,
-						prevContextTokens,
-						newContextTokens: estimate,
-						pruneId: crypto.randomUUID(),
-						prunedCount: pruned.prunedCount,
-					}
+		working = pruned.messages
+		prunedCount = pruned.prunedCount
+	}
+	// Models without image support already drop images in the summary request.
+	if (options.offloadImages !== false && options.saveImage && options.apiHandler.getModel().info.supportsImages) {
+		const offloaded = await offloadImages(working, preserveFrom, options.saveImage)
+		working = offloaded.messages
+		offloadedCount = offloaded.offloadedCount
+	}
+	if (prunedCount + offloadedCount > 0) {
+		try {
+			const estimate = await options.apiHandler.countTokens([
+				{ type: "text", text: options.systemPrompt },
+				...messageContentBlocks(working),
+			])
+			const budget = (options.contextWindow - (options.maxTokens ?? 0)) * (1 - PRUNE_SAFETY_MARGIN)
+			if (estimate <= budget) {
+				return {
+					messages: working,
+					summary: "",
+					cost: 0,
+					prevContextTokens,
+					newContextTokens: estimate,
+					pruneId: crypto.randomUUID(),
+					prunedCount,
+					offloadedCount,
 				}
-			} catch {
-				// Estimation failed: continue with summarizing the pruned history.
 			}
+		} catch {
+			// Estimation failed: continue with summarizing the reduced history.
 		}
 	}
 

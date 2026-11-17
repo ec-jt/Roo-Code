@@ -17,6 +17,7 @@ export function PruneResultRow({ data }: PruneResultRowProps) {
 	const prevTokens = data.prevContextTokens ?? 0
 	const newTokens = data.newContextTokens ?? 0
 	const count = data.prunedCount ?? 0
+	const offloaded = data.offloadedCount ?? 0
 
 	return (
 		<div className="mb-2">
@@ -27,9 +28,16 @@ export function PruneResultRow({ data }: PruneResultRowProps) {
 					{prevTokens.toLocaleString()} → {newTokens.toLocaleString()} {t("chat:contextManagement.tokens")}
 				</span>
 			</div>
-			<p className="text-xs text-vscode-descriptionForeground mt-1">
-				{t("chat:contextManagement.prune.description", { count })}
-			</p>
+			{count > 0 && (
+				<p className="text-xs text-vscode-descriptionForeground mt-1">
+					{t("chat:contextManagement.prune.description", { count })}
+				</p>
+			)}
+			{offloaded > 0 && (
+				<p className="text-xs text-vscode-descriptionForeground mt-1">
+					{t("chat:contextManagement.prune.offloaded", { count: offloaded })}
+				</p>
+			)}
 			<ContextRecoveryButton eventId={data.pruneId} />
 		</div>
 	)

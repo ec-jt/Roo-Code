@@ -323,7 +323,9 @@
 		"prune": {
 			"title": "Tool-Ergebnisse gekürzt",
 			"description": "{{count}} großes älteres Tool-Ergebnis gekürzt. Der vollständige Text ist im Aufgabenordner gespeichert.",
-			"description_other": "{{count}} große ältere Tool-Ergebnisse gekürzt. Der vollständige Text ist im Aufgabenordner gespeichert."
+			"description_other": "{{count}} große ältere Tool-Ergebnisse gekürzt. Der vollständige Text ist im Aufgabenordner gespeichert.",
+			"offloaded": "{{count}} älteres Bild im Aufgabenordner gespeichert und durch einen Verweis ersetzt.",
+			"offloaded_other": "{{count}} ältere Bilder im Aufgabenordner gespeichert und durch Verweise ersetzt."
 		}
 	},
 	"skill": {

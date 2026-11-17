@@ -837,6 +837,10 @@
 		"enableSubfolderRules": {
 			"label": "Enable subfolder rules",
 			"description": "Recursively discover and load .roo/rules and AGENTS.md files from subdirectories. Useful for monorepos with per-package rules."
+		},
+		"offloadImages": {
+			"label": "Offload older images first",
+			"description": "After an explicit context-limit rejection, save older images to the task folder and replace them with a file reference before summarizing. Only applies to models that accept images. If this alone fits the request, no summary is made."
 		}
 	},
 	"terminal": {

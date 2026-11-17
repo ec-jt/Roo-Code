@@ -689,6 +689,10 @@
 				"label": "Fehlende Architekturdokumente anlegen",
 				"description": "Startet eine Architect-Aufgabe in einem Workspace ohne docs/architecture/, untersucht Roo das Repository und legt eine minimale, vorgeschlagene Struktur an."
 			}
+		},
+		"offloadImages": {
+			"label": "Ältere Bilder zuerst auslagern",
+			"description": "Nach einer ausdrücklichen Ablehnung wegen des Kontextlimits werden ältere Bilder im Aufgabenordner gespeichert und vor der Zusammenfassung durch einen Dateiverweis ersetzt. Gilt nur für Modelle, die Bilder akzeptieren. Reicht das allein aus, wird keine Zusammenfassung erstellt."
 		}
 	},
 	"terminal": {

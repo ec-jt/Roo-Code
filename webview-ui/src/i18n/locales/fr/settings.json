@@ -689,6 +689,10 @@
 				"label": "Créer les documents d'architecture manquants",
 				"description": "Lorsqu'une tâche Architecte démarre dans un espace de travail sans docs/architecture/, Roo examine le dépôt et crée une structure minimale proposée."
 			}
+		},
+		"offloadImages": {
+			"label": "Décharger d'abord les images anciennes",
+			"description": "Après un refus explicite pour dépassement du contexte, enregistre les images anciennes dans le dossier de la tâche et les remplace par une référence de fichier avant de résumer. S'applique uniquement aux modèles qui acceptent les images. Si cela suffit, aucun résumé n'est créé."
 		}
 	},
 	"terminal": {

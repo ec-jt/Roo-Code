@@ -689,6 +689,10 @@
 				"label": "Crea i documenti di architettura mancanti",
 				"description": "Quando un'attività Architetto inizia in un workspace senza docs/architecture/, Roo esamina il repository e crea una struttura minima proposta."
 			}
+		},
+		"offloadImages": {
+			"label": "Scarica prima le immagini precedenti",
+			"description": "Dopo un rifiuto esplicito per limite di contesto, salva le immagini precedenti nella cartella dell'attività e le sostituisce con un riferimento al file prima di riassumere. Vale solo per i modelli che accettano immagini. Se basta questo, non viene creato alcun riassunto."
 		}
 	},
 	"terminal": {

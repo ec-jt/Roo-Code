@@ -287,7 +287,9 @@
 		"prune": {
 			"title": "Tool Results Pruned",
 			"description": "Shortened {{count}} large older tool result. The full text is saved in the task folder.",
-			"description_other": "Shortened {{count}} large older tool results. The full text is saved in the task folder."
+			"description_other": "Shortened {{count}} large older tool results. The full text is saved in the task folder.",
+			"offloaded": "Saved {{count}} older image to the task folder and replaced it with a reference.",
+			"offloaded_other": "Saved {{count}} older images to the task folder and replaced them with references."
 		}
 	},
 	"skill": {

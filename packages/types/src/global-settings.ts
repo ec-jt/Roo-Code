@@ -154,6 +154,7 @@ export const globalSettingsSchema = z.object({
 	/** Allow guarded truncation after eligible overflow-compaction failure. Defaults to true for compatibility. */
 	allowOverflowTruncation: z.boolean().optional(),
 	pruneToolResultsOnOverflow: z.boolean().optional(),
+	offloadImagesOnOverflow: z.boolean().optional(),
 	architectureContextMode: architectureContextModeSchema.optional(),
 	architectureDecisionApproval: z.enum(["user", "agent"]).optional(),
 	architectureBootstrap: z.boolean().optional(),

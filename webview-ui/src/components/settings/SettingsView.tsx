@@ -173,6 +173,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 		autoCondenseContext,
 		allowOverflowTruncation,
 		pruneToolResultsOnOverflow,
+		offloadImagesOnOverflow,
 		architectureContextMode,
 		architectureDecisionApproval,
 		architectureBootstrap,
@@ -490,6 +491,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 					autoCondenseContext,
 					allowOverflowTruncation: allowOverflowTruncation ?? true,
 					pruneToolResultsOnOverflow: pruneToolResultsOnOverflow ?? true,
+					offloadImagesOnOverflow: offloadImagesOnOverflow ?? true,
 					architectureContextMode: architectureContextMode ?? "off",
 					architectureDecisionApproval: architectureDecisionApproval ?? "user",
 					architectureBootstrap: architectureBootstrap ?? true,
@@ -995,6 +997,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 								autoCondenseContext={autoCondenseContext}
 								allowOverflowTruncation={allowOverflowTruncation}
 								pruneToolResultsOnOverflow={pruneToolResultsOnOverflow}
+								offloadImagesOnOverflow={offloadImagesOnOverflow}
 								architectureContextMode={architectureContextMode}
 								architectureDecisionApproval={architectureDecisionApproval}
 								architectureBootstrap={architectureBootstrap}

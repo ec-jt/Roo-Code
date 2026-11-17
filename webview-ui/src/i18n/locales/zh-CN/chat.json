@@ -324,7 +324,9 @@
 		"prune": {
 			"title": "工具结果已精简",
 			"description": "已缩短 {{count}} 个较旧的大型工具结果。完整文本已保存在任务文件夹中。",
-			"description_other": "已缩短 {{count}} 个较旧的大型工具结果。完整文本已保存在任务文件夹中。"
+			"description_other": "已缩短 {{count}} 个较旧的大型工具结果。完整文本已保存在任务文件夹中。",
+			"offloaded": "已将 {{count}} 张较早的图片保存到任务文件夹，并替换为引用。",
+			"offloaded_other": "已将 {{count}} 张较早的图片保存到任务文件夹，并替换为引用。"
 		}
 	},
 	"skill": {

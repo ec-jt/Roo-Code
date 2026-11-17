@@ -689,6 +689,10 @@
 				"label": "Ontbrekende architectuurdocumenten aanmaken",
 				"description": "Als een Architect-taak start in een workspace zonder docs/architecture/, onderzoekt Roo de repository en maakt een minimale voorgestelde structuur."
 			}
+		},
+		"offloadImages": {
+			"label": "Oudere afbeeldingen eerst uitbesteden",
+			"description": "Na een expliciete weigering wegens de contextlimiet worden oudere afbeeldingen in de taakmap opgeslagen en vóór het samenvatten vervangen door een bestandsverwijzing. Geldt alleen voor modellen die afbeeldingen accepteren. Is dit genoeg, dan wordt er geen samenvatting gemaakt."
 		}
 	},
 	"terminal": {

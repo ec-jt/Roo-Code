@@ -689,6 +689,10 @@
 				"label": "Crear documentos de arquitectura faltantes",
 				"description": "Cuando una tarea de Arquitecto empieza en un espacio de trabajo sin docs/architecture/, Roo revisa el repositorio y crea una estructura mínima propuesta."
 			}
+		},
+		"offloadImages": {
+			"label": "Descargar primero las imágenes antiguas",
+			"description": "Tras un rechazo explícito por límite de contexto, guarda las imágenes antiguas en la carpeta de la tarea y las reemplaza por una referencia al archivo antes de resumir. Solo se aplica a modelos que aceptan imágenes. Si esto basta, no se crea ningún resumen."
 		}
 	},
 	"terminal": {

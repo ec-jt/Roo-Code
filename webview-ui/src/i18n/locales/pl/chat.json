@@ -323,7 +323,9 @@
 		"prune": {
 			"title": "Wyniki narzędzi przycięte",
 			"description": "Skrócono {{count}} duży starszy wynik narzędzia. Pełny tekst zapisano w folderze zadania.",
-			"description_other": "Skrócono {{count}} dużych starszych wyników narzędzi. Pełny tekst zapisano w folderze zadania."
+			"description_other": "Skrócono {{count}} dużych starszych wyników narzędzi. Pełny tekst zapisano w folderze zadania.",
+			"offloaded": "Zapisano {{count}} starszy obraz w folderze zadania i zastąpiono go odwołaniem.",
+			"offloaded_other": "Zapisano {{count}} starszych obrazów w folderze zadania i zastąpiono je odwołaniami."
 		}
 	},
 	"skill": {

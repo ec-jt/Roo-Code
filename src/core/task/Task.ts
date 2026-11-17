@@ -2,6 +2,7 @@ import { pinTaskStateRecall, assertTaskStateDispatch, taskStateTransaction } fro
 import { appendTaskStateRecall, withoutTaskStateRecall } from "../../services/task-state/history"
 import { applyProfileToToolInputs, resolveTaskProfile } from "./cordis-profile"
 import { resetRepeatCalls, type RepeatChain } from "./repeat-call"
+import { extensionForMediaType } from "../context-management/offload-images"
 import {
 	appendArchitectureContext,
 	getArchitectureContext,
@@ -5605,6 +5606,23 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		}
 	}
 
+	/** Writes offloaded image data to <taskDir>/images/<sha256>.<ext> once and returns the absolute path. */
+	private async saveOffloadedImage(data: string, mediaType: string, hash: string): Promise<string | undefined> {
+		try {
+			const directory = path.join(await getTaskDirectoryPath(this.globalStoragePath, this.taskId), "images")
+			await fs.promises.mkdir(directory, { recursive: true })
+			const filePath = path.join(directory, `${hash}.${extensionForMediaType(mediaType)}`)
+			try {
+				await fs.promises.writeFile(filePath, Buffer.from(data, "base64"), { flag: "wx" })
+			} catch (error) {
+				if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error
+			}
+			return filePath
+		} catch {
+			return undefined
+		}
+	}
+
 	private async handleContextWindowExceededError(
 		requestRevision: number,
 		handler: ApiHandler,
@@ -5662,6 +5680,9 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 						allowOverflowTruncation: state?.allowOverflowTruncation ?? true,
 						pruneToolResults: state?.pruneToolResultsOnOverflow ?? true,
 						saveArtifact: (text: string) => this.saveToolResultArtifact(text),
+						offloadImages: state?.offloadImagesOnOverflow ?? true,
+						saveImage: (data: string, mediaType: string, hash: string) =>
+							this.saveOffloadedImage(data, mediaType, hash),
 						contextLimitExceeded: true,
 						signal,
 						systemPrompt,
@@ -5711,6 +5732,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 					{
 						pruneId: result.pruneId,
 						prunedCount: result.prunedCount ?? 0,
+						...(result.offloadedCount ? { offloadedCount: result.offloadedCount } : {}),
 						prevContextTokens: result.prevContextTokens,
 						newContextTokens: result.newContextTokens ?? 0,
 					},

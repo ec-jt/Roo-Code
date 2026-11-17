@@ -323,7 +323,9 @@
 		"prune": {
 			"title": "Risultati degli strumenti ridotti",
 			"description": "Accorciato {{count}} risultato di strumento vecchio e grande. Il testo completo è salvato nella cartella dell'attività.",
-			"description_other": "Accorciati {{count}} risultati di strumenti vecchi e grandi. Il testo completo è salvato nella cartella dell'attività."
+			"description_other": "Accorciati {{count}} risultati di strumenti vecchi e grandi. Il testo completo è salvato nella cartella dell'attività.",
+			"offloaded": "{{count}} immagine precedente salvata nella cartella dell'attività e sostituita da un riferimento.",
+			"offloaded_other": "{{count}} immagini precedenti salvate nella cartella dell'attività e sostituite da riferimenti."
 		}
 	},
 	"skill": {

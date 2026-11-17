@@ -380,6 +380,26 @@ describe("ContextManagementSettings", () => {
 			expect(setCachedStateField).toHaveBeenCalledWith("pruneToolResultsOnOverflow", false)
 		})
 
+		it("toggles image offload and defaults it on", () => {
+			const setCachedStateField = vitest.fn()
+			render(
+				<ContextManagementSettings
+					{...autoCondenseProps}
+					offloadImagesOnOverflow={undefined}
+					setCachedStateField={setCachedStateField}
+				/>,
+			)
+			const checkbox = screen.getByTestId("offload-images-checkbox")
+			expect(checkbox.querySelector('input[type="checkbox"]')).toBeChecked()
+			fireEvent.click(checkbox)
+			expect(setCachedStateField).toHaveBeenCalledWith("offloadImagesOnOverflow", false)
+		})
+
+		it("disables image offload in manual-only mode", () => {
+			render(<ContextManagementSettings {...defaultProps} offloadImagesOnOverflow={true} />)
+			expect(screen.getByTestId("offload-images-checkbox")).toHaveAttribute("disabled")
+		})
+
 		it("shows the architecture context mode select, defaulting to off", () => {
 			render(<ContextManagementSettings {...autoCondenseProps} architectureContextMode={undefined} />)
 			expect(screen.getByTestId("architecture-context-mode-select")).toBeInTheDocument()

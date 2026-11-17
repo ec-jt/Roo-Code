@@ -310,6 +310,7 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 		autoCondenseContext: true,
 		allowOverflowTruncation: true,
 		pruneToolResultsOnOverflow: true,
+		offloadImagesOnOverflow: true,
 		architectureContextMode: "off",
 		architectureDecisionApproval: "user",
 		architectureBootstrap: true,

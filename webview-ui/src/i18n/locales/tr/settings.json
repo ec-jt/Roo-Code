@@ -689,6 +689,10 @@
 				"label": "Eksik mimari belgeleri oluştur",
 				"description": "docs/architecture/ olmayan bir çalışma alanında Mimar görevi başladığında Roo depoyu inceler ve önerilen asgari bir yapı oluşturur."
 			}
+		},
+		"offloadImages": {
+			"label": "Önce eski görselleri dışa aktar",
+			"description": "Bağlam sınırı nedeniyle açık bir reddin ardından, özetlemeden önce eski görseller görev klasörüne kaydedilir ve bir dosya referansıyla değiştirilir. Yalnızca görsel kabul eden modellere uygulanır. Bu tek başına yeterliyse özet oluşturulmaz."
 		}
 	},
 	"terminal": {

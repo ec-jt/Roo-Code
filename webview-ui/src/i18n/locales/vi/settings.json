@@ -689,6 +689,10 @@
 				"label": "Tạo tài liệu kiến trúc còn thiếu",
 				"description": "Khi tác vụ Kiến trúc sư bắt đầu trong không gian làm việc chưa có docs/architecture/, Roo khảo sát kho mã và tạo cấu trúc tối thiểu được đề xuất."
 			}
+		},
+		"offloadImages": {
+			"label": "Chuyển hình ảnh cũ ra trước",
+			"description": "Sau khi bị từ chối rõ ràng do giới hạn ngữ cảnh, lưu hình ảnh cũ vào thư mục tác vụ và thay bằng tham chiếu tệp trước khi tóm tắt. Chỉ áp dụng cho mô hình hỗ trợ hình ảnh. Nếu chỉ vậy là đủ, sẽ không tạo bản tóm tắt."
 		}
 	},
 	"terminal": {

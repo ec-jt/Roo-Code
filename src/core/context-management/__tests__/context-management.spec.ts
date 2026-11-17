@@ -403,4 +403,76 @@ describe("Context Management", () => {
 			expect(summarize.mock.calls[0][0].messages).toEqual(history.slice(0, 4))
 		})
 	})
+
+	describe("image offload before summary", () => {
+		const image = {
+			type: "image" as const,
+			source: { type: "base64" as const, media_type: "image/png" as const, data: "QUJD" },
+		}
+		const history: ApiMessage[] = [
+			{ role: "user", content: [{ type: "text", text: "task" }, image] },
+			{ role: "assistant", content: "ok" },
+			{ role: "user", content: "more" },
+			{ role: "assistant", content: "ok" },
+			{ role: "user", content: [{ type: "text", text: "latest" }, image] },
+		]
+		const base = {
+			messages: history,
+			totalTokens: 50_000,
+			contextWindow: 100_000,
+			maxTokens: 10_000,
+			apiHandler: mockApiHandler,
+			autoCondenseContext: true,
+			contextLimitExceeded: true,
+			systemPrompt: "system",
+			taskId,
+		}
+		afterEach(() => vi.restoreAllMocks())
+
+		const withImages = (supportsImages: boolean) =>
+			vi
+				.spyOn(mockApiHandler, "getModel")
+				.mockReturnValue({ id: "m", info: { contextWindow: 100_000, supportsImages } } as any)
+
+		it("offloads old images after pruning and skips the summary when the estimate fits", async () => {
+			withImages(true)
+			const summarize = vi.spyOn(condenseModule, "summarizeConversation")
+			vi.spyOn(mockApiHandler, "countTokens").mockResolvedValue(1_000)
+			const saveImage = vi.fn(async (_d: string, _m: string, hash: string) => `/t/images/${hash}.png`)
+			const result = await manageContext({ ...base, saveArtifact: async () => "tool-1.txt", saveImage })
+			expect(summarize).not.toHaveBeenCalled()
+			expect(saveImage).toHaveBeenCalledTimes(1)
+			expect(result.pruneId).toEqual(expect.any(String))
+			expect(result.prunedCount).toBe(0)
+			expect(result.offloadedCount).toBe(1)
+			expect(JSON.stringify(result.messages[0])).toContain("[Image offloaded:")
+			expect(result.messages.at(-1)).toBe(history.at(-1))
+		})
+
+		it("leaves images alone for models without image support", async () => {
+			withImages(false)
+			vi.spyOn(condenseModule, "summarizeConversation").mockResolvedValue({
+				messages: [{ role: "user", content: "summary", isSummary: true }],
+				summary: "summary",
+				cost: 0,
+				condenseId: "c1",
+			})
+			const saveImage = vi.fn(async () => "/t/images/x.png")
+			await manageContext({ ...base, saveImage })
+			expect(saveImage).not.toHaveBeenCalled()
+		})
+
+		it("skips offload when disabled", async () => {
+			withImages(true)
+			vi.spyOn(condenseModule, "summarizeConversation").mockResolvedValue({
+				messages: [{ role: "user", content: "summary", isSummary: true }],
+				summary: "summary",
+				cost: 0,
+				condenseId: "c1",
+			})
+			const saveImage = vi.fn(async () => "/t/images/x.png")
+			await manageContext({ ...base, offloadImages: false, saveImage })
+			expect(saveImage).not.toHaveBeenCalled()
+		})
+	})
 })
