@@ -205,3 +205,13 @@ describe("checkArchitectureDocs", () => {
 		expect(messages(result, "warning")).toContainEqual(expect.stringContaining("older than 180 days"))
 	})
 })
+
+describe("parseArchitectureFile Paths", () => {
+	it("removes Markdown escapes added by formatters", () => {
+		const [record] = parseArchitectureFile(
+			"risks.md",
+			"### R-9: Example\nStatus: proposed\nLast-verified: 2026-11-01\nPaths: src/core/\\*\\*, src/a\\_b.ts, src/x.ts\n\nText.\n",
+		)
+		expect(record.header.paths).toEqual(["src/core/**", "src/a_b.ts", "src/x.ts"])
+	})
+})

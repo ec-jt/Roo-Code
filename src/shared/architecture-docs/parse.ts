@@ -94,9 +94,10 @@ function parseHeader(lines: string[], start: number): { header: RecordHeader; ne
 				header.lastVerified = value
 				break
 			case "Paths":
+				// Markdown formatters (prettier) escape `*` and `_` in prose lines, e.g. `src/\*\*`.
 				header.paths = value
 					.split(",")
-					.map((p) => p.trim())
+					.map((p) => p.trim().replace(/\\([*_\\[\]])/g, "$1"))
 					.filter(Boolean)
 				break
 		}
