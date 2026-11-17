@@ -4,12 +4,12 @@ This file defines the format of all records under `docs/architecture/`. The chec
 
 ## Identifiers
 
-| Kind | ID pattern | Location |
-|---|---|---|
-| Constraint | `C-<n>` | [`constraints.md`](constraints.md) |
-| Quality goal | `Q-<AREA>-<n>` (AREA in upper case, for example `Q-REL-1`) | [`quality.md`](quality.md) |
-| Risk | `R-<n>` | [`risks.md`](risks.md) |
-| Decision | `ADR-YYYY-MM-DD-<topic>` (topic in lower case, digits, hyphens) | `decisions/<status>/ADR-YYYY-MM-DD-<topic>.md` |
+| Kind         | ID pattern                                                      | Location                                       |
+| ------------ | --------------------------------------------------------------- | ---------------------------------------------- |
+| Constraint   | `C-<n>`                                                         | [`constraints.md`](constraints.md)             |
+| Quality goal | `Q-<AREA>-<n>` (AREA in upper case, for example `Q-REL-1`)      | [`quality.md`](quality.md)                     |
+| Risk         | `R-<n>`                                                         | [`risks.md`](risks.md)                         |
+| Decision     | `ADR-YYYY-MM-DD-<topic>` (topic in lower case, digits, hyphens) | `decisions/<status>/ADR-YYYY-MM-DD-<topic>.md` |
 
 IDs are unique across all files. Every cited ID must resolve to a record.
 
@@ -34,10 +34,10 @@ Paths: src/core/condense/**, src/core/context-management/**   # optional; used f
 
 Required sections by status:
 
-| Status | Required sections |
-|---|---|
-| proposed | Problem, Proposal, Alternatives considered, Acceptance criteria, Risks |
-| accepted, rejected, superseded | Problem, Decision, Alternatives considered, Consequences |
+| Status                         | Required sections                                                      |
+| ------------------------------ | ---------------------------------------------------------------------- |
+| proposed                       | Problem, Proposal, Alternatives considered, Acceptance criteria, Risks |
+| accepted, rejected, superseded | Problem, Decision, Alternatives considered, Consequences               |
 
 ## Constraints, quality goals, and risks
 
@@ -53,6 +53,12 @@ Paths: src/core/**                               # optional
 
 Text. Quality goals add a "Scenario:" paragraph (stimulus, environment, response, measure).
 ```
+
+Quality goals also carry a `Quality property:` line before the scenario, with one tag from the [Q42 quality model](https://quality.arc42.org) (`#reliable`, `#secure`, `#efficient`, `#usable`, `#flexible`, `#operable`, `#safe`, `#suitable`). The tag must also appear in the quality-goal table in section 1.2 of [`arc42.md`](arc42.md).
+
+## arc42 section headings
+
+Section files start with a numbered level-1 heading so that arc42 tooling (for example the [arc42-toolkit](https://github.com/MSiccDev/arc42-toolkit) linter) can detect them: `# 2. Architecture constraints`, `# 10. Quality requirements`, `# 11. Risks and technical debt`. The index uses `## <n>. <Title>` per section. Record IDs keep the formats above; this repository does not use the toolkit's `IF-`, `QS-`, or `RISK-` IDs.
 
 ## Header line rules
 
