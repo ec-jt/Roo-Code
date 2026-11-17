@@ -53,6 +53,7 @@ import { codebaseSearchTool } from "../tools/CodebaseSearchTool"
 import { formatResponse } from "../prompts/responses"
 import { sanitizeToolUseId } from "../../utils/tool-id"
 import { applyProfileToToolInputs } from "../task/cordis-profile"
+import { recordRepeatCall } from "../task/repeat-call"
 
 /**
  * Processes and presents assistant message content to the user interface.
@@ -216,6 +217,13 @@ export async function presentAssistantMessage(cline: Task) {
 								imageBlocks = [...feedbackImageBlocks, ...imageBlocks]
 							}
 						}
+
+						const repeatNote = recordRepeatCall(
+							cline,
+							`use_mcp_tool:${mcpBlock.serverName}/${mcpBlock.toolName}`,
+							mcpBlock.arguments,
+						)
+						if (repeatNote) resultContent = `${resultContent}\n\n${repeatNote}`
 
 						if (toolCallId) {
 							cline.pushToolResultToUserContent({
@@ -563,6 +571,9 @@ export async function presentAssistantMessage(cline: Task) {
 								imageBlocks = [...feedbackImageBlocks, ...imageBlocks]
 							}
 						}
+
+						const repeatNote = recordRepeatCall(cline, block.name, block.nativeArgs ?? block.params)
+						if (repeatNote) resultContent = `${resultContent}\n\n${repeatNote}`
 
 						cline.pushToolResultToUserContent({
 							type: "tool_result",

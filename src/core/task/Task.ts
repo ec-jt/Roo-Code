@@ -1,6 +1,7 @@
 import { pinTaskStateRecall, assertTaskStateDispatch, taskStateTransaction } from "../../services/task-state/taskState"
 import { appendTaskStateRecall, withoutTaskStateRecall } from "../../services/task-state/history"
 import { applyProfileToToolInputs, resolveTaskProfile } from "./cordis-profile"
+import { resetRepeatCalls, type RepeatChain } from "./repeat-call"
 import {
 	appendArchitectureContext,
 	getArchitectureContext,
@@ -316,6 +317,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	readonly parentTask: Task | undefined = undefined
 	/** Fixed at creation: "cordis" when cordisRuntimePreview was on, inherited by children, restored on resume. */
 	readonly profile: TaskProfile
+	/** Consecutive identical tool calls (repeat-call reminder). Reset on a new user message. */
+	repeatChain?: RepeatChain
 	/** Plan overlay (Cordis only). Restored on resume; changed by /plan and an approved exit_plan. */
 	planOverlay: boolean
 	readonly taskNumber: number
@@ -2681,6 +2684,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		this.askResponse = askResponse
 		this.askResponseText = text
 		this.askResponseImages = images
+		if (askResponse === "messageResponse") resetRepeatCalls(this)
 
 		// Create a checkpoint whenever the user sends a message.
 		// Use allowEmpty=true to ensure a checkpoint is recorded even if there are no file changes.
@@ -2780,6 +2784,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				return
 			}
 
+			resetRepeatCalls(this)
 			const provider = this.providerRef.deref()
 
 			if (provider) {
