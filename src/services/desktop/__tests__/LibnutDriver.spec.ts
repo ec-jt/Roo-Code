@@ -73,8 +73,19 @@ describe("LibnutDriver", () => {
 
 	it("applies the scroll sign convention", () => {
 		const native = createNative()
-		new LibnutDriver(native).scroll(2, 3)
+		new LibnutDriver(native, "linux").scroll(2, 3)
 		expect(native.scrollMouse).toHaveBeenCalledWith(2 * SCROLL_X_SIGN, 3 * SCROLL_Y_SIGN)
+	})
+
+	it.each([
+		["darwin", 40],
+		["win32", 120],
+		["linux", 1],
+		["freebsd", 1],
+	])("scales wheel steps to native units on %s", (platform, units) => {
+		const native = createNative()
+		new LibnutDriver(native, platform).scroll(0, 3)
+		expect(native.scrollMouse).toHaveBeenCalledWith(0, 3 * units * SCROLL_Y_SIGN)
 	})
 
 	it("omits the modifier argument when there are no modifiers", () => {

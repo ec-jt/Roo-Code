@@ -29,13 +29,25 @@ function blockingSleep(ms: number): void {
 /**
  * DesktopDriver backed by the raw libnut N-API module.
  *
- * Scroll direction note: libnut follows robotjs, where scrollMouse(x, y) with
- * positive y scrolls up on some platforms. The sign convention here is
- * "positive dy scrolls content down" and is applied in one place
- * (SCROLL_Y_SIGN) so it can be corrected after manual verification on each OS.
+ * Scroll direction: libnut scrollMouse(x, y) scrolls up for positive y on all
+ * platforms. The driver convention is "positive dy scrolls content down", so
+ * the sign is flipped once here (verified live on macOS).
  */
 export const SCROLL_Y_SIGN = -1
 export const SCROLL_X_SIGN = 1
+
+/**
+ * libnut scroll units per wheel step, by platform (from libnut-core sources):
+ * - macOS posts a pixel-unit scroll event, so one unit is one pixel.
+ *   40 px is about three lines of text, like one mouse wheel notch.
+ * - Windows sends the value as wheel data, where one notch is WHEEL_DELTA (120).
+ * - Linux X11 sends one button 4/5 click per unit.
+ */
+export const SCROLL_UNITS_PER_STEP: Record<string, number> = { darwin: 40, win32: 120, linux: 1 }
+
+export function scrollUnitsPerStep(platform: string = process.platform): number {
+	return SCROLL_UNITS_PER_STEP[platform] ?? 1
+}
 
 /**
  * libnut modifier flag names. libnut rejects "command" with
@@ -46,7 +58,13 @@ export function toLibnutModifier(modifier: KeyModifier): string {
 }
 
 export class LibnutDriver implements DesktopDriver {
-	constructor(private readonly native: LibnutNative) {
+	private readonly scrollUnits: number
+
+	constructor(
+		private readonly native: LibnutNative,
+		platform: string = process.platform,
+	) {
+		this.scrollUnits = scrollUnitsPerStep(platform)
 		native.setMouseDelay?.(MOUSE_DELAY_MS)
 		native.setKeyboardDelay?.(KEYBOARD_DELAY_MS)
 	}
@@ -116,7 +134,10 @@ export class LibnutDriver implements DesktopDriver {
 	}
 
 	scroll(dx: number, dy: number): void {
-		this.native.scrollMouse(Math.round(dx) * SCROLL_X_SIGN, Math.round(dy) * SCROLL_Y_SIGN)
+		this.native.scrollMouse(
+			Math.round(dx) * SCROLL_X_SIGN * this.scrollUnits,
+			Math.round(dy) * SCROLL_Y_SIGN * this.scrollUnits,
+		)
 	}
 
 	keyTap(key: string, modifiers: KeyModifier[]): void {
