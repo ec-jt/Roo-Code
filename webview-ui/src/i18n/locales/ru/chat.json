@@ -30,7 +30,9 @@
 			"focus_window": "Фокус на окно",
 			"wait": "Ждать",
 			"window_screenshot": "Снимок окна",
-			"window_type": "Ввод в окно"
+			"window_type": "Ввод в окно",
+			"list_elements": "Список элементов",
+			"click_element": "Нажать на элемент"
 		}
 	},
 	"task": {

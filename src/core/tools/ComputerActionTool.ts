@@ -33,10 +33,12 @@ const REQUIRED_PARAMS: Partial<Record<ComputerAction, (keyof ComputerActionParam
 	focus_window: ["window"],
 	window_screenshot: ["window"],
 	window_type: ["window", "text"],
+	list_elements: ["window"],
+	click_element: ["window", "element"],
 }
 
 /** Actions whose target is the window named in params.window, not the active window. */
-const WINDOW_TARGETED: ReadonlySet<string> = new Set(["focus_window", "window_type"])
+const WINDOW_TARGETED: ReadonlySet<string> = new Set(["focus_window", "window_type", "click_element"])
 
 function isReadOnly(action: ComputerAction): boolean {
 	return (readOnlyComputerActions as readonly string[]).includes(action)
@@ -63,6 +65,7 @@ function toSayPayload(params: ComputerActionParams): ClineSayComputerAction {
 		amount: params.amount !== undefined ? Number(params.amount) : undefined,
 		window: params.window,
 		duration: params.duration !== undefined ? Number(params.duration) : undefined,
+		element: params.element,
 	}
 }
 
@@ -193,7 +196,17 @@ export class ComputerActionTool extends BaseTool<"computer_action"> {
 	) {
 		const lines: string[] = []
 
-		if (params.action === "list_windows") {
+		if (params.action === "list_elements") {
+			const elements = result.elements ?? []
+			lines.push(`Elements in "${result.windowTitle ?? params.window}" (${elements.length}):`)
+			for (const e of elements) {
+				lines.push(`- ${e.role} "${e.name || "(no name)"}"${e.center ? ` at ${e.center}` : ""}`)
+			}
+			lines.push(
+				"",
+				"Use click_element with the window and the element name to press one without moving the pointer. Positions are in pixels of the latest full screenshot.",
+			)
+		} else if (params.action === "list_windows") {
 			const windows = result.windows ?? []
 			lines.push(`Open windows (${windows.length}):`)
 			for (const w of windows) {

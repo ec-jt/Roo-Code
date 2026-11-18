@@ -30,7 +30,9 @@
 			"focus_window": "Aktywuj okno",
 			"wait": "Czekaj",
 			"window_screenshot": "Zrzut ekranu okna",
-			"window_type": "Wpisz w oknie"
+			"window_type": "Wpisz w oknie",
+			"list_elements": "Wyświetl elementy",
+			"click_element": "Kliknij element"
 		}
 	},
 	"task": {

@@ -49,6 +49,11 @@ describe("DesktopSession sharing with the user", () => {
 		const background = {
 			captureWindow: vi.fn(async () => ({ dataUrl: "data:image/png;base64,AAAA", width: 300, height: 200 })),
 			typeInWindow: vi.fn(async () => {}),
+			listElements: vi.fn(async () => [
+				{ role: "Button", name: "Save", x: 40, y: 20 },
+				{ role: "TextField", name: "Search" },
+			]),
+			pressElement: vi.fn(async (_id: number, name: string) => ({ role: "Button", name })),
 		}
 		const session = new DesktopSession(driver, {
 			maxWidth: 100,
@@ -119,11 +124,128 @@ describe("DesktopSession sharing with the user", () => {
 		)
 	})
 
+	it("list_elements returns element names with centers in screenshot pixels", async () => {
+		const { session, background, activity } = createSharedSession(false)
+		const result = await session.execute({ action: "list_elements", window: "Work" })
+
+		expect(background.listElements).toHaveBeenCalledWith(3)
+		// Screen 200x100 points -> screenshot 100x50, so 40,20 maps to 20,10.
+		expect(result.elements).toEqual([
+			{ role: "Button", name: "Save", center: "20,10" },
+			{ role: "TextField", name: "Search", center: undefined },
+		])
+		expect(activity.waitForIdle).not.toHaveBeenCalled()
+	})
+
+	it("click_element presses the element without the pointer, even while the user is busy", async () => {
+		const { session, driver, background } = createSharedSession(false)
+		const result = await session.execute({ action: "click_element", window: "Work", element: "Save" })
+
+		expect(background.pressElement).toHaveBeenCalledWith(3, "Save")
+		expect(driver.click).not.toHaveBeenCalled()
+		expect(driver.moveMouse).not.toHaveBeenCalled()
+		expect(result.windowTitle).toBe("Notes - Work")
+	})
+
+	it("click_element explains a missing element", async () => {
+		const { session, background } = createSharedSession(true)
+		background.pressElement.mockRejectedValueOnce(new Error('no element named "Nope"'))
+		await expect(session.execute({ action: "click_element", window: "Work", element: "Nope" })).rejects.toThrow(
+			/list_elements/,
+		)
+	})
+
 	it("rejects background actions where they are not available", async () => {
 		const { session } = createSession(createDriver(), "win32")
 		await expect(session.execute({ action: "window_screenshot", window: "Work" })).rejects.toThrow(
 			/only available on macOS/,
 		)
+	})
+})
+
+describe("DesktopSession fast capture and paste", () => {
+	it("uses the fast capture (JPEG) and maps coordinates from its size", async () => {
+		const driver = createDriver()
+		const fastCapture = vi.fn(async (width: number, height: number) => ({
+			dataUrl: "data:image/jpeg;base64,/9j/",
+			width,
+			height,
+		}))
+		const session = new DesktopSession(driver, {
+			maxWidth: 100,
+			maxHeight: 100,
+			settleMs: 0,
+			sleep: async () => {},
+			fastCapture,
+		})
+		const result = await session.execute({ action: "screenshot" })
+
+		expect(fastCapture).toHaveBeenCalledWith(100, 50)
+		expect(result.screenshot).toMatch(/^data:image\/jpeg/)
+		expect(driver.captureScreen).not.toHaveBeenCalled()
+		expect(session.toScreenPoint("50,25")).toEqual({ x: 100, y: 50 })
+	})
+
+	it("falls back to the libnut PNG capture when the fast capture fails", async () => {
+		const driver = createDriver()
+		const session = new DesktopSession(driver, {
+			maxWidth: 100,
+			maxHeight: 100,
+			settleMs: 0,
+			sleep: async () => {},
+			fastCapture: async () => {
+				throw new Error("screencapture failed")
+			},
+		})
+		const result = await session.execute({ action: "screenshot" })
+		expect(result.screenshot).toMatch(/^data:image\/png/)
+		expect(driver.captureScreen).toHaveBeenCalled()
+	})
+
+	function createPasteSession() {
+		const driver = createDriver()
+		let clip = "user clipboard"
+		const clipboard = {
+			read: vi.fn(async () => clip),
+			write: vi.fn(async (text: string) => {
+				clip = text
+			}),
+		}
+		const session = new DesktopSession(driver, {
+			maxWidth: 100,
+			maxHeight: 100,
+			settleMs: 0,
+			platform: "darwin",
+			sleep: async () => {},
+			clipboard,
+		})
+		return { session, driver, clipboard, current: () => clip }
+	}
+
+	it("types short text key by key", async () => {
+		const { session, driver, clipboard } = createPasteSession()
+		await session.execute({ action: "type", text: "hello" })
+		expect(driver.typeText).toHaveBeenCalledWith("hello")
+		expect(clipboard.write).not.toHaveBeenCalled()
+	})
+
+	it("pastes long text and restores the user's clipboard", async () => {
+		const { session, driver, clipboard, current } = createPasteSession()
+		const text = "a".repeat(200)
+		await session.execute({ action: "type", text })
+
+		expect(clipboard.write).toHaveBeenNthCalledWith(1, text)
+		expect(driver.keyTap).toHaveBeenCalledWith("v", ["command"])
+		expect(driver.typeText).not.toHaveBeenCalled()
+		expect(current()).toBe("user clipboard")
+	})
+
+	it("falls back to typing when the clipboard cannot be written", async () => {
+		const { session, driver, clipboard } = createPasteSession()
+		clipboard.write.mockRejectedValueOnce(new Error("denied"))
+		const text = "b".repeat(100)
+		await session.execute({ action: "type", text })
+		expect(driver.typeText).toHaveBeenCalledWith(text)
 	})
 })
 

@@ -30,7 +30,9 @@
 			"focus_window": "Fenster fokussieren",
 			"wait": "Warten",
 			"window_screenshot": "Fenster-Screenshot",
-			"window_type": "In Fenster tippen"
+			"window_type": "In Fenster tippen",
+			"list_elements": "Elemente auflisten",
+			"click_element": "Element anklicken"
 		}
 	},
 	"task": {

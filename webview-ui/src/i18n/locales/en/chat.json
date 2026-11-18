@@ -88,7 +88,9 @@
 			"focus_window": "Focus window",
 			"wait": "Wait",
 			"window_screenshot": "Window screenshot",
-			"window_type": "Type in window"
+			"window_type": "Type in window",
+			"list_elements": "List elements",
+			"click_element": "Click element"
 		}
 	},
 	"task": {

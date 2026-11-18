@@ -30,7 +30,9 @@
 			"focus_window": "विंडो फ़ोकस करें",
 			"wait": "प्रतीक्षा",
 			"window_screenshot": "विंडो का स्क्रीनशॉट",
-			"window_type": "विंडो में टाइप करें"
+			"window_type": "विंडो में टाइप करें",
+			"list_elements": "तत्वों की सूची",
+			"click_element": "तत्व पर क्लिक करें"
 		}
 	},
 	"task": {

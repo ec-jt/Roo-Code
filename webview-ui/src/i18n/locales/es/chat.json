@@ -30,7 +30,9 @@
 			"focus_window": "Enfocar ventana",
 			"wait": "Esperar",
 			"window_screenshot": "Captura de la ventana",
-			"window_type": "Escribir en la ventana"
+			"window_type": "Escribir en la ventana",
+			"list_elements": "Listar elementos",
+			"click_element": "Hacer clic en elemento"
 		}
 	},
 	"task": {

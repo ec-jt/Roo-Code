@@ -30,7 +30,9 @@
 			"focus_window": "Pencereye odaklan",
 			"wait": "Bekle",
 			"window_screenshot": "Pencere ekran görüntüsü",
-			"window_type": "Pencereye yaz"
+			"window_type": "Pencereye yaz",
+			"list_elements": "Öğeleri listele",
+			"click_element": "Öğeye tıkla"
 		}
 	},
 	"task": {

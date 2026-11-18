@@ -2,7 +2,8 @@ import { DesktopSession } from "./DesktopSession"
 import { LibnutDriver } from "./LibnutDriver"
 import { loadLibnut } from "./libnutLoader"
 import { createIdleProbe, UserActivityMonitor } from "./userActivity"
-import { createMacBackgroundControl } from "./macBackground"
+import { createMacBackgroundControl, createMacFastScreenCapture } from "./macBackground"
+import * as vscode from "vscode"
 
 /**
  * One DesktopSession per task. The session holds screenshot geometry, so it must
@@ -19,8 +20,14 @@ const defaultFactory: DesktopSessionFactory = (extensionPath) => {
 		getCursor: () => driver.getMousePosition(),
 		idleProbe: createIdleProbe(),
 	})
-	const background = process.platform === "darwin" ? createMacBackgroundControl() : undefined
-	return new DesktopSession(driver, { activity, background })
+	const isMac = process.platform === "darwin"
+	const background = isMac ? createMacBackgroundControl() : undefined
+	const fastCapture = isMac ? createMacFastScreenCapture() : undefined
+	const clipboard = {
+		read: async () => vscode.env.clipboard.readText(),
+		write: async (text: string) => vscode.env.clipboard.writeText(text),
+	}
+	return new DesktopSession(driver, { activity, background, fastCapture, clipboard })
 }
 
 let factory: DesktopSessionFactory = defaultFactory

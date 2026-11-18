@@ -30,7 +30,9 @@
 			"focus_window": "창 포커스",
 			"wait": "대기",
 			"window_screenshot": "창 스크린샷",
-			"window_type": "창에 입력"
+			"window_type": "창에 입력",
+			"list_elements": "요소 목록",
+			"click_element": "요소 클릭"
 		}
 	},
 	"task": {

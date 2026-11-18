@@ -30,7 +30,9 @@
 			"focus_window": "ウィンドウにフォーカス",
 			"wait": "待機",
 			"window_screenshot": "ウィンドウのスクリーンショット",
-			"window_type": "ウィンドウに入力"
+			"window_type": "ウィンドウに入力",
+			"list_elements": "要素を一覧表示",
+			"click_element": "要素をクリック"
 		}
 	},
 	"task": {

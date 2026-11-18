@@ -30,7 +30,9 @@
 			"focus_window": "Activer la fenêtre",
 			"wait": "Attendre",
 			"window_screenshot": "Capture de la fenêtre",
-			"window_type": "Saisir dans la fenêtre"
+			"window_type": "Saisir dans la fenêtre",
+			"list_elements": "Lister les éléments",
+			"click_element": "Cliquer sur l’élément"
 		}
 	},
 	"task": {

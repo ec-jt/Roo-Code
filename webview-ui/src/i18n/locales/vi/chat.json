@@ -30,7 +30,9 @@
 			"focus_window": "Chuyển đến cửa sổ",
 			"wait": "Chờ",
 			"window_screenshot": "Chụp cửa sổ",
-			"window_type": "Nhập vào cửa sổ"
+			"window_type": "Nhập vào cửa sổ",
+			"list_elements": "Liệt kê phần tử",
+			"click_element": "Nhấp vào phần tử"
 		}
 	},
 	"task": {

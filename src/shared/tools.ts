@@ -100,6 +100,7 @@ export const toolParamNames = [
 	"amount",
 	"window",
 	"duration",
+	"element",
 ] as const
 
 export type ToolParamName = (typeof toolParamNames)[number]

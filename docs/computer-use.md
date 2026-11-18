@@ -113,6 +113,8 @@ These are instructions to the model. They are not enforced limits. Approval, the
 | `wait`                                 | `duration` in ms (0-10,000, default 1,000)                                      | Screenshot                                        |
 | `window_screenshot` (macOS)            | `window` (id or part of the title)                                              | Screenshot of that window only                    |
 | `window_type` (macOS)                  | `window`, `text`                                                                | Screenshot of that window only                    |
+| `list_elements` (macOS)                | `window`                                                                        | Buttons, fields, and menus by name and position   |
+| `click_element` (macOS)                | `window`, `element` (name from `list_elements`)                                 | Screenshot of that window only                    |
 
 ### Using the computer at the same time as Roo
 
@@ -127,7 +129,7 @@ On macOS, Roo can also keep working in the background while you use the computer
 
 - `window_screenshot` captures one window, even when other windows cover it. It does not move the pointer or change the front app.
 - `window_type` inserts text at the text cursor of a window through Accessibility, without bringing the window to the front. It works in native apps such as TextEdit, Notes, and Mail. Browsers and Electron apps may ignore it.
-- Clicking in the background is not supported. To click, Roo waits for its turn.
+- `list_elements` lists the buttons, text fields, and menus of a window by name. `click_element` presses one by name through Accessibility, without moving the pointer. Use these when a click by coordinate misses, or to click while you are busy. Apps that do not expose Accessibility names (some games and custom-drawn apps) cannot be used this way.
 
 On Windows and Linux, only turn-taking is available.
 
@@ -138,6 +140,12 @@ Coordinates are `"x,y"` in pixels of the latest screenshot. Screenshots are scal
 ### Keys
 
 In key combinations, `cmd` means the main shortcut key: Command on macOS and Ctrl on Windows and Linux. `win`, `super`, and `meta` always mean the OS key. Other modifiers are `ctrl`, `alt` (or `option`), and `shift`.
+
+### Screenshots and typing
+
+- On macOS, screenshots use the system capture tool and are sent as JPEG (about 0.3-0.5 s and 100-200 KB each). If that fails, Roo falls back to the built-in capture and PNG.
+- Only the 3 most recent desktop screenshots stay in the conversation. Older ones are replaced with a short note, so long desktop tasks do not fill the context with stale images.
+- Text longer than 40 characters is pasted from the clipboard instead of typed key by key. This is faster, and autocorrect does not change it. Roo restores your clipboard right after. Short text is typed normally.
 
 ## Limits
 

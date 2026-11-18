@@ -30,7 +30,9 @@
 			"focus_window": "聚焦窗口",
 			"wait": "等待",
 			"window_screenshot": "窗口截图",
-			"window_type": "在窗口中输入"
+			"window_type": "在窗口中输入",
+			"list_elements": "列出元素",
+			"click_element": "点击元素"
 		}
 	},
 	"task": {

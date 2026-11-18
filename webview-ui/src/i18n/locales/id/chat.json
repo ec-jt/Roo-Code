@@ -30,7 +30,9 @@
 			"focus_window": "Fokuskan jendela",
 			"wait": "Tunggu",
 			"window_screenshot": "Tangkapan layar jendela",
-			"window_type": "Ketik di jendela"
+			"window_type": "Ketik di jendela",
+			"list_elements": "Daftar elemen",
+			"click_element": "Klik elemen"
 		}
 	},
 	"task": {

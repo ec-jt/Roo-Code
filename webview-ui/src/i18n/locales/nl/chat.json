@@ -30,7 +30,9 @@
 			"focus_window": "Venster focussen",
 			"wait": "Wachten",
 			"window_screenshot": "Schermafbeelding van venster",
-			"window_type": "Typen in venster"
+			"window_type": "Typen in venster",
+			"list_elements": "Elementen weergeven",
+			"click_element": "Op element klikken"
 		}
 	},
 	"task": {

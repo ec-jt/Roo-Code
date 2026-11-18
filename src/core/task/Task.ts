@@ -198,6 +198,7 @@ import { MessageQueueService } from "../message-queue/MessageQueueService"
 import { AutoApprovalHandler, checkAutoApproval } from "../auto-approval"
 import { MessageManager } from "../message-manager"
 import { orderToolResultsFirst, validateAndFixToolResultIds } from "./validateToolResultIds"
+import { findComputerScreenshotMessages, KEEP_RECENT_COMPUTER_SCREENSHOTS } from "./computerScreenshotHistory"
 import { mergeConsecutiveApiMessages } from "./mergeConsecutiveApiMessages"
 import type { ModelOperationState } from "@roo-code/types"
 import { ModelOperationAdmission } from "./model-operation/admission"
@@ -1779,6 +1780,9 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			if (this.isBrowserToolResultMessage(validatedMessage, lastEffective)) {
 				this.compactHistoricalBrowserImages()
 			}
+			if (this.isToolResultMessageWithImages(validatedMessage, lastEffective, "computer_action")) {
+				this.compactHistoricalComputerImages()
+			}
 			const messageWithTs = { ...validatedMessage, ts: Date.now() }
 			this.apiConversationHistory.push(messageWithTs)
 		}
@@ -1834,6 +1838,44 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				{
 					type: "text",
 					text: "[Older browser screenshot omitted from model history; see Browser Session tab for visual history]",
+				} satisfies Anthropic.TextBlockParam,
+			]
+		}
+	}
+
+	private isToolResultMessageWithImages(
+		message: Anthropic.MessageParam,
+		previousAssistant: ApiMessage | undefined,
+		toolName: string,
+	): boolean {
+		if (!Array.isArray(message.content) || previousAssistant?.role !== "assistant") {
+			return false
+		}
+		if (!message.content.some((block) => block.type === "image")) {
+			return false
+		}
+		return (
+			Array.isArray(previousAssistant.content) &&
+			previousAssistant.content.some(
+				(block) => block.type === "tool_use" && (block as Anthropic.ToolUseBlock).name === toolName,
+			)
+		)
+	}
+
+	/**
+	 * Keep only the most recent computer_action screenshots in model history.
+	 * Each screenshot is several hundred KB; older ones are replaced by a short
+	 * note so long desktop tasks do not fill the context with stale images.
+	 */
+	private compactHistoricalComputerImages(): void {
+		const candidates = findComputerScreenshotMessages(this.apiConversationHistory)
+		for (const message of candidates.slice(0, Math.max(0, candidates.length - KEEP_RECENT_COMPUTER_SCREENSHOTS))) {
+			if (!Array.isArray(message.content)) continue
+			message.content = [
+				...message.content.filter((block) => block.type !== "image"),
+				{
+					type: "text",
+					text: "[Older desktop screenshot omitted from model history. Take a new screenshot if you need to see the screen.]",
 				} satisfies Anthropic.TextBlockParam,
 			]
 		}

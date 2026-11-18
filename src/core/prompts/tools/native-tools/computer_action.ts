@@ -9,6 +9,9 @@ How it works:
 - Each action may need the user's approval. Keep the number of actions small.
 - Before typing, make sure the right field has focus (click it first).
 - Use list_windows and focus_window to bring an application to the front instead of searching for it visually.
+- Clicking by coordinate can miss. On macOS, if a click misses or you are unsure of a position, use list_elements to read the window's buttons and fields by name, then click_element to press one. click_element does not move the pointer.
+- Long text is pasted from the clipboard automatically (the user's clipboard is restored), so you can type whole paragraphs in one type action.
+- Only the latest few screenshots stay in the conversation. Take a new screenshot rather than relying on an old one.
 
 Sharing the computer with the user:
 - The user may be using the mouse and keyboard at the same time. Actions that use them (click, move, drag, scroll, type, key, focus_window) wait until the user has paused, and the user's cursor is put back after each click or scroll.
@@ -31,7 +34,9 @@ const ACTION_DESCRIPTION = `Action to perform:
 - focus_window: bring a window to the front by id or title
 - wait: wait duration milliseconds, then take a screenshot
 - window_screenshot (macOS): capture only the given window, even when covered; does not move the cursor or change focus
-- window_type (macOS): insert text at the given window's text cursor without bringing it to the front; returns a window_screenshot`
+- window_type (macOS): insert text at the given window's text cursor without bringing it to the front; returns a window_screenshot
+- list_elements (macOS): list the buttons, fields, and menus of the given window by name, with their positions (no screenshot)
+- click_element (macOS): press the element with the given name in the given window, without moving the pointer; returns a window_screenshot`
 
 export default {
 	type: "function",
@@ -60,6 +65,8 @@ export default {
 						"wait",
 						"window_screenshot",
 						"window_type",
+						"list_elements",
+						"click_element",
 					],
 				},
 				coordinate: {
@@ -92,7 +99,12 @@ export default {
 				window: {
 					type: ["string", "null"],
 					description:
-						"Window id from list_windows, or part of the window title. Required for focus_window, window_screenshot, and window_type.",
+						"Window id from list_windows, or part of the window title. Required for focus_window, window_screenshot, window_type, list_elements, and click_element.",
+				},
+				element: {
+					type: ["string", "null"],
+					description:
+						'Element name from list_elements, for example "Save" or "Search". Exact names are matched first, then partial names. Required for click_element.',
 				},
 				duration: {
 					type: ["string", "null"],

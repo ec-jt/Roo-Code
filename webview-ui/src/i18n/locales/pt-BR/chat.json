@@ -30,7 +30,9 @@
 			"focus_window": "Focar janela",
 			"wait": "Aguardar",
 			"window_screenshot": "Captura da janela",
-			"window_type": "Digitar na janela"
+			"window_type": "Digitar na janela",
+			"list_elements": "Listar elementos",
+			"click_element": "Clicar no elemento"
 		}
 	},
 	"task": {

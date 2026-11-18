@@ -11,7 +11,16 @@ import type { DesktopDriver, Point } from "./DesktopDriver"
 import { computeTargetSize, downscaleToRgb, encodePngRgb } from "./image"
 import { parseKeyCombo } from "./keys"
 import type { UserActivityMonitor } from "./userActivity"
-import type { BackgroundControl } from "./macBackground"
+import type { BackgroundControl, FastScreenCapture } from "./macBackground"
+
+/** Text longer than this is pasted from the clipboard instead of typed key by key. */
+export const PASTE_THRESHOLD = 40
+
+/** Clipboard access for paste-based typing. The previous content is restored afterwards. */
+export interface ClipboardAccess {
+	read(): Promise<string>
+	write(text: string): Promise<void>
+}
 
 /**
  * Stateful wrapper around a DesktopDriver. Owns screenshot geometry so the model
@@ -73,6 +82,10 @@ export interface DesktopSessionOptions {
 	activity?: UserActivityMonitor
 	/** Per-window control that does not use the shared cursor (macOS). */
 	background?: BackgroundControl
+	/** Faster full-screen capture that returns a scaled JPEG (macOS). Falls back to libnut + PNG on error. */
+	fastCapture?: FastScreenCapture
+	/** Clipboard for pasting long text. Without it, all text is typed key by key. */
+	clipboard?: ClipboardAccess
 }
 
 export interface ScreenshotResult {
@@ -93,6 +106,8 @@ export class DesktopSession {
 	private readonly sleep: (ms: number) => Promise<void>
 	private readonly activity: UserActivityMonitor | undefined
 	private readonly background: BackgroundControl | undefined
+	private readonly fastCapture: FastScreenCapture | undefined
+	private readonly clipboard: ClipboardAccess | undefined
 
 	constructor(
 		private readonly driver: DesktopDriver,
@@ -105,6 +120,39 @@ export class DesktopSession {
 		this.sleep = options.sleep ?? defaultSleep
 		this.activity = options.activity
 		this.background = options.background
+		this.fastCapture = options.fastCapture
+		this.clipboard = options.clipboard
+	}
+
+	/**
+	 * Screenshot for results. Uses the fast system capture when available
+	 * (JPEG, about 0.3 s) and falls back to the libnut capture (PNG).
+	 */
+	async captureScreenshot(): Promise<ScreenshotResult> {
+		if (this.fastCapture) {
+			try {
+				const screen = this.driver.getScreenSize()
+				// Size from logical points: never larger than the screen in points, never above the max.
+				const target = computeTargetSize(screen.width, screen.height, this.maxWidth, this.maxHeight)
+				const shot = await this.fastCapture(target.width, target.height)
+				this.geometry = {
+					shotWidth: shot.width,
+					shotHeight: shot.height,
+					screenWidth: screen.width,
+					screenHeight: screen.height,
+				}
+				let cursor: Point | undefined
+				try {
+					cursor = this.toScreenshotPoint(this.driver.getMousePosition())
+				} catch {
+					cursor = undefined
+				}
+				return { dataUrl: shot.dataUrl, width: shot.width, height: shot.height, cursor }
+			} catch {
+				// Fall through to the libnut capture.
+			}
+		}
+		return this.screenshot()
 	}
 
 	/** True when per-window background actions are available on this platform. */
@@ -238,6 +286,53 @@ export class DesktopSession {
 			case "screenshot":
 				return this.result()
 
+			case "list_elements": {
+				const background = this.requireBackground()
+				const target = this.findWindow(params.window)
+				let elements
+				try {
+					elements = await background.listElements(target.id)
+				} catch (error) {
+					throw new ComputerActionError(
+						`Could not read the elements of "${target.title}": ${error instanceof Error ? error.message : String(error)}`,
+					)
+				}
+				this.requireGeometry()
+				return {
+					windowTitle: target.title,
+					activeWindowTitle: this.getActiveWindowTitle(),
+					elements: elements.map((e) => ({
+						role: e.role,
+						name: e.name,
+						center:
+							e.x !== undefined && e.y !== undefined
+								? (() => {
+										const p = this.toScreenshotPoint({ x: e.x, y: e.y })
+										return `${p.x},${p.y}`
+									})()
+								: undefined,
+					})),
+				}
+			}
+
+			case "click_element": {
+				if (!params.element?.trim()) {
+					throw new ComputerActionError('Missing "element". Use a name from list_elements.')
+				}
+				const background = this.requireBackground()
+				const target = this.findWindow(params.window)
+				try {
+					await background.pressElement(target.id, params.element)
+				} catch (error) {
+					throw new ComputerActionError(
+						`Could not click "${params.element}" in "${target.title}": ${error instanceof Error ? error.message : String(error)}. ` +
+							"Use list_elements to see the element names, or click by coordinate.",
+					)
+				}
+				await this.sleep(this.settleMs)
+				return this.windowResult(target)
+			}
+
 			case "window_screenshot": {
 				const target = this.findWindow(params.window)
 				return this.windowResult(target)
@@ -302,7 +397,7 @@ export class DesktopSession {
 						`text is too long (${params.text.length} > ${MAX_TYPE_LENGTH} characters).`,
 					)
 				}
-				this.driver.typeText(params.text)
+				await this.typeText(params.text)
 				break
 			}
 
@@ -354,7 +449,38 @@ export class DesktopSession {
 		}
 
 		await this.sleep(this.settleMs)
-		return { ...this.result(), executedCoordinate }
+		return { ...(await this.result()), executedCoordinate }
+	}
+
+	/**
+	 * Type text. Long text is pasted from the clipboard (faster, and autocorrect
+	 * does not change it); the user's clipboard is restored afterwards.
+	 */
+	private async typeText(text: string): Promise<void> {
+		if (!this.clipboard || text.length <= PASTE_THRESHOLD) {
+			this.driver.typeText(text)
+			return
+		}
+		let previous: string | undefined
+		try {
+			previous = await this.clipboard.read()
+		} catch {
+			previous = undefined
+		}
+		try {
+			await this.clipboard.write(text)
+			const combo = parseKeyCombo("cmd+v", this.platform)
+			this.driver.keyTap(combo.key, combo.modifiers)
+			// Give the app time to read the clipboard before it is restored.
+			await this.sleep(250)
+		} catch {
+			this.driver.typeText(text)
+			return
+		} finally {
+			if (previous !== undefined) {
+				await this.clipboard.write(previous).catch(() => {})
+			}
+		}
 	}
 
 	/** Wait until the user stops using the mouse and keyboard, or fail with guidance. */
@@ -444,8 +570,8 @@ export class DesktopSession {
 		throw new ComputerActionError(`No window matches "${query}". Use list_windows to see open windows.`)
 	}
 
-	private result(): ComputerActionResult {
-		const shot = this.screenshot()
+	private async result(): Promise<ComputerActionResult> {
+		const shot = await this.captureScreenshot()
 		return {
 			screenshot: shot.dataUrl,
 			screenshotWidth: shot.width,

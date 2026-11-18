@@ -30,7 +30,9 @@
 			"focus_window": "Attiva finestra",
 			"wait": "Attendi",
 			"window_screenshot": "Screenshot della finestra",
-			"window_type": "Digita nella finestra"
+			"window_type": "Digita nella finestra",
+			"list_elements": "Elenca elementi",
+			"click_element": "Fai clic sull’elemento"
 		}
 	},
 	"task": {

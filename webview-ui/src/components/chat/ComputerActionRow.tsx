@@ -45,6 +45,10 @@ function getActionIcon(action: string, direction?: string) {
 			return <Camera className={iconClass} />
 		case "window_type":
 			return <Type className={iconClass} />
+		case "list_elements":
+			return <List className={iconClass} />
+		case "click_element":
+			return <MousePointerClick className={iconClass} />
 		case "click":
 		case "double_click":
 		case "right_click":

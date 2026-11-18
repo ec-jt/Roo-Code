@@ -21,6 +21,8 @@ export const computerActions = [
 	"wait",
 	"window_screenshot",
 	"window_type",
+	"list_elements",
+	"click_element",
 ] as const
 
 export type ComputerAction = (typeof computerActions)[number]
@@ -31,6 +33,7 @@ export const readOnlyComputerActions = [
 	"list_windows",
 	"wait",
 	"window_screenshot",
+	"list_elements",
 ] as const satisfies readonly ComputerAction[]
 
 /**
@@ -40,6 +43,8 @@ export const readOnlyComputerActions = [
 export const backgroundComputerActions = [
 	"window_screenshot",
 	"window_type",
+	"list_elements",
+	"click_element",
 ] as const satisfies readonly ComputerAction[]
 
 export function isComputerAction(value: unknown): value is ComputerAction {
@@ -67,6 +72,8 @@ export interface ComputerActionParams {
 	window?: string
 	/** Milliseconds for `wait`. */
 	duration?: string
+	/** Name of a UI element for `click_element` (from `list_elements`). */
+	element?: string
 }
 
 /** Payload of the `computer_action` ask and say messages. */
@@ -80,8 +87,17 @@ export interface ClineSayComputerAction {
 	amount?: number
 	window?: string
 	duration?: number
+	element?: string
 	/** Coordinate after mapping to logical screen points. */
 	executedCoordinate?: string
+}
+
+/** A UI element from the Accessibility tree of a window (macOS). */
+export interface ComputerElementInfo {
+	role: string
+	name: string
+	/** Center of the element in screenshot pixels, "x,y", when known. */
+	center?: string
 }
 
 export interface ComputerWindowInfo {
@@ -105,5 +121,6 @@ export interface ComputerActionResult {
 	activeWindowTitle?: string
 	/** Set when the screenshot shows one window (window_screenshot, window_type). */
 	windowTitle?: string
+	elements?: ComputerElementInfo[]
 	error?: string
 }
