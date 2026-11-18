@@ -35,11 +35,32 @@ describe("computer_action tool filtering", () => {
 		expect(names(result)).toContain("computer_action")
 	})
 
-	it.each(["architect", "ask", "debug"])("does not show computer_action in %s mode even when enabled", (mode) => {
+	it.each(["architect", "ask", "debug", "orchestrator"])("shows computer_action in %s mode when enabled", (mode) => {
 		const result = filterNativeToolsForMode(nativeTools, mode, undefined, undefined, undefined, {
 			computerUseEnabled: true,
 		})
+		expect(names(result)).toContain("computer_action")
+	})
+
+	it.each(["architect", "ask", "debug", "orchestrator"])("hides computer_action in %s mode when disabled", (mode) => {
+		const result = filterNativeToolsForMode(nativeTools, mode, undefined, undefined, undefined, {
+			computerUseEnabled: false,
+		})
 		expect(names(result)).not.toContain("computer_action")
+	})
+
+	it("shows computer_action in a custom mode without the computer group when enabled", () => {
+		const customModes = [{ slug: "reader", name: "Reader", roleDefinition: "Reads", groups: ["read" as const] }]
+		const result = filterNativeToolsForMode(nativeTools, "reader", customModes, undefined, undefined, {
+			computerUseEnabled: true,
+		})
+		expect(names(result)).toContain("computer_action")
+		expect(isToolAllowedInMode("computer_action", "reader", customModes, undefined, undefined, {})).toBe(false)
+		expect(
+			isToolAllowedInMode("computer_action", "reader", customModes, undefined, undefined, {
+				computerUseEnabled: true,
+			}),
+		).toBe(true)
 	})
 
 	it("respects disabledTools", () => {

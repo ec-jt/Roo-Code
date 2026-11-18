@@ -390,12 +390,11 @@ export function isToolAllowedInMode(
 		if (toolName === "run_slash_command") {
 			return experiments?.runSlashCommand === true
 		}
+		// computer_action (desktop control) is opt-in: hidden unless explicitly enabled
+		if (toolName === "computer_action") {
+			return settings?.computerUseEnabled === true
+		}
 		return true
-	}
-
-	// computer_action (desktop control) is opt-in: hidden unless explicitly enabled
-	if (toolName === "computer_action" && settings?.computerUseEnabled !== true) {
-		return false
 	}
 
 	// Check if the tool is allowed by the mode's groups

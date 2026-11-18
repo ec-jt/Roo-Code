@@ -2,7 +2,9 @@
 
 Status: protocol ready, results pending. The user runs the tasks; results are filled in afterwards.
 
-Build under test: **4.2.70** (`v4.2.70-cordis-preview.66`, commit `f1a9733ea`). Reload the editor after installing so this version is active.
+Build under test: **4.2.75** (`v4.2.75-cordis-preview.71`, commit `9deda9b58`). Install `bin/roo-cline-4.2.75.vsix` and reload the editor so this version is active. Check the version in the Extensions view before the first run.
+
+Host: macOS. Main checkout: `/Users/jamestrappett/Documents/Roo-Code`. Worktrees are created next to it in `/Users/jamestrappett/Documents/`.
 
 This file is evidence for defaults. It is not a record: it defines no IDs and changes no record status. Decisions that follow from it are made in the records it cites (for example a new ADR or an update to [Q-EFF-1](quality.md)).
 
@@ -19,7 +21,24 @@ Related records: [C-5](constraints.md), [C-6](constraints.md), [Q-REL-2](quality
 
 ## 2. Fixed conditions (all runs)
 
-- Same workspace: a fresh worktree of this repository at commit `f1a9733ea` for every run, for example `git worktree add --detach ../roo-eval-S1-off f1a9733ea`. Open that folder as the workspace. Remove it after recording results with `git worktree remove --force ../roo-eval-S1-off`. Do not reset or clean the main checkout; it holds untracked files that are not part of the evaluation.
+- Same workspace: a fresh worktree of this repository at commit `9deda9b58` for every run. Replace `S1-off` with the run name:
+
+    ```bash
+    cd /Users/jamestrappett/Documents/Roo-Code
+    git worktree add --detach ../roo-eval-S1-off 9deda9b58
+    cd ../roo-eval-S1-off
+    rm docs/architecture/evaluation-2026-11-18.md
+    pnpm install --frozen-lockfile --prefer-offline
+    ```
+
+    Delete this protocol from the worktree (as the `rm` line above does). If you leave it, the model can read the scripted drift messages and the expected answers. Open `/Users/jamestrappett/Documents/roo-eval-S1-off` as the workspace folder. Remove it after recording results:
+
+    ```bash
+    cd /Users/jamestrappett/Documents/Roo-Code && git worktree remove --force ../roo-eval-S1-off
+    ```
+
+    Do not reset or clean the main checkout; it holds untracked files that are not part of the evaluation.
+
 - Same provider profile and model for every run of a scenario. Record both. The Cordis profile has model dispatch admission for Anthropic only ([R-5](risks.md)); use an Anthropic model for S2.
 - Same prompt text, pasted verbatim from section 4. Start each run in a new task.
 - Auto-approval: same settings for all runs (recommended: read, write, and execute on; follow-up questions off so drift questions reach you).

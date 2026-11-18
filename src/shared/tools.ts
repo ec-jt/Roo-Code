@@ -402,6 +402,8 @@ export const TOOL_GROUPS: Record<ToolGroup, ToolGroupConfig> = {
 }
 
 // Tools that are always available to all modes.
+// computer_action is listed here so desktop control works in every mode, but it is still
+// hidden unless the user enables desktop control and the model accepts images.
 export const ALWAYS_AVAILABLE_TOOLS: ToolName[] = [
 	"ask_followup_question",
 	"attempt_completion",
@@ -411,6 +413,7 @@ export const ALWAYS_AVAILABLE_TOOLS: ToolName[] = [
 	"update_todo_list",
 	"run_slash_command",
 	"skill",
+	"computer_action",
 ] as const
 
 /**

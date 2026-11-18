@@ -7,7 +7,7 @@ Desktop control lets Roo work in other applications on your computer. Roo can ta
 ## Requirements
 
 - **A vision-capable model.** The agent works from screenshots. If the selected model does not accept images, Roo hides the tool.
-- **Code mode.** The tool belongs to the `computer` tool group. Only the built-in Code mode includes this group. To use it in a custom mode, add `computer` to that mode's groups.
+- **Any mode.** Since 4.2.76 the tool is available in every mode, including Architect, Ask, Debug, Orchestrator, and custom modes, when desktop control is on. Read-only modes such as Ask and Architect can then click and type in other apps. Approval and the app allowlist still apply. To keep a mode away from the desktop, add `computer_action` to `disabledTools` or turn desktop control off.
 - **A local VS Code window.** The tool acts on the machine that runs the extension host. Over Remote SSH, Dev Containers, WSL, or Codespaces, that machine is not your desktop, so the tool refuses to run.
 - **A supported platform:**
 
@@ -175,7 +175,7 @@ In key combinations, `cmd` means the main shortcut key: Command on macOS and Ctr
 | Message or symptom                           | Fix                                                                       |
 | -------------------------------------------- | ------------------------------------------------------------------------- |
 | "Desktop control is turned off"              | Turn on **Enable desktop control** in **Settings > Computer Use**.        |
-| Roo does not offer the tool                  | Use Code mode and a vision-capable model, and turn on the setting.        |
+| Roo does not offer the tool                  | Use a vision-capable model and turn on the setting.                       |
 | "running on a remote host"                   | Open the folder locally, not through a remote connection.                 |
 | "needs these macOS permissions"              | Follow [macOS permissions](#macos-permissions), and restart VS Code.      |
 | Black or empty screenshots                   | Grant Screen Recording to Visual Studio Code, then restart VS Code.       |
