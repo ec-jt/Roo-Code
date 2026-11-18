@@ -17,11 +17,20 @@ import { webviewMessageHandler } from "../webviewMessageHandler"
 import type { ClineProvider } from "../ClineProvider"
 
 describe("webviewMessageHandler - checkComputerUsePermissions", () => {
-	let provider: { context: { extensionPath: string }; postMessageToWebview: ReturnType<typeof vi.fn> }
+	let provider: {
+		context: { extensionPath: string }
+		postMessageToWebview: ReturnType<typeof vi.fn>
+		getCurrentTask: ReturnType<typeof vi.fn>
+	}
 
 	beforeEach(() => {
 		vi.clearAllMocks()
-		provider = { context: { extensionPath: "/ext" }, postMessageToWebview: vi.fn() }
+		provider = {
+			context: { extensionPath: "/ext" },
+			postMessageToWebview: vi.fn(),
+			// The handler checks the current task's recovery state before dispatching.
+			getCurrentTask: vi.fn(() => undefined),
+		}
 	})
 
 	const run = () =>

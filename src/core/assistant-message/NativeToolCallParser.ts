@@ -947,7 +947,7 @@ export class NativeToolCallParser {
 							amount: args.amount,
 							window: args.window,
 							duration: args.duration,
-						} as NativeArgsFor<TName>
+						} as NativeArgsFor<ToolName>
 					}
 					break
 
