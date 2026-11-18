@@ -127,6 +127,12 @@ export const globalSettingsSchema = z.object({
 	writeDelayMs: z.number().min(0).optional(),
 	alwaysAllowAll: z.boolean().optional(),
 	alwaysAllowBrowser: z.boolean().optional(),
+	/**
+	 * Auto-approve every computer_action (desktop control) call.
+	 * Separate opt-in: alwaysAllowAll does NOT imply this.
+	 * @default false
+	 */
+	alwaysAllowComputerUse: z.boolean().optional(),
 	requestDelaySeconds: z.number().optional(),
 	alwaysAllowMcp: z.boolean().optional(),
 	alwaysAllowModeSwitch: z.boolean().optional(),
@@ -197,6 +203,18 @@ export const globalSettingsSchema = z.object({
 	remoteBrowserEnabled: z.boolean().optional(),
 	remoteBrowserHost: z.string().optional(),
 	cachedChromeHostUrl: z.string().optional(),
+
+	/**
+	 * Enable the computer_action desktop-control tool.
+	 * @default false
+	 */
+	computerUseEnabled: z.boolean().optional(),
+	/**
+	 * Optional allowlist of app/window title substrings (case-insensitive).
+	 * When non-empty, state-changing actions are refused unless the active
+	 * window title matches an entry.
+	 */
+	computerUseAllowedApps: z.array(z.string()).optional(),
 
 	enableCheckpoints: z.boolean().optional(),
 	checkpointTimeout: z

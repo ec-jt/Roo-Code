@@ -31,6 +31,7 @@
 		"mcp": "Server MCP",
 		"worktrees": "Worktrees",
 		"autoApprove": "Auto-Approve",
+		"computerUse": "Kontrol Komputer",
 		"checkpoints": "Checkpoint",
 		"notifications": "Notifikasi",
 		"contextManagement": "Konteks",
@@ -240,6 +241,11 @@
 				"label": "Sertakan file yang dilindungi",
 				"description": "Izinkan Roo membuat dan mengedit file yang dilindungi (seperti .rooignore dan file konfigurasi .roo/) tanpa memerlukan persetujuan."
 			}
+		},
+		"computerUse": {
+			"label": "Kontrol desktop",
+			"description": "Menyetujui otomatis setiap aksi desktop (klik, mengetik, menekan tombol, menyeret, menggulir, fokus jendela) tanpa bertanya. Ini opsi terpisah: \"Selalu izinkan semua\" tidak mencakupnya.",
+			"warning": "Auto-approve kontrol desktop aktif. Agen dapat mengklik, mengetik, dan menekan tombol di aplikasi apa pun yang diizinkan tanpa bertanya dulu. \"Selalu izinkan semua\" tidak mencakup pengaturan ini."
 		},
 		"mcp": {
 			"label": "MCP",
@@ -552,6 +558,27 @@
 			"maxTokensDescription": "Jumlah maksimum token output untuk respons Claude Code. Default adalah 8000."
 		},
 		"retiredRooProviderMessage": "The Roo Code Router is no longer available. It was a hosted service that has been discontinued."
+	},
+	"computerUse": {
+		"enable": {
+			"label": "Aktifkan kontrol desktop",
+			"description": "Memungkinkan agen menggunakan tool computer_action untuk mengambil screenshot dan mengontrol mouse, keyboard, dan jendela di komputer ini.",
+			"warning": "Peringatan: saat diaktifkan, agen dapat melihat layarmu dan mengontrol mouse serta keyboard di aplikasi apa pun. Tinjau setiap aksi sebelum kamu menyetujuinya."
+		},
+		"allowedApps": {
+			"label": "Aplikasi yang diizinkan",
+			"placeholder": "Satu judul jendela per baris, misalnya:\nSafari\nNotes",
+			"description": "Satu entri per baris. Setiap entri adalah bagian dari judul jendela (tidak peka huruf besar/kecil). Aksi input hanya berjalan saat jendela aktif cocok dengan salah satu entri. Biarkan kosong untuk mengizinkan semua aplikasi. Screenshot dan daftar jendela selalu diizinkan."
+		},
+		"permissions": {
+			"label": "Izin macOS",
+			"checkButton": "Periksa / minta izin macOS",
+			"checkingButton": "Memeriksa...",
+			"description": "Memeriksa apakah VS Code dapat mengontrol desktop. Di macOS, ini membuka permintaan Aksesibilitas dan Perekaman Layar untuk izin yang belum ada.",
+			"ok": "Kontrol desktop tersedia."
+		},
+		"visionRequired": "Kontrol desktop memerlukan model yang mendukung vision, karena agen bekerja dari screenshot.",
+		"stopShortcut": "Tekan Cmd/Ctrl+Alt+Shift+X kapan saja untuk menghentikan kontrol desktop."
 	},
 	"checkpoints": {
 		"timeout": {

@@ -66,6 +66,9 @@ export interface ExtensionStateContextType extends ExtensionState {
 	setAlwaysAllowWriteOutsideWorkspace: (value: boolean) => void
 	setAlwaysAllowExecute: (value: boolean) => void
 	setAlwaysAllowBrowser: (value: boolean) => void
+	setAlwaysAllowComputerUse: (value: boolean) => void
+	setComputerUseEnabled: (value: boolean) => void
+	setComputerUseAllowedApps: (value: string[]) => void
 	setAlwaysAllowMcp: (value: boolean) => void
 	setAlwaysAllowModeSwitch: (value: boolean) => void
 	setAlwaysAllowSubtasks: (value: boolean) => void
@@ -293,6 +296,9 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 		maxWorkspaceFiles: 200,
 		cwd: "",
 		browserToolEnabled: true,
+		computerUseEnabled: false,
+		alwaysAllowComputerUse: false,
+		computerUseAllowedApps: [],
 		showRooIgnoredFiles: true, // Default to showing .rooignore'd files with lock symbol (current behavior).
 		enableSubfolderRules: false, // Default to disabled - must be enabled to load rules from subdirectories
 		renderContext: "sidebar",
@@ -664,6 +670,11 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 			setState((prevState) => ({ ...prevState, alwaysAllowWriteOutsideWorkspace: value })),
 		setAlwaysAllowExecute: (value) => setState((prevState) => ({ ...prevState, alwaysAllowExecute: value })),
 		setAlwaysAllowBrowser: (value) => setState((prevState) => ({ ...prevState, alwaysAllowBrowser: value })),
+		setAlwaysAllowComputerUse: (value) =>
+			setState((prevState) => ({ ...prevState, alwaysAllowComputerUse: value })),
+		setComputerUseEnabled: (value) => setState((prevState) => ({ ...prevState, computerUseEnabled: value })),
+		setComputerUseAllowedApps: (value) =>
+			setState((prevState) => ({ ...prevState, computerUseAllowedApps: value })),
 		setAlwaysAllowMcp: (value) => setState((prevState) => ({ ...prevState, alwaysAllowMcp: value })),
 		setAlwaysAllowModeSwitch: (value) => setState((prevState) => ({ ...prevState, alwaysAllowModeSwitch: value })),
 		setAlwaysAllowSubtasks: (value) => setState((prevState) => ({ ...prevState, alwaysAllowSubtasks: value })),

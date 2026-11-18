@@ -31,6 +31,7 @@
 		"mcp": "MCP-servers",
 		"worktrees": "Worktrees",
 		"autoApprove": "Auto-goedkeuren",
+		"computerUse": "Computerbesturing",
 		"checkpoints": "Checkpoints",
 		"notifications": "Meldingen",
 		"contextManagement": "Context",
@@ -240,6 +241,11 @@
 				"label": "Inclusief beschermde bestanden",
 				"description": "Sta Roo toe om beschermde bestanden (zoals .rooignore en .roo/ configuratiebestanden) aan te maken en te bewerken zonder goedkeuring."
 			}
+		},
+		"computerUse": {
+			"label": "Desktopbesturing",
+			"description": "Keurt elke desktopactie (klikken, typen, toetsaanslagen, slepen, scrollen, vensterfocus) automatisch goed zonder te vragen. Dit is een aparte opt-in: \"Altijd alles toestaan\" omvat dit niet.",
+			"warning": "Auto-goedkeuren voor desktopbesturing staat aan. De agent kan in elke toegestane app klikken, typen en toetsen indrukken zonder het je eerst te vragen. \"Altijd alles toestaan\" omvat deze instelling niet."
 		},
 		"mcp": {
 			"label": "MCP",
@@ -552,6 +558,27 @@
 			"maxTokensDescription": "Maximaal aantal output-tokens voor Claude Code-reacties. Standaard is 8000."
 		},
 		"retiredRooProviderMessage": "The Roo Code Router is no longer available. It was a hosted service that has been discontinued."
+	},
+	"computerUse": {
+		"enable": {
+			"label": "Desktopbesturing inschakelen",
+			"description": "Laat de agent de tool computer_action gebruiken om screenshots te maken en de muis, het toetsenbord en de vensters op deze computer te besturen.",
+			"warning": "Waarschuwing: als dit aan staat, kan de agent je scherm zien en je muis en toetsenbord in elke app besturen. Controleer elke actie voordat je die goedkeurt."
+		},
+		"allowedApps": {
+			"label": "Toegestane apps",
+			"placeholder": "Eén venstertitel per regel, bijvoorbeeld:\nSafari\nNotes",
+			"description": "Eén item per regel. Elk item is een deel van een venstertitel (niet hoofdlettergevoelig). Invoeracties worden alleen uitgevoerd als het actieve venster overeenkomt met een item. Laat leeg om alle apps toe te staan. Screenshots en het tonen van vensters zijn altijd toegestaan."
+		},
+		"permissions": {
+			"label": "macOS-machtigingen",
+			"checkButton": "macOS-machtigingen controleren / aanvragen",
+			"checkingButton": "Controleren...",
+			"description": "Controleert of VS Code de desktop kan besturen. Op macOS opent dit de prompts voor Toegankelijkheid en Schermopname voor elke ontbrekende machtiging.",
+			"ok": "Desktopbesturing is beschikbaar."
+		},
+		"visionRequired": "Desktopbesturing vereist een model met vision, omdat de agent werkt op basis van screenshots.",
+		"stopShortcut": "Druk op elk moment op Cmd/Ctrl+Alt+Shift+X om desktopbesturing te stoppen."
 	},
 	"checkpoints": {
 		"timeout": {

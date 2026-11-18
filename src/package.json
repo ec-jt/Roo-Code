@@ -164,6 +164,11 @@
 				"command": "roo-cline.toggleAutoApprove",
 				"title": "%command.toggleAutoApprove.title%",
 				"category": "%configuration.title%"
+			},
+			{
+				"command": "roo-cline.stopComputerUse",
+				"title": "%command.stopComputerUse.title%",
+				"category": "%configuration.title%"
 			}
 		],
 		"menus": {
@@ -287,6 +292,13 @@
 				"mac": "cmd+alt+a",
 				"win": "ctrl+alt+a",
 				"linux": "ctrl+alt+a"
+			},
+			{
+				"command": "roo-cline.stopComputerUse",
+				"key": "cmd+alt+shift+x",
+				"mac": "cmd+alt+shift+x",
+				"win": "ctrl+alt+shift+x",
+				"linux": "ctrl+alt+shift+x"
 			}
 		],
 		"submenus": [
@@ -540,6 +552,9 @@
 	},
 	"devDependencies": {
 		"@ai-sdk/openai-compatible": "^2.0.28",
+		"@nut-tree-fork/libnut-darwin": "2.7.5",
+		"@nut-tree-fork/libnut-linux": "2.7.5",
+		"@nut-tree-fork/libnut-win32": "2.7.5",
 		"@openrouter/ai-sdk-provider": "^2.1.1",
 		"@roo-code/build": "workspace:^",
 		"@roo-code/config-eslint": "workspace:^",
@@ -578,5 +593,8 @@
 		"tsx": "^4.19.3",
 		"vitest": "^3.2.3",
 		"zod-to-ts": "^1.2.0"
+	},
+	"optionalDependencies": {
+		"@nut-tree-fork/node-mac-permissions": "2.2.1"
 	}
 }

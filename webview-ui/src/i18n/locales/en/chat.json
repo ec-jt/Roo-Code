@@ -58,6 +58,37 @@
 		}
 	},
 	"greeting": "Welcome to Roo Code!",
+	"computerAction": {
+		"title": "Desktop action",
+		"wantsToAct": "Roo wants to control your desktop:",
+		"coordinate": "At",
+		"endCoordinate": "To",
+		"executedAt": "screen {{coordinate}}",
+		"key": "Keys",
+		"scroll": "Scroll",
+		"window": "Window",
+		"duration": "Wait",
+		"text": "Text to type",
+		"screenshotAlt": "Desktop screenshot",
+		"activeWindow": "Active window: {{title}}",
+		"cursor": "Cursor: {{position}}",
+		"windows": "Open windows ({{count}})",
+		"untitledWindow": "(untitled)",
+		"actions": {
+			"screenshot": "Take screenshot",
+			"click": "Click",
+			"double_click": "Double-click",
+			"right_click": "Right-click",
+			"move": "Move mouse",
+			"drag": "Drag",
+			"type": "Type text",
+			"key": "Press keys",
+			"scroll": "Scroll",
+			"list_windows": "List windows",
+			"focus_window": "Focus window",
+			"wait": "Wait"
+		}
+	},
 	"task": {
 		"title": "Task",
 		"expand": "Expand task",

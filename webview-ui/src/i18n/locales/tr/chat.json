@@ -1,5 +1,36 @@
 {
 	"greeting": "Roo Code'a Hoş Geldiniz",
+	"computerAction": {
+		"title": "Masaüstü eylemi",
+		"wantsToAct": "Roo masaüstünü kontrol etmek istiyor:",
+		"coordinate": "Konum",
+		"endCoordinate": "Hedef",
+		"executedAt": "ekran {{coordinate}}",
+		"key": "Tuşlar",
+		"scroll": "Kaydırma",
+		"window": "Pencere",
+		"duration": "Bekleme",
+		"text": "Yazılacak metin",
+		"screenshotAlt": "Masaüstü ekran görüntüsü",
+		"activeWindow": "Etkin pencere: {{title}}",
+		"cursor": "İmleç: {{position}}",
+		"windows": "Açık pencereler ({{count}})",
+		"untitledWindow": "(başlıksız)",
+		"actions": {
+			"screenshot": "Ekran görüntüsü al",
+			"click": "Tıkla",
+			"double_click": "Çift tıkla",
+			"right_click": "Sağ tıkla",
+			"move": "Fareyi taşı",
+			"drag": "Sürükle",
+			"type": "Metin yaz",
+			"key": "Tuşlara bas",
+			"scroll": "Kaydır",
+			"list_windows": "Pencereleri listele",
+			"focus_window": "Pencereye odaklan",
+			"wait": "Bekle"
+		}
+	},
 	"task": {
 		"title": "Görev",
 		"expand": "Görevi genişlet",

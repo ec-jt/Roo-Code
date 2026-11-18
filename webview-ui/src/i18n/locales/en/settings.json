@@ -70,6 +70,7 @@
 		"skills": "Skills",
 		"autoApprove": "Auto-Approve",
 		"browser": "Browser",
+		"computerUse": "Computer Use",
 		"checkpoints": "Checkpoints",
 		"notifications": "Notifications",
 		"contextManagement": "Context",
@@ -344,6 +345,11 @@
 		"browser": {
 			"label": "Browser",
 			"description": "Automatically perform browser actions without requiring approval. Note: Only applies when the model supports computer use"
+		},
+		"computerUse": {
+			"label": "Desktop control",
+			"description": "Auto-approves every desktop action (clicks, typing, key presses, drags, scrolling, window focus) without asking. This is a separate opt-in: \"Always allow all\" does not include it.",
+			"warning": "Desktop control auto-approval is on. The agent can click, type, and press keys in any allowed app without asking you first. \"Always allow all\" does not include this setting."
 		},
 		"mcp": {
 			"label": "MCP",
@@ -662,6 +668,27 @@
 			"maxTokensDescription": "Maximum number of output tokens for Claude Code responses. Default is 8000."
 		},
 		"retiredRooProviderMessage": "The Roo Code Router is no longer available. It was a hosted service that has been discontinued."
+	},
+	"computerUse": {
+		"enable": {
+			"label": "Enable desktop control",
+			"description": "Lets the agent use the computer_action tool to take screenshots and control the mouse, keyboard, and windows on this computer.",
+			"warning": "Warning: when enabled, the agent can see your screen and control your mouse and keyboard in any app. Review each action before you approve it."
+		},
+		"allowedApps": {
+			"label": "Allowed apps",
+			"placeholder": "One window title per line, for example:\nSafari\nNotes",
+			"description": "One entry per line. Each entry is a case-insensitive part of a window title. Input actions only run when the active window matches an entry. Leave empty to allow all apps. Screenshots and window listing are always allowed."
+		},
+		"permissions": {
+			"label": "macOS permissions",
+			"checkButton": "Check / request macOS permissions",
+			"checkingButton": "Checking...",
+			"description": "Checks that VS Code can control the desktop. On macOS this opens the Accessibility and Screen Recording prompts for any missing permission.",
+			"ok": "Desktop control is available."
+		},
+		"visionRequired": "Desktop control requires a vision-capable model, because the agent works from screenshots.",
+		"stopShortcut": "Press Cmd/Ctrl+Alt+Shift+X at any time to stop desktop control."
 	},
 	"browser": {
 		"localBrowser": {

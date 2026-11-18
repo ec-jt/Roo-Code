@@ -31,6 +31,7 @@
 		"mcp": "Serwery MCP",
 		"worktrees": "Worktrees",
 		"autoApprove": "Auto-zatwierdzanie",
+		"computerUse": "Sterowanie komputerem",
 		"checkpoints": "Punkty kontrolne",
 		"notifications": "Powiadomienia",
 		"contextManagement": "Kontekst",
@@ -240,6 +241,11 @@
 				"label": "Uwzględnij pliki chronione",
 				"description": "Pozwól Roo na tworzenie i edycję plików chronionych (takich jak .rooignore i pliki konfiguracyjne .roo/) bez konieczności zatwierdzania."
 			}
+		},
+		"computerUse": {
+			"label": "Sterowanie pulpitem",
+			"description": "Automatycznie zatwierdza każdą akcję na pulpicie (kliknięcia, pisanie, naciśnięcia klawiszy, przeciąganie, przewijanie, fokus okna) bez pytania. To osobna opcja: „Zawsze zezwalaj na wszystko” jej nie obejmuje.",
+			"warning": "Auto-zatwierdzanie sterowania pulpitem jest włączone. Agent może klikać, pisać i naciskać klawisze w dowolnej dozwolonej aplikacji, nie pytając cię wcześniej. „Zawsze zezwalaj na wszystko” nie obejmuje tego ustawienia."
 		},
 		"mcp": {
 			"label": "MCP",
@@ -552,6 +558,27 @@
 			"maxTokensDescription": "Maksymalna liczba tokenów wyjściowych dla odpowiedzi Claude Code. Domyślnie 8000."
 		},
 		"retiredRooProviderMessage": "The Roo Code Router is no longer available. It was a hosted service that has been discontinued."
+	},
+	"computerUse": {
+		"enable": {
+			"label": "Włącz sterowanie pulpitem",
+			"description": "Pozwala agentowi używać narzędzia computer_action do robienia zrzutów ekranu oraz sterowania myszą, klawiaturą i oknami na tym komputerze.",
+			"warning": "Uwaga: po włączeniu agent widzi twój ekran i może sterować myszą i klawiaturą w dowolnej aplikacji. Sprawdź każdą akcję, zanim ją zatwierdzisz."
+		},
+		"allowedApps": {
+			"label": "Dozwolone aplikacje",
+			"placeholder": "Jeden tytuł okna w każdej linii, na przykład:\nSafari\nNotes",
+			"description": "Jeden wpis w każdej linii. Każdy wpis to fragment tytułu okna (bez rozróżniania wielkości liter). Akcje wejściowe działają tylko wtedy, gdy aktywne okno pasuje do wpisu. Zostaw puste, aby zezwolić na wszystkie aplikacje. Zrzuty ekranu i lista okien są zawsze dozwolone."
+		},
+		"permissions": {
+			"label": "Uprawnienia macOS",
+			"checkButton": "Sprawdź / poproś o uprawnienia macOS",
+			"checkingButton": "Sprawdzanie...",
+			"description": "Sprawdza, czy VS Code może sterować pulpitem. Na macOS otwiera prośby o Dostępność i Nagrywanie ekranu dla każdego brakującego uprawnienia.",
+			"ok": "Sterowanie pulpitem jest dostępne."
+		},
+		"visionRequired": "Sterowanie pulpitem wymaga modelu obsługującego obraz, ponieważ agent pracuje na podstawie zrzutów ekranu.",
+		"stopShortcut": "Naciśnij Cmd/Ctrl+Alt+Shift+X w dowolnym momencie, aby zatrzymać sterowanie pulpitem."
 	},
 	"checkpoints": {
 		"timeout": {

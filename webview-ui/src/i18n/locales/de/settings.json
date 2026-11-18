@@ -31,6 +31,7 @@
 		"mcp": "MCP-Server",
 		"worktrees": "Worktrees",
 		"autoApprove": "Auto-Genehmigung",
+		"computerUse": "Computersteuerung",
 		"checkpoints": "Kontrollpunkte",
 		"notifications": "Benachrichtigungen",
 		"contextManagement": "Kontext",
@@ -240,6 +241,11 @@
 				"label": "Geschützte Dateien einbeziehen",
 				"description": "Roo erlauben, geschützte Dateien (wie .rooignore und .roo/ Konfigurationsdateien) ohne Genehmigung zu erstellen und zu bearbeiten."
 			}
+		},
+		"computerUse": {
+			"label": "Desktop-Steuerung",
+			"description": "Genehmigt jede Desktop-Aktion (Klicks, Tippen, Tastendrücke, Ziehen, Scrollen, Fensterfokus) automatisch, ohne nachzufragen. Das ist eine separate Opt-in-Option: „Immer alles erlauben“ schließt sie nicht ein.",
+			"warning": "Die Auto-Genehmigung für Desktop-Steuerung ist aktiv. Der Agent kann in jeder erlaubten App klicken, tippen und Tasten drücken, ohne dich vorher zu fragen. „Immer alles erlauben“ schließt diese Einstellung nicht ein."
 		},
 		"mcp": {
 			"label": "MCP",
@@ -552,6 +558,27 @@
 			"maxTokensDescription": "Maximale Anzahl an Ausgabe-Tokens für Claude Code-Antworten. Standard ist 8000."
 		},
 		"retiredRooProviderMessage": "The Roo Code Router is no longer available. It was a hosted service that has been discontinued."
+	},
+	"computerUse": {
+		"enable": {
+			"label": "Desktop-Steuerung aktivieren",
+			"description": "Erlaubt dem Agenten, mit dem Tool computer_action Screenshots aufzunehmen und Maus, Tastatur und Fenster auf diesem Computer zu steuern.",
+			"warning": "Warnung: Wenn aktiviert, kann der Agent deinen Bildschirm sehen und Maus und Tastatur in jeder App steuern. Prüfe jede Aktion, bevor du sie genehmigst."
+		},
+		"allowedApps": {
+			"label": "Erlaubte Apps",
+			"placeholder": "Ein Fenstertitel pro Zeile, zum Beispiel:\nSafari\nNotes",
+			"description": "Ein Eintrag pro Zeile. Jeder Eintrag ist ein Teil eines Fenstertitels (Groß-/Kleinschreibung egal). Eingabeaktionen laufen nur, wenn das aktive Fenster zu einem Eintrag passt. Leer lassen, um alle Apps zu erlauben. Screenshots und das Auflisten von Fenstern sind immer erlaubt."
+		},
+		"permissions": {
+			"label": "macOS-Berechtigungen",
+			"checkButton": "macOS-Berechtigungen prüfen / anfordern",
+			"checkingButton": "Wird geprüft...",
+			"description": "Prüft, ob VS Code den Desktop steuern kann. Unter macOS öffnet das die Abfragen für Bedienungshilfen und Bildschirmaufnahme für jede fehlende Berechtigung.",
+			"ok": "Desktop-Steuerung ist verfügbar."
+		},
+		"visionRequired": "Desktop-Steuerung erfordert ein Modell mit Bildverarbeitung, da der Agent mit Screenshots arbeitet.",
+		"stopShortcut": "Drücke jederzeit Cmd/Ctrl+Alt+Shift+X, um die Desktop-Steuerung zu stoppen."
 	},
 	"checkpoints": {
 		"timeout": {

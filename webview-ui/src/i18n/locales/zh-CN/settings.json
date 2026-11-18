@@ -31,6 +31,7 @@
 		"mcp": "MCP 服务",
 		"worktrees": "Worktrees",
 		"autoApprove": "自动批准",
+		"computerUse": "计算机交互",
 		"checkpoints": "存档点",
 		"notifications": "通知",
 		"contextManagement": "上下文",
@@ -240,6 +241,11 @@
 				"label": "包含受保护的文件",
 				"description": "允许 Roo 创建和编辑受保护的文件（如 .rooignore 和 .roo/ 配置文件），无需批准。"
 			}
+		},
+		"computerUse": {
+			"label": "桌面控制",
+			"description": "自动批准所有桌面操作（点击、输入、按键、拖拽、滚动、窗口聚焦），无需确认。此项需单独开启：「始终全部允许」不包含它。",
+			"warning": "已开启桌面控制自动批准。Agent 可在任何允许的应用中点击、输入和按键，无需事先询问你。「始终全部允许」不包含此设置。"
 		},
 		"mcp": {
 			"label": "MCP",
@@ -552,6 +558,27 @@
 			"maxTokensDescription": "Claude Code 响应的最大输出 Token 数量。默认为 8000。"
 		},
 		"retiredRooProviderMessage": "The Roo Code Router is no longer available. It was a hosted service that has been discontinued."
+	},
+	"computerUse": {
+		"enable": {
+			"label": "启用桌面控制",
+			"description": "允许 Agent 使用 computer_action 工具截图，并控制这台电脑上的鼠标、键盘和窗口。",
+			"warning": "警告：启用后，Agent 可以看到你的屏幕，并在任何应用中控制你的鼠标和键盘。批准前请检查每个操作。"
+		},
+		"allowedApps": {
+			"label": "允许的应用",
+			"placeholder": "每行一个窗口标题，例如：\nSafari\nNotes",
+			"description": "每行一项。每项是窗口标题的一部分（不区分大小写）。仅当活动窗口匹配某一项时才执行输入操作。留空则允许所有应用。截图和列出窗口始终允许。"
+		},
+		"permissions": {
+			"label": "macOS 权限",
+			"checkButton": "检查 / 请求 macOS 权限",
+			"checkingButton": "正在检查...",
+			"description": "检查 VS Code 能否控制桌面。在 macOS 上，会为缺少的权限打开辅助功能和屏幕录制授权提示。",
+			"ok": "桌面控制可用。"
+		},
+		"visionRequired": "桌面控制需要支持视觉的模型，因为 Agent 依靠截图工作。",
+		"stopShortcut": "随时按 Cmd/Ctrl+Alt+Shift+X 停止桌面控制。"
 	},
 	"checkpoints": {
 		"timeout": {

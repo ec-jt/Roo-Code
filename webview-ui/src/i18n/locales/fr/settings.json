@@ -31,6 +31,7 @@
 		"mcp": "Serveurs MCP",
 		"worktrees": "Worktrees",
 		"autoApprove": "Auto-approbation",
+		"computerUse": "Contrôle de l'ordinateur",
 		"checkpoints": "Points de contrôle",
 		"notifications": "Notifications",
 		"contextManagement": "Contexte",
@@ -241,6 +242,11 @@
 				"label": "Inclure les fichiers protégés",
 				"description": "Permettre à Roo de créer et modifier des fichiers protégés (comme .rooignore et les fichiers de configuration .roo/) sans nécessiter d'approbation."
 			}
+		},
+		"computerUse": {
+			"label": "Contrôle du bureau",
+			"description": "Approuve automatiquement chaque action sur le bureau (clics, saisie, appuis sur des touches, glisser-déposer, défilement, focus de fenêtre) sans demander. C'est une option distincte : « Toujours tout autoriser » ne l'inclut pas.",
+			"warning": "L'auto-approbation du contrôle du bureau est activée. L'agent peut cliquer, saisir du texte et appuyer sur des touches dans n'importe quelle app autorisée sans te demander d'abord. « Toujours tout autoriser » n'inclut pas ce paramètre."
 		},
 		"mcp": {
 			"label": "MCP",
@@ -552,6 +558,27 @@
 			"maxTokensDescription": "Nombre maximum de jetons de sortie pour les réponses de Claude Code. La valeur par défaut est 8000."
 		},
 		"retiredRooProviderMessage": "The Roo Code Router is no longer available. It was a hosted service that has been discontinued."
+	},
+	"computerUse": {
+		"enable": {
+			"label": "Activer le contrôle du bureau",
+			"description": "Permet à l'agent d'utiliser l'outil computer_action pour prendre des captures d'écran et contrôler la souris, le clavier et les fenêtres de cet ordinateur.",
+			"warning": "Attention : une fois activé, l'agent peut voir ton écran et contrôler ta souris et ton clavier dans n'importe quelle app. Vérifie chaque action avant de l'approuver."
+		},
+		"allowedApps": {
+			"label": "Apps autorisées",
+			"placeholder": "Un titre de fenêtre par ligne, par exemple :\nSafari\nNotes",
+			"description": "Une entrée par ligne. Chaque entrée est une partie d'un titre de fenêtre (insensible à la casse). Les actions de saisie ne s'exécutent que si la fenêtre active correspond à une entrée. Laisse vide pour autoriser toutes les apps. Les captures d'écran et la liste des fenêtres sont toujours autorisées."
+		},
+		"permissions": {
+			"label": "Autorisations macOS",
+			"checkButton": "Vérifier / demander les autorisations macOS",
+			"checkingButton": "Vérification...",
+			"description": "Vérifie que VS Code peut contrôler le bureau. Sur macOS, cela ouvre les demandes d'Accessibilité et d'Enregistrement de l'écran pour chaque autorisation manquante.",
+			"ok": "Le contrôle du bureau est disponible."
+		},
+		"visionRequired": "Le contrôle du bureau nécessite un modèle avec vision, car l'agent travaille à partir de captures d'écran.",
+		"stopShortcut": "Appuie sur Cmd/Ctrl+Alt+Shift+X à tout moment pour arrêter le contrôle du bureau."
 	},
 	"checkpoints": {
 		"timeout": {

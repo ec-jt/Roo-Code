@@ -1,5 +1,36 @@
 {
 	"greeting": "Roo Code에 오신 것을 환영합니다",
+	"computerAction": {
+		"title": "데스크톱 작업",
+		"wantsToAct": "Roo가 데스크톱을 제어하려고 합니다:",
+		"coordinate": "위치",
+		"endCoordinate": "끝 위치",
+		"executedAt": "화면 {{coordinate}}",
+		"key": "키",
+		"scroll": "스크롤",
+		"window": "창",
+		"duration": "대기",
+		"text": "입력할 텍스트",
+		"screenshotAlt": "데스크톱 스크린샷",
+		"activeWindow": "활성 창: {{title}}",
+		"cursor": "커서: {{position}}",
+		"windows": "열린 창 ({{count}})",
+		"untitledWindow": "(제목 없음)",
+		"actions": {
+			"screenshot": "스크린샷 찍기",
+			"click": "클릭",
+			"double_click": "더블 클릭",
+			"right_click": "오른쪽 클릭",
+			"move": "마우스 이동",
+			"drag": "드래그",
+			"type": "텍스트 입력",
+			"key": "키 누르기",
+			"scroll": "스크롤",
+			"list_windows": "창 목록",
+			"focus_window": "창 포커스",
+			"wait": "대기"
+		}
+	},
 	"task": {
 		"title": "작업",
 		"expand": "작업 펼치기",

@@ -54,6 +54,7 @@ import { openImage, saveImage } from "../../integrations/misc/image-handler"
 import { selectImages } from "../../integrations/misc/process-images"
 import { getTheme } from "../../integrations/theme/getTheme"
 import { discoverChromeHostUrl, tryChromeHostUrl } from "../../services/browser/browserDiscovery"
+import { checkPlatform } from "../../services/desktop/platformCheck"
 import { searchWorkspaceFiles } from "../../services/search/file-search"
 import { fileExistsAtPath } from "../../utils/fs"
 import { playTts, setTtsEnabled, setTtsSpeed, stopTts } from "../../utils/tts"
@@ -1660,6 +1661,39 @@ export const webviewMessageHandler = async (
 				})
 			}
 			break
+
+		case "checkComputerUsePermissions": {
+			// User-initiated: allowed to open the macOS permission prompts.
+			try {
+				const result = checkPlatform({
+					remoteName: vscode.env.remoteName,
+					extensionPath: provider.context.extensionPath,
+					requestMissingPermissions: true,
+				})
+
+				await provider.postMessageToWebview({
+					type: "computerUsePermissionsResult",
+					success: result.ok,
+					text: result.ok ? "" : result.message,
+					values: result.ok
+						? { warnings: result.warnings, remedy: [] }
+						: {
+								code: result.code,
+								remedy: result.remedy,
+								missingPermissions: result.missingPermissions ?? [],
+								warnings: [],
+							},
+				})
+			} catch (error) {
+				await provider.postMessageToWebview({
+					type: "computerUsePermissionsResult",
+					success: false,
+					text: error instanceof Error ? error.message : String(error),
+					values: { remedy: [], warnings: [] },
+				})
+			}
+			break
+		}
 
 		case "updateVSCodeSetting": {
 			const { setting, value } = message

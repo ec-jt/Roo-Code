@@ -1,5 +1,36 @@
 {
 	"greeting": "欢迎使用 Roo Code",
+	"computerAction": {
+		"title": "桌面操作",
+		"wantsToAct": "Roo 想要控制你的桌面：",
+		"coordinate": "位置",
+		"endCoordinate": "终点",
+		"executedAt": "屏幕 {{coordinate}}",
+		"key": "按键",
+		"scroll": "滚动",
+		"window": "窗口",
+		"duration": "等待",
+		"text": "要输入的文本",
+		"screenshotAlt": "桌面截图",
+		"activeWindow": "活动窗口：{{title}}",
+		"cursor": "光标：{{position}}",
+		"windows": "已打开的窗口（{{count}}）",
+		"untitledWindow": "（无标题）",
+		"actions": {
+			"screenshot": "截图",
+			"click": "点击",
+			"double_click": "双击",
+			"right_click": "右键点击",
+			"move": "移动鼠标",
+			"drag": "拖拽",
+			"type": "输入文本",
+			"key": "按键",
+			"scroll": "滚动",
+			"list_windows": "列出窗口",
+			"focus_window": "聚焦窗口",
+			"wait": "等待"
+		}
+	},
 	"task": {
 		"title": "任务",
 		"expand": "展开任务",

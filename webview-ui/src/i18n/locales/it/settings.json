@@ -31,6 +31,7 @@
 		"mcp": "Server MCP",
 		"worktrees": "Worktrees",
 		"autoApprove": "Auto-approvazione",
+		"computerUse": "Controllo del computer",
 		"checkpoints": "Punti di controllo",
 		"notifications": "Notifiche",
 		"contextManagement": "Contesto",
@@ -240,6 +241,11 @@
 				"label": "Includi file protetti",
 				"description": "Permetti a Roo di creare e modificare file protetti (come .rooignore e file di configurazione .roo/) senza richiedere approvazione."
 			}
+		},
+		"computerUse": {
+			"label": "Controllo del desktop",
+			"description": "Approva automaticamente ogni azione sul desktop (clic, digitazione, pressione di tasti, trascinamenti, scorrimento, focus della finestra) senza chiedere. È un'opzione separata: «Consenti sempre tutto» non la include.",
+			"warning": "L'auto-approvazione del controllo del desktop è attiva. L'agente può fare clic, digitare e premere tasti in qualsiasi app consentita senza chiedertelo prima. «Consenti sempre tutto» non include questa impostazione."
 		},
 		"mcp": {
 			"label": "MCP",
@@ -552,6 +558,27 @@
 			"maxTokensDescription": "Numero massimo di token di output per le risposte di Claude Code. Il valore predefinito è 8000."
 		},
 		"retiredRooProviderMessage": "The Roo Code Router is no longer available. It was a hosted service that has been discontinued."
+	},
+	"computerUse": {
+		"enable": {
+			"label": "Abilita il controllo del desktop",
+			"description": "Permette all'agente di usare lo strumento computer_action per acquisire screenshot e controllare mouse, tastiera e finestre su questo computer.",
+			"warning": "Attenzione: se abilitato, l'agente può vedere il tuo schermo e controllare mouse e tastiera in qualsiasi app. Controlla ogni azione prima di approvarla."
+		},
+		"allowedApps": {
+			"label": "App consentite",
+			"placeholder": "Un titolo di finestra per riga, ad esempio:\nSafari\nNotes",
+			"description": "Una voce per riga. Ogni voce è una parte del titolo di una finestra (senza distinzione tra maiuscole e minuscole). Le azioni di input vengono eseguite solo quando la finestra attiva corrisponde a una voce. Lascia vuoto per consentire tutte le app. Gli screenshot e l'elenco delle finestre sono sempre consentiti."
+		},
+		"permissions": {
+			"label": "Permessi macOS",
+			"checkButton": "Verifica / richiedi permessi macOS",
+			"checkingButton": "Verifica in corso...",
+			"description": "Verifica che VS Code possa controllare il desktop. Su macOS apre le richieste di Accessibilità e Registrazione schermo per ogni permesso mancante.",
+			"ok": "Il controllo del desktop è disponibile."
+		},
+		"visionRequired": "Il controllo del desktop richiede un modello con capacità visive, perché l'agente lavora a partire dagli screenshot.",
+		"stopShortcut": "Premi Cmd/Ctrl+Alt+Shift+X in qualsiasi momento per interrompere il controllo del desktop."
 	},
 	"checkpoints": {
 		"timeout": {

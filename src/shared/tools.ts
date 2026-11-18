@@ -6,6 +6,7 @@ import type {
 	ToolGroup,
 	ToolName,
 	BrowserActionParams,
+	ComputerActionParams,
 	GenerateImageParams,
 	GenerateVideoParams,
 } from "@roo-code/types"
@@ -92,6 +93,13 @@ export const toolParamNames = [
 	"files",
 	"line_ranges",
 	"plan", // exit_plan parameter
+	// computer_action parameters
+	"end_coordinate",
+	"key",
+	"direction",
+	"amount",
+	"window",
+	"duration",
 ] as const
 
 export type ToolParamName = (typeof toolParamNames)[number]
@@ -137,6 +145,7 @@ export type NativeToolArgs = {
 	}
 	codebase_search: { query: string; path?: string }
 	browser_action: BrowserActionParams
+	computer_action: ComputerActionParams
 	generate_image: GenerateImageParams
 	generate_video: GenerateVideoParams
 	run_slash_command: { command: string; args?: string }
@@ -314,6 +323,7 @@ export const TOOL_DISPLAY_NAMES: Record<ToolName, string> = {
 	task_state: "read or update durable task state",
 	execute_command: "run commands",
 	browser_action: "use a browser",
+	computer_action: "control the desktop",
 	read_file: "read files",
 	read_command_output: "read command output",
 	file_system: "use file system tools",
@@ -374,6 +384,9 @@ export const TOOL_GROUPS: Record<ToolGroup, ToolGroupConfig> = {
 	},
 	browser: {
 		tools: ["browser_action"],
+	},
+	computer: {
+		tools: ["computer_action"],
 	},
 	command: {
 		tools: ["execute_command", "managed_environment", "memory", "task_state"],

@@ -1,5 +1,36 @@
 {
 	"greeting": "Bienvenido a Roo Code",
+	"computerAction": {
+		"title": "Acción en el escritorio",
+		"wantsToAct": "Roo quiere controlar tu escritorio:",
+		"coordinate": "En",
+		"endCoordinate": "Hasta",
+		"executedAt": "pantalla {{coordinate}}",
+		"key": "Teclas",
+		"scroll": "Desplazamiento",
+		"window": "Ventana",
+		"duration": "Espera",
+		"text": "Texto a escribir",
+		"screenshotAlt": "Captura de pantalla del escritorio",
+		"activeWindow": "Ventana activa: {{title}}",
+		"cursor": "Cursor: {{position}}",
+		"windows": "Ventanas abiertas ({{count}})",
+		"untitledWindow": "(sin título)",
+		"actions": {
+			"screenshot": "Hacer captura",
+			"click": "Clic",
+			"double_click": "Doble clic",
+			"right_click": "Clic derecho",
+			"move": "Mover ratón",
+			"drag": "Arrastrar",
+			"type": "Escribir texto",
+			"key": "Pulsar teclas",
+			"scroll": "Desplazar",
+			"list_windows": "Listar ventanas",
+			"focus_window": "Enfocar ventana",
+			"wait": "Esperar"
+		}
+	},
 	"task": {
 		"title": "Tarea",
 		"expand": "Expandir tarea",

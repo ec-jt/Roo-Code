@@ -1,5 +1,36 @@
 {
 	"greeting": "Selamat datang di Roo Code",
+	"computerAction": {
+		"title": "Aksi desktop",
+		"wantsToAct": "Roo ingin mengontrol desktopmu:",
+		"coordinate": "Di",
+		"endCoordinate": "Ke",
+		"executedAt": "layar {{coordinate}}",
+		"key": "Tombol",
+		"scroll": "Gulir",
+		"window": "Jendela",
+		"duration": "Tunggu",
+		"text": "Teks untuk diketik",
+		"screenshotAlt": "Screenshot desktop",
+		"activeWindow": "Jendela aktif: {{title}}",
+		"cursor": "Kursor: {{position}}",
+		"windows": "Jendela terbuka ({{count}})",
+		"untitledWindow": "(tanpa judul)",
+		"actions": {
+			"screenshot": "Ambil screenshot",
+			"click": "Klik",
+			"double_click": "Klik ganda",
+			"right_click": "Klik kanan",
+			"move": "Gerakkan mouse",
+			"drag": "Seret",
+			"type": "Ketik teks",
+			"key": "Tekan tombol",
+			"scroll": "Gulir",
+			"list_windows": "Daftar jendela",
+			"focus_window": "Fokuskan jendela",
+			"wait": "Tunggu"
+		}
+	},
 	"task": {
 		"title": "Tugas",
 		"expand": "Perluas tugas",

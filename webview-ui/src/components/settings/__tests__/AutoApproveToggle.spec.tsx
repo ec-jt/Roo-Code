@@ -21,6 +21,7 @@ describe("AutoApproveToggle", () => {
 		alwaysAllowReadOnly: true,
 		alwaysAllowWrite: false,
 		alwaysAllowBrowser: false,
+		alwaysAllowComputerUse: false,
 		alwaysAllowMcp: false,
 		alwaysAllowModeSwitch: true,
 		alwaysAllowSubtasks: false,
@@ -97,5 +98,20 @@ describe("AutoApproveToggle", () => {
 			"aria-pressed",
 			"true",
 		)
+	})
+
+	test("renders the dedicated computer use toggle with a desktop icon", () => {
+		render(
+			<TranslationProvider>
+				<AutoApproveToggle {...initialProps} />
+			</TranslationProvider>,
+		)
+
+		const button = screen.getByTestId(autoApproveSettingsConfig.alwaysAllowComputerUse.testId)
+		expect(button).toHaveAttribute("aria-pressed", "false")
+		expect(button.querySelector(".codicon-device-desktop")).not.toBeNull()
+
+		fireEvent.click(button)
+		expect(mockOnToggle).toHaveBeenCalledWith("alwaysAllowComputerUse", true)
 	})
 })

@@ -10,6 +10,7 @@ type AutoApproveToggles = Pick<
 	| "alwaysAllowReadOnly"
 	| "alwaysAllowWrite"
 	| "alwaysAllowBrowser"
+	| "alwaysAllowComputerUse"
 	| "alwaysAllowMcp"
 	| "alwaysAllowModeSwitch"
 	| "alwaysAllowSubtasks"
@@ -56,6 +57,13 @@ export const autoApproveSettingsConfig: Record<AutoApproveSetting, AutoApproveCo
 		descriptionKey: "settings:autoApprove.browser.description",
 		icon: "globe",
 		testId: "always-allow-browser-toggle",
+	},
+	alwaysAllowComputerUse: {
+		key: "alwaysAllowComputerUse",
+		labelKey: "settings:autoApprove.computerUse.label",
+		descriptionKey: "settings:autoApprove.computerUse.description",
+		icon: "device-desktop",
+		testId: "always-allow-computer-use-toggle",
 	},
 	alwaysAllowMcp: {
 		key: "alwaysAllowMcp",

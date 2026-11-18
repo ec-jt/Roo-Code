@@ -1,5 +1,36 @@
 {
 	"greeting": "Roo Code में आपका स्वागत है",
+	"computerAction": {
+		"title": "डेस्कटॉप क्रिया",
+		"wantsToAct": "Roo तुम्हारा डेस्कटॉप नियंत्रित करना चाहता है:",
+		"coordinate": "पर",
+		"endCoordinate": "तक",
+		"executedAt": "स्क्रीन {{coordinate}}",
+		"key": "कीज़",
+		"scroll": "स्क्रॉल",
+		"window": "विंडो",
+		"duration": "प्रतीक्षा",
+		"text": "टाइप करने के लिए टेक्स्ट",
+		"screenshotAlt": "डेस्कटॉप स्क्रीनशॉट",
+		"activeWindow": "सक्रिय विंडो: {{title}}",
+		"cursor": "कर्सर: {{position}}",
+		"windows": "खुली विंडो ({{count}})",
+		"untitledWindow": "(बिना शीर्षक)",
+		"actions": {
+			"screenshot": "स्क्रीनशॉट लें",
+			"click": "क्लिक",
+			"double_click": "डबल-क्लिक",
+			"right_click": "राइट-क्लिक",
+			"move": "माउस हिलाएँ",
+			"drag": "ड्रैग",
+			"type": "टेक्स्ट टाइप करें",
+			"key": "कीज़ दबाएँ",
+			"scroll": "स्क्रॉल",
+			"list_windows": "विंडो सूची",
+			"focus_window": "विंडो फ़ोकस करें",
+			"wait": "प्रतीक्षा"
+		}
+	},
 	"task": {
 		"title": "कार्य",
 		"expand": "कार्य विस्तृत करें",

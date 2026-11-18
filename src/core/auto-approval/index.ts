@@ -21,6 +21,7 @@ export type AutoApprovalState =
 	| "alwaysAllowReadOnly"
 	| "alwaysAllowWrite"
 	| "alwaysAllowBrowser"
+	| "alwaysAllowComputerUse"
 	| "alwaysAllowMcp"
 	| "alwaysAllowModeSwitch"
 	| "alwaysAllowSubtasks"
@@ -102,6 +103,14 @@ export async function checkAutoApproval({
 
 	if (!state || !state.autoApprovalEnabled) {
 		return { decision: "ask" }
+	}
+
+	// Desktop control acts on the user's real screen, outside the workspace.
+	// It is approved only by its own dedicated opt-in. It is checked before
+	// alwaysAllowAll on purpose: "approve all actions" must not silently
+	// extend to controlling other applications.
+	if (ask === "computer_action") {
+		return state.alwaysAllowComputerUse === true ? { decision: "approve" } : { decision: "ask" }
 	}
 
 	// Managed installs are a separate consent boundary, including in all-actions mode.

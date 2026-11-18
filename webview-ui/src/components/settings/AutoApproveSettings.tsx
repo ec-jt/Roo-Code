@@ -26,6 +26,7 @@ type AutoApproveSettingsProps = HTMLAttributes<HTMLDivElement> & {
 	alwaysAllowWriteOutsideWorkspace?: boolean
 	alwaysAllowWriteProtected?: boolean
 	alwaysAllowBrowser?: boolean
+	alwaysAllowComputerUse?: boolean
 	alwaysAllowMcp?: boolean
 	alwaysAllowModeSwitch?: boolean
 	alwaysAllowSubtasks?: boolean
@@ -45,6 +46,7 @@ type AutoApproveSettingsProps = HTMLAttributes<HTMLDivElement> & {
 		| "alwaysAllowWriteOutsideWorkspace"
 		| "alwaysAllowWriteProtected"
 		| "alwaysAllowBrowser"
+		| "alwaysAllowComputerUse"
 		| "alwaysAllowMcp"
 		| "alwaysAllowModeSwitch"
 		| "alwaysAllowSubtasks"
@@ -67,6 +69,7 @@ export const AutoApproveSettings = ({
 	alwaysAllowWriteOutsideWorkspace,
 	alwaysAllowWriteProtected,
 	alwaysAllowBrowser,
+	alwaysAllowComputerUse,
 	alwaysAllowMcp,
 	alwaysAllowModeSwitch,
 	alwaysAllowSubtasks,
@@ -163,6 +166,7 @@ export const AutoApproveSettings = ({
 						alwaysAllowReadOnly={alwaysAllowReadOnly}
 						alwaysAllowWrite={alwaysAllowWrite}
 						alwaysAllowBrowser={alwaysAllowBrowser}
+						alwaysAllowComputerUse={alwaysAllowComputerUse}
 						alwaysAllowMcp={alwaysAllowMcp}
 						alwaysAllowModeSwitch={alwaysAllowModeSwitch}
 						alwaysAllowSubtasks={alwaysAllowSubtasks}
@@ -179,6 +183,14 @@ export const AutoApproveSettings = ({
 						onMaxCostChange={(value) => setCachedStateField("allowedMaxCost", value)}
 					/>
 				</div>
+
+				{alwaysAllowComputerUse && (
+					<div
+						className="p-2 rounded-xs text-sm bg-red-800/20 text-red-400"
+						data-testid="always-allow-computer-use-warning">
+						{t("settings:autoApprove.computerUse.warning")}
+					</div>
+				)}
 
 				{/* ADDITIONAL SETTINGS */}
 

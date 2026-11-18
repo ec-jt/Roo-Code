@@ -13,6 +13,11 @@
 # Include the built extension
 !dist
 
+# Include native desktop-control binaries (libnut for darwin/win32/linux,
+# MSVC runtime DLLs for win32, macOS permissions.node). Listed explicitly so a
+# broader exclude rule cannot drop them.
+!dist/native/**
+
 # Include the built webview
 !**/*.map
 !webview-ui/audio

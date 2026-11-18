@@ -1,5 +1,36 @@
 {
 	"greeting": "Chào mừng đến với Roo Code",
+	"computerAction": {
+		"title": "Thao tác màn hình",
+		"wantsToAct": "Roo muốn điều khiển màn hình của bạn:",
+		"coordinate": "Tại",
+		"endCoordinate": "Đến",
+		"executedAt": "màn hình {{coordinate}}",
+		"key": "Phím",
+		"scroll": "Cuộn",
+		"window": "Cửa sổ",
+		"duration": "Chờ",
+		"text": "Văn bản cần gõ",
+		"screenshotAlt": "Ảnh chụp màn hình",
+		"activeWindow": "Cửa sổ đang hoạt động: {{title}}",
+		"cursor": "Con trỏ: {{position}}",
+		"windows": "Cửa sổ đang mở ({{count}})",
+		"untitledWindow": "(không có tiêu đề)",
+		"actions": {
+			"screenshot": "Chụp màn hình",
+			"click": "Nhấp",
+			"double_click": "Nhấp đúp",
+			"right_click": "Nhấp chuột phải",
+			"move": "Di chuyển chuột",
+			"drag": "Kéo",
+			"type": "Gõ văn bản",
+			"key": "Nhấn phím",
+			"scroll": "Cuộn",
+			"list_windows": "Liệt kê cửa sổ",
+			"focus_window": "Chuyển đến cửa sổ",
+			"wait": "Chờ"
+		}
+	},
 	"task": {
 		"title": "Nhiệm vụ",
 		"expand": "Mở rộng nhiệm vụ",

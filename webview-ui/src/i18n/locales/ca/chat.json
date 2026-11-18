@@ -1,5 +1,36 @@
 {
 	"greeting": "Benvingut a Roo Code",
+	"computerAction": {
+		"title": "Acció a l'escriptori",
+		"wantsToAct": "Roo vol controlar el teu escriptori:",
+		"coordinate": "A",
+		"endCoordinate": "Fins a",
+		"executedAt": "pantalla {{coordinate}}",
+		"key": "Tecles",
+		"scroll": "Desplaçament",
+		"window": "Finestra",
+		"duration": "Espera",
+		"text": "Text per escriure",
+		"screenshotAlt": "Captura de pantalla de l'escriptori",
+		"activeWindow": "Finestra activa: {{title}}",
+		"cursor": "Cursor: {{position}}",
+		"windows": "Finestres obertes ({{count}})",
+		"untitledWindow": "(sense títol)",
+		"actions": {
+			"screenshot": "Fes captura",
+			"click": "Clic",
+			"double_click": "Doble clic",
+			"right_click": "Clic dret",
+			"move": "Mou el ratolí",
+			"drag": "Arrossega",
+			"type": "Escriu text",
+			"key": "Prem tecles",
+			"scroll": "Desplaça",
+			"list_windows": "Llista finestres",
+			"focus_window": "Enfoca finestra",
+			"wait": "Espera"
+		}
+	},
 	"task": {
 		"title": "Tasca",
 		"expand": "Expandir tasca",

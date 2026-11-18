@@ -31,6 +31,7 @@
 		"mcp": "Servidors MCP",
 		"worktrees": "Worktrees",
 		"autoApprove": "Auto-aprovació",
+		"computerUse": "Control de l'ordinador",
 		"checkpoints": "Punts de control",
 		"notifications": "Notificacions",
 		"contextManagement": "Context",
@@ -240,6 +241,11 @@
 				"label": "Incloure fitxers protegits",
 				"description": "Permetre a Roo crear i editar fitxers protegits (com .rooignore i fitxers de configuració .roo/) sense requerir aprovació."
 			}
+		},
+		"computerUse": {
+			"label": "Control de l'escriptori",
+			"description": "Aprova automàticament cada acció a l'escriptori (clics, escriptura, pulsacions de tecles, arrossegaments, desplaçament, focus de finestra) sense preguntar. És una opció independent: «Permet-ho tot sempre» no la inclou.",
+			"warning": "L'auto-aprovació del control de l'escriptori està activada. L'agent pot fer clic, escriure i prémer tecles a qualsevol app permesa sense preguntar-te abans. «Permet-ho tot sempre» no inclou aquesta opció."
 		},
 		"mcp": {
 			"label": "MCP",
@@ -552,6 +558,27 @@
 			"maxTokensDescription": "Nombre màxim de tokens de sortida per a les respostes de Claude Code. El valor per defecte és 8000."
 		},
 		"retiredRooProviderMessage": "The Roo Code Router is no longer available. It was a hosted service that has been discontinued."
+	},
+	"computerUse": {
+		"enable": {
+			"label": "Activa el control de l'escriptori",
+			"description": "Permet que l'agent faci servir l'eina computer_action per fer captures de pantalla i controlar el ratolí, el teclat i les finestres d'aquest ordinador.",
+			"warning": "Avís: quan està activat, l'agent pot veure la teva pantalla i controlar el ratolí i el teclat a qualsevol app. Revisa cada acció abans d'aprovar-la."
+		},
+		"allowedApps": {
+			"label": "Apps permeses",
+			"placeholder": "Un títol de finestra per línia, per exemple:\nSafari\nNotes",
+			"description": "Una entrada per línia. Cada entrada és una part del títol d'una finestra (sense distingir majúscules). Les accions d'entrada només s'executen quan la finestra activa coincideix amb una entrada. Deixa-ho buit per permetre totes les apps. Les captures de pantalla i el llistat de finestres sempre estan permesos."
+		},
+		"permissions": {
+			"label": "Permisos de macOS",
+			"checkButton": "Comprova / sol·licita permisos de macOS",
+			"checkingButton": "Comprovant...",
+			"description": "Comprova que VS Code pot controlar l'escriptori. A macOS, obre les sol·licituds d'Accessibilitat i Gravació de pantalla per a qualsevol permís que falti.",
+			"ok": "El control de l'escriptori està disponible."
+		},
+		"visionRequired": "El control de l'escriptori requereix un model amb visió, perquè l'agent treballa a partir de captures de pantalla.",
+		"stopShortcut": "Prem Cmd/Ctrl+Alt+Shift+X en qualsevol moment per aturar el control de l'escriptori."
 	},
 	"checkpoints": {
 		"timeout": {

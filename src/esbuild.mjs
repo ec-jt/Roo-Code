@@ -28,6 +28,54 @@ async function removeDirWithRetries(dirPath, retries = 5, retryDelayMs = 200) {
 	}
 }
 
+/**
+ * Copy the prebuilt native desktop-control binaries into dist/native/ so one
+ * universal VSIX works on macOS, Windows, and Linux. The extension loads them
+ * by explicit path at runtime (see services/desktop/libnutLoader.ts).
+ *
+ * - libnut (3 platforms) is required: a missing binary fails the build.
+ * - win32 also needs the MSVC runtime DLLs next to libnut.node, because Windows
+ *   resolves a module's dependent DLLs from the module's own folder.
+ * - permissions.node (macOS only) is optional: pnpm installs it only on macOS,
+ *   so a VSIX built elsewhere warns and macOS permission checks fall back.
+ */
+function copyNativeBinaries(srcDir, distDir) {
+	const nutRoot = path.join(srcDir, "node_modules", "@nut-tree-fork")
+	const nativeDir = path.join(distDir, "native")
+
+	for (const platform of ["darwin", "win32", "linux"]) {
+		const releaseDir = path.join(nutRoot, `libnut-${platform}`, "build", "Release")
+		const binary = path.join(releaseDir, "libnut.node")
+		if (!fs.existsSync(binary)) {
+			throw new Error(`[copyNativeBinaries] Missing ${binary}. Run pnpm install in src/.`)
+		}
+
+		const targetDir = path.join(nativeDir, "libnut", platform)
+		fs.mkdirSync(targetDir, { recursive: true })
+
+		const files = fs
+			.readdirSync(releaseDir)
+			.filter((f) => f === "libnut.node" || (platform === "win32" && f.toLowerCase().endsWith(".dll")))
+		for (const file of files) {
+			fs.copyFileSync(path.join(releaseDir, file), path.join(targetDir, file))
+		}
+		console.log(`[copyNativeBinaries] libnut ${platform}: ${files.length} file(s)`)
+	}
+
+	const permissions = path.join(nutRoot, "node-mac-permissions", "build", "Release", "permissions.node")
+	if (fs.existsSync(permissions)) {
+		const targetDir = path.join(nativeDir, "mac-permissions")
+		fs.mkdirSync(targetDir, { recursive: true })
+		fs.copyFileSync(permissions, path.join(targetDir, "permissions.node"))
+		console.log("[copyNativeBinaries] mac-permissions: 1 file")
+	} else {
+		console.warn(
+			"[copyNativeBinaries] WARNING: node-mac-permissions is not installed (it installs only on macOS). " +
+				"The VSIX will not include permissions.node; macOS permission checks will show a warning instead.",
+		)
+	}
+}
+
 async function main() {
 	const name = "extension"
 	const production = process.argv.includes("--production")
@@ -90,6 +138,12 @@ async function main() {
 			name: "copyLocales",
 			setup(build) {
 				build.onEnd(() => copyLocales(srcDir, distDir))
+			},
+		},
+		{
+			name: "copyNativeBinaries",
+			setup(build) {
+				build.onEnd(() => copyNativeBinaries(srcDir, distDir))
 			},
 		},
 		{

@@ -31,6 +31,7 @@
 		"mcp": "MCP 서버",
 		"worktrees": "Worktrees",
 		"autoApprove": "자동 승인",
+		"computerUse": "컴퓨터 제어",
 		"checkpoints": "체크포인트",
 		"notifications": "알림",
 		"contextManagement": "컨텍스트",
@@ -240,6 +241,11 @@
 				"label": "보호된 파일 포함",
 				"description": "Roo가 보호된 파일(.rooignore 및 .roo/ 구성 파일 등)을 승인 없이 생성하고 편집할 수 있도록 허용합니다."
 			}
+		},
+		"computerUse": {
+			"label": "데스크톱 제어",
+			"description": "모든 데스크톱 작업(클릭, 입력, 키 누르기, 드래그, 스크롤, 창 포커스)을 묻지 않고 자동 승인합니다. 별도로 켜야 하는 옵션으로, \"항상 모두 허용\"에는 포함되지 않습니다.",
+			"warning": "데스크톱 제어 자동 승인이 켜져 있습니다. 에이전트가 허용된 앱에서 먼저 묻지 않고 클릭, 입력, 키 누르기를 할 수 있습니다. \"항상 모두 허용\"에는 이 설정이 포함되지 않습니다."
 		},
 		"mcp": {
 			"label": "MCP",
@@ -552,6 +558,27 @@
 			"maxTokensDescription": "Claude Code 응답의 최대 출력 토큰 수. 기본값은 8000입니다."
 		},
 		"retiredRooProviderMessage": "The Roo Code Router is no longer available. It was a hosted service that has been discontinued."
+	},
+	"computerUse": {
+		"enable": {
+			"label": "데스크톱 제어 활성화",
+			"description": "에이전트가 computer_action 도구로 스크린샷을 찍고 이 컴퓨터의 마우스, 키보드, 창을 제어할 수 있게 합니다.",
+			"warning": "경고: 활성화하면 에이전트가 화면을 보고 모든 앱에서 마우스와 키보드를 제어할 수 있습니다. 승인하기 전에 각 작업을 검토하세요."
+		},
+		"allowedApps": {
+			"label": "허용된 앱",
+			"placeholder": "한 줄에 창 제목 하나씩, 예:\nSafari\nNotes",
+			"description": "한 줄에 하나씩 입력합니다. 각 항목은 창 제목의 일부입니다(대소문자 구분 안 함). 입력 작업은 활성 창이 항목과 일치할 때만 실행됩니다. 비워 두면 모든 앱을 허용합니다. 스크린샷과 창 목록은 항상 허용됩니다."
+		},
+		"permissions": {
+			"label": "macOS 권한",
+			"checkButton": "macOS 권한 확인 / 요청",
+			"checkingButton": "확인 중...",
+			"description": "VS Code가 데스크톱을 제어할 수 있는지 확인합니다. macOS에서는 누락된 권한에 대해 손쉬운 사용 및 화면 기록 요청 창을 엽니다.",
+			"ok": "데스크톱 제어를 사용할 수 있습니다."
+		},
+		"visionRequired": "에이전트가 스크린샷을 기반으로 작업하므로 데스크톱 제어에는 비전 지원 모델이 필요합니다.",
+		"stopShortcut": "언제든지 Cmd/Ctrl+Alt+Shift+X를 눌러 데스크톱 제어를 중지할 수 있습니다."
 	},
 	"checkpoints": {
 		"timeout": {

@@ -31,6 +31,7 @@
 		"mcp": "Máy chủ MCP",
 		"worktrees": "Worktrees",
 		"autoApprove": "Phê duyệt",
+		"computerUse": "Điều khiển máy tính",
 		"checkpoints": "Điểm kiểm tra",
 		"notifications": "Thông báo",
 		"contextManagement": "Ngữ cảnh",
@@ -240,6 +241,11 @@
 				"label": "Bao gồm các tệp được bảo vệ",
 				"description": "Cho phép Roo tạo và chỉnh sửa các tệp được bảo vệ (như .rooignore và các tệp cấu hình .roo/) mà không yêu cầu phê duyệt."
 			}
+		},
+		"computerUse": {
+			"label": "Điều khiển màn hình",
+			"description": "Tự động phê duyệt mọi thao tác trên màn hình (nhấp chuột, gõ phím, nhấn phím, kéo, cuộn, chuyển tiêu điểm cửa sổ) mà không hỏi. Đây là tùy chọn riêng: \"Luôn cho phép tất cả\" không bao gồm nó.",
+			"warning": "Tự động phê duyệt điều khiển màn hình đang bật. Agent có thể nhấp, gõ và nhấn phím trong bất kỳ ứng dụng được phép nào mà không hỏi bạn trước. \"Luôn cho phép tất cả\" không bao gồm cài đặt này."
 		},
 		"mcp": {
 			"label": "MCP",
@@ -552,6 +558,27 @@
 			"maxTokensDescription": "Số lượng token đầu ra tối đa cho các phản hồi của Claude Code. Mặc định là 8000."
 		},
 		"retiredRooProviderMessage": "The Roo Code Router is no longer available. It was a hosted service that has been discontinued."
+	},
+	"computerUse": {
+		"enable": {
+			"label": "Bật điều khiển màn hình",
+			"description": "Cho phép agent dùng công cụ computer_action để chụp màn hình và điều khiển chuột, bàn phím và cửa sổ trên máy tính này.",
+			"warning": "Cảnh báo: khi bật, agent có thể nhìn thấy màn hình và điều khiển chuột, bàn phím của bạn trong bất kỳ ứng dụng nào. Hãy xem lại từng thao tác trước khi phê duyệt."
+		},
+		"allowedApps": {
+			"label": "Ứng dụng được phép",
+			"placeholder": "Mỗi dòng một tiêu đề cửa sổ, ví dụ:\nSafari\nNotes",
+			"description": "Mỗi dòng một mục. Mỗi mục là một phần của tiêu đề cửa sổ (không phân biệt hoa thường). Thao tác nhập chỉ chạy khi cửa sổ đang hoạt động khớp với một mục. Để trống để cho phép tất cả ứng dụng. Chụp màn hình và liệt kê cửa sổ luôn được phép."
+		},
+		"permissions": {
+			"label": "Quyền macOS",
+			"checkButton": "Kiểm tra / yêu cầu quyền macOS",
+			"checkingButton": "Đang kiểm tra...",
+			"description": "Kiểm tra xem VS Code có thể điều khiển màn hình hay không. Trên macOS, thao tác này mở lời nhắc Trợ năng và Ghi màn hình cho mọi quyền còn thiếu.",
+			"ok": "Điều khiển màn hình đã sẵn sàng."
+		},
+		"visionRequired": "Điều khiển màn hình cần một model hỗ trợ hình ảnh, vì agent làm việc dựa trên ảnh chụp màn hình.",
+		"stopShortcut": "Nhấn Cmd/Ctrl+Alt+Shift+X bất cứ lúc nào để dừng điều khiển màn hình."
 	},
 	"checkpoints": {
 		"timeout": {

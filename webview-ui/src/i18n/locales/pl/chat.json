@@ -1,5 +1,36 @@
 {
 	"greeting": "Witamy w Roo Code",
+	"computerAction": {
+		"title": "Akcja na pulpicie",
+		"wantsToAct": "Roo chce sterować twoim pulpitem:",
+		"coordinate": "W",
+		"endCoordinate": "Do",
+		"executedAt": "ekran {{coordinate}}",
+		"key": "Klawisze",
+		"scroll": "Przewijanie",
+		"window": "Okno",
+		"duration": "Czekaj",
+		"text": "Tekst do wpisania",
+		"screenshotAlt": "Zrzut ekranu pulpitu",
+		"activeWindow": "Aktywne okno: {{title}}",
+		"cursor": "Kursor: {{position}}",
+		"windows": "Otwarte okna ({{count}})",
+		"untitledWindow": "(bez tytułu)",
+		"actions": {
+			"screenshot": "Zrób zrzut ekranu",
+			"click": "Kliknij",
+			"double_click": "Kliknij dwukrotnie",
+			"right_click": "Kliknij prawym",
+			"move": "Przesuń mysz",
+			"drag": "Przeciągnij",
+			"type": "Wpisz tekst",
+			"key": "Naciśnij klawisze",
+			"scroll": "Przewiń",
+			"list_windows": "Lista okien",
+			"focus_window": "Aktywuj okno",
+			"wait": "Czekaj"
+		}
+	},
 	"task": {
 		"title": "Zadanie",
 		"expand": "Rozwiń zadanie",

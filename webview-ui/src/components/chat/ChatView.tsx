@@ -402,6 +402,13 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 							setPrimaryButtonText(t("chat:approve.title"))
 							setSecondaryButtonText(t("chat:reject.title"))
 							break
+						case "computer_action":
+							setSendingDisabled(isPartial)
+							setClineAsk("computer_action")
+							setEnableButtons(!isPartial)
+							setPrimaryButtonText(t("chat:approve.title"))
+							setSecondaryButtonText(t("chat:reject.title"))
+							break
 						case "command":
 							setSendingDisabled(isPartial)
 							setClineAsk("command")
@@ -501,6 +508,8 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 						case "text":
 						case "browser_action":
 						case "browser_action_result":
+						case "computer_action":
+						case "computer_action_result":
 						case "command_output":
 						case "mcp_server_request_started":
 						case "mcp_server_response":
@@ -725,6 +734,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 						case "followup":
 						case "tool":
 						case "browser_action_launch":
+						case "computer_action":
 						case "command": // User can provide feedback to a tool or command use.
 						case "use_mcp_server":
 						case "completion_result": // If this happens then the user has feedback for the completion result.
@@ -817,6 +827,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 				case "command":
 				case "tool":
 				case "browser_action_launch":
+				case "computer_action":
 				case "use_mcp_server":
 				case "mistake_limit_reached":
 				case "plan_review":
@@ -904,6 +915,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 				case "command":
 				case "tool":
 				case "browser_action_launch":
+				case "computer_action":
 				case "use_mcp_server":
 				case "plan_review": // Keep planning; typed text is sent as feedback.
 					// Only send text/images if they exist

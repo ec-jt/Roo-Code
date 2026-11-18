@@ -1,5 +1,36 @@
 {
 	"greeting": "Roo Code へようこそ",
+	"computerAction": {
+		"title": "デスクトップ操作",
+		"wantsToAct": "Roo がデスクトップを操作しようとしています：",
+		"coordinate": "位置",
+		"endCoordinate": "移動先",
+		"executedAt": "画面 {{coordinate}}",
+		"key": "キー",
+		"scroll": "スクロール",
+		"window": "ウィンドウ",
+		"duration": "待機",
+		"text": "入力するテキスト",
+		"screenshotAlt": "デスクトップのスクリーンショット",
+		"activeWindow": "アクティブなウィンドウ：{{title}}",
+		"cursor": "カーソル：{{position}}",
+		"windows": "開いているウィンドウ（{{count}}）",
+		"untitledWindow": "（無題）",
+		"actions": {
+			"screenshot": "スクリーンショット",
+			"click": "クリック",
+			"double_click": "ダブルクリック",
+			"right_click": "右クリック",
+			"move": "マウス移動",
+			"drag": "ドラッグ",
+			"type": "テキスト入力",
+			"key": "キー入力",
+			"scroll": "スクロール",
+			"list_windows": "ウィンドウ一覧",
+			"focus_window": "ウィンドウにフォーカス",
+			"wait": "待機"
+		}
+	},
 	"task": {
 		"title": "タスク",
 		"expand": "タスクを展開",

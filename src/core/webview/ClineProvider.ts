@@ -1063,6 +1063,11 @@ export class ClineProvider
 		McpServerManager.unregisterProvider(this)
 	}
 
+	/** All live providers (sidebar and editor tabs), visible or not. */
+	public static getActiveInstances(): ClineProvider[] {
+		return Array.from(this.activeInstances)
+	}
+
 	public static getVisibleInstance(): ClineProvider | undefined {
 		return findLast(Array.from(this.activeInstances), (instance) => instance.view?.visible === true)
 	}
@@ -3029,6 +3034,9 @@ export class ClineProvider
 			alwaysAllowAll,
 			alwaysAllowExecute,
 			alwaysAllowBrowser,
+			alwaysAllowComputerUse,
+			computerUseEnabled,
+			computerUseAllowedApps,
 			allowedCommands,
 			deniedCommands,
 			alwaysAllowMcp,
@@ -3140,6 +3148,9 @@ export class ClineProvider
 			alwaysAllowAll: alwaysAllowAll ?? false,
 			alwaysAllowExecute: alwaysAllowExecute ?? false,
 			alwaysAllowBrowser: alwaysAllowBrowser ?? false,
+			alwaysAllowComputerUse: alwaysAllowComputerUse ?? false,
+			computerUseEnabled: computerUseEnabled ?? false,
+			computerUseAllowedApps: computerUseAllowedApps ?? [],
 			alwaysAllowMcp: alwaysAllowMcp ?? false,
 			alwaysAllowModeSwitch: alwaysAllowModeSwitch ?? false,
 			alwaysAllowSubtasks: alwaysAllowSubtasks ?? false,
@@ -3327,6 +3338,9 @@ export class ClineProvider
 			alwaysAllowAll: stateValues.alwaysAllowAll ?? false,
 			alwaysAllowExecute: stateValues.alwaysAllowExecute ?? false,
 			alwaysAllowBrowser: stateValues.alwaysAllowBrowser ?? false,
+			alwaysAllowComputerUse: stateValues.alwaysAllowComputerUse ?? false,
+			computerUseEnabled: stateValues.computerUseEnabled ?? false,
+			computerUseAllowedApps: stateValues.computerUseAllowedApps ?? [],
 			alwaysAllowMcp: stateValues.alwaysAllowMcp ?? false,
 			alwaysAllowModeSwitch: stateValues.alwaysAllowModeSwitch ?? false,
 			alwaysAllowSubtasks: stateValues.alwaysAllowSubtasks ?? false,

@@ -1,5 +1,36 @@
 {
 	"greeting": "Добро пожаловать в Roo Code",
+	"computerAction": {
+		"title": "Действие на рабочем столе",
+		"wantsToAct": "Roo хочет управлять твоим рабочим столом:",
+		"coordinate": "В точке",
+		"endCoordinate": "До",
+		"executedAt": "экран {{coordinate}}",
+		"key": "Клавиши",
+		"scroll": "Прокрутка",
+		"window": "Окно",
+		"duration": "Ожидание",
+		"text": "Текст для ввода",
+		"screenshotAlt": "Скриншот рабочего стола",
+		"activeWindow": "Активное окно: {{title}}",
+		"cursor": "Курсор: {{position}}",
+		"windows": "Открытые окна ({{count}})",
+		"untitledWindow": "(без названия)",
+		"actions": {
+			"screenshot": "Сделать скриншот",
+			"click": "Клик",
+			"double_click": "Двойной клик",
+			"right_click": "Правый клик",
+			"move": "Переместить мышь",
+			"drag": "Перетащить",
+			"type": "Ввести текст",
+			"key": "Нажать клавиши",
+			"scroll": "Прокрутить",
+			"list_windows": "Список окон",
+			"focus_window": "Фокус на окно",
+			"wait": "Ждать"
+		}
+	},
 	"task": {
 		"title": "Задача",
 		"expand": "Развернуть задачу",

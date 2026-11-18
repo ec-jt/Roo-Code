@@ -154,7 +154,7 @@ export const DEFAULT_MODES: readonly ModeConfig[] = [
 		whenToUse:
 			"Use this mode when you need to write, modify, or refactor code. Ideal for implementing features, fixing bugs, creating new files, or making code improvements across any programming language or framework.",
 		description: "Write, modify, and refactor code",
-		groups: ["read", "edit", "browser", "command", "mcp"],
+		groups: ["read", "edit", "browser", "computer", "command", "mcp"],
 		customInstructions:
 			"**Architecture records:** If the project has docs/architecture/, cite affected IDs (C-, Q-, R-, ADR-) in work items and handoffs, and do not edit docs/architecture/. On drift (a constraint would be violated, a decision no longer matches the code, a new structural choice is needed, or a risk materialised), stop the conflicting change, record a task-state blocker citing the IDs, and use ask_followup_question to ask the user to switch to Architect mode, with the choices: switch to Architect, continue with a recorded override, or stop. Never call switch_mode for drift. In a subtask, report drift in the completion handoff instead of asking.",
 	},

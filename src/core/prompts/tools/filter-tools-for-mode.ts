@@ -281,6 +281,11 @@ export function filterNativeToolsForMode(
 		allowedToolNames.delete("browser_action")
 	}
 
+	// computer_action (desktop control) is opt-in: hidden unless explicitly enabled
+	if (settings?.computerUseEnabled !== true) {
+		allowedToolNames.delete("computer_action")
+	}
+
 	// Conditionally exclude update_todo_list if disabled in settings
 	if (settings?.todoListEnabled === false) {
 		allowedToolNames.delete("update_todo_list")
@@ -386,6 +391,11 @@ export function isToolAllowedInMode(
 			return experiments?.runSlashCommand === true
 		}
 		return true
+	}
+
+	// computer_action (desktop control) is opt-in: hidden unless explicitly enabled
+	if (toolName === "computer_action" && settings?.computerUseEnabled !== true) {
+		return false
 	}
 
 	// Check if the tool is allowed by the mode's groups

@@ -31,6 +31,7 @@
 		"mcp": "Servidores MCP",
 		"worktrees": "Worktrees",
 		"autoApprove": "Aprovação",
+		"computerUse": "Controle do computador",
 		"checkpoints": "Checkpoints",
 		"notifications": "Notificações",
 		"contextManagement": "Contexto",
@@ -240,6 +241,11 @@
 				"label": "Incluir arquivos protegidos",
 				"description": "Permitir que o Roo crie e edite arquivos protegidos (como .rooignore e arquivos de configuração .roo/) sem exigir aprovação."
 			}
+		},
+		"computerUse": {
+			"label": "Controle da área de trabalho",
+			"description": "Aprova automaticamente cada ação na área de trabalho (cliques, digitação, teclas pressionadas, arrastes, rolagem, foco de janela) sem perguntar. É uma opção separada: \"Sempre permitir tudo\" não a inclui.",
+			"warning": "A aprovação automática do controle da área de trabalho está ativada. O agente pode clicar, digitar e pressionar teclas em qualquer app permitido sem te perguntar antes. \"Sempre permitir tudo\" não inclui esta configuração."
 		},
 		"mcp": {
 			"label": "MCP",
@@ -552,6 +558,27 @@
 			"maxTokensDescription": "Número máximo de tokens de saída para respostas do Claude Code. O padrão é 8000."
 		},
 		"retiredRooProviderMessage": "The Roo Code Router is no longer available. It was a hosted service that has been discontinued."
+	},
+	"computerUse": {
+		"enable": {
+			"label": "Ativar controle da área de trabalho",
+			"description": "Permite que o agente use a ferramenta computer_action para fazer capturas de tela e controlar o mouse, o teclado e as janelas deste computador.",
+			"warning": "Aviso: quando ativado, o agente pode ver sua tela e controlar seu mouse e teclado em qualquer app. Revise cada ação antes de aprová-la."
+		},
+		"allowedApps": {
+			"label": "Apps permitidos",
+			"placeholder": "Um título de janela por linha, por exemplo:\nSafari\nNotes",
+			"description": "Uma entrada por linha. Cada entrada é parte do título de uma janela (sem diferenciar maiúsculas e minúsculas). As ações de entrada só são executadas quando a janela ativa corresponde a uma entrada. Deixe vazio para permitir todos os apps. Capturas de tela e a listagem de janelas são sempre permitidas."
+		},
+		"permissions": {
+			"label": "Permissões do macOS",
+			"checkButton": "Verificar / solicitar permissões do macOS",
+			"checkingButton": "Verificando...",
+			"description": "Verifica se o VS Code pode controlar a área de trabalho. No macOS, isso abre as solicitações de Acessibilidade e Gravação de Tela para qualquer permissão que estiver faltando.",
+			"ok": "O controle da área de trabalho está disponível."
+		},
+		"visionRequired": "O controle da área de trabalho requer um modelo com visão, porque o agente trabalha a partir de capturas de tela.",
+		"stopShortcut": "Pressione Cmd/Ctrl+Alt+Shift+X a qualquer momento para parar o controle da área de trabalho."
 	},
 	"checkpoints": {
 		"timeout": {

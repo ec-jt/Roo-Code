@@ -35,6 +35,7 @@ export const clineAsks = [
 	"resume_completed_task",
 	"mistake_limit_reached",
 	"browser_action_launch",
+	"computer_action",
 	"use_mcp_server",
 	"auto_approval_max_req_reached",
 	"plan_review",
@@ -89,6 +90,7 @@ export const interactiveAsks = [
 	"command",
 	"tool",
 	"browser_action_launch",
+	"computer_action",
 	"use_mcp_server",
 ] as const satisfies readonly ClineAsk[]
 
@@ -182,6 +184,8 @@ export const clineSays = [
 	"browser_action",
 	"browser_action_result",
 	"browser_session_status",
+	"computer_action",
+	"computer_action_result",
 	"tool",
 ] as const
 

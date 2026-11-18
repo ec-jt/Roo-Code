@@ -8,6 +8,7 @@ import browserAction from "./browser_action"
 import braveLocalSearch from "./brave_local_search"
 import braveWebSearch from "./brave_web_search"
 import codebaseSearch from "./codebase_search"
+import computerAction from "./computer_action"
 import context7QueryDocs from "./context7_query_docs"
 import context7ResolveLibraryId from "./context7_resolve_library_id"
 import editTool from "./edit"
@@ -70,6 +71,7 @@ export function getNativeTools(options: NativeToolsOptions = {}): OpenAI.Chat.Ch
 		braveLocalSearch,
 		braveWebSearch,
 		codebaseSearch,
+		computerAction,
 		context7QueryDocs,
 		context7ResolveLibraryId,
 		executeCommand,

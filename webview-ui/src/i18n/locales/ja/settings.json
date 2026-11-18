@@ -31,6 +31,7 @@
 		"mcp": "MCPサーバー",
 		"worktrees": "Worktrees",
 		"autoApprove": "自動承認",
+		"computerUse": "コンピューター操作",
 		"checkpoints": "チェックポイント",
 		"notifications": "通知",
 		"contextManagement": "コンテキスト",
@@ -240,6 +241,11 @@
 				"label": "保護されたファイルを含める",
 				"description": "Rooが保護されたファイル（.rooignoreや.roo/設定ファイルなど）を承認なしで作成・編集することを許可します。"
 			}
+		},
+		"computerUse": {
+			"label": "デスクトップ操作",
+			"description": "すべてのデスクトップ操作（クリック、入力、キー押下、ドラッグ、スクロール、ウィンドウのフォーカス）を確認なしで自動承認します。これは個別のオプトイン設定です。「常にすべて許可」には含まれません。",
+			"warning": "デスクトップ操作の自動承認がオンです。エージェントは許可されたアプリで、事前に確認せずにクリック、入力、キー押下を行えます。「常にすべて許可」にはこの設定は含まれません。"
 		},
 		"mcp": {
 			"label": "MCP",
@@ -552,6 +558,27 @@
 			"maxTokensDescription": "Claude Codeレスポンスの最大出力トークン数。デフォルトは8000です。"
 		},
 		"retiredRooProviderMessage": "The Roo Code Router is no longer available. It was a hosted service that has been discontinued."
+	},
+	"computerUse": {
+		"enable": {
+			"label": "デスクトップ操作を有効にする",
+			"description": "エージェントが computer_action ツールを使って、スクリーンショットを撮り、このコンピューターのマウス、キーボード、ウィンドウを操作できるようにします。",
+			"warning": "警告：有効にすると、エージェントは画面を見て、あらゆるアプリでマウスとキーボードを操作できます。承認する前に各操作を確認してください。"
+		},
+		"allowedApps": {
+			"label": "許可するアプリ",
+			"placeholder": "1行に1つのウィンドウタイトル。例：\nSafari\nNotes",
+			"description": "1行に1エントリ。各エントリはウィンドウタイトルの一部です（大文字と小文字を区別しません）。入力操作は、アクティブなウィンドウがいずれかのエントリに一致する場合にのみ実行されます。空のままにするとすべてのアプリを許可します。スクリーンショットとウィンドウ一覧の取得は常に許可されます。"
+		},
+		"permissions": {
+			"label": "macOS の権限",
+			"checkButton": "macOS の権限を確認 / リクエスト",
+			"checkingButton": "確認中...",
+			"description": "VS Code がデスクトップを操作できるか確認します。macOS では、不足している権限についてアクセシビリティと画面収録のプロンプトを開きます。",
+			"ok": "デスクトップ操作を利用できます。"
+		},
+		"visionRequired": "エージェントはスクリーンショットをもとに作業するため、デスクトップ操作には画像認識に対応したモデルが必要です。",
+		"stopShortcut": "Cmd/Ctrl+Alt+Shift+X を押すと、いつでもデスクトップ操作を停止できます。"
 	},
 	"checkpoints": {
 		"timeout": {

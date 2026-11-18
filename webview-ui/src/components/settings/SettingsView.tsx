@@ -30,6 +30,7 @@ import {
 	ArrowLeft,
 	GitCommitVertical,
 	GraduationCap,
+	Monitor,
 } from "lucide-react"
 
 import {
@@ -69,6 +70,7 @@ import ApiConfigManager from "./ApiConfigManager"
 import ApiOptions from "./ApiOptions"
 import { AutoApproveSettings } from "./AutoApproveSettings"
 import { BrowserSettings } from "./BrowserSettings"
+import { ComputerUseSettings } from "./ComputerUseSettings"
 import { CheckpointSettings } from "./CheckpointSettings"
 import { NotificationSettings } from "./NotificationSettings"
 import { ContextManagementSettings } from "./ContextManagementSettings"
@@ -105,6 +107,7 @@ export const sectionNames = [
 	"skills",
 	"memory",
 	"browser",
+	"computerUse",
 	"checkpoints",
 	"notifications",
 	"contextManagement",
@@ -162,6 +165,9 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 		allowedMaxCost,
 		language,
 		alwaysAllowBrowser,
+		alwaysAllowComputerUse,
+		computerUseEnabled,
+		computerUseAllowedApps,
 		alwaysAllowExecute,
 		alwaysAllowMcp,
 		alwaysAllowModeSwitch,
@@ -479,6 +485,9 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 					alwaysAllowWriteProtected: alwaysAllowWriteProtected ?? undefined,
 					alwaysAllowExecute: alwaysAllowExecute ?? undefined,
 					alwaysAllowBrowser: alwaysAllowBrowser ?? undefined,
+					alwaysAllowComputerUse: alwaysAllowComputerUse ?? false,
+					computerUseEnabled: computerUseEnabled ?? false,
+					computerUseAllowedApps: computerUseAllowedApps ?? [],
 					alwaysAllowMcp,
 					alwaysAllowModeSwitch,
 					allowedCommands: allowedCommands ?? [],
@@ -657,6 +666,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 			{ id: "autoApprove", icon: CheckCheck },
 			{ id: "mcp", icon: Server },
 			{ id: "browser", icon: SquareMousePointer },
+			{ id: "computerUse", icon: Monitor },
 			{ id: "checkpoints", icon: GitCommitVertical },
 			{ id: "notifications", icon: Bell },
 			{ id: "contextManagement", icon: Database },
@@ -935,6 +945,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 								alwaysAllowWriteOutsideWorkspace={alwaysAllowWriteOutsideWorkspace}
 								alwaysAllowWriteProtected={alwaysAllowWriteProtected}
 								alwaysAllowBrowser={alwaysAllowBrowser}
+								alwaysAllowComputerUse={alwaysAllowComputerUse}
 								alwaysAllowMcp={alwaysAllowMcp}
 								alwaysAllowModeSwitch={alwaysAllowModeSwitch}
 								alwaysAllowSubtasks={alwaysAllowSubtasks}
@@ -967,6 +978,15 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 								screenshotQuality={screenshotQuality}
 								remoteBrowserHost={remoteBrowserHost}
 								remoteBrowserEnabled={remoteBrowserEnabled}
+								setCachedStateField={setCachedStateField}
+							/>
+						)}
+
+						{/* Computer Use Section */}
+						{renderTab === "computerUse" && (
+							<ComputerUseSettings
+								computerUseEnabled={computerUseEnabled}
+								computerUseAllowedApps={computerUseAllowedApps}
 								setCachedStateField={setCachedStateField}
 							/>
 						)}

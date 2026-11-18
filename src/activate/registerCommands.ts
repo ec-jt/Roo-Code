@@ -12,6 +12,8 @@ import { handleNewTask } from "./handleTask"
 import { CodeIndexManager } from "../services/code-index/manager"
 import { importSettingsWithFeedback } from "../core/config/importExport"
 import { t } from "../i18n"
+import { hasDesktopSession, releaseDesktopSession } from "../services/desktop/sessionRegistry"
+import { getDesktopActivityIndicator } from "../services/desktop/activityIndicator"
 
 /**
  * Helper to get the visible ClineProvider instance or log if not found.
@@ -179,7 +181,47 @@ const getCommandsMap = ({ context, outputChannel, provider }: RegisterCommandOpt
 			action: "toggleAutoApprove",
 		})
 	},
+	stopComputerUse: async () => {
+		await stopComputerUse(outputChannel)
+	},
 })
+
+/**
+ * Emergency stop for desktop control. Cancels every task that has used
+ * computer_action, in all providers (the controlling panel may not be visible
+ * while another application has focus), and releases their desktop sessions.
+ */
+export async function stopComputerUse(
+	outputChannel: vscode.OutputChannel,
+	providers: ClineProvider[] = ClineProvider.getActiveInstances(),
+): Promise<number> {
+	getDesktopActivityIndicator().reset()
+
+	let cancelled = 0
+	for (const provider of providers) {
+		const task = provider.getCurrentTask()
+		if (!task || !hasDesktopSession(task)) {
+			continue
+		}
+		releaseDesktopSession(task)
+		try {
+			await provider.cancelTask()
+			cancelled++
+		} catch (error) {
+			outputChannel.appendLine(
+				`[stopComputerUse] failed to cancel task ${task.taskId}: ${error instanceof Error ? error.message : String(error)}`,
+			)
+		}
+	}
+
+	outputChannel.appendLine(`[stopComputerUse] stopped desktop control; cancelled ${cancelled} task(s)`)
+	vscode.window.showInformationMessage(
+		cancelled > 0
+			? `Roo stopped controlling the desktop and cancelled ${cancelled} task${cancelled === 1 ? "" : "s"}.`
+			: "Roo is not controlling the desktop.",
+	)
+	return cancelled
+}
 
 export const openClineInNewTab = async ({ context, outputChannel }: Omit<RegisterCommandOptions, "provider">) => {
 	// (This example uses webviewProvider activation event which is necessary to

@@ -482,6 +482,22 @@ export class NativeToolCallParser {
 				}
 				break
 
+			case "computer_action":
+				if (partialArgs.action !== undefined) {
+					nativeArgs = {
+						action: partialArgs.action,
+						coordinate: partialArgs.coordinate,
+						end_coordinate: partialArgs.end_coordinate,
+						text: partialArgs.text,
+						key: partialArgs.key,
+						direction: partialArgs.direction,
+						amount: partialArgs.amount,
+						window: partialArgs.window,
+						duration: partialArgs.duration,
+					}
+				}
+				break
+
 			case "execute_command":
 				if (partialArgs.command) {
 					nativeArgs = {
@@ -916,6 +932,22 @@ export class NativeToolCallParser {
 							text: args.text,
 							path: args.path,
 						} as NativeArgsFor<ToolName>
+					}
+					break
+
+				case "computer_action":
+					if (args.action !== undefined) {
+						nativeArgs = {
+							action: args.action,
+							coordinate: args.coordinate,
+							end_coordinate: args.end_coordinate,
+							text: args.text,
+							key: args.key,
+							direction: args.direction,
+							amount: args.amount,
+							window: args.window,
+							duration: args.duration,
+						} as NativeArgsFor<TName>
 					}
 					break
 

@@ -1,5 +1,36 @@
 {
 	"greeting": "Willkommen bei Roo Code",
+	"computerAction": {
+		"title": "Desktop-Aktion",
+		"wantsToAct": "Roo möchte deinen Desktop steuern:",
+		"coordinate": "Bei",
+		"endCoordinate": "Bis",
+		"executedAt": "Bildschirm {{coordinate}}",
+		"key": "Tasten",
+		"scroll": "Scrollen",
+		"window": "Fenster",
+		"duration": "Warten",
+		"text": "Einzugebender Text",
+		"screenshotAlt": "Desktop-Screenshot",
+		"activeWindow": "Aktives Fenster: {{title}}",
+		"cursor": "Cursor: {{position}}",
+		"windows": "Offene Fenster ({{count}})",
+		"untitledWindow": "(ohne Titel)",
+		"actions": {
+			"screenshot": "Screenshot aufnehmen",
+			"click": "Klicken",
+			"double_click": "Doppelklicken",
+			"right_click": "Rechtsklick",
+			"move": "Maus bewegen",
+			"drag": "Ziehen",
+			"type": "Text eingeben",
+			"key": "Tasten drücken",
+			"scroll": "Scrollen",
+			"list_windows": "Fenster auflisten",
+			"focus_window": "Fenster fokussieren",
+			"wait": "Warten"
+		}
+	},
 	"task": {
 		"title": "Aufgabe",
 		"expand": "Aufgabe erweitern",

@@ -58,6 +58,7 @@ import {
 import CodebaseSearchResultsDisplay from "./CodebaseSearchResultsDisplay"
 import { McpExecution } from "./McpExecution"
 import { UserMessageEditor } from "./UserMessageEditor"
+import { ComputerActionRow, ComputerActionResultRow } from "./ComputerActionRow"
 import {
 	Eye,
 	FileDiff,
@@ -1528,6 +1529,11 @@ export const ChatRowContent = ({
 				case "browser_action_result":
 					// Handled by BrowserActionRow in ChatView; prevent raw JSON from rendering here
 					return null
+				case "computer_action":
+					// Rendered as a compact row; never show the raw JSON payload.
+					return <ComputerActionRow message={message} />
+				case "computer_action_result":
+					return <ComputerActionResultRow message={message} />
 				case "too_many_tools_warning": {
 					const warningData = safeJsonParse<{
 						toolCount: number
@@ -1574,6 +1580,9 @@ export const ChatRowContent = ({
 			switch (message.ask) {
 				case "mistake_limit_reached":
 					return <ErrorRow type="mistake_limit" message={message.text || ""} errorDetails={message.text} />
+				case "computer_action":
+					// Approval request: shows the full text to type so the user sees exactly what will be typed.
+					return <ComputerActionRow message={message} />
 				case "command":
 					return (
 						<CommandExecution

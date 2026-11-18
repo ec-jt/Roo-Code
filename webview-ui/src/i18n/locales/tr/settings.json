@@ -31,6 +31,7 @@
 		"mcp": "MCP Sunucuları",
 		"worktrees": "Worktrees",
 		"autoApprove": "Oto-Onay",
+		"computerUse": "Bilgisayar Kontrolü",
 		"checkpoints": "Kontrol Noktaları",
 		"notifications": "Bildirimler",
 		"contextManagement": "Bağlam",
@@ -240,6 +241,11 @@
 				"label": "Korumalı dosyaları dahil et",
 				"description": "Roo'nun korumalı dosyaları (.rooignore ve .roo/ yapılandırma dosyaları gibi) onay gerektirmeden oluşturmasına ve düzenlemesine izin ver."
 			}
+		},
+		"computerUse": {
+			"label": "Masaüstü kontrolü",
+			"description": "Her masaüstü eylemini (tıklama, yazma, tuşa basma, sürükleme, kaydırma, pencere odağı) sormadan otomatik onaylar. Bu ayrı bir seçenektir: \"Her şeye her zaman izin ver\" bunu kapsamaz.",
+			"warning": "Masaüstü kontrolü için oto-onay açık. Ajan, izin verilen herhangi bir uygulamada sana önce sormadan tıklayabilir, yazabilir ve tuşlara basabilir. \"Her şeye her zaman izin ver\" bu ayarı kapsamaz."
 		},
 		"mcp": {
 			"label": "MCP",
@@ -552,6 +558,27 @@
 			"maxTokensDescription": "Claude Code yanıtları için maksimum çıktı token sayısı. Varsayılan 8000'dir."
 		},
 		"retiredRooProviderMessage": "The Roo Code Router is no longer available. It was a hosted service that has been discontinued."
+	},
+	"computerUse": {
+		"enable": {
+			"label": "Masaüstü kontrolünü etkinleştir",
+			"description": "Ajanın computer_action aracını kullanarak ekran görüntüsü almasına ve bu bilgisayardaki fareyi, klavyeyi ve pencereleri kontrol etmesine izin verir.",
+			"warning": "Uyarı: etkinleştirildiğinde ajan ekranını görebilir ve herhangi bir uygulamada fareni ve klavyeni kontrol edebilir. Onaylamadan önce her eylemi gözden geçir."
+		},
+		"allowedApps": {
+			"label": "İzin verilen uygulamalar",
+			"placeholder": "Her satıra bir pencere başlığı, örneğin:\nSafari\nNotes",
+			"description": "Her satıra bir giriş. Her giriş, bir pencere başlığının parçasıdır (büyük/küçük harf duyarsız). Giriş eylemleri yalnızca etkin pencere bir girişle eşleştiğinde çalışır. Tüm uygulamalara izin vermek için boş bırak. Ekran görüntüleri ve pencere listeleme her zaman izinlidir."
+		},
+		"permissions": {
+			"label": "macOS izinleri",
+			"checkButton": "macOS izinlerini kontrol et / iste",
+			"checkingButton": "Kontrol ediliyor...",
+			"description": "VS Code'un masaüstünü kontrol edip edemeyeceğini denetler. macOS'ta eksik her izin için Erişilebilirlik ve Ekran Kaydı istemlerini açar.",
+			"ok": "Masaüstü kontrolü kullanılabilir."
+		},
+		"visionRequired": "Ajan ekran görüntüleriyle çalıştığı için masaüstü kontrolü görsel destekli bir model gerektirir.",
+		"stopShortcut": "Masaüstü kontrolünü durdurmak için istediğin zaman Cmd/Ctrl+Alt+Shift+X tuşlarına bas."
 	},
 	"checkpoints": {
 		"timeout": {

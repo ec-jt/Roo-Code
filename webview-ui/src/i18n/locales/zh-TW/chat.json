@@ -1,5 +1,36 @@
 {
 	"greeting": "歡迎使用 Roo Code！",
+	"computerAction": {
+		"title": "桌面動作",
+		"wantsToAct": "Roo 想要控制你的桌面：",
+		"coordinate": "位置",
+		"endCoordinate": "終點",
+		"executedAt": "螢幕 {{coordinate}}",
+		"key": "按鍵",
+		"scroll": "捲動",
+		"window": "視窗",
+		"duration": "等待",
+		"text": "要輸入的文字",
+		"screenshotAlt": "桌面螢幕擷取畫面",
+		"activeWindow": "作用中視窗：{{title}}",
+		"cursor": "游標：{{position}}",
+		"windows": "已開啟的視窗（{{count}}）",
+		"untitledWindow": "（未命名）",
+		"actions": {
+			"screenshot": "擷取螢幕",
+			"click": "點擊",
+			"double_click": "按兩下",
+			"right_click": "按右鍵",
+			"move": "移動滑鼠",
+			"drag": "拖曳",
+			"type": "輸入文字",
+			"key": "按下按鍵",
+			"scroll": "捲動",
+			"list_windows": "列出視窗",
+			"focus_window": "聚焦視窗",
+			"wait": "等待"
+		}
+	},
 	"task": {
 		"title": "工作",
 		"expand": "展開工作",

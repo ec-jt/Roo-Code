@@ -1,5 +1,36 @@
 {
 	"greeting": "Benvenuto a Roo Code",
+	"computerAction": {
+		"title": "Azione sul desktop",
+		"wantsToAct": "Roo vuole controllare il tuo desktop:",
+		"coordinate": "In",
+		"endCoordinate": "Fino a",
+		"executedAt": "schermo {{coordinate}}",
+		"key": "Tasti",
+		"scroll": "Scorrimento",
+		"window": "Finestra",
+		"duration": "Attesa",
+		"text": "Testo da digitare",
+		"screenshotAlt": "Screenshot del desktop",
+		"activeWindow": "Finestra attiva: {{title}}",
+		"cursor": "Cursore: {{position}}",
+		"windows": "Finestre aperte ({{count}})",
+		"untitledWindow": "(senza titolo)",
+		"actions": {
+			"screenshot": "Acquisisci screenshot",
+			"click": "Clic",
+			"double_click": "Doppio clic",
+			"right_click": "Clic destro",
+			"move": "Sposta mouse",
+			"drag": "Trascina",
+			"type": "Digita testo",
+			"key": "Premi tasti",
+			"scroll": "Scorri",
+			"list_windows": "Elenca finestre",
+			"focus_window": "Attiva finestra",
+			"wait": "Attendi"
+		}
+	},
 	"task": {
 		"title": "Attività",
 		"expand": "Espandi attività",

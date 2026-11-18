@@ -122,6 +122,7 @@ import { DiffViewProvider } from "../../integrations/editor/DiffViewProvider"
 import { findToolName } from "../../integrations/misc/export-markdown"
 import { RooTerminalProcess } from "../../integrations/terminal/types"
 import { TerminalRegistry } from "../../integrations/terminal/TerminalRegistry"
+import { releaseDesktopSession } from "../../services/desktop/sessionRegistry"
 import { OutputInterceptor } from "../../integrations/terminal/OutputInterceptor"
 
 // utils
@@ -3913,6 +3914,13 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			TerminalRegistry.releaseTerminalsForTask(this.taskId)
 		} catch (error) {
 			console.error("Error releasing terminals:", error)
+		}
+
+		// Release the desktop control session (computer_action) for this task.
+		try {
+			releaseDesktopSession(this)
+		} catch (error) {
+			console.error("Error releasing desktop session:", error)
 		}
 
 		// Branch artifacts are durable replay evidence, including on ordinary unload.

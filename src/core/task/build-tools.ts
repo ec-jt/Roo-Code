@@ -101,10 +101,18 @@ export async function buildNativeToolsArrayWithRestrictions(options: BuildToolsO
 	const { CodeIndexManager } = await import("../../services/code-index/manager")
 	const codeIndexManager = CodeIndexManager.getInstance(provider.context, cwd)
 
+	// Per-tool enable map and credentials live in extension state.
+	// We resolve them here so the gating works for every call site without
+	// changing the BuildToolsOptions shape used by callers.
+	const state = await provider.getState()
+
 	// Build settings object for tool filtering.
 	const filterSettings = {
 		browserToolEnabled: browserToolEnabled ?? true,
 		todoListEnabled: apiConfiguration?.todoListEnabled ?? true,
+		// Desktop control is opt-in. It also needs a vision-capable model,
+		// because every useful result is a screenshot.
+		computerUseEnabled: state?.computerUseEnabled === true && (modelInfo?.supportsImages ?? false),
 		disabledTools,
 		modelInfo,
 	}
@@ -116,11 +124,6 @@ export async function buildNativeToolsArrayWithRestrictions(options: BuildToolsO
 	let nativeTools = getNativeTools({
 		supportsImages,
 	})
-
-	// Per-tool enable map and credentials live in extension state.
-	// We resolve them here so the gating works for every call site without
-	// changing the BuildToolsOptions shape used by callers.
-	const state = await provider.getState()
 	const nativeToolEnabled = (state as any)?.nativeToolEnabled as Record<string, boolean> | undefined
 	const braveApiKey = (state as any)?.braveApiKey as string | undefined
 	const githubToken = (state as any)?.githubToken as string | undefined

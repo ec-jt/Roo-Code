@@ -31,6 +31,7 @@
 		"mcp": "Servidores MCP",
 		"worktrees": "Worktrees",
 		"autoApprove": "Auto-aprobación",
+		"computerUse": "Control del equipo",
 		"checkpoints": "Puntos de control",
 		"notifications": "Notificaciones",
 		"contextManagement": "Contexto",
@@ -240,6 +241,11 @@
 				"label": "Incluir archivos protegidos",
 				"description": "Permitir a Roo crear y editar archivos protegidos (como .rooignore y archivos de configuración .roo/) sin requerir aprobación."
 			}
+		},
+		"computerUse": {
+			"label": "Control del escritorio",
+			"description": "Aprueba automáticamente cada acción en el escritorio (clics, escritura, pulsaciones de teclas, arrastres, desplazamiento, foco de ventana) sin preguntar. Es una opción independiente: «Permitir todo siempre» no la incluye.",
+			"warning": "La auto-aprobación del control del escritorio está activada. El agente puede hacer clic, escribir y pulsar teclas en cualquier app permitida sin preguntarte antes. «Permitir todo siempre» no incluye esta opción."
 		},
 		"mcp": {
 			"label": "MCP",
@@ -552,6 +558,27 @@
 			"maxTokensDescription": "Número máximo de tokens de salida para las respuestas de Claude Code. El valor predeterminado es 8000."
 		},
 		"retiredRooProviderMessage": "The Roo Code Router is no longer available. It was a hosted service that has been discontinued."
+	},
+	"computerUse": {
+		"enable": {
+			"label": "Habilitar control del escritorio",
+			"description": "Permite que el agente use la herramienta computer_action para hacer capturas de pantalla y controlar el ratón, el teclado y las ventanas de este equipo.",
+			"warning": "Advertencia: cuando está habilitado, el agente puede ver tu pantalla y controlar el ratón y el teclado en cualquier app. Revisa cada acción antes de aprobarla."
+		},
+		"allowedApps": {
+			"label": "Apps permitidas",
+			"placeholder": "Un título de ventana por línea, por ejemplo:\nSafari\nNotes",
+			"description": "Una entrada por línea. Cada entrada es parte del título de una ventana (sin distinguir mayúsculas). Las acciones de entrada solo se ejecutan cuando la ventana activa coincide con una entrada. Déjalo vacío para permitir todas las apps. Las capturas de pantalla y el listado de ventanas siempre están permitidos."
+		},
+		"permissions": {
+			"label": "Permisos de macOS",
+			"checkButton": "Comprobar / solicitar permisos de macOS",
+			"checkingButton": "Comprobando...",
+			"description": "Comprueba que VS Code puede controlar el escritorio. En macOS, abre las solicitudes de Accesibilidad y Grabación de pantalla para cualquier permiso que falte.",
+			"ok": "El control del escritorio está disponible."
+		},
+		"visionRequired": "El control del escritorio requiere un modelo con visión, porque el agente trabaja a partir de capturas de pantalla.",
+		"stopShortcut": "Pulsa Cmd/Ctrl+Alt+Shift+X en cualquier momento para detener el control del escritorio."
 	},
 	"checkpoints": {
 		"timeout": {

@@ -1,5 +1,36 @@
 {
 	"greeting": "Bem-vindo ao Roo Code",
+	"computerAction": {
+		"title": "Ação na área de trabalho",
+		"wantsToAct": "Roo quer controlar sua área de trabalho:",
+		"coordinate": "Em",
+		"endCoordinate": "Até",
+		"executedAt": "tela {{coordinate}}",
+		"key": "Teclas",
+		"scroll": "Rolagem",
+		"window": "Janela",
+		"duration": "Espera",
+		"text": "Texto a digitar",
+		"screenshotAlt": "Captura de tela da área de trabalho",
+		"activeWindow": "Janela ativa: {{title}}",
+		"cursor": "Cursor: {{position}}",
+		"windows": "Janelas abertas ({{count}})",
+		"untitledWindow": "(sem título)",
+		"actions": {
+			"screenshot": "Capturar tela",
+			"click": "Clicar",
+			"double_click": "Clique duplo",
+			"right_click": "Clique direito",
+			"move": "Mover mouse",
+			"drag": "Arrastar",
+			"type": "Digitar texto",
+			"key": "Pressionar teclas",
+			"scroll": "Rolar",
+			"list_windows": "Listar janelas",
+			"focus_window": "Focar janela",
+			"wait": "Aguardar"
+		}
+	},
 	"task": {
 		"title": "Tarefa",
 		"expand": "Expandir tarefa",

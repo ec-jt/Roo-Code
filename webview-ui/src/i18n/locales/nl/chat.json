@@ -1,5 +1,36 @@
 {
 	"greeting": "Welkom bij Roo Code",
+	"computerAction": {
+		"title": "Desktopactie",
+		"wantsToAct": "Roo wil je desktop besturen:",
+		"coordinate": "Op",
+		"endCoordinate": "Naar",
+		"executedAt": "scherm {{coordinate}}",
+		"key": "Toetsen",
+		"scroll": "Scrollen",
+		"window": "Venster",
+		"duration": "Wachten",
+		"text": "Te typen tekst",
+		"screenshotAlt": "Desktopscreenshot",
+		"activeWindow": "Actief venster: {{title}}",
+		"cursor": "Cursor: {{position}}",
+		"windows": "Open vensters ({{count}})",
+		"untitledWindow": "(naamloos)",
+		"actions": {
+			"screenshot": "Screenshot maken",
+			"click": "Klikken",
+			"double_click": "Dubbelklikken",
+			"right_click": "Rechtsklikken",
+			"move": "Muis bewegen",
+			"drag": "Slepen",
+			"type": "Tekst typen",
+			"key": "Toetsen indrukken",
+			"scroll": "Scrollen",
+			"list_windows": "Vensters tonen",
+			"focus_window": "Venster focussen",
+			"wait": "Wachten"
+		}
+	},
 	"task": {
 		"title": "Taak",
 		"expand": "Taak uitvouwen",

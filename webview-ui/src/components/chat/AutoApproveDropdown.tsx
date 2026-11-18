@@ -35,15 +35,21 @@ export const AutoApproveDropdown = ({ disabled = false, triggerClassName = "" }:
 		setAlwaysAllowReadOnly,
 		setAlwaysAllowWrite,
 		setAlwaysAllowBrowser,
+		setAlwaysAllowComputerUse,
 		setAlwaysAllowExecute,
 		setAlwaysAllowMcp,
 		setAlwaysAllowModeSwitch,
 		setAlwaysAllowSubtasks,
 		setAlwaysAllowNestedSubtasks,
 		setAlwaysAllowFollowupQuestions,
+		alwaysAllowComputerUse,
 	} = useExtensionState()
 
-	const toggles = useAutoApprovalToggles()
+	const baseToggles = useAutoApprovalToggles()
+	const toggles = React.useMemo(
+		() => ({ ...baseToggles, alwaysAllowComputerUse }),
+		[baseToggles, alwaysAllowComputerUse],
+	)
 
 	const onAutoApproveToggle = React.useCallback(
 		(key: AutoApproveSetting, value: boolean) => {
@@ -61,6 +67,9 @@ export const AutoApproveDropdown = ({ disabled = false, triggerClassName = "" }:
 					break
 				case "alwaysAllowBrowser":
 					setAlwaysAllowBrowser(value)
+					break
+				case "alwaysAllowComputerUse":
+					setAlwaysAllowComputerUse(value)
 					break
 				case "alwaysAllowExecute":
 					setAlwaysAllowExecute(value)
@@ -94,6 +103,7 @@ export const AutoApproveDropdown = ({ disabled = false, triggerClassName = "" }:
 			setAlwaysAllowReadOnly,
 			setAlwaysAllowWrite,
 			setAlwaysAllowBrowser,
+			setAlwaysAllowComputerUse,
 			setAlwaysAllowExecute,
 			setAlwaysAllowMcp,
 			setAlwaysAllowModeSwitch,
@@ -105,8 +115,12 @@ export const AutoApproveDropdown = ({ disabled = false, triggerClassName = "" }:
 	)
 
 	const handleSelectAll = React.useCallback(() => {
-		// Enable all options
+		// Enable all options. Desktop control is a dedicated opt-in and is never
+		// enabled by a bulk action.
 		Object.keys(autoApproveSettingsConfig).forEach((key) => {
+			if (key === "alwaysAllowComputerUse") {
+				return
+			}
 			onAutoApproveToggle(key as AutoApproveSetting, true)
 		})
 		// Enable master auto-approval
@@ -139,13 +153,18 @@ export const AutoApproveDropdown = ({ disabled = false, triggerClassName = "" }:
 	// Calculate enabled and total counts as separate properties
 	const settingsArray = Object.values(autoApproveSettingsConfig)
 
-	const enabledCount = React.useMemo(() => {
-		return Object.values(toggles).filter((value) => !!value).length
-	}, [toggles])
+	// Desktop control is a separate opt-in that "All" deliberately does not enable,
+	// so it is left out of the counts. Otherwise the label could never read "All".
+	const countedToggles = React.useMemo(
+		() => Object.entries(toggles).filter(([key]) => key !== "alwaysAllowComputerUse"),
+		[toggles],
+	)
 
-	const totalCount = React.useMemo(() => {
-		return Object.keys(toggles).length
-	}, [toggles])
+	const enabledCount = React.useMemo(() => {
+		return countedToggles.filter(([, value]) => !!value).length
+	}, [countedToggles])
+
+	const totalCount = countedToggles.length
 
 	const { effectiveAutoApprovalEnabled } = useAutoApprovalState(toggles, autoApprovalEnabled)
 
