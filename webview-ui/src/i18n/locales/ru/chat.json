@@ -16,6 +16,9 @@
 		"cursor": "Курсор: {{position}}",
 		"windows": "Открытые окна ({{count}})",
 		"untitledWindow": "(без названия)",
+		"batchSteps": "Шаги ({{count}}):",
+		"submit": "затем нажать Enter",
+		"noScreenshot": "Без снимка экрана после этого действия",
 		"actions": {
 			"screenshot": "Сделать скриншот",
 			"click": "Клик",

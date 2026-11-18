@@ -16,6 +16,9 @@
 		"cursor": "커서: {{position}}",
 		"windows": "열린 창 ({{count}})",
 		"untitledWindow": "(제목 없음)",
+		"batchSteps": "단계 ({{count}}):",
+		"submit": "그다음 Enter 누르기",
+		"noScreenshot": "이 작업 후 스크린샷 없음",
 		"actions": {
 			"screenshot": "스크린샷 찍기",
 			"click": "클릭",

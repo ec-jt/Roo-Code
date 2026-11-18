@@ -16,6 +16,9 @@
 		"cursor": "游標：{{position}}",
 		"windows": "已開啟的視窗（{{count}}）",
 		"untitledWindow": "（未命名）",
+		"batchSteps": "步驟（{{count}}）：",
+		"submit": "然後按 Enter",
+		"noScreenshot": "此操作後不截圖",
 		"actions": {
 			"screenshot": "擷取螢幕",
 			"click": "點擊",

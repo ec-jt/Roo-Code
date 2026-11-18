@@ -16,6 +16,9 @@
 		"cursor": "Con trỏ: {{position}}",
 		"windows": "Cửa sổ đang mở ({{count}})",
 		"untitledWindow": "(không có tiêu đề)",
+		"batchSteps": "Các bước ({{count}}):",
+		"submit": "sau đó nhấn Enter",
+		"noScreenshot": "Không chụp màn hình sau thao tác này",
 		"actions": {
 			"screenshot": "Chụp màn hình",
 			"click": "Nhấp",

@@ -58,6 +58,34 @@ export const backgroundModeComputerActions = [
 	...backgroundComputerActions,
 ] as const satisfies readonly ComputerAction[]
 
+/**
+ * Actions allowed as steps of a batch (`actions` parameter). Read-only actions
+ * that return their own output (screenshot, list_windows, list_elements,
+ * window_screenshot) are excluded: the batch returns one screenshot at the end.
+ * `wait` is allowed so a batch can pause between steps.
+ */
+export const batchComputerActions = [
+	"click",
+	"double_click",
+	"right_click",
+	"move",
+	"drag",
+	"type",
+	"key",
+	"scroll",
+	"focus_window",
+	"wait",
+	"window_type",
+	"click_element",
+] as const satisfies readonly ComputerAction[]
+
+/** Maximum number of steps in one batched computer_action call. */
+export const MAX_COMPUTER_ACTION_STEPS = 10
+
+export function isBatchComputerAction(action: string): boolean {
+	return (batchComputerActions as readonly string[]).includes(action)
+}
+
 export function isBackgroundModeAction(action: string): boolean {
 	return (backgroundModeComputerActions as readonly string[]).includes(action)
 }
@@ -89,11 +117,31 @@ export interface ComputerActionParams {
 	duration?: string
 	/** Name of a UI element for `click_element` (from `list_elements`). */
 	element?: string
+	/** For `type`: press Enter after the text. */
+	submit?: boolean
+}
+
+/**
+ * Arguments of the `computer_action` tool call. Either `action` (one step) or
+ * `actions` (a batch of 1 to MAX_COMPUTER_ACTION_STEPS steps) is given.
+ */
+export interface ComputerActionToolParams extends Partial<ComputerActionParams> {
+	/** Steps to run in order. One approval and one final screenshot for the whole batch. */
+	actions?: ComputerActionParams[]
+	/** false: skip the screenshot after a state-changing action or batch. Default true. */
+	screenshot?: boolean
 }
 
 /** Payload of the `computer_action` ask and say messages. */
 export interface ClineSayComputerAction {
-	action: ComputerAction
+	/** Absent for a batch; see `steps`. */
+	action?: ComputerAction
+	/** Steps of a batched call, in order. */
+	steps?: ClineSayComputerAction[]
+	/** false when no screenshot is taken after the action or batch. */
+	screenshot?: boolean
+	/** `type`: Enter is pressed after the text. */
+	submit?: boolean
 	coordinate?: string
 	endCoordinate?: string
 	text?: string

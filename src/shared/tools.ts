@@ -6,7 +6,7 @@ import type {
 	ToolGroup,
 	ToolName,
 	BrowserActionParams,
-	ComputerActionParams,
+	ComputerActionToolParams,
 	GenerateImageParams,
 	GenerateVideoParams,
 } from "@roo-code/types"
@@ -101,6 +101,9 @@ export const toolParamNames = [
 	"window",
 	"duration",
 	"element",
+	"actions", // computer_action batch of steps
+	"submit", // computer_action: press Enter after type
+	"screenshot", // computer_action: false skips the screenshot
 ] as const
 
 export type ToolParamName = (typeof toolParamNames)[number]
@@ -146,7 +149,7 @@ export type NativeToolArgs = {
 	}
 	codebase_search: { query: string; path?: string }
 	browser_action: BrowserActionParams
-	computer_action: ComputerActionParams
+	computer_action: ComputerActionToolParams
 	generate_image: GenerateImageParams
 	generate_video: GenerateVideoParams
 	run_slash_command: { command: string; args?: string }

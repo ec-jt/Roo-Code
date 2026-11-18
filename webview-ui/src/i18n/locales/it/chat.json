@@ -16,6 +16,9 @@
 		"cursor": "Cursore: {{position}}",
 		"windows": "Finestre aperte ({{count}})",
 		"untitledWindow": "(senza titolo)",
+		"batchSteps": "Passaggi ({{count}}):",
+		"submit": "poi premi Invio",
+		"noScreenshot": "Nessuno screenshot dopo questa azione",
 		"actions": {
 			"screenshot": "Acquisisci screenshot",
 			"click": "Clic",

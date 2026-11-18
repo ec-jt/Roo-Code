@@ -53,6 +53,8 @@ If only `WAYLAND_DISPLAY` is set, the tool refuses to run and shows these steps.
 
 By default, Roo shows each desktop action and waits for **Approve** or **Reject**. For `type` actions, the approval shows the full text that Roo will type.
 
+A batch (see [Batched actions](#batched-actions)) asks once for all its steps. The approval lists every step in order, with the full text of each `type` step, and says when Enter will be pressed.
+
 ### Auto-approval is a separate opt-in
 
 **Settings > Auto-Approve > Desktop control** approves every desktop action without asking. Turn it on only if you trust the task and the allowed apps.
@@ -67,6 +69,7 @@ By default, Roo shows each desktop action and waits for **Approve** or **Reject*
 
 - If the list is empty, every app is allowed.
 - If the list has entries, actions that change something (click, type, key, scroll, drag) run only when the active window title matches an entry. A `focus_window` action runs only when the target window matches.
+- In a batch, Roo checks every step before it asks you. It checks again before each step runs, because an earlier step can change the active window. If a step targets a window that is not allowed, the batch stops at that step.
 - Screenshots, window listing, and wait are always allowed.
 - The allowlist applies even when auto-approval is on.
 
@@ -85,7 +88,7 @@ Use one of these:
 - Click **Roo is controlling the desktop** in the VS Code status bar.
 - Run **Roo Code: Stop Desktop Control** from the Command Palette.
 
-Stopping cancels every task that is controlling the desktop, in all Roo panels. The status bar item is shown while an action runs and for 10 seconds afterwards.
+Stopping cancels every task that is controlling the desktop, in all Roo panels. The status bar item is shown while an action runs and for 10 seconds afterwards. If a batch is running, the steps that have not started do not run.
 
 ### What the agent is told
 
@@ -105,7 +108,7 @@ These are instructions to the model. They are not enforced limits. Approval, the
 | `click`, `double_click`, `right_click` | `coordinate`                                                                    | Screenshot after the click                        |
 | `move`                                 | `coordinate`                                                                    | Screenshot                                        |
 | `drag`                                 | `coordinate`, `end_coordinate`                                                  | Screenshot                                        |
-| `type`                                 | `text` (up to 10,000 characters)                                                | Screenshot                                        |
+| `type`                                 | `text` (up to 10,000 characters), optional `submit`                             | Screenshot                                        |
 | `key`                                  | `key`, for example `enter`, `cmd+c`, `ctrl+shift+t`                             | Screenshot                                        |
 | `scroll`                               | `direction` (default `down`), `amount` (1-50, default 3), optional `coordinate` | Screenshot                                        |
 | `list_windows`                         | none                                                                            | List of window ids and titles, with no screenshot |
@@ -115,6 +118,38 @@ These are instructions to the model. They are not enforced limits. Approval, the
 | `window_type` (macOS)                  | `window`, `text`                                                                | Screenshot of that window only                    |
 | `list_elements` (macOS)                | `window`                                                                        | Buttons, fields, and menus by name and position   |
 | `click_element` (macOS)                | `window`, `element` (name from `list_elements`)                                 | Screenshot of that window only                    |
+
+### Batched actions
+
+Each tool call costs a full model turn, which takes much longer than the action itself. To save turns, Roo can send up to 10 steps in one call with the `actions` parameter:
+
+```json
+{
+	"actions": [
+		{ "action": "focus_window", "window": "Notes" },
+		{ "action": "click", "coordinate": "400,300" },
+		{ "action": "type", "text": "Buy milk", "submit": true }
+	]
+}
+```
+
+- Allowed steps: `click`, `double_click`, `right_click`, `move`, `drag`, `type`, `key`, `scroll`, `focus_window`, `wait`, `window_type`, `click_element`.
+- Not allowed as steps: `screenshot`, `list_windows`, `list_elements`, `window_screenshot`. The batch already returns one screenshot at the end.
+- Do not give `action` and `actions` in the same call.
+- Roo checks every step before it asks for approval: required parameters, the app allowlist, and background mode. An invalid batch is refused without asking you.
+- The steps run in order. Each step that uses the mouse or keyboard still waits until you pause. There is no screen settle wait between steps, only a 50 ms gap. After the last step, Roo waits once for the screen to settle and takes one screenshot.
+- If a step fails, the batch stops. The result names the failed step, says how many steps finished, and includes a screenshot when one can be taken.
+- The result lists the steps that ran, with the screen coordinates that were used.
+
+### Press Enter after typing
+
+Set `"submit": true` on a `type` action (or `type` step) to press Enter after the text. This replaces a separate `key` action.
+
+`submit` is not available for `window_type`. Background typing inserts text through Accessibility and cannot press Enter. Roo refuses the call and says to use `click_element` on the send button instead.
+
+### Skip the screenshot
+
+Set `"screenshot": false` on a state-changing action, or on a batch, to skip the settle wait and the screenshot. The result is a short text with no image. Use this when the next step does not depend on what the screen shows. Read-only actions (`screenshot`, `list_windows`, `wait`, `window_screenshot`, `list_elements`) cannot use it.
 
 ### Using the computer at the same time as Roo
 
@@ -158,6 +193,7 @@ In key combinations, `cmd` means the main shortcut key: Command on macOS and Ctr
 
 ### Screenshots and typing
 
+- After an action that changes something, Roo waits 200 ms for the screen to settle before it takes the screenshot.
 - On macOS, screenshots use the system capture tool and are sent as JPEG (about 0.3-0.5 s and 100-200 KB each). If that fails, Roo falls back to the built-in capture and PNG.
 - Only the 3 most recent desktop screenshots stay in the conversation. Older ones are replaced with a short note, so long desktop tasks do not fill the context with stale images.
 - Text longer than 40 characters is pasted from the clipboard instead of typed key by key. This is faster, and autocorrect does not change it. Roo restores your clipboard right after. Short text is typed normally.

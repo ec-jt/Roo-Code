@@ -91,6 +91,72 @@ interface ComputerActionRowProps {
 	message: ClineMessage
 }
 
+/** Compact parameter summary of one step, for example "10,20 → 30,40" or "cmd+c". Text is shown separately. */
+function summarizeStep(step: ClineSayComputerAction): string {
+	const parts: string[] = []
+	if (step.coordinate) parts.push(step.endCoordinate ? `${step.coordinate} → ${step.endCoordinate}` : step.coordinate)
+	if (step.key) parts.push(step.key)
+	if (step.window) parts.push(`"${step.window}"`)
+	if (step.element) parts.push(`"${step.element}"`)
+	if (step.direction) parts.push(`${step.direction}${step.amount !== undefined ? ` × ${step.amount}` : ""}`)
+	if (step.duration !== undefined) parts.push(`${step.duration} ms`)
+	return parts.join(" ")
+}
+
+interface BatchStepsProps {
+	steps: ClineSayComputerAction[]
+	isAsk: boolean
+}
+
+/** Numbered list of batch steps. In the approval request, typed text is shown in full. */
+const BatchSteps = ({ steps, isAsk }: BatchStepsProps) => {
+	const { t } = useTranslation()
+	return (
+		<div className="flex flex-col gap-1" data-testid="computer-action-steps">
+			<span className="text-vscode-descriptionForeground">
+				{t("chat:computerAction.batchSteps", { count: steps.length })}
+			</span>
+			<ol className="m-0 pl-5 flex flex-col gap-1">
+				{steps.map((step, index) => {
+					const summary = summarizeStep(step)
+					const text =
+						step.text === undefined
+							? undefined
+							: isAsk
+								? step.text
+								: truncate(step.text, COMPUTER_ACTION_TEXT_PREVIEW_LENGTH)
+					return (
+						<li key={index} data-testid={`computer-action-step-${index}`}>
+							<div className="flex items-center gap-2 flex-wrap">
+								{getActionIcon(step.action ?? "", step.direction)}
+								<span className="font-mono">
+									{t(`chat:computerAction.actions.${step.action}`, { defaultValue: step.action })}
+								</span>
+								{summary && <span className="font-mono break-all">{summary}</span>}
+								{step.submit && (
+									<span className="text-vscode-descriptionForeground">
+										{t("chat:computerAction.submit")}
+									</span>
+								)}
+								{step.executedCoordinate && (
+									<span className="text-xs text-vscode-descriptionForeground">
+										({t("chat:computerAction.executedAt", { coordinate: step.executedCoordinate })})
+									</span>
+								)}
+							</div>
+							{text !== undefined && (
+								<pre className="m-0 mt-1 p-2 rounded-xs bg-vscode-editor-background whitespace-pre-wrap break-all font-mono text-xs">
+									{text}
+								</pre>
+							)}
+						</li>
+					)
+				})}
+			</ol>
+		</div>
+	)
+}
+
 /**
  * Renders the `computer_action` ask (approval request) and say (executed action).
  * For the ask, typed text is always shown in full so the user sees exactly what will be typed.
@@ -99,6 +165,29 @@ export const ComputerActionRow = memo(({ message }: ComputerActionRowProps) => {
 	const { t } = useTranslation()
 	const isAsk = message.type === "ask"
 	const payload = useMemo(() => parseJson<ClineSayComputerAction>(message.text), [message.text])
+
+	const steps = Array.isArray(payload?.steps) ? payload.steps.filter((s) => s && s.action) : undefined
+	const noScreenshotNote =
+		payload?.screenshot === false ? (
+			<div className="text-xs text-vscode-descriptionForeground" data-testid="computer-action-no-screenshot">
+				{t("chat:computerAction.noScreenshot")}
+			</div>
+		) : null
+
+	if (steps && steps.length > 0) {
+		return (
+			<div className="px-[15px] py-[10px] pr-[6px]" data-testid="computer-action-row">
+				<div className="flex items-center gap-2 font-bold">
+					<Monitor className="w-4 h-4 shrink-0" />
+					<span>{isAsk ? t("chat:computerAction.wantsToAct") : t("chat:computerAction.title")}</span>
+				</div>
+				<div className="mt-1 ml-6 flex flex-col gap-1 text-sm">
+					<BatchSteps steps={steps} isAsk={isAsk} />
+					{noScreenshotNote}
+				</div>
+			</div>
+		)
+	}
 
 	if (!payload?.action) {
 		return null
@@ -181,8 +270,14 @@ export const ComputerActionRow = memo(({ message }: ComputerActionRowProps) => {
 							data-testid="computer-action-text">
 							{shownText}
 						</pre>
+						{payload.submit && (
+							<span className="text-vscode-descriptionForeground" data-testid="computer-action-submit">
+								{t("chat:computerAction.submit")}
+							</span>
+						)}
 					</div>
 				)}
+				{noScreenshotNote}
 			</div>
 		</div>
 	)

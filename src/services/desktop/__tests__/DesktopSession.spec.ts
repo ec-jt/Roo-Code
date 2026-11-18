@@ -423,6 +423,208 @@ describe("DesktopSession", () => {
 	})
 })
 
+describe("DesktopSession batches, submit, and screenshot: false", () => {
+	function createBatchSession() {
+		const driver = createDriver()
+		const order: string[] = []
+		const sleep = vi.fn(async (ms: number) => {
+			order.push(`sleep ${ms}`)
+		})
+		const fastCapture = vi.fn(async (width: number, height: number) => {
+			order.push("screenshot")
+			return { dataUrl: "data:image/jpeg;base64,/9j/", width, height }
+		})
+		const activity = {
+			waitForIdle: vi.fn(async () => {
+				order.push("waitForIdle")
+				return { idle: true, waitedMs: 0 }
+			}),
+			noteInjected: vi.fn(),
+		}
+		vi.mocked(driver.click).mockImplementation(() => {
+			order.push("click")
+		})
+		vi.mocked(driver.typeText).mockImplementation((t: string) => {
+			order.push(`type ${t}`)
+		})
+		vi.mocked(driver.keyTap).mockImplementation((k: string) => {
+			order.push(`key ${k}`)
+		})
+		vi.mocked(driver.focusWindow).mockImplementation((id: number) => {
+			order.push(`focus ${id}`)
+		})
+		const session = new DesktopSession(driver, {
+			maxWidth: 100,
+			maxHeight: 100,
+			settleMs: 200,
+			platform: "darwin",
+			sleep,
+			fastCapture,
+			activity: activity as never,
+		})
+		return { session, driver, order, sleep, fastCapture, activity }
+	}
+
+	it("runs steps in order, waits for the user before each, settles once, and takes one screenshot", async () => {
+		const { session, order, fastCapture, activity, sleep } = createBatchSession()
+		await session.execute({ action: "screenshot" })
+		order.length = 0
+		fastCapture.mockClear()
+
+		const result = await session.executeBatch([
+			{ action: "focus_window", window: "Finder" },
+			{ action: "click", coordinate: "10,10" },
+			{ action: "type", text: "hi", submit: true },
+		])
+
+		expect(order).toEqual([
+			"waitForIdle",
+			"focus 1",
+			"sleep 50",
+			"waitForIdle",
+			"click",
+			"sleep 50",
+			"waitForIdle",
+			"type hi",
+			"key enter",
+			"sleep 200",
+			"screenshot",
+		])
+		expect(activity.waitForIdle).toHaveBeenCalledTimes(3)
+		expect(fastCapture).toHaveBeenCalledTimes(1)
+		expect(sleep.mock.calls.filter(([ms]) => ms === 200)).toHaveLength(1)
+		expect(result.screenshot).toMatch(/^data:image\/jpeg/)
+		expect(result.completed.map((c) => [c.params.action, c.executedCoordinate])).toEqual([
+			["focus_window", undefined],
+			["click", "20,20"],
+			["type", undefined],
+		])
+		expect(result.failed).toBeUndefined()
+	})
+
+	it("stops at a failing step, names it, and still returns a screenshot", async () => {
+		const { session, driver, fastCapture } = createBatchSession()
+		await session.execute({ action: "screenshot" })
+		fastCapture.mockClear()
+
+		const result = await session.executeBatch([
+			{ action: "click", coordinate: "10,10" },
+			{ action: "click", coordinate: "999,10" },
+			{ action: "type", text: "never" },
+		])
+
+		expect(result.failed).toEqual({ index: 1, message: expect.stringMatching(/outside the screenshot/) })
+		expect(result.completed).toHaveLength(1)
+		expect(driver.typeText).not.toHaveBeenCalled()
+		expect(fastCapture).toHaveBeenCalledTimes(1)
+		expect(result.screenshot).toBeDefined()
+	})
+
+	it("stops between steps when the task is aborted", async () => {
+		const { session, driver, fastCapture } = createBatchSession()
+		let aborted = false
+		vi.mocked(driver.click).mockImplementation(() => {
+			aborted = true
+		})
+		await session.execute({ action: "screenshot" })
+		fastCapture.mockClear()
+
+		const result = await session.executeBatch(
+			[
+				{ action: "click", coordinate: "10,10" },
+				{ action: "type", text: "never" },
+			],
+			{ shouldAbort: () => aborted },
+		)
+
+		expect(result.abortedAt).toBe(1)
+		expect(result.completed).toHaveLength(1)
+		expect(driver.typeText).not.toHaveBeenCalled()
+		expect(fastCapture).not.toHaveBeenCalled()
+	})
+
+	it("stops when beforeStep throws (for example, a window outside the allowlist)", async () => {
+		const { session, driver } = createBatchSession()
+		const result = await session.executeBatch([{ action: "type", text: "x" }], {
+			beforeStep: () => {
+				throw new ComputerActionError("not in the allowlist")
+			},
+		})
+		expect(result.failed).toEqual({ index: 0, message: "not in the allowlist" })
+		expect(driver.typeText).not.toHaveBeenCalled()
+	})
+
+	it("skips the settle wait and the screenshot for a batch with screenshot: false", async () => {
+		const { session, sleep, fastCapture } = createBatchSession()
+		const result = await session.executeBatch([{ action: "key", key: "a" }], { screenshot: false })
+		expect(fastCapture).not.toHaveBeenCalled()
+		expect(sleep).not.toHaveBeenCalledWith(200)
+		expect(result.screenshot).toBeUndefined()
+		expect(result.completed).toHaveLength(1)
+	})
+
+	it("submit presses Enter after the text", async () => {
+		const { session, order } = createBatchSession()
+		await session.execute({ action: "type", text: "hello", submit: true })
+		expect(order.indexOf("key enter")).toBe(order.indexOf("type hello") + 1)
+	})
+
+	it("submit presses Enter after pasted long text", async () => {
+		const driver = createDriver()
+		const clipboard = { read: vi.fn(async () => "old"), write: vi.fn(async () => {}) }
+		const session = new DesktopSession(driver, {
+			maxWidth: 100,
+			maxHeight: 100,
+			settleMs: 0,
+			platform: "darwin",
+			sleep: async () => {},
+			clipboard,
+		})
+		await session.execute({ action: "type", text: "a".repeat(100), submit: true })
+		expect(vi.mocked(driver.keyTap).mock.calls).toEqual([
+			["v", ["command"]],
+			["enter", []],
+		])
+	})
+
+	it("does not press Enter without submit", async () => {
+		const { session, driver } = createBatchSession()
+		await session.execute({ action: "type", text: "hello" })
+		expect(driver.keyTap).not.toHaveBeenCalled()
+	})
+
+	it("rejects submit for window_type", async () => {
+		const driver = createDriver()
+		const background = {
+			captureWindow: vi.fn(),
+			typeInWindow: vi.fn(),
+			listElements: vi.fn(),
+			pressElement: vi.fn(),
+		}
+		const session = new DesktopSession(driver, { sleep: async () => {}, background: background as never })
+		await expect(
+			session.execute({ action: "window_type", window: "Finder", text: "x", submit: true }),
+		).rejects.toThrow(/submit is not available for window_type/)
+		expect(background.typeInWindow).not.toHaveBeenCalled()
+	})
+
+	it("screenshot: false on a single action returns no image and does not settle", async () => {
+		const { session, sleep, fastCapture } = createBatchSession()
+		await session.execute({ action: "screenshot" })
+		fastCapture.mockClear()
+		const result = await session.execute({ action: "click", coordinate: "10,10" }, { screenshot: false })
+		expect(result.screenshot).toBeUndefined()
+		expect(result.executedCoordinate).toBe("20,20")
+		expect(fastCapture).not.toHaveBeenCalled()
+		expect(sleep).not.toHaveBeenCalledWith(200)
+	})
+
+	it("uses a 200 ms default settle wait", async () => {
+		const { DEFAULT_SETTLE_MS } = await import("../DesktopSession")
+		expect(DEFAULT_SETTLE_MS).toBe(200)
+	})
+})
+
 describe("isWindowAllowed", () => {
 	it("allows everything when the allowlist is empty or blank", () => {
 		expect(isWindowAllowed("Anything", undefined)).toBe(true)

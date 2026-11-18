@@ -16,6 +16,9 @@
 		"cursor": "İmleç: {{position}}",
 		"windows": "Açık pencereler ({{count}})",
 		"untitledWindow": "(başlıksız)",
+		"batchSteps": "Adımlar ({{count}}):",
+		"submit": "ardından Enter'a bas",
+		"noScreenshot": "Bu işlemden sonra ekran görüntüsü yok",
 		"actions": {
 			"screenshot": "Ekran görüntüsü al",
 			"click": "Tıkla",

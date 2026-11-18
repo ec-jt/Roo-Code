@@ -16,6 +16,9 @@
 		"cursor": "カーソル：{{position}}",
 		"windows": "開いているウィンドウ（{{count}}）",
 		"untitledWindow": "（無題）",
+		"batchSteps": "ステップ（{{count}}）:",
+		"submit": "その後 Enter を押す",
+		"noScreenshot": "この操作の後はスクリーンショットを撮りません",
 		"actions": {
 			"screenshot": "スクリーンショット",
 			"click": "クリック",

@@ -35,7 +35,9 @@ export interface ClipboardAccess {
 
 export const DEFAULT_MAX_WIDTH = 1280
 export const DEFAULT_MAX_HEIGHT = 800
-export const DEFAULT_SETTLE_MS = 400
+export const DEFAULT_SETTLE_MS = 200
+/** Fixed gap between the steps of a batch, so the target app can take the input. No screen settle wait. */
+export const BATCH_STEP_GAP_MS = 50
 export const DEFAULT_SCROLL_AMOUNT = 3
 export const MAX_SCROLL_AMOUNT = 50
 export const MAX_WAIT_MS = 10_000
@@ -86,6 +88,33 @@ export interface DesktopSessionOptions {
 	fastCapture?: FastScreenCapture
 	/** Clipboard for pasting long text. Without it, all text is typed key by key. */
 	clipboard?: ClipboardAccess
+}
+
+export interface ExecuteOptions {
+	/** false: skip the settle wait and the screenshot after a state-changing action. */
+	screenshot?: boolean
+}
+
+export interface BatchStepResult {
+	params: ComputerActionParams
+	/** First coordinate of the step in logical screen points, "x,y". */
+	executedCoordinate?: string
+}
+
+export interface BatchOptions extends ExecuteOptions {
+	/** Called before each step, after the previous one finished. Return true to stop the batch. */
+	shouldAbort?: () => boolean
+	/** Called before each step. Throw a ComputerActionError to stop the batch at that step. */
+	beforeStep?: (step: ComputerActionParams, index: number) => void | Promise<void>
+}
+
+export interface BatchResult extends ComputerActionResult {
+	/** Steps that finished, in order. */
+	completed: BatchStepResult[]
+	/** Set when a step failed: its 0-based index and the error message. */
+	failed?: { index: number; message: string }
+	/** Index of the next step when the task was aborted between steps. */
+	abortedAt?: number
 }
 
 export interface ScreenshotResult {
@@ -257,29 +286,16 @@ export class DesktopSession {
 
 	/**
 	 * Run one action. State-changing actions are followed by a settle delay and a
-	 * fresh screenshot so the model always sees the result.
+	 * fresh screenshot so the model always sees the result, unless
+	 * `options.screenshot` is false.
 	 * Approval and the app allowlist are enforced by the caller before this runs.
 	 */
-	async execute(params: ComputerActionParams): Promise<ComputerActionResult & { executedCoordinate?: string }> {
+	async execute(
+		params: ComputerActionParams,
+		options: ExecuteOptions = {},
+	): Promise<ComputerActionResult & { executedCoordinate?: string }> {
 		if (!isComputerAction(params.action)) {
 			throw new ComputerActionError(`Unknown action "${String(params.action)}".`)
-		}
-
-		let executedCoordinate: string | undefined
-		const point = (value: string | undefined, name?: string) => {
-			const p = this.toScreenPoint(value, name)
-			executedCoordinate ??= `${p.x},${p.y}`
-			return p
-		}
-
-		// Take turns with the user for actions that use the shared mouse and keyboard.
-		const sharedInput = SHARED_INPUT_ACTIONS.has(params.action)
-		let userCursor: Point | undefined
-		if (sharedInput) {
-			await this.takeTurn()
-			if (RESTORE_CURSOR_ACTIONS.has(params.action)) {
-				userCursor = this.safeCursor()
-			}
 		}
 
 		switch (params.action) {
@@ -315,6 +331,117 @@ export class DesktopSession {
 				}
 			}
 
+			case "window_screenshot": {
+				const target = this.findWindow(params.window)
+				return this.windowResult(target)
+			}
+
+			case "list_windows":
+				return { windows: this.listWindows(), activeWindowTitle: this.getActiveWindowTitle() }
+
+			case "wait": {
+				await this.sleep(parseBoundedInt(params.duration, "duration", 1000, 0, MAX_WAIT_MS))
+				return this.result()
+			}
+		}
+
+		const step = await this.runStep(params)
+		if (options.screenshot === false) {
+			return {
+				executedCoordinate: step.executedCoordinate,
+				windowTitle: step.window?.title,
+				activeWindowTitle: this.getActiveWindowTitle(),
+			}
+		}
+		await this.sleep(this.settleMs)
+		if (step.window) {
+			return this.windowResult(step.window)
+		}
+		return { ...(await this.result()), executedCoordinate: step.executedCoordinate }
+	}
+
+	/**
+	 * Run several state-changing steps in order with one settle wait and one
+	 * screenshot at the end. Each step still takes turns with the user. The batch
+	 * stops at the first failing step or when `shouldAbort` returns true; the
+	 * result then names the step and lists the steps that finished.
+	 * Approval and validation are done by the caller before this runs.
+	 */
+	async executeBatch(steps: ComputerActionParams[], options: BatchOptions = {}): Promise<BatchResult> {
+		const completed: BatchStepResult[] = []
+		let lastWindow: ComputerWindowInfo | undefined
+
+		for (let index = 0; index < steps.length; index++) {
+			if (options.shouldAbort?.()) {
+				return { completed, abortedAt: index }
+			}
+			const params = steps[index]
+			try {
+				if (!isComputerAction(params.action)) {
+					throw new ComputerActionError(`Unknown action "${String(params.action)}".`)
+				}
+				await options.beforeStep?.(params, index)
+				let executedCoordinate: string | undefined
+				if (params.action === "wait") {
+					await this.sleep(parseBoundedInt(params.duration, "duration", 1000, 0, MAX_WAIT_MS))
+				} else {
+					const step = await this.runStep(params)
+					executedCoordinate = step.executedCoordinate
+					lastWindow = step.window
+				}
+				completed.push({ params, executedCoordinate })
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error)
+				let shot: ComputerActionResult = {}
+				try {
+					shot = lastWindow ? await this.windowResult(lastWindow) : await this.result()
+				} catch {
+					shot = {}
+				}
+				return { ...shot, completed, failed: { index, message } }
+			}
+			if (index < steps.length - 1 && BATCH_STEP_GAP_MS > 0) {
+				await this.sleep(BATCH_STEP_GAP_MS)
+			}
+		}
+
+		if (options.screenshot === false) {
+			return {
+				completed,
+				windowTitle: lastWindow?.title,
+				activeWindowTitle: this.getActiveWindowTitle(),
+			}
+		}
+		await this.sleep(this.settleMs)
+		const shot = lastWindow ? await this.windowResult(lastWindow) : await this.result()
+		return { ...shot, completed }
+	}
+
+	/**
+	 * Perform one state-changing action without the settle wait or screenshot.
+	 * Returns the executed coordinate, and the window for background actions.
+	 */
+	private async runStep(
+		params: ComputerActionParams,
+	): Promise<{ executedCoordinate?: string; window?: ComputerWindowInfo }> {
+		let executedCoordinate: string | undefined
+		const point = (value: string | undefined, name?: string) => {
+			const p = this.toScreenPoint(value, name)
+			executedCoordinate ??= `${p.x},${p.y}`
+			return p
+		}
+
+		// Take turns with the user for actions that use the shared mouse and keyboard.
+		const sharedInput = SHARED_INPUT_ACTIONS.has(params.action)
+		let userCursor: Point | undefined
+		if (sharedInput) {
+			await this.takeTurn()
+			if (RESTORE_CURSOR_ACTIONS.has(params.action)) {
+				userCursor = this.safeCursor()
+			}
+		}
+
+		switch (params.action) {
 			case "click_element": {
 				if (!params.element?.trim()) {
 					throw new ComputerActionError('Missing "element". Use a name from list_elements.')
@@ -329,16 +456,15 @@ export class DesktopSession {
 							"Use list_elements to see the element names, or click by coordinate.",
 					)
 				}
-				await this.sleep(this.settleMs)
-				return this.windowResult(target)
-			}
-
-			case "window_screenshot": {
-				const target = this.findWindow(params.window)
-				return this.windowResult(target)
+				return { window: target }
 			}
 
 			case "window_type": {
+				if (isTrue(params.submit)) {
+					throw new ComputerActionError(
+						"submit is not available for window_type: background typing cannot press Enter. Use click_element on the send button, or type with submit when the user is idle.",
+					)
+				}
 				if (!params.text) {
 					throw new ComputerActionError('Missing "text" for window_type.')
 				}
@@ -357,16 +483,7 @@ export class DesktopSession {
 							"Click the text field once with the normal actions (when the user is idle), then try again.",
 					)
 				}
-				await this.sleep(this.settleMs)
-				return this.windowResult(target)
-			}
-
-			case "list_windows":
-				return { windows: this.listWindows(), activeWindowTitle: this.getActiveWindowTitle() }
-
-			case "wait": {
-				await this.sleep(parseBoundedInt(params.duration, "duration", 1000, 0, MAX_WAIT_MS))
-				return this.result()
+				return { window: target }
 			}
 
 			case "move":
@@ -398,6 +515,10 @@ export class DesktopSession {
 					)
 				}
 				await this.typeText(params.text)
+				if (isTrue(params.submit)) {
+					const enter = parseKeyCombo("enter", this.platform)
+					this.driver.keyTap(enter.key, enter.modifiers)
+				}
 				break
 			}
 
@@ -434,6 +555,9 @@ export class DesktopSession {
 				this.driver.focusWindow(target.id)
 				break
 			}
+
+			default:
+				throw new ComputerActionError(`"${params.action}" cannot run as an input step.`)
 		}
 
 		if (sharedInput) {
@@ -448,8 +572,7 @@ export class DesktopSession {
 			this.activity?.noteInjected(this.safeCursor())
 		}
 
-		await this.sleep(this.settleMs)
-		return { ...(await this.result()), executedCoordinate }
+		return { executedCoordinate }
 	}
 
 	/**
@@ -614,6 +737,11 @@ function scrollVector(direction: ScrollDirection, amount: number): [number, numb
 		case "right":
 			return [amount, 0]
 	}
+}
+
+/** Accept true and "true": tool arguments may arrive as strings. */
+export function isTrue(value: unknown): boolean {
+	return value === true || value === "true"
 }
 
 function parseBoundedInt(value: string | undefined, name: string, fallback: number, min: number, max: number): number {

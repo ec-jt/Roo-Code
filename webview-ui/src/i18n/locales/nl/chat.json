@@ -16,6 +16,9 @@
 		"cursor": "Cursor: {{position}}",
 		"windows": "Open vensters ({{count}})",
 		"untitledWindow": "(naamloos)",
+		"batchSteps": "Stappen ({{count}}):",
+		"submit": "en druk dan op Enter",
+		"noScreenshot": "Geen screenshot na deze actie",
 		"actions": {
 			"screenshot": "Screenshot maken",
 			"click": "Klikken",

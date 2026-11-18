@@ -37,6 +37,20 @@ describe("findComputerScreenshotMessages", () => {
 		expect(found).toEqual([history[2], history[8]])
 	})
 
+	it("skips text-only results from screenshot: false calls, so they do not count toward the kept screenshots", () => {
+		const history: Anthropic.MessageParam[] = [
+			toolUse("computer_action", "a"),
+			result("a", true),
+			toolUse("computer_action", "b"),
+			result("b", false), // screenshot: false
+			toolUse("computer_action", "c"),
+			result("c", false), // screenshot: false batch
+			toolUse("computer_action", "d"),
+			result("d", true),
+		]
+		expect(findComputerScreenshotMessages(history)).toEqual([history[1], history[7]])
+	})
+
 	it("keeps a small number of recent screenshots", () => {
 		expect(KEEP_RECENT_COMPUTER_SCREENSHOTS).toBeGreaterThanOrEqual(2)
 		expect(KEEP_RECENT_COMPUTER_SCREENSHOTS).toBeLessThanOrEqual(5)

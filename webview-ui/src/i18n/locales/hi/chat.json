@@ -16,6 +16,9 @@
 		"cursor": "कर्सर: {{position}}",
 		"windows": "खुली विंडो ({{count}})",
 		"untitledWindow": "(बिना शीर्षक)",
+		"batchSteps": "चरण ({{count}}):",
+		"submit": "फिर Enter दबाएँ",
+		"noScreenshot": "इस कार्रवाई के बाद कोई स्क्रीनशॉट नहीं",
 		"actions": {
 			"screenshot": "स्क्रीनशॉट लें",
 			"click": "क्लिक",

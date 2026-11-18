@@ -74,6 +74,9 @@
 		"cursor": "Cursor: {{position}}",
 		"windows": "Open windows ({{count}})",
 		"untitledWindow": "(untitled)",
+		"batchSteps": "Steps ({{count}}):",
+		"submit": "then press Enter",
+		"noScreenshot": "No screenshot after this action",
 		"actions": {
 			"screenshot": "Take screenshot",
 			"click": "Click",

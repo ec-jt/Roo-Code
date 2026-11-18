@@ -385,8 +385,11 @@ export async function presentAssistantMessage(cline: Task) {
 					const toolDescription = (): string => {
 						switch (block.name) {
 							case "browser_action":
-							case "computer_action":
 								return `[${block.name} for '${block.params.action}']`
+							case "computer_action":
+								return block.params.action || !block.params.actions
+									? `[${block.name} for '${block.params.action}']`
+									: `[${block.name} batch]`
 							case "execute_command":
 								return `[${block.name} for '${block.params.command}']`
 							case "read_file":

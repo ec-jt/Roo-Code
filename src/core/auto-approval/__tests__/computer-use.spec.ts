@@ -32,6 +32,32 @@ describe("computer_action auto-approval", () => {
 		}
 	})
 
+	it("treats a batch payload like a single action", async () => {
+		const batch = JSON.stringify({
+			steps: [
+				{ action: "click", coordinate: "1,1" },
+				{ action: "type", text: "hi", submit: true },
+			],
+		})
+		expect(await checkAutoApproval({ state: baseState, ask: "computer_action", text: batch })).toEqual({
+			decision: "ask",
+		})
+		expect(
+			await checkAutoApproval({
+				state: { ...baseState, alwaysAllowComputerUse: true },
+				ask: "computer_action",
+				text: batch,
+			}),
+		).toEqual({ decision: "approve" })
+		expect(
+			await checkAutoApproval({
+				state: { ...baseState, alwaysAllowAll: true },
+				ask: "computer_action",
+				text: batch,
+			}),
+		).toEqual({ decision: "ask" })
+	})
+
 	it("is NOT approved by alwaysAllowAll alone", async () => {
 		const state = { ...baseState, alwaysAllowAll: true }
 		expect(await checkAutoApproval({ state, ask: "computer_action", text: click })).toEqual({ decision: "ask" })

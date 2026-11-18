@@ -20,7 +20,22 @@ const SHOT = "data:image/png;base64,AAAA"
 
 function createSession(overrides: Record<string, unknown> = {}) {
 	return {
-		execute: vi.fn(async () => ({
+		executeBatch: vi.fn(
+			async (
+				steps: Array<Record<string, unknown>>,
+				_opts?: Record<string, unknown>,
+			): Promise<Record<string, unknown>> => ({
+				screenshot: SHOT,
+				screenshotWidth: 1232,
+				screenshotHeight: 800,
+				activeWindowTitle: "Notes",
+				completed: steps.map((params, i) => ({
+					params,
+					executedCoordinate: params.coordinate ? `${i},${i}` : undefined,
+				})),
+			}),
+		),
+		execute: vi.fn(async (_params?: unknown, _opts?: unknown) => ({
 			screenshot: SHOT,
 			screenshotWidth: 1232,
 			screenshotHeight: 800,
@@ -294,5 +309,216 @@ describe("ComputerActionTool", () => {
 		session.execute.mockRejectedValueOnce(new Error("native crash"))
 		const { callbacks } = await run({ action: "screenshot" })
 		expect(callbacks.handleError).toHaveBeenCalledWith("executing computer action", expect.any(Error))
+	})
+
+	describe("submit and screenshot: false", () => {
+		it("passes submit to the session as a boolean and shows it in the approval", async () => {
+			const { callbacks } = await run({ action: "type", text: "hi", submit: "true" })
+			expect(session.execute).toHaveBeenCalledWith({ action: "type", text: "hi", submit: true })
+			const payload = JSON.parse((callbacks.askApproval.mock.calls[0] as unknown[])[1] as string)
+			expect(payload).toMatchObject({ action: "type", text: "hi", submit: true })
+		})
+
+		it("rejects submit on window_type before approval", async () => {
+			const { callbacks } = await run({ action: "window_type", window: "Notes", text: "hi", submit: true })
+			expect(callbacks.pushToolResult.mock.calls[0][0]).toMatch(/submit is not available for window_type/)
+			expect(callbacks.askApproval).not.toHaveBeenCalled()
+		})
+
+		it("returns text only when screenshot is false", async () => {
+			session.execute.mockResolvedValueOnce({ activeWindowTitle: "Notes", executedCoordinate: "20,40" } as never)
+			const { callbacks } = await run({ action: "click", coordinate: "10,20", screenshot: false })
+			expect(session.execute).toHaveBeenCalledWith(
+				{ action: "click", coordinate: "10,20" },
+				{ screenshot: false },
+			)
+			const result = callbacks.pushToolResult.mock.calls[0][0]
+			expect(typeof result).toBe("string")
+			expect(result).toMatch(/No screenshot was taken/)
+		})
+
+		it.each(["screenshot", "list_windows"])("rejects screenshot: false on read-only %s", async (action) => {
+			const { callbacks } = await run({ action, screenshot: false })
+			expect(callbacks.pushToolResult.mock.calls[0][0]).toMatch(/only for actions that change something/)
+			expect(callbacks.askApproval).not.toHaveBeenCalled()
+		})
+	})
+
+	describe("batched actions", () => {
+		const batch = [
+			{ action: "focus_window", window: "Notes" },
+			{ action: "click", coordinate: "10,20" },
+			{ action: "type", text: "hello", submit: true },
+		]
+
+		it("asks once for the whole batch, listing every step", async () => {
+			const { callbacks } = await run({ actions: batch })
+			expect(callbacks.askApproval).toHaveBeenCalledTimes(1)
+			const payload = JSON.parse((callbacks.askApproval.mock.calls[0] as unknown[])[1] as string)
+			expect(payload.action).toBeUndefined()
+			expect(payload.steps).toEqual([
+				expect.objectContaining({ action: "focus_window", window: "Notes" }),
+				expect.objectContaining({ action: "click", coordinate: "10,20" }),
+				expect.objectContaining({ action: "type", text: "hello", submit: true }),
+			])
+			expect(session.executeBatch).toHaveBeenCalledTimes(1)
+			expect(session.execute).not.toHaveBeenCalled()
+		})
+
+		it("accepts actions as a JSON string", async () => {
+			const { callbacks } = await run({ actions: JSON.stringify(batch) })
+			expect(callbacks.askApproval).toHaveBeenCalledTimes(1)
+			expect(session.executeBatch.mock.calls[0][0]).toHaveLength(3)
+		})
+
+		it("returns one screenshot and lists the steps that ran with executed coordinates", async () => {
+			const { callbacks, task } = await run({ actions: batch })
+			const result = callbacks.pushToolResult.mock.calls[0][0]
+			expect(result.filter((b: { type: string }) => b.type === "image")).toHaveLength(1)
+			const text = result[result.length - 1].text
+			expect(text).toMatch(/Batch of 3 steps executed/)
+			expect(text).toMatch(/1\. focus_window window "Notes"/)
+			expect(text).toMatch(/2\. click 10,20 \(screen 1,1\)/)
+			expect(text).toMatch(/3\. type "hello" \+ Enter/)
+			const say = (task.say.mock.calls as unknown[][]).find((c) => c[0] === "computer_action")
+			expect(JSON.parse(say![1] as string).steps).toHaveLength(3)
+		})
+
+		it("passes screenshot: false to the batch and returns text only", async () => {
+			session.executeBatch.mockImplementationOnce(async (steps) => ({
+				completed: steps.map((params) => ({ params })),
+				activeWindowTitle: "Notes",
+			}))
+			const { callbacks } = await run({ actions: batch, screenshot: false })
+			expect(session.executeBatch.mock.calls[0][1]).toMatchObject({ screenshot: false })
+			expect(typeof callbacks.pushToolResult.mock.calls[0][0]).toBe("string")
+		})
+
+		it.each([
+			[
+				"too many steps",
+				{ actions: Array.from({ length: 11 }, () => ({ action: "key", key: "a" })) },
+				/1 to 10 steps/,
+			],
+			["no steps", { actions: [] }, /1 to 10 steps/],
+			["a read-only step", { actions: [{ action: "screenshot" }] }, /cannot be a batch step/],
+			[
+				"a missing parameter",
+				{ actions: [{ action: "key", key: "a" }, { action: "click" }] },
+				/Step 2 \(click\) is missing the required parameter .{0,2}coordinate/,
+			],
+			[
+				"both action and actions",
+				{ action: "click", coordinate: "1,1", actions: [{ action: "key", key: "a" }] },
+				/not both/,
+			],
+			[
+				"submit on window_type",
+				{ actions: [{ action: "window_type", window: "Notes", text: "x", submit: true }] },
+				/submit is not available/,
+			],
+		])("rejects %s before approval", async (_name, params, message) => {
+			const { callbacks } = await run(params)
+			expect(callbacks.pushToolResult.mock.calls[0][0]).toMatch(message)
+			expect(callbacks.askApproval).not.toHaveBeenCalled()
+			expect(session.executeBatch).not.toHaveBeenCalled()
+		})
+
+		it("rejects a step whose window is not in the allowlist before approval", async () => {
+			const { callbacks } = await run(
+				{
+					actions: [
+						{ action: "focus_window", window: "7" },
+						{ action: "click_element", window: "Notes", element: "Save" },
+					],
+				},
+				{ state: { computerUseAllowedApps: ["Safari"] } },
+			)
+			expect(callbacks.pushToolResult.mock.calls[0][0]).toMatch(/Step 2: The window .{0,2}Notes/)
+			expect(callbacks.askApproval).not.toHaveBeenCalled()
+		})
+
+		it("treats a focus_window step as changing the active window for later steps", async () => {
+			const { callbacks } = await run(
+				{
+					actions: [
+						{ action: "focus_window", window: "7" },
+						{ action: "type", text: "x" },
+					],
+				},
+				{ state: { computerUseAllowedApps: ["Safari"] } },
+			)
+			expect(callbacks.askApproval).toHaveBeenCalledTimes(1)
+			expect(session.executeBatch.mock.calls[0][1]).toHaveProperty("beforeStep")
+		})
+
+		describe("background mode", () => {
+			const realPlatform = process.platform
+			afterEach(() => Object.defineProperty(process, "platform", { value: realPlatform }))
+
+			it("rejects a step that background mode does not allow, before approval", async () => {
+				Object.defineProperty(process, "platform", { value: "darwin" })
+				const { callbacks } = await run(
+					{
+						actions: [
+							{ action: "click_element", window: "Notes", element: "Save" },
+							{ action: "click", coordinate: "1,1" },
+						],
+					},
+					{ state: { computerUseBackgroundMode: true } },
+				)
+				expect(callbacks.pushToolResult.mock.calls[0][0]).toMatch(
+					/Step 2: .{0,2}click.{0,2} is not available in background mode/,
+				)
+				expect(callbacks.askApproval).not.toHaveBeenCalled()
+			})
+
+			it("allows a batch of background actions", async () => {
+				Object.defineProperty(process, "platform", { value: "darwin" })
+				const { callbacks } = await run(
+					{
+						actions: [
+							{ action: "window_type", window: "Notes", text: "hi" },
+							{ action: "click_element", window: "Notes", element: "Send" },
+						],
+					},
+					{ state: { computerUseBackgroundMode: true } },
+				)
+				expect(callbacks.askApproval).toHaveBeenCalledTimes(1)
+				expect(session.executeBatch).toHaveBeenCalled()
+			})
+		})
+
+		it("reports the failed step and how many finished, with the screenshot", async () => {
+			session.executeBatch.mockImplementationOnce(async (steps) => ({
+				screenshot: SHOT,
+				screenshotWidth: 1232,
+				screenshotHeight: 800,
+				completed: [{ params: steps[0] }],
+				failed: { index: 1, message: "coordinate 9999,1 is outside the screenshot" },
+			}))
+			const { callbacks, task } = await run({ actions: batch })
+			const result = callbacks.pushToolResult.mock.calls[0][0]
+			expect(result[0].type).toBe("image")
+			const text = result[result.length - 1].text
+			expect(text).toMatch(/step 2 of 3 \(click\) failed: coordinate 9999,1 is outside/)
+			expect(text).toMatch(/1 of 3 steps finished/)
+			expect(task.didToolFailInCurrentTurn).toBe(true)
+			expect(task.consecutiveMistakeCount).toBe(1)
+		})
+
+		it("lets the session stop the batch when the task is aborted", async () => {
+			task = createTask()
+			const callbacks = createCallbacks(true)
+			session.executeBatch.mockImplementationOnce(async (steps, opts) => {
+				const shouldAbort = (opts as { shouldAbort: () => boolean }).shouldAbort
+				expect(shouldAbort()).toBe(false)
+				;(task as { abort?: boolean }).abort = true
+				expect(shouldAbort()).toBe(true)
+				return { completed: [{ params: steps[0] }], abortedAt: 1 }
+			})
+			await new ComputerActionTool().execute({ actions: batch } as never, task as never, callbacks)
+			expect(callbacks.pushToolResult).not.toHaveBeenCalled()
+		})
 	})
 })

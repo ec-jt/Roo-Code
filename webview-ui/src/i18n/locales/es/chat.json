@@ -16,6 +16,9 @@
 		"cursor": "Cursor: {{position}}",
 		"windows": "Ventanas abiertas ({{count}})",
 		"untitledWindow": "(sin título)",
+		"batchSteps": "Pasos ({{count}}):",
+		"submit": "y luego pulsar Intro",
+		"noScreenshot": "Sin captura de pantalla después de esta acción",
 		"actions": {
 			"screenshot": "Hacer captura",
 			"click": "Clic",

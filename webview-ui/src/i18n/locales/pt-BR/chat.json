@@ -16,6 +16,9 @@
 		"cursor": "Cursor: {{position}}",
 		"windows": "Janelas abertas ({{count}})",
 		"untitledWindow": "(sem título)",
+		"batchSteps": "Etapas ({{count}}):",
+		"submit": "depois pressionar Enter",
+		"noScreenshot": "Sem captura de tela após esta ação",
 		"actions": {
 			"screenshot": "Capturar tela",
 			"click": "Clicar",

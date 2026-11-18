@@ -16,6 +16,9 @@
 		"cursor": "光标：{{position}}",
 		"windows": "已打开的窗口（{{count}}）",
 		"untitledWindow": "（无标题）",
+		"batchSteps": "步骤（{{count}}）：",
+		"submit": "然后按 Enter",
+		"noScreenshot": "此操作后不截图",
 		"actions": {
 			"screenshot": "截图",
 			"click": "点击",

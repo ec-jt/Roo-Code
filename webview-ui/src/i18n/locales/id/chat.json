@@ -16,6 +16,9 @@
 		"cursor": "Kursor: {{position}}",
 		"windows": "Jendela terbuka ({{count}})",
 		"untitledWindow": "(tanpa judul)",
+		"batchSteps": "Langkah ({{count}}):",
+		"submit": "lalu tekan Enter",
+		"noScreenshot": "Tanpa tangkapan layar setelah tindakan ini",
 		"actions": {
 			"screenshot": "Ambil screenshot",
 			"click": "Klik",

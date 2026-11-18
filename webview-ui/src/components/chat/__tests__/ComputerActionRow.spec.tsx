@@ -66,6 +66,42 @@ describe("ComputerActionRow", () => {
 		expect(screen.getByTestId("computer-action-scroll")).toHaveTextContent("down × 3")
 	})
 
+	it("lists every step of a batch with full text in the approval", () => {
+		const longText = "y".repeat(COMPUTER_ACTION_TEXT_PREVIEW_LENGTH + 10)
+		render(
+			<ComputerActionRow
+				message={msg("ask", "computer_action", {
+					steps: [
+						{ action: "click", coordinate: "10,20" },
+						{ action: "type", text: longText, submit: true },
+						{ action: "key", key: "enter" },
+					],
+				})}
+			/>,
+		)
+		expect(screen.getByTestId("computer-action-steps")).toHaveTextContent(
+			'chat:computerAction.batchSteps {"count":3}',
+		)
+		expect(screen.getByTestId("computer-action-step-0")).toHaveTextContent("chat:computerAction.actions.click")
+		expect(screen.getByTestId("computer-action-step-0")).toHaveTextContent("10,20")
+		expect(screen.getByTestId("computer-action-step-1")).toHaveTextContent("chat:computerAction.submit")
+		expect(screen.getByTestId("computer-action-step-1").querySelector("pre")?.textContent).toBe(longText)
+		expect(screen.getByTestId("computer-action-step-2")).toHaveTextContent("enter")
+	})
+
+	it("shows executed coordinates for batch steps and the no-screenshot note", () => {
+		render(
+			<ComputerActionRow
+				message={msg("say", "computer_action", {
+					steps: [{ action: "click", coordinate: "10,20", executedCoordinate: "20,40" }],
+					screenshot: false,
+				})}
+			/>,
+		)
+		expect(screen.getByTestId("computer-action-step-0")).toHaveTextContent("20,40")
+		expect(screen.getByTestId("computer-action-no-screenshot")).toBeInTheDocument()
+	})
+
 	it("renders nothing for invalid JSON", () => {
 		const { container } = render(
 			<ComputerActionRow

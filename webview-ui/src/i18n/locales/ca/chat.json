@@ -16,6 +16,9 @@
 		"cursor": "Cursor: {{position}}",
 		"windows": "Finestres obertes ({{count}})",
 		"untitledWindow": "(sense títol)",
+		"batchSteps": "Passos ({{count}}):",
+		"submit": "i després prem Retorn",
+		"noScreenshot": "Sense captura de pantalla després d'aquesta acció",
 		"actions": {
 			"screenshot": "Fes captura",
 			"click": "Clic",

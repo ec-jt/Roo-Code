@@ -483,9 +483,12 @@ export class NativeToolCallParser {
 				break
 
 			case "computer_action":
-				if (partialArgs.action !== undefined) {
+				if (partialArgs.action !== undefined || partialArgs.actions !== undefined) {
 					nativeArgs = {
 						action: partialArgs.action,
+						actions: partialArgs.actions,
+						submit: partialArgs.submit,
+						screenshot: partialArgs.screenshot,
 						coordinate: partialArgs.coordinate,
 						end_coordinate: partialArgs.end_coordinate,
 						text: partialArgs.text,
@@ -937,9 +940,12 @@ export class NativeToolCallParser {
 					break
 
 				case "computer_action":
-					if (args.action !== undefined) {
+					if (args.action !== undefined || args.actions !== undefined) {
 						nativeArgs = {
 							action: args.action,
+							actions: args.actions,
+							submit: args.submit,
+							screenshot: args.screenshot,
 							coordinate: args.coordinate,
 							end_coordinate: args.end_coordinate,
 							text: args.text,

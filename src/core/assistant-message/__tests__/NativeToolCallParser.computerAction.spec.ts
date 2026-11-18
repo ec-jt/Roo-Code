@@ -71,6 +71,38 @@ describe("NativeToolCallParser - computer_action", () => {
 		expect(nativeArgs).toBeUndefined()
 	})
 
+	it("passes actions, submit, and screenshot through to nativeArgs", () => {
+		const actions = [
+			{ action: "click", coordinate: "1,2" },
+			{ action: "type", text: "hi", submit: true },
+		]
+		const result = NativeToolCallParser.parseToolCall({
+			id: "toolu_ca_batch",
+			name: "computer_action" as const,
+			arguments: JSON.stringify({ actions, screenshot: false }),
+		})
+
+		expect(result?.type).toBe("tool_use")
+		if (result?.type === "tool_use") {
+			const args = result.nativeArgs as unknown as Record<string, unknown>
+			expect(args.actions).toEqual(actions)
+			expect(args.screenshot).toBe(false)
+			expect(args.action).toBeUndefined()
+		}
+	})
+
+	it("passes submit on a single type action", () => {
+		const result = NativeToolCallParser.parseToolCall({
+			id: "toolu_ca_submit",
+			name: "computer_action" as const,
+			arguments: JSON.stringify({ action: "type", text: "hi", submit: true }),
+		})
+		expect(result?.type).toBe("tool_use")
+		if (result?.type === "tool_use") {
+			expect(result.nativeArgs).toMatchObject({ action: "type", text: "hi", submit: true })
+		}
+	})
+
 	it("emits partial nativeArgs while streaming and complete args on finalize", () => {
 		const id = "toolu_ca_stream"
 		NativeToolCallParser.startStreamingToolCall(id, "computer_action")
