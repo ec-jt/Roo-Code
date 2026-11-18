@@ -183,7 +183,7 @@ export async function presentAssistantMessage(cline: Task) {
 					let hasToolResult = false
 					const toolCallId = mcpBlock.id
 
-					// Store approval feedback to merge into tool result (GitHub #10465)
+					// Approval feedback; pushed as a <user_message> block after the result
 					let approvalFeedback: { text: string; images?: string[] } | undefined
 
 					const pushToolResult = (content: ToolResponse, feedbackImages?: string[]) => {
@@ -207,16 +207,11 @@ export async function presentAssistantMessage(cline: Task) {
 								"(tool did not return anything)"
 						}
 
-						// Merge approval feedback into tool result (GitHub #10465)
+						// One tool_result per call (GitHub #10465). Approval feedback is
+						// marked in the status line; the user's text follows the result
+						// as a separate <user_message> block, never inside tool output.
 						if (approvalFeedback) {
-							const feedbackText = formatResponse.toolApprovedWithFeedback(approvalFeedback.text)
-							resultContent = `${feedbackText}\n\n${resultContent}`
-
-							// Add feedback images to the image blocks
-							if (approvalFeedback.images) {
-								const feedbackImageBlocks = formatResponse.imageBlocks(approvalFeedback.images)
-								imageBlocks = [...feedbackImageBlocks, ...imageBlocks]
-							}
+							resultContent = `${formatResponse.toolApprovedWithFeedback()}\n\n${resultContent}`
 						}
 
 						const repeatNote = recordRepeatCall(
@@ -235,6 +230,10 @@ export async function presentAssistantMessage(cline: Task) {
 
 							if (imageBlocks.length > 0) {
 								cline.userMessageContent.push(...imageBlocks)
+							}
+
+							if (approvalFeedback) {
+								cline.pushUserFeedbackToUserContent(approvalFeedback.text, approvalFeedback.images)
 							}
 						}
 
@@ -260,9 +259,8 @@ export async function presentAssistantMessage(cline: Task) {
 						if (response !== "yesButtonClicked") {
 							if (text) {
 								await cline.say("user_feedback", text, images)
-								pushToolResult(
-									formatResponse.toolResult(formatResponse.toolDeniedWithFeedback(text), images),
-								)
+								pushToolResult(formatResponse.toolDeniedWithFeedback())
+								cline.pushUserFeedbackToUserContent(text, images)
 							} else {
 								pushToolResult(formatResponse.toolDenied())
 							}
@@ -270,9 +268,8 @@ export async function presentAssistantMessage(cline: Task) {
 							return false
 						}
 
-						// Store approval feedback to be merged into tool result (GitHub #10465)
-						// Don't push it as a separate tool_result here - that would create duplicates.
-						// The tool will call pushToolResult, which will merge the feedback into the actual result.
+						// Keep approval feedback until the tool calls pushToolResult (GitHub #10465).
+						// A separate tool_result here would duplicate the tool_use_id.
 						if (text) {
 							await cline.say("user_feedback", text, images)
 							approvalFeedback = { text, images }
@@ -539,7 +536,7 @@ export async function presentAssistantMessage(cline: Task) {
 						break
 					}
 
-					// Store approval feedback to merge into tool result (GitHub #10465)
+					// Approval feedback; pushed as a <user_message> block after the result
 					let approvalFeedback: { text: string; images?: string[] } | undefined
 
 					const pushToolResult = (content: ToolResponse) => {
@@ -564,14 +561,11 @@ export async function presentAssistantMessage(cline: Task) {
 								"(tool did not return anything)"
 						}
 
-						// Merge approval feedback into tool result (GitHub #10465)
+						// One tool_result per call (GitHub #10465). Approval feedback is
+						// marked in the status line; the user's text follows the result
+						// as a separate <user_message> block, never inside tool output.
 						if (approvalFeedback) {
-							const feedbackText = formatResponse.toolApprovedWithFeedback(approvalFeedback.text)
-							resultContent = `${feedbackText}\n\n${resultContent}`
-							if (approvalFeedback.images) {
-								const feedbackImageBlocks = formatResponse.imageBlocks(approvalFeedback.images)
-								imageBlocks = [...feedbackImageBlocks, ...imageBlocks]
-							}
+							resultContent = `${formatResponse.toolApprovedWithFeedback()}\n\n${resultContent}`
 						}
 
 						const repeatNote = recordRepeatCall(cline, block.name, block.nativeArgs ?? block.params)
@@ -585,6 +579,10 @@ export async function presentAssistantMessage(cline: Task) {
 
 						if (imageBlocks.length > 0) {
 							cline.userMessageContent.push(...imageBlocks)
+						}
+
+						if (approvalFeedback) {
+							cline.pushUserFeedbackToUserContent(approvalFeedback.text, approvalFeedback.images)
 						}
 
 						hasToolResult = true
@@ -608,9 +606,8 @@ export async function presentAssistantMessage(cline: Task) {
 							// Handle both messageResponse and noButtonClicked with text.
 							if (text) {
 								await cline.say("user_feedback", text, images)
-								pushToolResult(
-									formatResponse.toolResult(formatResponse.toolDeniedWithFeedback(text), images),
-								)
+								pushToolResult(formatResponse.toolDeniedWithFeedback())
+								cline.pushUserFeedbackToUserContent(text, images)
 							} else {
 								pushToolResult(formatResponse.toolDenied())
 							}
@@ -618,9 +615,8 @@ export async function presentAssistantMessage(cline: Task) {
 							return false
 						}
 
-						// Store approval feedback to be merged into tool result (GitHub #10465)
-						// Don't push it as a separate tool_result here - that would create duplicates.
-						// The tool will call pushToolResult, which will merge the feedback into the actual result.
+						// Keep approval feedback until the tool calls pushToolResult (GitHub #10465).
+						// A separate tool_result here would duplicate the tool_use_id.
 						if (text) {
 							await cline.say("user_feedback", text, images)
 							approvalFeedback = { text, images }

@@ -2,7 +2,9 @@
 
 Status: protocol ready, results pending. The user runs the tasks; results are filled in afterwards.
 
-Build under test: **4.2.75** (`v4.2.75-cordis-preview.71`, commit `9deda9b58`). Install `bin/roo-cline-4.2.75.vsix` and reload the editor so this version is active. Check the version in the Extensions view before the first run.
+Build under test: **4.2.76** (`v4.2.76-cordis-preview.72`, commit `b2957a36d`). Install `bin/roo-cline-4.2.76.vsix` and reload the editor so this version is active. Check the version in the Extensions view before the first run, and disable any other Roo build (for example the nightly) so only 4.2.76 is active.
+
+The workspace under test (the code the model edits) stays at commit `9deda9b58` for every run, as in section 2. The installed extension, not the worktree, decides which Roo version runs.
 
 Host: macOS. Main checkout: `/Users/jamestrappett/Documents/Roo-Code`. Worktrees are created next to it in `/Users/jamestrappett/Documents/`.
 

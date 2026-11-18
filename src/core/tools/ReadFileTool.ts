@@ -578,26 +578,27 @@ export class ReadFileTool extends BaseTool<"read_file"> {
 		const fileImageUrls = fileResults.filter((r) => r.imageDataUrl).map((r) => r.imageDataUrl as string)
 
 		let statusMessage = ""
-		let feedbackImages: string[] = []
+		// User text sent with the approval or denial. It is pushed after the
+		// tool_result as a separate <user_message> block, not inside the result.
+		let feedback: { text: string; images?: string[] } | undefined
 
 		const deniedWithFeedback = fileResults.find((r) => r.status === "denied" && r.feedbackText)
 
 		if (deniedWithFeedback?.feedbackText) {
-			statusMessage = formatResponse.toolDeniedWithFeedback(deniedWithFeedback.feedbackText)
-			feedbackImages = deniedWithFeedback.feedbackImages || []
+			statusMessage = formatResponse.toolDeniedWithFeedback()
+			feedback = { text: deniedWithFeedback.feedbackText, images: deniedWithFeedback.feedbackImages }
 		} else if (task.didRejectTool) {
 			statusMessage = formatResponse.toolDenied()
 		} else {
 			const approvedWithFeedback = fileResults.find((r) => r.status === "approved" && r.feedbackText)
 			if (approvedWithFeedback?.feedbackText) {
-				statusMessage = formatResponse.toolApprovedWithFeedback(approvedWithFeedback.feedbackText)
-				feedbackImages = approvedWithFeedback.feedbackImages || []
+				statusMessage = formatResponse.toolApprovedWithFeedback()
+				feedback = { text: approvedWithFeedback.feedbackText, images: approvedWithFeedback.feedbackImages }
 			}
 		}
 
-		const allImages = [...feedbackImages, ...fileImageUrls]
 		const finalModelSupportsImages = task.api.getModel().info.supportsImages ?? false
-		const imagesToInclude = finalModelSupportsImages ? allImages : []
+		const imagesToInclude = finalModelSupportsImages ? fileImageUrls : []
 
 		if (statusMessage || imagesToInclude.length > 0) {
 			const result = formatResponse.toolResult(
@@ -617,6 +618,13 @@ export class ReadFileTool extends BaseTool<"read_file"> {
 			}
 		} else {
 			pushToolResult(finalResult)
+		}
+
+		if (feedback) {
+			task.pushUserFeedbackToUserContent(
+				feedback.text,
+				finalModelSupportsImages ? feedback.images : undefined,
+			)
 		}
 	}
 
@@ -683,6 +691,9 @@ export class ReadFileTool extends BaseTool<"read_file"> {
 
 		// Process each file sequentially (legacy behavior)
 		const results: string[] = []
+		// User text sent with approvals or denials, pushed after the tool_result
+		// as separate <user_message> blocks.
+		const feedback: { text: string; images?: string[] }[] = []
 
 		for (const entry of fileEntries) {
 			const relPath = entry.path
@@ -716,13 +727,19 @@ export class ReadFileTool extends BaseTool<"read_file"> {
 			const { response, text, images } = await task.ask("tool", completeMessage, false)
 
 			if (response !== "yesButtonClicked") {
-				if (text) await task.say("user_feedback", text, images)
+				if (text) {
+					await task.say("user_feedback", text, images)
+					feedback.push({ text, images })
+				}
 				task.didRejectTool = true
 				results.push(`File: ${relPath}\nStatus: Denied by user`)
 				continue
 			}
 
-			if (text) await task.say("user_feedback", text, images)
+			if (text) {
+				await task.say("user_feedback", text, images)
+				feedback.push({ text, images })
+			}
 
 			try {
 				// Check if the path is a directory
@@ -807,6 +824,9 @@ export class ReadFileTool extends BaseTool<"read_file"> {
 
 		// Push combined results
 		pushToolResult(results.join("\n\n---\n\n"))
+		for (const f of feedback) {
+			task.pushUserFeedbackToUserContent(f.text, supportsImages ? f.images : undefined)
+		}
 	}
 }
 

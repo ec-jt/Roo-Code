@@ -552,6 +552,21 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		this.userMessageContent.push(toolResult)
 		return true
 	}
+
+	/**
+		* Push text the user sent with a tool approval or denial (including a queued
+		* message drained into that ask) as its own `<user_message>` text block.
+		* Call it after the matching tool_result. Keeping user text out of the
+		* tool_result lets the model tell user input apart from tool output.
+		*/
+	public pushUserFeedbackToUserContent(text: string | undefined, images?: string[]): void {
+		if (text) {
+			this.userMessageContent.push({ type: "text", text: formatResponse.userMessage(text) })
+		}
+		if (images && images.length > 0) {
+			this.userMessageContent.push(...formatResponse.imageBlocks(images))
+		}
+	}
 	didRejectTool = false
 	didAlreadyUseTool = false
 	didToolFailInCurrentTurn = false

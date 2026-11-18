@@ -3,9 +3,23 @@
 	"extends": ["//"],
 	"tasks": {
 		"build": {
+			"inputs": [
+				"src/**",
+				"package.json",
+				"tsconfig.json",
+				"vite.config.ts",
+				"$TURBO_ROOT$/src/package.json"
+			],
 			"outputs": ["../src/webview-ui/**"]
 		},
 		"build:nightly": {
+			"inputs": [
+				"src/**",
+				"package.json",
+				"tsconfig.json",
+				"vite.config.ts",
+				"$TURBO_ROOT$/apps/vscode-nightly/package.nightly.json"
+			],
 			"outputs": ["../apps/vscode-nightly/build/webview-ui/**"]
 		}
 	}

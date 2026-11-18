@@ -64,6 +64,70 @@ describe("presentAssistantMessage - Image Handling in Native Tool Calling", () =
 			mockTask.userMessageContent.push(toolResult)
 			return true
 		})
+		mockTask.pushUserFeedbackToUserContent = vi.fn().mockImplementation((text?: string, images?: string[]) => {
+			if (text) mockTask.userMessageContent.push({ type: "text", text: `<user_message>\n${text}\n</user_message>` })
+			for (const img of images ?? []) {
+				mockTask.userMessageContent.push({ type: "image", source: { type: "base64", data: img } })
+			}
+		})
+	})
+
+	describe("approval feedback (including queued messages drained into an ask)", () => {
+		const toolCallId = "tool_call_feedback"
+		const block = {
+			type: "tool_use",
+			id: toolCallId,
+			name: "write_to_file",
+			params: { path: "output.txt", content: "test" },
+			nativeArgs: { path: "output.txt", content: "test" },
+			partial: false,
+		}
+
+		beforeEach(() => {
+			mockTask.assistantMessageContent = [block]
+			vi.mocked(writeToFileTool.handle).mockImplementation(async (_task: any, _block: any, callbacks: any) => {
+				if (await callbacks.askApproval("tool", "{}")) callbacks.pushToolResult("File written: output.txt")
+			})
+		})
+
+		it("keeps approval feedback out of the tool_result and sends it as a following user message", async () => {
+			mockTask.ask = vi.fn().mockResolvedValue({
+				response: "yesButtonClicked",
+				text: "Also convert all existing history items",
+			})
+
+			await presentAssistantMessage(mockTask)
+
+			const index = mockTask.userMessageContent.findIndex(
+				(item: any) => item.type === "tool_result" && item.tool_use_id === toolCallId,
+			)
+			const toolResult = mockTask.userMessageContent[index]
+			expect(toolResult.content).toContain("File written: output.txt")
+			expect(toolResult.content).toContain('"status":"approved"')
+			expect(toolResult.content).not.toContain("Also convert all existing history items")
+			expect(mockTask.userMessageContent[index + 1]).toEqual({
+				type: "text",
+				text: "<user_message>\nAlso convert all existing history items\n</user_message>",
+			})
+		})
+
+		it("keeps denial feedback out of the tool_result and sends it as a following user message", async () => {
+			mockTask.ask = vi.fn().mockResolvedValue({ response: "noButtonClicked", text: "Do not write that file" })
+
+			await presentAssistantMessage(mockTask)
+
+			const index = mockTask.userMessageContent.findIndex(
+				(item: any) => item.type === "tool_result" && item.tool_use_id === toolCallId,
+			)
+			const toolResult = mockTask.userMessageContent[index]
+			expect(toolResult.content).toContain('"status":"denied"')
+			expect(toolResult.content).not.toContain("Do not write that file")
+			expect(mockTask.userMessageContent[index + 1]).toEqual({
+				type: "text",
+				text: "<user_message>\nDo not write that file\n</user_message>",
+			})
+			expect(mockTask.didRejectTool).toBe(true)
+		})
 	})
 
 	it("should preserve images in tool_result for native tool calling", async () => {
@@ -111,7 +175,9 @@ describe("presentAssistantMessage - Image Handling in Native Tool Calling", () =
 
 		// For native tool calling, tool_result content should be a string (text only)
 		expect(typeof toolResult.content).toBe("string")
-		expect(toolResult.content).toContain("I see a cat")
+		// The answer is user input, so it may be in the tool_result (follow-up answer)
+		// or in a following <user_message> block, but never lost.
+		expect(JSON.stringify(mockTask.userMessageContent)).toContain("I see a cat")
 
 		// Images should be added as separate blocks AFTER the tool_result
 		const imageBlocks = mockTask.userMessageContent.filter((item: any) => item.type === "image")

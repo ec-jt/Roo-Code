@@ -75,13 +75,19 @@ vi.mock("../helpers/imageHelpers", () => ({
 vi.mock("../../prompts/responses", () => ({
 	formatResponse: {
 		toolDenied: vi.fn(() => "The user denied this operation."),
-		toolDeniedWithFeedback: vi.fn(
-			(feedback?: string) =>
-				`The user denied this operation and responded with the message:\n<user_message>\n${feedback}\n</user_message>`,
+		// Mirrors the real status-only shape: the user's text is never embedded
+		// in the tool result. It is pushed separately via pushUserFeedbackToUserContent.
+		toolDeniedWithFeedback: vi.fn(() =>
+			JSON.stringify({
+				status: "denied",
+				message: "The user denied this operation and sent a message. It follows this tool result.",
+			}),
 		),
-		toolApprovedWithFeedback: vi.fn(
-			(feedback?: string) =>
-				`The user approved this operation and responded with the message:\n<user_message>\n${feedback}\n</user_message>`,
+		toolApprovedWithFeedback: vi.fn(() =>
+			JSON.stringify({
+				status: "approved",
+				message: "The user approved this operation and sent a message. It follows this tool result.",
+			}),
 		),
 		rooIgnoreError: vi.fn(
 			(filePath: string) =>
@@ -149,6 +155,7 @@ function createMockTask(options: MockTaskOptions = {}) {
 		didRejectTool: false,
 		ask: vi.fn().mockResolvedValue({ response: "yesButtonClicked", text: undefined, images: undefined }),
 		say: vi.fn().mockResolvedValue(undefined),
+		pushUserFeedbackToUserContent: vi.fn(),
 		sayAndCreateMissingParamError: vi.fn().mockResolvedValue("Missing required parameter: path"),
 		recordToolError: vi.fn(),
 		rooIgnoreController: {
@@ -627,7 +634,19 @@ describe("ReadFileTool", () => {
 			await readFileTool.execute({ path: "test.ts" }, mockTask as any, callbacks)
 
 			expect(mockTask.say).toHaveBeenCalledWith("user_feedback", "Please be careful with this file", undefined)
-			expect(formatResponse.toolApprovedWithFeedback).toHaveBeenCalledWith("Please be careful with this file")
+			expect(formatResponse.toolApprovedWithFeedback).toHaveBeenCalled()
+			// The user's text must not appear inside the tool result...
+			const toolResult = callbacks.pushToolResult.mock.calls[0][0]
+			expect(JSON.stringify(toolResult)).not.toContain("Please be careful with this file")
+			expect(JSON.stringify(toolResult)).toContain("1 | content")
+			// ...it is pushed as a separate user message after the tool result.
+			expect(mockTask.pushUserFeedbackToUserContent).toHaveBeenCalledWith(
+				"Please be careful with this file",
+				undefined,
+			)
+			expect(callbacks.pushToolResult.mock.invocationCallOrder[0]).toBeLessThan(
+				mockTask.pushUserFeedbackToUserContent.mock.invocationCallOrder[0],
+			)
 		})
 
 		it("should include user feedback when provided with denial", async () => {
@@ -643,7 +662,10 @@ describe("ReadFileTool", () => {
 			await readFileTool.execute({ path: "secrets.env" }, mockTask as any, callbacks)
 
 			expect(mockTask.say).toHaveBeenCalledWith("user_feedback", "This file contains secrets", undefined)
-			expect(formatResponse.toolDeniedWithFeedback).toHaveBeenCalledWith("This file contains secrets")
+			expect(formatResponse.toolDeniedWithFeedback).toHaveBeenCalled()
+			const toolResult = callbacks.pushToolResult.mock.calls[0][0]
+			expect(JSON.stringify(toolResult)).not.toContain("This file contains secrets")
+			expect(mockTask.pushUserFeedbackToUserContent).toHaveBeenCalledWith("This file contains secrets", undefined)
 		})
 	})
 

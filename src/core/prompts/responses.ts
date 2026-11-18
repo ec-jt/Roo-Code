@@ -11,17 +11,31 @@ export const formatResponse = {
 			message: "The user denied this operation.",
 		}),
 
-	toolDeniedWithFeedback: (feedback?: string) =>
+	/**
+	 * Tool result status when the user denied the call and also sent a message.
+	 * The message text is NOT embedded here: callers push it as a separate
+	 * `<user_message>` text block after the tool_result (see `userMessage`), so
+	 * the model can tell user input apart from tool output.
+	 */
+	toolDeniedWithFeedback: () =>
 		JSON.stringify({
 			status: "denied",
-			feedback,
+			message: "The user denied this operation and sent a message. It follows this tool result.",
 		}),
 
-	toolApprovedWithFeedback: (feedback?: string) =>
+	/**
+	 * Tool result status prefix when the user approved the call and also sent a
+	 * message. As with `toolDeniedWithFeedback`, the message text is delivered
+	 * as a separate `<user_message>` block, never inside the tool output.
+	 */
+	toolApprovedWithFeedback: () =>
 		JSON.stringify({
 			status: "approved",
-			feedback,
+			message: "The user approved this operation and sent a message. It follows this tool result.",
 		}),
+
+	/** Wraps user-authored text so the model can tell it apart from tool output. */
+	userMessage: (text: string) => `<user_message>\n${text}\n</user_message>`,
 
 	toolError: (error?: string) =>
 		JSON.stringify({
