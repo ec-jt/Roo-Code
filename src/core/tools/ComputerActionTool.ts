@@ -31,7 +31,12 @@ const REQUIRED_PARAMS: Partial<Record<ComputerAction, (keyof ComputerActionParam
 	type: ["text"],
 	key: ["key"],
 	focus_window: ["window"],
+	window_screenshot: ["window"],
+	window_type: ["window", "text"],
 }
+
+/** Actions whose target is the window named in params.window, not the active window. */
+const WINDOW_TARGETED: ReadonlySet<string> = new Set(["focus_window", "window_type"])
 
 function isReadOnly(action: ComputerAction): boolean {
 	return (readOnlyComputerActions as readonly string[]).includes(action)
@@ -126,10 +131,9 @@ export class ComputerActionTool extends BaseTool<"computer_action"> {
 			//    require the target window (focus_window) or the active window to match.
 			const allowlist = state.computerUseAllowedApps ?? []
 			if (!isReadOnly(params.action) && allowlist.some((e) => e.trim())) {
-				const targetTitle =
-					params.action === "focus_window"
-						? session.findWindow(params.window).title
-						: session.getActiveWindowTitle()
+				const targetTitle = WINDOW_TARGETED.has(params.action)
+					? session.findWindow(params.window).title
+					: session.getActiveWindowTitle()
 
 				if (!isWindowAllowed(targetTitle, allowlist)) {
 					await fail(
@@ -203,7 +207,11 @@ export class ComputerActionTool extends BaseTool<"computer_action"> {
 			)
 		} else {
 			lines.push(params.action === "screenshot" ? "Screenshot taken." : `Action "${params.action}" executed.`)
-			if (result.screenshotWidth && result.screenshotHeight) {
+			if (result.windowTitle) {
+				lines.push(
+					`The image shows only the window "${result.windowTitle}". Its pixels are not screen coordinates: do not use them for click, move, drag, or scroll.`,
+				)
+			} else if (result.screenshotWidth && result.screenshotHeight) {
 				lines.push(
 					`Screenshot size: ${result.screenshotWidth}x${result.screenshotHeight}. Give coordinates as "x,y" in this image's pixels.`,
 				)

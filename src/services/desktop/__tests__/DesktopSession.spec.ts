@@ -39,6 +39,94 @@ function createSession(driver = createDriver(), platform = "darwin") {
 	return { session, driver, sleep }
 }
 
+describe("DesktopSession sharing with the user", () => {
+	function createSharedSession(idle: boolean) {
+		const driver = createDriver()
+		const activity = {
+			waitForIdle: vi.fn(async () => ({ idle, waitedMs: idle ? 0 : 20_000 })),
+			noteInjected: vi.fn(),
+		}
+		const background = {
+			captureWindow: vi.fn(async () => ({ dataUrl: "data:image/png;base64,AAAA", width: 300, height: 200 })),
+			typeInWindow: vi.fn(async () => {}),
+		}
+		const session = new DesktopSession(driver, {
+			maxWidth: 100,
+			maxHeight: 100,
+			settleMs: 0,
+			platform: "darwin",
+			sleep: async () => {},
+			activity: activity as never,
+			background,
+		})
+		return { session, driver, activity, background }
+	}
+
+	it("waits for the user before a click and puts the cursor back afterwards", async () => {
+		const { session, driver, activity } = createSharedSession(true)
+		await session.execute({ action: "click", coordinate: "10,10" })
+
+		expect(activity.waitForIdle).toHaveBeenCalledTimes(1)
+		// Click target (20,20 in screen points), then back to the user's cursor (100,50).
+		expect(driver.moveMouse).toHaveBeenNthCalledWith(1, { x: 20, y: 20 })
+		expect(driver.moveMouse).toHaveBeenLastCalledWith({ x: 100, y: 50 })
+		expect(activity.noteInjected).toHaveBeenCalled()
+	})
+
+	it("leaves the cursor where it was moved for the move action", async () => {
+		const { session, driver } = createSharedSession(true)
+		await session.execute({ action: "move", coordinate: "10,10" })
+		expect(driver.moveMouse).toHaveBeenCalledTimes(1)
+	})
+
+	it("does not wait for the user for screenshots", async () => {
+		const { session, activity } = createSharedSession(false)
+		await session.execute({ action: "screenshot" })
+		expect(activity.waitForIdle).not.toHaveBeenCalled()
+	})
+
+	it("refuses shared-input actions while the user is busy and suggests background actions", async () => {
+		const { session, driver } = createSharedSession(false)
+		await expect(session.execute({ action: "type", text: "hi" })).rejects.toThrow(/window_type/)
+		expect(driver.typeText).not.toHaveBeenCalled()
+	})
+
+	it("window_screenshot captures one window without touching input or waiting", async () => {
+		const { session, driver, activity, background } = createSharedSession(false)
+		const result = await session.execute({ action: "window_screenshot", window: "Work" })
+
+		expect(background.captureWindow).toHaveBeenCalledWith(3, 100)
+		expect(result.windowTitle).toBe("Notes - Work")
+		expect(result.screenshotWidth).toBe(300)
+		expect(activity.waitForIdle).not.toHaveBeenCalled()
+		expect(driver.moveMouse).not.toHaveBeenCalled()
+	})
+
+	it("window_type types into the window in the background while the user is busy", async () => {
+		const { session, driver, background } = createSharedSession(false)
+		const result = await session.execute({ action: "window_type", window: "Shopping", text: "milk" })
+
+		expect(background.typeInWindow).toHaveBeenCalledWith(2, "milk")
+		expect(driver.typeText).not.toHaveBeenCalled()
+		expect(result.windowTitle).toBe("Notes - Shopping")
+	})
+
+	it("explains a window_type failure", async () => {
+		const { session, background } = createSharedSession(true)
+		background.typeInWindow.mockRejectedValueOnce(new Error("no focused text element"))
+		await expect(session.execute({ action: "window_type", window: "Work", text: "x" })).rejects.toThrow(
+			/no focused text element/,
+		)
+	})
+
+	it("rejects background actions where they are not available", async () => {
+		const { session } = createSession(createDriver(), "win32")
+		await expect(session.execute({ action: "window_screenshot", window: "Work" })).rejects.toThrow(
+			/only available on macOS/,
+		)
+	})
+})
+
 describe("DesktopSession", () => {
 	describe("screenshot", () => {
 		it("returns a downscaled PNG data URL and the cursor in screenshot space", () => {

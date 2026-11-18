@@ -28,7 +28,9 @@
 			"scroll": "Scrollen",
 			"list_windows": "Fenster auflisten",
 			"focus_window": "Fenster fokussieren",
-			"wait": "Warten"
+			"wait": "Warten",
+			"window_screenshot": "Fenster-Screenshot",
+			"window_type": "In Fenster tippen"
 		}
 	},
 	"task": {

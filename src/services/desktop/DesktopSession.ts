@@ -10,6 +10,8 @@ import {
 import type { DesktopDriver, Point } from "./DesktopDriver"
 import { computeTargetSize, downscaleToRgb, encodePngRgb } from "./image"
 import { parseKeyCombo } from "./keys"
+import type { UserActivityMonitor } from "./userActivity"
+import type { BackgroundControl } from "./macBackground"
 
 /**
  * Stateful wrapper around a DesktopDriver. Owns screenshot geometry so the model
@@ -29,6 +31,22 @@ export const DEFAULT_SCROLL_AMOUNT = 3
 export const MAX_SCROLL_AMOUNT = 50
 export const MAX_WAIT_MS = 10_000
 export const MAX_TYPE_LENGTH = 10_000
+
+/** Actions that use the shared mouse and keyboard, so they take turns with the user. */
+const SHARED_INPUT_ACTIONS: ReadonlySet<string> = new Set([
+	"move",
+	"click",
+	"double_click",
+	"right_click",
+	"drag",
+	"type",
+	"key",
+	"scroll",
+	"focus_window",
+])
+
+/** Pointer actions after which the user's cursor is put back where it was. "move" is excluded: its purpose is to leave the cursor there. */
+const RESTORE_CURSOR_ACTIONS: ReadonlySet<string> = new Set(["click", "double_click", "right_click", "drag", "scroll"])
 
 export class ComputerActionError extends Error {
 	constructor(message: string) {
@@ -51,6 +69,10 @@ export interface DesktopSessionOptions {
 	settleMs?: number
 	platform?: string
 	sleep?: (ms: number) => Promise<void>
+	/** Detects user input so shared-input actions wait for the user to stop. */
+	activity?: UserActivityMonitor
+	/** Per-window control that does not use the shared cursor (macOS). */
+	background?: BackgroundControl
 }
 
 export interface ScreenshotResult {
@@ -69,6 +91,8 @@ export class DesktopSession {
 	private readonly settleMs: number
 	private readonly platform: string
 	private readonly sleep: (ms: number) => Promise<void>
+	private readonly activity: UserActivityMonitor | undefined
+	private readonly background: BackgroundControl | undefined
 
 	constructor(
 		private readonly driver: DesktopDriver,
@@ -79,6 +103,13 @@ export class DesktopSession {
 		this.settleMs = options.settleMs ?? DEFAULT_SETTLE_MS
 		this.platform = options.platform ?? process.platform
 		this.sleep = options.sleep ?? defaultSleep
+		this.activity = options.activity
+		this.background = options.background
+	}
+
+	/** True when per-window background actions are available on this platform. */
+	get supportsBackground(): boolean {
+		return this.background !== undefined
 	}
 
 	/** Capture the primary display, downscale, and encode as PNG. Updates the coordinate mapping. */
@@ -193,9 +224,47 @@ export class DesktopSession {
 			return p
 		}
 
+		// Take turns with the user for actions that use the shared mouse and keyboard.
+		const sharedInput = SHARED_INPUT_ACTIONS.has(params.action)
+		let userCursor: Point | undefined
+		if (sharedInput) {
+			await this.takeTurn()
+			if (RESTORE_CURSOR_ACTIONS.has(params.action)) {
+				userCursor = this.safeCursor()
+			}
+		}
+
 		switch (params.action) {
 			case "screenshot":
 				return this.result()
+
+			case "window_screenshot": {
+				const target = this.findWindow(params.window)
+				return this.windowResult(target)
+			}
+
+			case "window_type": {
+				if (!params.text) {
+					throw new ComputerActionError('Missing "text" for window_type.')
+				}
+				if (params.text.length > MAX_TYPE_LENGTH) {
+					throw new ComputerActionError(
+						`text is too long (${params.text.length} > ${MAX_TYPE_LENGTH} characters).`,
+					)
+				}
+				const background = this.requireBackground()
+				const target = this.findWindow(params.window)
+				try {
+					await background.typeInWindow(target.id, params.text)
+				} catch (error) {
+					throw new ComputerActionError(
+						`Could not type into "${target.title}" in the background: ${error instanceof Error ? error.message : String(error)}. ` +
+							"Click the text field once with the normal actions (when the user is idle), then try again.",
+					)
+				}
+				await this.sleep(this.settleMs)
+				return this.windowResult(target)
+			}
 
 			case "list_windows":
 				return { windows: this.listWindows(), activeWindowTitle: this.getActiveWindowTitle() }
@@ -272,8 +341,74 @@ export class DesktopSession {
 			}
 		}
 
+		if (sharedInput) {
+			// Put the user's cursor back right away, so it is displaced only for the action itself.
+			if (userCursor) {
+				try {
+					this.driver.moveMouse(userCursor)
+				} catch {
+					// Not critical: the action already ran.
+				}
+			}
+			this.activity?.noteInjected(this.safeCursor())
+		}
+
 		await this.sleep(this.settleMs)
 		return { ...this.result(), executedCoordinate }
+	}
+
+	/** Wait until the user stops using the mouse and keyboard, or fail with guidance. */
+	private async takeTurn(): Promise<void> {
+		if (!this.activity) {
+			return
+		}
+		const { idle, waitedMs } = await this.activity.waitForIdle()
+		if (idle) {
+			return
+		}
+		const seconds = Math.round(waitedMs / 1000)
+		throw new ComputerActionError(
+			`The user is using the mouse or keyboard, so the action did not run (waited ${seconds} s). ` +
+				(this.background
+					? "To keep working without taking over the cursor, use window_screenshot and window_type on a specific window. Otherwise use wait and try again."
+					: "Use wait and try again, or ask the user to pause."),
+		)
+	}
+
+	private requireBackground(): BackgroundControl {
+		if (!this.background) {
+			throw new ComputerActionError(
+				"Background window actions (window_screenshot, window_type) are only available on macOS.",
+			)
+		}
+		return this.background
+	}
+
+	private async windowResult(target: ComputerWindowInfo): Promise<ComputerActionResult> {
+		const background = this.requireBackground()
+		let capture
+		try {
+			capture = await background.captureWindow(target.id, Math.max(this.maxWidth, this.maxHeight))
+		} catch (error) {
+			throw new ComputerActionError(
+				`Could not capture the window "${target.title}": ${error instanceof Error ? error.message : String(error)}`,
+			)
+		}
+		return {
+			screenshot: capture.dataUrl,
+			screenshotWidth: capture.width,
+			screenshotHeight: capture.height,
+			windowTitle: target.title,
+			activeWindowTitle: this.getActiveWindowTitle(),
+		}
+	}
+
+	private safeCursor(): Point | undefined {
+		try {
+			return this.driver.getMousePosition()
+		} catch {
+			return undefined
+		}
 	}
 
 	/** Resolve a window by id or title. Public so callers can check the allowlist before focusing. */

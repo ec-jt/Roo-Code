@@ -28,7 +28,9 @@
 			"scroll": "スクロール",
 			"list_windows": "ウィンドウ一覧",
 			"focus_window": "ウィンドウにフォーカス",
-			"wait": "待機"
+			"wait": "待機",
+			"window_screenshot": "ウィンドウのスクリーンショット",
+			"window_type": "ウィンドウに入力"
 		}
 	},
 	"task": {

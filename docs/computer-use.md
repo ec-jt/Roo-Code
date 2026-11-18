@@ -111,6 +111,25 @@ These are instructions to the model. They are not enforced limits. Approval, the
 | `list_windows`                         | none                                                                            | List of window ids and titles, with no screenshot |
 | `focus_window`                         | `window` (id or part of the title)                                              | Screenshot                                        |
 | `wait`                                 | `duration` in ms (0-10,000, default 1,000)                                      | Screenshot                                        |
+| `window_screenshot` (macOS)            | `window` (id or part of the title)                                              | Screenshot of that window only                    |
+| `window_type` (macOS)                  | `window`, `text`                                                                | Screenshot of that window only                    |
+
+### Using the computer at the same time as Roo
+
+Roo and you share one mouse pointer and one keyboard focus. Roo takes turns with you:
+
+- Before a click, move, drag, scroll, type, key, or focus action, Roo checks whether you used the mouse or keyboard recently. If you did, it waits until you pause for about 1.5 seconds.
+- If you keep working for 20 seconds, the action does not run, and Roo is told that you are busy.
+- After a click, drag, or scroll, Roo puts your pointer back where it was.
+- Screenshots and window listing never wait.
+
+On macOS, Roo can also keep working in the background while you use the computer:
+
+- `window_screenshot` captures one window, even when other windows cover it. It does not move the pointer or change the front app.
+- `window_type` inserts text at the text cursor of a window through Accessibility, without bringing the window to the front. It works in native apps such as TextEdit, Notes, and Mail. Browsers and Electron apps may ignore it.
+- Clicking in the background is not supported. To click, Roo waits for its turn.
+
+On Windows and Linux, only turn-taking is available.
 
 ### Coordinates
 

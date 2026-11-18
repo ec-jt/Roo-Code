@@ -28,7 +28,9 @@
 			"scroll": "Desplazar",
 			"list_windows": "Listar ventanas",
 			"focus_window": "Enfocar ventana",
-			"wait": "Esperar"
+			"wait": "Esperar",
+			"window_screenshot": "Captura de la ventana",
+			"window_type": "Escribir en la ventana"
 		}
 	},
 	"task": {

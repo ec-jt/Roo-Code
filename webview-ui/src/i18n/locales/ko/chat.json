@@ -28,7 +28,9 @@
 			"scroll": "스크롤",
 			"list_windows": "창 목록",
 			"focus_window": "창 포커스",
-			"wait": "대기"
+			"wait": "대기",
+			"window_screenshot": "창 스크린샷",
+			"window_type": "창에 입력"
 		}
 	},
 	"task": {

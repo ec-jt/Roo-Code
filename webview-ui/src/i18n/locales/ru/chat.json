@@ -28,7 +28,9 @@
 			"scroll": "Прокрутить",
 			"list_windows": "Список окон",
 			"focus_window": "Фокус на окно",
-			"wait": "Ждать"
+			"wait": "Ждать",
+			"window_screenshot": "Снимок окна",
+			"window_type": "Ввод в окно"
 		}
 	},
 	"task": {

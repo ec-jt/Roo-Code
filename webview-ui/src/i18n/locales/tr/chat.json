@@ -28,7 +28,9 @@
 			"scroll": "Kaydır",
 			"list_windows": "Pencereleri listele",
 			"focus_window": "Pencereye odaklan",
-			"wait": "Bekle"
+			"wait": "Bekle",
+			"window_screenshot": "Pencere ekran görüntüsü",
+			"window_type": "Pencereye yaz"
 		}
 	},
 	"task": {

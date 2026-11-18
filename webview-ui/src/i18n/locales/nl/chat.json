@@ -28,7 +28,9 @@
 			"scroll": "Scrollen",
 			"list_windows": "Vensters tonen",
 			"focus_window": "Venster focussen",
-			"wait": "Wachten"
+			"wait": "Wachten",
+			"window_screenshot": "Schermafbeelding van venster",
+			"window_type": "Typen in venster"
 		}
 	},
 	"task": {

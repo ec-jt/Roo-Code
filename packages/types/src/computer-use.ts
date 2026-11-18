@@ -19,6 +19,8 @@ export const computerActions = [
 	"list_windows",
 	"focus_window",
 	"wait",
+	"window_screenshot",
+	"window_type",
 ] as const
 
 export type ComputerAction = (typeof computerActions)[number]
@@ -28,6 +30,16 @@ export const readOnlyComputerActions = [
 	"screenshot",
 	"list_windows",
 	"wait",
+	"window_screenshot",
+] as const satisfies readonly ComputerAction[]
+
+/**
+ * Background actions act on one window without the shared cursor or keyboard
+ * focus, so they work while the user is busy (macOS only).
+ */
+export const backgroundComputerActions = [
+	"window_screenshot",
+	"window_type",
 ] as const satisfies readonly ComputerAction[]
 
 export function isComputerAction(value: unknown): value is ComputerAction {
@@ -51,7 +63,7 @@ export interface ComputerActionParams {
 	direction?: ScrollDirection
 	/** Scroll amount in wheel steps. */
 	amount?: string
-	/** Window title substring or window id for `focus_window`. */
+	/** Window title substring or window id for `focus_window`, `window_screenshot`, and `window_type`. */
 	window?: string
 	/** Milliseconds for `wait`. */
 	duration?: string
@@ -91,5 +103,7 @@ export interface ComputerActionResult {
 	cursorPosition?: string
 	windows?: ComputerWindowInfo[]
 	activeWindowTitle?: string
+	/** Set when the screenshot shows one window (window_screenshot, window_type). */
+	windowTitle?: string
 	error?: string
 }

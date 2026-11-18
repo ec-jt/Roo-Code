@@ -41,7 +41,10 @@ const iconClass = "w-3.5 h-3.5 shrink-0 opacity-70"
 function getActionIcon(action: string, direction?: string) {
 	switch (action) {
 		case "screenshot":
+		case "window_screenshot":
 			return <Camera className={iconClass} />
+		case "window_type":
+			return <Type className={iconClass} />
 		case "click":
 		case "double_click":
 		case "right_click":

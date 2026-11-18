@@ -28,7 +28,9 @@
 			"scroll": "Cuộn",
 			"list_windows": "Liệt kê cửa sổ",
 			"focus_window": "Chuyển đến cửa sổ",
-			"wait": "Chờ"
+			"wait": "Chờ",
+			"window_screenshot": "Chụp cửa sổ",
+			"window_type": "Nhập vào cửa sổ"
 		}
 	},
 	"task": {

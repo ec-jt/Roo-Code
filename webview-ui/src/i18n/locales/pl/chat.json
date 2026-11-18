@@ -28,7 +28,9 @@
 			"scroll": "Przewiń",
 			"list_windows": "Lista okien",
 			"focus_window": "Aktywuj okno",
-			"wait": "Czekaj"
+			"wait": "Czekaj",
+			"window_screenshot": "Zrzut ekranu okna",
+			"window_type": "Wpisz w oknie"
 		}
 	},
 	"task": {

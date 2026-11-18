@@ -28,7 +28,9 @@
 			"scroll": "滚动",
 			"list_windows": "列出窗口",
 			"focus_window": "聚焦窗口",
-			"wait": "等待"
+			"wait": "等待",
+			"window_screenshot": "窗口截图",
+			"window_type": "在窗口中输入"
 		}
 	},
 	"task": {

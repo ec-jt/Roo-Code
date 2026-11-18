@@ -28,7 +28,9 @@
 			"scroll": "Rolar",
 			"list_windows": "Listar janelas",
 			"focus_window": "Focar janela",
-			"wait": "Aguardar"
+			"wait": "Aguardar",
+			"window_screenshot": "Captura da janela",
+			"window_type": "Digitar na janela"
 		}
 	},
 	"task": {

@@ -28,7 +28,9 @@
 			"scroll": "捲動",
 			"list_windows": "列出視窗",
 			"focus_window": "聚焦視窗",
-			"wait": "等待"
+			"wait": "等待",
+			"window_screenshot": "視窗截圖",
+			"window_type": "在視窗中輸入"
 		}
 	},
 	"task": {

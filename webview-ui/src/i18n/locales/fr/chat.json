@@ -28,7 +28,9 @@
 			"scroll": "Défiler",
 			"list_windows": "Lister les fenêtres",
 			"focus_window": "Activer la fenêtre",
-			"wait": "Attendre"
+			"wait": "Attendre",
+			"window_screenshot": "Capture de la fenêtre",
+			"window_type": "Saisir dans la fenêtre"
 		}
 	},
 	"task": {

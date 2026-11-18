@@ -86,7 +86,9 @@
 			"scroll": "Scroll",
 			"list_windows": "List windows",
 			"focus_window": "Focus window",
-			"wait": "Wait"
+			"wait": "Wait",
+			"window_screenshot": "Window screenshot",
+			"window_type": "Type in window"
 		}
 	},
 	"task": {

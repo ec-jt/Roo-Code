@@ -1,6 +1,8 @@
 import { DesktopSession } from "./DesktopSession"
 import { LibnutDriver } from "./LibnutDriver"
 import { loadLibnut } from "./libnutLoader"
+import { createIdleProbe, UserActivityMonitor } from "./userActivity"
+import { createMacBackgroundControl } from "./macBackground"
 
 /**
  * One DesktopSession per task. The session holds screenshot geometry, so it must
@@ -11,8 +13,15 @@ import { loadLibnut } from "./libnutLoader"
 
 export type DesktopSessionFactory = (extensionPath: string) => DesktopSession
 
-const defaultFactory: DesktopSessionFactory = (extensionPath) =>
-	new DesktopSession(new LibnutDriver(loadLibnut(extensionPath)))
+const defaultFactory: DesktopSessionFactory = (extensionPath) => {
+	const driver = new LibnutDriver(loadLibnut(extensionPath))
+	const activity = new UserActivityMonitor({
+		getCursor: () => driver.getMousePosition(),
+		idleProbe: createIdleProbe(),
+	})
+	const background = process.platform === "darwin" ? createMacBackgroundControl() : undefined
+	return new DesktopSession(driver, { activity, background })
+}
 
 let factory: DesktopSessionFactory = defaultFactory
 

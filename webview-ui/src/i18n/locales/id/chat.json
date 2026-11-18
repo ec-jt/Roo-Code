@@ -28,7 +28,9 @@
 			"scroll": "Gulir",
 			"list_windows": "Daftar jendela",
 			"focus_window": "Fokuskan jendela",
-			"wait": "Tunggu"
+			"wait": "Tunggu",
+			"window_screenshot": "Tangkapan layar jendela",
+			"window_type": "Ketik di jendela"
 		}
 	},
 	"task": {

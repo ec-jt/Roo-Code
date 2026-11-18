@@ -28,7 +28,9 @@
 			"scroll": "स्क्रॉल",
 			"list_windows": "विंडो सूची",
 			"focus_window": "विंडो फ़ोकस करें",
-			"wait": "प्रतीक्षा"
+			"wait": "प्रतीक्षा",
+			"window_screenshot": "विंडो का स्क्रीनशॉट",
+			"window_type": "विंडो में टाइप करें"
 		}
 	},
 	"task": {
