@@ -33,6 +33,41 @@ export class MissingToolResultError extends Error {
 }
 
 /**
+ * Move all tool_result blocks to the front of a user message, keeping the
+ * relative order of every other block.
+ *
+ * Anthropic requires tool_result blocks to come first in the user message that
+ * answers a tool_use turn. Any other block (image or text) ends the tool-result
+ * section, and later tool_result blocks are then reported as missing:
+ * "tool_use ids were found without tool_result blocks immediately after".
+ *
+ * Parallel tool calls that return images (for example several read_file calls
+ * on PNG files) produce `tool_result, image, tool_result, image, ...`, because
+ * each tool's image blocks are pushed after its own result.
+ *
+ * Returns the same array when the order is already valid, so valid messages
+ * stay byte-identical and prompt caching is not affected.
+ */
+export function orderToolResultsFirst<T extends { type: string }>(content: T[]): T[] {
+	let seenOther = false
+	let needsReorder = false
+	for (const block of content) {
+		if (block.type === "tool_result") {
+			if (seenOther) {
+				needsReorder = true
+				break
+			}
+		} else {
+			seenOther = true
+		}
+	}
+	if (!needsReorder) {
+		return content
+	}
+	return [...content.filter((b) => b.type === "tool_result"), ...content.filter((b) => b.type !== "tool_result")]
+}
+
+/**
  * Validates and fixes tool_result IDs in a user message against the previous assistant message.
  *
  * This is a centralized validation that catches all tool_use/tool_result issues

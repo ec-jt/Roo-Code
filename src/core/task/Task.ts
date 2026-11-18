@@ -197,7 +197,7 @@ import {
 import { MessageQueueService } from "../message-queue/MessageQueueService"
 import { AutoApprovalHandler, checkAutoApproval } from "../auto-approval"
 import { MessageManager } from "../message-manager"
-import { validateAndFixToolResultIds } from "./validateToolResultIds"
+import { orderToolResultsFirst, validateAndFixToolResultIds } from "./validateToolResultIds"
 import { mergeConsecutiveApiMessages } from "./mergeConsecutiveApiMessages"
 import type { ModelOperationState } from "@roo-code/types"
 import { ModelOperationAdmission } from "./model-operation/admission"
@@ -6607,9 +6607,15 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 			// Default path for regular messages (no embedded reasoning)
 			if (msg.role) {
+				let content = msg.content as Anthropic.Messages.ContentBlockParam[] | string
+				// tool_result blocks must come first in a user message. Parallel tools that
+				// return images can interleave them; this also repairs histories saved that way.
+				if (msg.role === "user" && Array.isArray(content)) {
+					content = orderToolResultsFirst(content)
+				}
 				cleanConversationHistory.push({
 					role: msg.role,
-					content: msg.content as Anthropic.Messages.ContentBlockParam[] | string,
+					content,
 				})
 			}
 		}

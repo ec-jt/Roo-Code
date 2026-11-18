@@ -81,9 +81,25 @@ describe("LibnutDriver", () => {
 		const native = createNative()
 		const driver = new LibnutDriver(native)
 		driver.keyTap("enter", [])
-		driver.keyTap("c", ["command"])
+		driver.keyTap("c", ["control", "shift"])
 		expect(native.keyTap).toHaveBeenNthCalledWith(1, "enter")
-		expect(native.keyTap).toHaveBeenNthCalledWith(2, "c", ["command"])
+		expect(native.keyTap).toHaveBeenNthCalledWith(2, "c", ["control", "shift"])
+	})
+
+	it('sends the Command / Windows key as "meta" (libnut rejects "command")', () => {
+		const native = createNative()
+		new LibnutDriver(native).keyTap("c", ["command", "shift"])
+		expect(native.keyTap).toHaveBeenCalledWith("c", ["meta", "shift"])
+	})
+
+	it("waits for the cursor to reach the move target", () => {
+		const native = createNative()
+		let calls = 0
+		// The first two reads still report the old position, as macOS does on the first move.
+		vi.mocked(native.getMousePos).mockImplementation(() => (++calls < 3 ? { x: 0, y: 0 } : { x: 50, y: 60 }))
+		new LibnutDriver(native).moveMouse({ x: 50, y: 60 })
+		expect(native.moveMouse).toHaveBeenCalledWith(50, 60)
+		expect(calls).toBe(3)
 	})
 
 	it("lists windows, skipping untitled, empty, and closed ones", () => {

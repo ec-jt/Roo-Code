@@ -14,6 +14,19 @@ const MOUSE_DELAY_MS = 10
 const KEYBOARD_DELAY_MS = 10
 
 /**
+ * Maximum time to wait for the cursor to reach a move target.
+ * On macOS the first move in a process can take about 35 ms to apply. libnut
+ * clicks at the current cursor position, so clicking before the move has
+ * applied would hit the old position.
+ */
+export const MOVE_SETTLE_TIMEOUT_MS = 150
+const MOVE_POLL_MS = 2
+
+function blockingSleep(ms: number): void {
+	Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+}
+
+/**
  * DesktopDriver backed by the raw libnut N-API module.
  *
  * Scroll direction note: libnut follows robotjs, where scrollMouse(x, y) with
@@ -23,6 +36,14 @@ const KEYBOARD_DELAY_MS = 10
  */
 export const SCROLL_Y_SIGN = -1
 export const SCROLL_X_SIGN = 1
+
+/**
+ * libnut modifier flag names. libnut rejects "command" with
+ * "Invalid key flag specified"; the Command / Windows key is "meta".
+ */
+export function toLibnutModifier(modifier: KeyModifier): string {
+	return modifier === "command" ? "meta" : modifier
+}
 
 export class LibnutDriver implements DesktopDriver {
 	constructor(private readonly native: LibnutNative) {
@@ -52,7 +73,31 @@ export class LibnutDriver implements DesktopDriver {
 	}
 
 	moveMouse(point: Point): void {
-		this.native.moveMouse(Math.round(point.x), Math.round(point.y))
+		const x = Math.round(point.x)
+		const y = Math.round(point.y)
+		this.native.moveMouse(x, y)
+		this.waitForCursor(x, y)
+	}
+
+	/** Wait until the cursor reports the target position, or the timeout passes. */
+	private waitForCursor(x: number, y: number): void {
+		const deadline = Date.now() + MOVE_SETTLE_TIMEOUT_MS
+		for (;;) {
+			let pos: { x: number; y: number }
+			try {
+				pos = this.native.getMousePos()
+			} catch {
+				return
+			}
+			// Allow 1 point of rounding difference on scaled displays.
+			if (Math.abs(pos.x - x) <= 1 && Math.abs(pos.y - y) <= 1) {
+				return
+			}
+			if (Date.now() >= deadline) {
+				return
+			}
+			blockingSleep(MOVE_POLL_MS)
+		}
 	}
 
 	click(button: MouseButton, double: boolean): void {
@@ -76,7 +121,7 @@ export class LibnutDriver implements DesktopDriver {
 
 	keyTap(key: string, modifiers: KeyModifier[]): void {
 		if (modifiers.length > 0) {
-			this.native.keyTap(key, modifiers)
+			this.native.keyTap(key, modifiers.map(toLibnutModifier))
 		} else {
 			this.native.keyTap(key)
 		}
