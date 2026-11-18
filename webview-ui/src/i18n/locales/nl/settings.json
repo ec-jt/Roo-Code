@@ -565,6 +565,10 @@
 			"description": "Laat de agent de tool computer_action gebruiken om screenshots te maken en de muis, het toetsenbord en de vensters op deze computer te besturen.",
 			"warning": "Waarschuwing: als dit aan staat, kan de agent je scherm zien en je muis en toetsenbord in elke app besturen. Controleer elke actie voordat je die goedkeurt."
 		},
+		"backgroundMode": {
+			"label": "Achtergrondmodus (macOS)",
+			"description": "Roo werkt zonder je muis, toetsenbord of voorste venster over te nemen, zodat je de computer kunt blijven gebruiken. Roo leest vensters en hun knoppen en velden via Toegankelijkheid, drukt knoppen in op naam en typt in een venster zonder het naar voren te halen. Klikken op positie, slepen, scrollen en sneltoetsen zijn uitgeschakeld. Sommige apps (games, browsers, Electron-apps) werken mogelijk niet in deze modus."
+		},
 		"allowedApps": {
 			"label": "Toegestane apps",
 			"placeholder": "Eén venstertitel per regel, bijvoorbeeld:\nSafari\nNotes",

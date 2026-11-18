@@ -47,6 +47,21 @@ export const backgroundComputerActions = [
 	"click_element",
 ] as const satisfies readonly ComputerAction[]
 
+/**
+ * Actions allowed in background mode: they never move the pointer, press keys
+ * globally, or change the front app, so the user can keep working.
+ */
+export const backgroundModeComputerActions = [
+	"screenshot",
+	"list_windows",
+	"wait",
+	...backgroundComputerActions,
+] as const satisfies readonly ComputerAction[]
+
+export function isBackgroundModeAction(action: string): boolean {
+	return (backgroundModeComputerActions as readonly string[]).includes(action)
+}
+
 export function isComputerAction(value: unknown): value is ComputerAction {
 	return typeof value === "string" && (computerActions as readonly string[]).includes(value)
 }

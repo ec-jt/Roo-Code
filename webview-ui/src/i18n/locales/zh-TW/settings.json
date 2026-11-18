@@ -575,6 +575,10 @@
 			"description": "讓 Agent 使用 computer_action 工具擷取螢幕畫面，並控制這台電腦上的滑鼠、鍵盤和視窗。",
 			"warning": "警告：啟用後，Agent 可以看到你的螢幕，並在任何應用程式中控制你的滑鼠和鍵盤。核准前請檢查每個動作。"
 		},
+		"backgroundMode": {
+			"label": "背景模式（macOS）",
+			"description": "Roo 工作時不會佔用你的滑鼠、鍵盤或最前方的視窗，因此你可以繼續使用電腦。它透過輔助使用讀取視窗及其按鈕和欄位，依名稱按下按鈕，並在不把視窗移到前方的情況下輸入文字。依位置點按、拖曳、捲動和鍵盤快速鍵會被關閉。部分 App（遊戲、瀏覽器、Electron App）在此模式下可能無法使用。"
+		},
 		"allowedApps": {
 			"label": "允許的應用程式",
 			"placeholder": "每行一個視窗標題，例如：\nSafari\nNotes",

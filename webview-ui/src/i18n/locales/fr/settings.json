@@ -565,6 +565,10 @@
 			"description": "Permet à l'agent d'utiliser l'outil computer_action pour prendre des captures d'écran et contrôler la souris, le clavier et les fenêtres de cet ordinateur.",
 			"warning": "Attention : une fois activé, l'agent peut voir ton écran et contrôler ta souris et ton clavier dans n'importe quelle app. Vérifie chaque action avant de l'approuver."
 		},
+		"backgroundMode": {
+			"label": "Mode arrière-plan (macOS)",
+			"description": "Roo travaille sans prendre le contrôle de la souris, du clavier ni de la fenêtre active, pour que vous puissiez continuer à utiliser l’ordinateur. Il lit les fenêtres et leurs boutons et champs via l’Accessibilité, appuie sur les boutons par leur nom et saisit du texte dans une fenêtre sans la mettre au premier plan. Les clics par position, le glisser, le défilement et les raccourcis clavier sont désactivés. Certaines applications (jeux, navigateurs, applications Electron) peuvent ne pas fonctionner dans ce mode."
+		},
 		"allowedApps": {
 			"label": "Apps autorisées",
 			"placeholder": "Un titre de fenêtre par ligne, par exemple :\nSafari\nNotes",

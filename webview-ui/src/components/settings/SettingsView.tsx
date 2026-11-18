@@ -168,6 +168,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 		alwaysAllowComputerUse,
 		computerUseEnabled,
 		computerUseAllowedApps,
+		computerUseBackgroundMode,
 		alwaysAllowExecute,
 		alwaysAllowMcp,
 		alwaysAllowModeSwitch,
@@ -488,6 +489,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 					alwaysAllowComputerUse: alwaysAllowComputerUse ?? false,
 					computerUseEnabled: computerUseEnabled ?? false,
 					computerUseAllowedApps: computerUseAllowedApps ?? [],
+					computerUseBackgroundMode: computerUseBackgroundMode ?? false,
 					alwaysAllowMcp,
 					alwaysAllowModeSwitch,
 					allowedCommands: allowedCommands ?? [],
@@ -987,6 +989,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 							<ComputerUseSettings
 								computerUseEnabled={computerUseEnabled}
 								computerUseAllowedApps={computerUseAllowedApps}
+								computerUseBackgroundMode={computerUseBackgroundMode}
 								setCachedStateField={setCachedStateField}
 							/>
 						)}

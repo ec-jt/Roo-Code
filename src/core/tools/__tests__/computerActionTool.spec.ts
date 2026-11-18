@@ -117,6 +117,47 @@ describe("ComputerActionTool", () => {
 		expect(session.execute).not.toHaveBeenCalled()
 	})
 
+	describe("background mode", () => {
+		const realPlatform = process.platform
+		const setPlatform = (p: string) => Object.defineProperty(process, "platform", { value: p })
+		afterEach(() => setPlatform(realPlatform))
+
+		it.each(["click", "type", "key", "scroll", "move", "drag", "focus_window"])(
+			"refuses %s, which uses the shared pointer or keyboard",
+			async (action) => {
+				setPlatform("darwin")
+				const { callbacks } = await run(
+					{ action, coordinate: "1,1", end_coordinate: "2,2", text: "x", key: "a", window: "w" },
+					{ state: { computerUseBackgroundMode: true } },
+				)
+				expect(callbacks.pushToolResult.mock.calls[0][0]).toMatch(/not available in background mode/)
+				expect(callbacks.askApproval).not.toHaveBeenCalled()
+				expect(session.execute).not.toHaveBeenCalled()
+			},
+		)
+
+		it.each([
+			{ action: "screenshot" },
+			{ action: "list_windows" },
+			{ action: "list_elements", window: "Notes" },
+			{ action: "click_element", window: "Notes", element: "Save" },
+			{ action: "window_type", window: "Notes", text: "hi" },
+			{ action: "window_screenshot", window: "Notes" },
+		])("allows %j", async (params) => {
+			setPlatform("darwin")
+			const { callbacks } = await run(params, { state: { computerUseBackgroundMode: true } })
+			expect(callbacks.askApproval).toHaveBeenCalled()
+			expect(session.execute).toHaveBeenCalled()
+		})
+
+		it("refuses everything outside macOS and says how to turn it off", async () => {
+			setPlatform("win32")
+			const { callbacks } = await run({ action: "screenshot" }, { state: { computerUseBackgroundMode: true } })
+			expect(callbacks.pushToolResult.mock.calls[0][0]).toMatch(/only available on macOS/)
+			expect(session.execute).not.toHaveBeenCalled()
+		})
+	})
+
 	it("refuses with formatted remedy steps when the platform check fails", async () => {
 		checkPlatform.mockReturnValue({ ok: false, code: "linux_wayland_only", message: "Wayland only", remedy: [] })
 		const { callbacks, task } = await run({ action: "screenshot" })

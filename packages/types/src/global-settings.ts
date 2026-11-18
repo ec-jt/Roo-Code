@@ -215,6 +215,11 @@ export const globalSettingsSchema = z.object({
 	 * window title matches an entry.
 	 */
 	computerUseAllowedApps: z.array(z.string()).optional(),
+	/**
+	 * macOS: work in the background only. Actions that use the shared pointer or
+	 * keyboard are refused; Roo uses per-window actions so the user can keep working.
+	 */
+	computerUseBackgroundMode: z.boolean().optional(),
 
 	enableCheckpoints: z.boolean().optional(),
 	checkpointTimeout: z

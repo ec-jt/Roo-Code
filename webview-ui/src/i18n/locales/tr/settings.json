@@ -565,6 +565,10 @@
 			"description": "Ajanın computer_action aracını kullanarak ekran görüntüsü almasına ve bu bilgisayardaki fareyi, klavyeyi ve pencereleri kontrol etmesine izin verir.",
 			"warning": "Uyarı: etkinleştirildiğinde ajan ekranını görebilir ve herhangi bir uygulamada fareni ve klavyeni kontrol edebilir. Onaylamadan önce her eylemi gözden geçir."
 		},
+		"backgroundMode": {
+			"label": "Arka plan modu (macOS)",
+			"description": "Roo farenizi, klavyenizi veya öndeki pencereyi devralmadan çalışır, böylece bilgisayarı kullanmaya devam edebilirsiniz. Pencereleri ve düğmelerini ve alanlarını Erişilebilirlik ile okur, düğmelere adlarıyla basar ve pencereyi öne getirmeden ona yazar. Konuma göre tıklama, sürükleme, kaydırma ve klavye kısayolları kapalıdır. Bazı uygulamalar (oyunlar, tarayıcılar, Electron uygulamaları) bu modda çalışmayabilir."
+		},
 		"allowedApps": {
 			"label": "İzin verilen uygulamalar",
 			"placeholder": "Her satıra bir pencere başlığı, örneğin:\nSafari\nNotes",

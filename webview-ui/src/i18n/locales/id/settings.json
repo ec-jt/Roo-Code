@@ -565,6 +565,10 @@
 			"description": "Memungkinkan agen menggunakan tool computer_action untuk mengambil screenshot dan mengontrol mouse, keyboard, dan jendela di komputer ini.",
 			"warning": "Peringatan: saat diaktifkan, agen dapat melihat layarmu dan mengontrol mouse serta keyboard di aplikasi apa pun. Tinjau setiap aksi sebelum kamu menyetujuinya."
 		},
+		"backgroundMode": {
+			"label": "Mode latar belakang (macOS)",
+			"description": "Roo bekerja tanpa mengambil alih mouse, keyboard, atau jendela depan Anda, sehingga Anda dapat terus menggunakan komputer. Roo membaca jendela beserta tombol dan kolomnya melalui Aksesibilitas, menekan tombol berdasarkan nama, dan mengetik ke jendela tanpa membawanya ke depan. Klik berdasarkan posisi, seret, gulir, dan pintasan keyboard dinonaktifkan. Beberapa aplikasi (game, browser, aplikasi Electron) mungkin tidak berfungsi dalam mode ini."
+		},
 		"allowedApps": {
 			"label": "Aplikasi yang diizinkan",
 			"placeholder": "Satu judul jendela per baris, misalnya:\nSafari\nNotes",

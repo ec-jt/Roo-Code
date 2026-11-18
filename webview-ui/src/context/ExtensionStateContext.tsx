@@ -299,6 +299,7 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 		computerUseEnabled: false,
 		alwaysAllowComputerUse: false,
 		computerUseAllowedApps: [],
+		computerUseBackgroundMode: false,
 		showRooIgnoredFiles: true, // Default to showing .rooignore'd files with lock symbol (current behavior).
 		enableSubfolderRules: false, // Default to disabled - must be enabled to load rules from subdirectories
 		renderContext: "sidebar",

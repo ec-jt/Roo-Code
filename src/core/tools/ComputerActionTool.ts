@@ -2,6 +2,8 @@ import * as vscode from "vscode"
 import { Anthropic } from "@anthropic-ai/sdk"
 
 import {
+	backgroundModeComputerActions,
+	isBackgroundModeAction,
 	isComputerAction,
 	readOnlyComputerActions,
 	type ClineSayComputerAction,
@@ -118,6 +120,25 @@ export class ComputerActionTool extends BaseTool<"computer_action"> {
 		if (!extensionPath) {
 			await fail("Desktop control is unavailable: the extension path could not be determined.")
 			return
+		}
+
+		// Background mode: only actions that leave the user's pointer, keyboard, and front app alone.
+		if (state.computerUseBackgroundMode === true) {
+			if (process.platform !== "darwin") {
+				await fail(
+					"Background mode for desktop control is only available on macOS. The user can turn it off in Settings > Computer Use.",
+				)
+				return
+			}
+			if (!isBackgroundModeAction(params.action)) {
+				await fail(
+					`"${params.action}" is not available in background mode, because it would use the user's pointer or keyboard. ` +
+						`Allowed actions: ${backgroundModeComputerActions.join(", ")}. ` +
+						"Use list_elements and click_element to press buttons, and window_type to enter text. " +
+						"If the task cannot be done this way, ask the user to turn off background mode in Settings > Computer Use.",
+				)
+				return
+			}
 		}
 
 		// 3. Environment pre-flight (remote host, platform, display server, macOS permissions).

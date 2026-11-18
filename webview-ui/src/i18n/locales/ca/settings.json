@@ -565,6 +565,10 @@
 			"description": "Permet que l'agent faci servir l'eina computer_action per fer captures de pantalla i controlar el ratolí, el teclat i les finestres d'aquest ordinador.",
 			"warning": "Avís: quan està activat, l'agent pot veure la teva pantalla i controlar el ratolí i el teclat a qualsevol app. Revisa cada acció abans d'aprovar-la."
 		},
+		"backgroundMode": {
+			"label": "Mode en segon pla (macOS)",
+			"description": "Roo treballa sense prendre el control del ratolí, el teclat ni la finestra activa, de manera que pots continuar fent servir l’ordinador. Llegeix les finestres i els seus botons i camps amb Accessibilitat, prem botons pel nom i escriu en una finestra sense portar-la al davant. Els clics per posició, arrossegar, desplaçar i les dreceres de teclat estan desactivats. Algunes aplicacions (jocs, navegadors, aplicacions Electron) poden no funcionar en aquest mode."
+		},
 		"allowedApps": {
 			"label": "Apps permeses",
 			"placeholder": "Un títol de finestra per línia, per exemple:\nSafari\nNotes",

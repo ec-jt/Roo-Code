@@ -15,6 +15,7 @@ How it works:
 
 Sharing the computer with the user:
 - The user may be using the mouse and keyboard at the same time. Actions that use them (click, move, drag, scroll, type, key, focus_window) wait until the user has paused, and the user's cursor is put back after each click or scroll.
+- The user can turn on background mode (macOS). Then only screenshot, list_windows, wait, window_screenshot, window_type, list_elements, and click_element are allowed: press buttons with list_elements and click_element, and enter text with window_type. Other actions return an error.
 - If an action fails because the user is busy, use wait and try again. On macOS you can instead keep working without the shared cursor: window_screenshot shows one window even when it is covered, and window_type inserts text at that window's text cursor without bringing it to the front. Pixels in a window_screenshot are window pixels, not screen coordinates, so never click using them.`
 
 const SAFETY_DESCRIPTION = `Safety:

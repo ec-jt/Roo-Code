@@ -36,6 +36,28 @@ describe("ComputerUseSettings", () => {
 		expect(setCachedStateField).toHaveBeenCalledWith("computerUseEnabled", true)
 	})
 
+	it("shows the background mode toggle when enabled and propagates changes", () => {
+		const setCachedStateField = vi.fn()
+		render(
+			<ComputerUseSettings
+				computerUseEnabled
+				computerUseBackgroundMode={false}
+				setCachedStateField={setCachedStateField}
+			/>,
+		)
+
+		const checkbox = screen.getByTestId("computer-use-background-mode-checkbox")
+		expect(checkbox).not.toBeChecked()
+		expect(screen.getByText("settings:computerUse.backgroundMode.description")).toBeInTheDocument()
+		fireEvent.click(checkbox)
+		expect(setCachedStateField).toHaveBeenCalledWith("computerUseBackgroundMode", true)
+	})
+
+	it("hides the background mode toggle while desktop control is off", () => {
+		render(<ComputerUseSettings computerUseEnabled={false} setCachedStateField={vi.fn()} />)
+		expect(screen.queryByTestId("computer-use-background-mode-checkbox")).not.toBeInTheDocument()
+	})
+
 	it("parses the allowlist as one trimmed entry per line", () => {
 		const setCachedStateField = vi.fn()
 		render(

@@ -565,6 +565,10 @@
 			"description": "允许 Agent 使用 computer_action 工具截图，并控制这台电脑上的鼠标、键盘和窗口。",
 			"warning": "警告：启用后，Agent 可以看到你的屏幕，并在任何应用中控制你的鼠标和键盘。批准前请检查每个操作。"
 		},
+		"backgroundMode": {
+			"label": "后台模式（macOS）",
+			"description": "Roo 工作时不占用你的鼠标、键盘或最前面的窗口，因此你可以继续使用电脑。它通过辅助功能读取窗口及其按钮和输入框，按名称点击按钮，并在不把窗口移到前面的情况下输入文字。按位置点击、拖动、滚动和键盘快捷键会被关闭。部分应用（游戏、浏览器、Electron 应用）在此模式下可能无法使用。"
+		},
 		"allowedApps": {
 			"label": "允许的应用",
 			"placeholder": "每行一个窗口标题，例如：\nSafari\nNotes",

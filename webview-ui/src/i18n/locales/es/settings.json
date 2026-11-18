@@ -565,6 +565,10 @@
 			"description": "Permite que el agente use la herramienta computer_action para hacer capturas de pantalla y controlar el ratón, el teclado y las ventanas de este equipo.",
 			"warning": "Advertencia: cuando está habilitado, el agente puede ver tu pantalla y controlar el ratón y el teclado en cualquier app. Revisa cada acción antes de aprobarla."
 		},
+		"backgroundMode": {
+			"label": "Modo en segundo plano (macOS)",
+			"description": "Roo trabaja sin tomar el control del ratón, el teclado ni la ventana activa, así que puedes seguir usando el ordenador. Lee las ventanas y sus botones y campos mediante Accesibilidad, pulsa botones por su nombre y escribe en una ventana sin traerla al frente. Los clics por posición, arrastrar, desplazar y los atajos de teclado están desactivados. Algunas aplicaciones (juegos, navegadores, aplicaciones Electron) pueden no funcionar en este modo."
+		},
 		"allowedApps": {
 			"label": "Apps permitidas",
 			"placeholder": "Un título de ventana por línea, por ejemplo:\nSafari\nNotes",

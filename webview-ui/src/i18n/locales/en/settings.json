@@ -14,7 +14,12 @@
 		"description": "One-line description",
 		"body": "Memory",
 		"type": "Type",
-		"types": { "user": "User", "feedback": "Feedback", "project": "Project", "reference": "Reference" },
+		"types": {
+			"user": "User",
+			"feedback": "Feedback",
+			"project": "Project",
+			"reference": "Reference"
+		},
 		"save": "Save memory",
 		"open": "Open Markdown",
 		"forget": "Forget topic",
@@ -674,6 +679,10 @@
 			"label": "Enable desktop control",
 			"description": "Lets the agent use the computer_action tool to take screenshots and control the mouse, keyboard, and windows on this computer.",
 			"warning": "Warning: when enabled, the agent can see your screen and control your mouse and keyboard in any app. Review each action before you approve it."
+		},
+		"backgroundMode": {
+			"label": "Background mode (macOS)",
+			"description": "Roo works without taking over your mouse, keyboard, or front window, so you can keep using the computer. It reads windows and their buttons and fields through Accessibility, presses buttons by name, and types into a window without bringing it to the front. Clicking by position, dragging, scrolling, and key shortcuts are turned off. Some apps (games, browsers, Electron apps) may not work in this mode."
 		},
 		"allowedApps": {
 			"label": "Allowed apps",

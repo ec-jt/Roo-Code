@@ -565,6 +565,10 @@
 			"description": "Cho phép agent dùng công cụ computer_action để chụp màn hình và điều khiển chuột, bàn phím và cửa sổ trên máy tính này.",
 			"warning": "Cảnh báo: khi bật, agent có thể nhìn thấy màn hình và điều khiển chuột, bàn phím của bạn trong bất kỳ ứng dụng nào. Hãy xem lại từng thao tác trước khi phê duyệt."
 		},
+		"backgroundMode": {
+			"label": "Chế độ nền (macOS)",
+			"description": "Roo làm việc mà không chiếm chuột, bàn phím hay cửa sổ phía trước, nên bạn có thể tiếp tục dùng máy tính. Roo đọc cửa sổ cùng nút và trường của chúng qua Trợ năng, nhấn nút theo tên và gõ vào cửa sổ mà không đưa nó lên trước. Nhấp theo vị trí, kéo, cuộn và phím tắt bị tắt. Một số ứng dụng (trò chơi, trình duyệt, ứng dụng Electron) có thể không hoạt động ở chế độ này."
+		},
 		"allowedApps": {
 			"label": "Ứng dụng được phép",
 			"placeholder": "Mỗi dòng một tiêu đề cửa sổ, ví dụ:\nSafari\nNotes",

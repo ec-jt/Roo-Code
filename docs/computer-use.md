@@ -133,6 +133,21 @@ On macOS, Roo can also keep working in the background while you use the computer
 
 On Windows and Linux, only turn-taking is available.
 
+### Background mode (macOS)
+
+Turn on **Settings > Computer Use > Background mode** to let Roo work without ever taking your pointer, keyboard, or front window. You can keep using the computer the whole time.
+
+In background mode Roo can only use these actions:
+
+- `screenshot`, `list_windows`, `wait`
+- `window_screenshot`: see one window, even when it is covered
+- `list_elements` and `click_element`: find and press buttons, menus, and fields by name
+- `window_type`: type into a window's text field without bringing it to the front
+
+Clicking by position, moving the pointer, dragging, scrolling, key shortcuts, and `focus_window` are refused, and Roo is told which actions it can use instead. If a task cannot be done this way (for example, an app with no Accessibility names, or a drag-and-drop), Roo asks you to turn background mode off.
+
+Background mode is off by default. On Windows and Linux the setting has no effect except that every action is refused, so leave it off there.
+
 ### Coordinates
 
 Coordinates are `"x,y"` in pixels of the latest screenshot. Screenshots are scaled down to fit 1280 x 800, so they are smaller than the real screen. Roo converts screenshot pixels to real screen positions, and this includes Retina and Windows display scaling.

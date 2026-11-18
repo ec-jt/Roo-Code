@@ -28,12 +28,16 @@ export interface ComputerUsePermissionsResult {
 type ComputerUseSettingsProps = HTMLAttributes<HTMLDivElement> & {
 	computerUseEnabled?: boolean
 	computerUseAllowedApps?: string[]
-	setCachedStateField: SetCachedStateField<"computerUseEnabled" | "computerUseAllowedApps">
+	computerUseBackgroundMode?: boolean
+	setCachedStateField: SetCachedStateField<
+		"computerUseEnabled" | "computerUseAllowedApps" | "computerUseBackgroundMode"
+	>
 }
 
 export const ComputerUseSettings = ({
 	computerUseEnabled,
 	computerUseAllowedApps,
+	computerUseBackgroundMode,
 	setCachedStateField,
 	...props
 }: ComputerUseSettingsProps) => {
@@ -97,6 +101,23 @@ export const ComputerUseSettings = ({
 
 				{computerUseEnabled && (
 					<div className="flex flex-col gap-3 pl-3 border-l-2 border-vscode-button-background">
+						<SearchableSetting
+							settingId="computer-use-background-mode"
+							section="computerUse"
+							label={t("settings:computerUse.backgroundMode.label")}>
+							<VSCodeCheckbox
+								checked={computerUseBackgroundMode ?? false}
+								onChange={(e: any) =>
+									setCachedStateField("computerUseBackgroundMode", e.target.checked)
+								}
+								data-testid="computer-use-background-mode-checkbox">
+								<span className="font-medium">{t("settings:computerUse.backgroundMode.label")}</span>
+							</VSCodeCheckbox>
+							<div className="text-vscode-descriptionForeground text-sm mt-1">
+								{t("settings:computerUse.backgroundMode.description")}
+							</div>
+						</SearchableSetting>
+
 						<SearchableSetting
 							settingId="computer-use-allowed-apps"
 							section="computerUse"

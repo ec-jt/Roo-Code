@@ -565,6 +565,10 @@
 			"description": "Permette all'agente di usare lo strumento computer_action per acquisire screenshot e controllare mouse, tastiera e finestre su questo computer.",
 			"warning": "Attenzione: se abilitato, l'agente può vedere il tuo schermo e controllare mouse e tastiera in qualsiasi app. Controlla ogni azione prima di approvarla."
 		},
+		"backgroundMode": {
+			"label": "Modalità in background (macOS)",
+			"description": "Roo lavora senza prendere il controllo di mouse, tastiera o finestra in primo piano, così puoi continuare a usare il computer. Legge le finestre e i loro pulsanti e campi tramite Accessibilità, preme i pulsanti per nome e scrive in una finestra senza portarla in primo piano. Clic per posizione, trascinamento, scorrimento e scorciatoie da tastiera sono disattivati. Alcune app (giochi, browser, app Electron) potrebbero non funzionare in questa modalità."
+		},
 		"allowedApps": {
 			"label": "App consentite",
 			"placeholder": "Un titolo di finestra per riga, ad esempio:\nSafari\nNotes",

@@ -481,6 +481,7 @@ export type ExtensionState = Pick<
 	| "alwaysAllowComputerUse"
 	| "computerUseEnabled"
 	| "computerUseAllowedApps"
+	| "computerUseBackgroundMode"
 	| "alwaysAllowMcp"
 	| "alwaysAllowModeSwitch"
 	| "alwaysAllowSubtasks"

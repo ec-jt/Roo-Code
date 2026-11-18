@@ -565,6 +565,10 @@
 			"description": "Permite que o agente use a ferramenta computer_action para fazer capturas de tela e controlar o mouse, o teclado e as janelas deste computador.",
 			"warning": "Aviso: quando ativado, o agente pode ver sua tela e controlar seu mouse e teclado em qualquer app. Revise cada ação antes de aprová-la."
 		},
+		"backgroundMode": {
+			"label": "Modo em segundo plano (macOS)",
+			"description": "O Roo trabalha sem assumir o mouse, o teclado ou a janela da frente, para que você continue usando o computador. Ele lê as janelas e seus botões e campos pela Acessibilidade, pressiona botões pelo nome e digita em uma janela sem trazê-la para a frente. Cliques por posição, arrastar, rolar e atalhos de teclado ficam desativados. Alguns apps (jogos, navegadores, apps Electron) podem não funcionar neste modo."
+		},
 		"allowedApps": {
 			"label": "Apps permitidos",
 			"placeholder": "Um título de janela por linha, por exemplo:\nSafari\nNotes",

@@ -565,6 +565,10 @@
 			"description": "Pozwala agentowi używać narzędzia computer_action do robienia zrzutów ekranu oraz sterowania myszą, klawiaturą i oknami na tym komputerze.",
 			"warning": "Uwaga: po włączeniu agent widzi twój ekran i może sterować myszą i klawiaturą w dowolnej aplikacji. Sprawdź każdą akcję, zanim ją zatwierdzisz."
 		},
+		"backgroundMode": {
+			"label": "Tryb w tle (macOS)",
+			"description": "Roo działa bez przejmowania myszy, klawiatury ani okna na pierwszym planie, więc możesz dalej korzystać z komputera. Odczytuje okna oraz ich przyciski i pola przez Dostępność, naciska przyciski według nazwy i wpisuje tekst w oknie bez przenoszenia go na pierwszy plan. Klikanie według pozycji, przeciąganie, przewijanie i skróty klawiszowe są wyłączone. Niektóre aplikacje (gry, przeglądarki, aplikacje Electron) mogą nie działać w tym trybie."
+		},
 		"allowedApps": {
 			"label": "Dozwolone aplikacje",
 			"placeholder": "Jeden tytuł okna w każdej linii, na przykład:\nSafari\nNotes",

@@ -565,6 +565,10 @@
 			"description": "Erlaubt dem Agenten, mit dem Tool computer_action Screenshots aufzunehmen und Maus, Tastatur und Fenster auf diesem Computer zu steuern.",
 			"warning": "Warnung: Wenn aktiviert, kann der Agent deinen Bildschirm sehen und Maus und Tastatur in jeder App steuern. Prüfe jede Aktion, bevor du sie genehmigst."
 		},
+		"backgroundMode": {
+			"label": "Hintergrundmodus (macOS)",
+			"description": "Roo arbeitet, ohne Maus, Tastatur oder das vordere Fenster zu übernehmen, sodass du den Computer weiter benutzen kannst. Roo liest Fenster und ihre Schaltflächen und Felder über die Bedienungshilfen, drückt Schaltflächen nach Namen und tippt in ein Fenster, ohne es nach vorne zu holen. Klicken nach Position, Ziehen, Scrollen und Tastenkürzel sind deaktiviert. Manche Apps (Spiele, Browser, Electron-Apps) funktionieren in diesem Modus eventuell nicht."
+		},
 		"allowedApps": {
 			"label": "Erlaubte Apps",
 			"placeholder": "Ein Fenstertitel pro Zeile, zum Beispiel:\nSafari\nNotes",
