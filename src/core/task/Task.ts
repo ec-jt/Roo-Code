@@ -493,6 +493,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	consecutiveMistakeCountForApplyDiff: Map<string, number> = new Map()
 	consecutiveMistakeCountForEditFile: Map<string, number> = new Map()
 	consecutiveNoToolUseCount: number = 0
+	/** True once any assistant turn in this task has used a tool (Cordis text-only retry policy). */
+	private hasUsedToolInTask = false
 	consecutiveNoAssistantMessagesCount: number = 0
 	toolUsage: ToolUsage = {}
 
@@ -5366,29 +5368,50 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 					if (!didToolUse) {
 						if (this.modelOperationPrepared) return true
 						if (this.modelDispatchRuntime) {
-							const feedback = await this.waitForPreviewInput()
-							if (!feedback) return true
-							stack.push({ userContent: feedback, includeFileDetails: false })
-							continue
-						}
-						// Increment consecutive no-tool-use counter
-						this.consecutiveNoToolUseCount++
+							// Cordis text-only turn policy. "retryThenPause" (default) sends one
+							// noToolsUsed reminder after the task has used a tool, then pauses on
+							// the second text-only reply in a row. A chat-style first turn and
+							// "alwaysPause" pause at once. No error rows or mistake counts here.
+							const policy =
+								(await this.providerRef.deref()?.getState())?.cordisTextOnlyTurnPolicy ??
+								"retryThenPause"
+							const retry =
+								policy === "retryThenPause" &&
+								this.hasUsedToolInTask &&
+								this.consecutiveNoToolUseCount === 0
+							if (!retry) {
+								this.consecutiveNoToolUseCount = 0
+								const feedback = await this.waitForPreviewInput()
+								if (!feedback) return true
+								stack.push({ userContent: feedback, includeFileDetails: false })
+								continue
+							}
+							this.consecutiveNoToolUseCount++
+							this.userMessageContent.push({
+								type: "text",
+								text: formatResponse.noToolsUsed(),
+							})
+						} else {
+							// Increment consecutive no-tool-use counter
+							this.consecutiveNoToolUseCount++
 
-						// Only show error and count toward mistake limit after 2 consecutive failures
-						if (this.consecutiveNoToolUseCount >= 2) {
-							await this.say("error", "MODEL_NO_TOOLS_USED")
-							// Only count toward mistake limit after second consecutive failure
-							this.consecutiveMistakeCount++
-						}
+							// Only show error and count toward mistake limit after 2 consecutive failures
+							if (this.consecutiveNoToolUseCount >= 2) {
+								await this.say("error", "MODEL_NO_TOOLS_USED")
+								// Only count toward mistake limit after second consecutive failure
+								this.consecutiveMistakeCount++
+							}
 
-						// Use the task's locked protocol for consistent behavior
-						this.userMessageContent.push({
-							type: "text",
-							text: formatResponse.noToolsUsed(),
-						})
+							// Use the task's locked protocol for consistent behavior
+							this.userMessageContent.push({
+								type: "text",
+								text: formatResponse.noToolsUsed(),
+							})
+						}
 					} else {
 						// Reset counter when tools are used successfully
 						this.consecutiveNoToolUseCount = 0
+						this.hasUsedToolInTask = true
 					}
 
 					// Push to stack if there's content OR if we're paused waiting for a subtask.

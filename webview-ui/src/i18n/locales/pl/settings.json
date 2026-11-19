@@ -821,6 +821,12 @@
 		}
 	},
 	"experimental": {
+		"cordisTextOnlyTurnPolicy": {
+			"label": "Gdy model odpowiada bez narzędzia",
+			"retryThenPause": "Ponów raz, potem wstrzymaj",
+			"alwaysPause": "Zawsze wstrzymuj",
+			"description": "Ponów raz wysyła przypomnienie, aby użyć narzędzia lub attempt_completion. Działa po tym, jak zadanie użyło narzędzia."
+		},
 		"CORDIS_RUNTIME_PREVIEW": {
 			"name": "Wersja zapoznawcza runtime Cordis",
 			"description": "Włącz eksperymentalne przyjmowanie żądań tylko dla nowych zadań Anthropic. Pozostali dostawcy korzystają ze standardowej ścieżki. Wykonywanie grafów nie jest dostępne, a ta wersja zapoznawcza nie egzekwuje limitów budżetu finansowego. Zwykły czat i delegowanie pozostają dostępne po jej wyłączeniu. Zapisz, aby zastosować zmiany: wyłączenie zatrzymuje wysyłanie nowych żądań przez wersję zapoznawczą i anuluje jej aktywne żądania do modeli, ale nie może cofnąć skutków już wykonanych działań. Ponowne włączenie nie wznawia automatycznie zatrzymanych zadań; otwórz zadanie ponownie lub rozpocznij nowe, aby użyć bieżącego ustawienia."

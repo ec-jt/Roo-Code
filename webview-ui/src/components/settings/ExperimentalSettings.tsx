@@ -6,8 +6,9 @@ import { EXPERIMENT_IDS, experimentConfigsMap } from "@roo/experiments"
 
 import { useAppTranslation } from "@src/i18n/TranslationContext"
 import { cn } from "@src/lib/utils"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@src/components/ui"
 
-import { SetExperimentEnabled } from "./types"
+import { SetCachedStateField, SetExperimentEnabled } from "./types"
 import { SectionHeader } from "./SectionHeader"
 import { Section } from "./Section"
 import { SearchableSetting } from "./SearchableSetting"
@@ -19,6 +20,8 @@ import { CustomToolsSettings } from "./CustomToolsSettings"
 type ExperimentalSettingsProps = HTMLAttributes<HTMLDivElement> & {
 	experiments: Experiments
 	setExperimentEnabled: SetExperimentEnabled
+	cordisTextOnlyTurnPolicy?: "retryThenPause" | "alwaysPause"
+	setCachedStateField?: SetCachedStateField<"cordisTextOnlyTurnPolicy">
 	apiConfiguration?: any
 	setApiConfigurationField?: any
 	imageGenerationProvider?: ImageGenerationProvider
@@ -49,6 +52,8 @@ type ExperimentalSettingsProps = HTMLAttributes<HTMLDivElement> & {
 export const ExperimentalSettings = ({
 	experiments,
 	setExperimentEnabled,
+	cordisTextOnlyTurnPolicy,
+	setCachedStateField,
 	apiConfiguration,
 	setApiConfigurationField,
 	imageGenerationProvider,
@@ -162,7 +167,7 @@ export const ExperimentalSettings = ({
 								</SearchableSetting>
 							)
 						}
-						return (
+						const feature = (
 							<SearchableSetting
 								key={config[0]}
 								settingId={`experimental-${config[0].toLowerCase()}`}
@@ -182,6 +187,47 @@ export const ExperimentalSettings = ({
 								/>
 							</SearchableSetting>
 						)
+						if (config[0] === "CORDIS_RUNTIME_PREVIEW" && setCachedStateField) {
+							return (
+								<div key={config[0]} className="flex flex-col gap-1">
+									{feature}
+									<SearchableSetting
+										settingId="experimental-cordis-text-only-turn-policy"
+										section="experimental"
+										label={t("settings:experimental.cordisTextOnlyTurnPolicy.label")}
+										className="pl-6">
+										<span className="font-medium">
+											{t("settings:experimental.cordisTextOnlyTurnPolicy.label")}
+										</span>
+										<Select
+											value={cordisTextOnlyTurnPolicy ?? "retryThenPause"}
+											onValueChange={(value) =>
+												setCachedStateField(
+													"cordisTextOnlyTurnPolicy",
+													value as "retryThenPause" | "alwaysPause",
+												)
+											}>
+											<SelectTrigger
+												className="w-full mt-1"
+												data-testid="cordis-text-only-turn-policy-select">
+												<SelectValue />
+											</SelectTrigger>
+											<SelectContent>
+												{(["retryThenPause", "alwaysPause"] as const).map((value) => (
+													<SelectItem key={value} value={value}>
+														{t(`settings:experimental.cordisTextOnlyTurnPolicy.${value}`)}
+													</SelectItem>
+												))}
+											</SelectContent>
+										</Select>
+										<p className="text-sm text-vscode-descriptionForeground mt-1">
+											{t("settings:experimental.cordisTextOnlyTurnPolicy.description")}
+										</p>
+									</SearchableSetting>
+								</div>
+							)
+						}
+						return feature
 					})}
 			</Section>
 		</div>

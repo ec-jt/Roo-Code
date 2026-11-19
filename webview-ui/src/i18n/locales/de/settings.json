@@ -821,6 +821,12 @@
 		}
 	},
 	"experimental": {
+		"cordisTextOnlyTurnPolicy": {
+			"label": "Wenn das Modell ohne Tool antwortet",
+			"retryThenPause": "Einmal wiederholen, dann pausieren",
+			"alwaysPause": "Immer pausieren",
+			"description": "Einmal wiederholen sendet eine Erinnerung, ein Tool oder attempt_completion zu verwenden. Gilt, nachdem die Aufgabe ein Tool verwendet hat."
+		},
 		"CORDIS_RUNTIME_PREVIEW": {
 			"name": "Cordis-Runtime-Vorschau",
 			"description": "Aktiviere die experimentelle Zulassung von Anfragen nur für neue Anthropic-Aufgaben. Andere Anbieter nutzen den normalen Ablauf. Die Ausführung von Graphen ist nicht verfügbar, und diese Vorschau setzt keine finanziellen Budgetgrenzen durch. Normaler Chat und Delegation bleiben auch bei deaktivierter Vorschau verfügbar. Speichere, um die Änderung anzuwenden: Das Deaktivieren stoppt den Versand neuer Vorschau-Anfragen und bricht aktive Modellanfragen der Vorschau ab, kann aber bereits eingetretene Auswirkungen nicht rückgängig machen. Erneutes Aktivieren setzt gestoppte Aufgaben nicht automatisch fort. Öffne eine Aufgabe erneut oder starte eine neue, um die aktuelle Einstellung zu nutzen."

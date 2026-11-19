@@ -321,6 +321,7 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 		architectureContextMode: "off",
 		architectureDecisionApproval: "user",
 		architectureBootstrap: true,
+		cordisTextOnlyTurnPolicy: "retryThenPause",
 		autoCondenseContextPercent: 100,
 		profileThresholds: {},
 		codebaseIndexConfig: {

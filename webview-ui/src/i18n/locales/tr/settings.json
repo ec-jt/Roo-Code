@@ -821,6 +821,12 @@
 		}
 	},
 	"experimental": {
+		"cordisTextOnlyTurnPolicy": {
+			"label": "Model araç kullanmadan yanıt verdiğinde",
+			"retryThenPause": "Bir kez yeniden dene, sonra duraklat",
+			"alwaysPause": "Her zaman duraklat",
+			"description": "Bir kez yeniden dene, bir araç veya attempt_completion kullanman için hatırlatma gönderir. Görev bir araç kullandıktan sonra geçerlidir."
+		},
 		"CORDIS_RUNTIME_PREVIEW": {
 			"name": "Cordis çalışma zamanı önizlemesi",
 			"description": "Deneysel istek kabulünü yalnızca yeni Anthropic görevleri için etkinleştir. Diğer sağlayıcılar normal akışı kullanır. Graf yürütme kullanılamaz ve bu önizleme mali bütçe sınırlarını zorunlu kılmaz. Kapalıyken normal sohbet ve görev devri kullanılabilir olmaya devam eder. Uygulamak için kaydet: devre dışı bırakmak yeni önizleme isteklerinin gönderimini durdurur ve etkin önizleme model isteklerini iptal eder, ancak zaten oluşmuş etkileri geri alamaz. Yeniden etkinleştirmek durdurulan görevleri otomatik olarak sürdürmez; geçerli ayarı kullanmak için bir görevi yeniden aç veya yeni bir görev başlat."

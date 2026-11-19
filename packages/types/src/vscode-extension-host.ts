@@ -599,6 +599,7 @@ export type ExtensionState = Pick<
 	architectureContextMode?: ArchitectureContextMode
 	architectureDecisionApproval?: "user" | "agent"
 	architectureBootstrap?: boolean
+	cordisTextOnlyTurnPolicy?: "retryThenPause" | "alwaysPause"
 	autoCondenseContextPercent: number
 	marketplaceItems?: MarketplaceItem[]
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any

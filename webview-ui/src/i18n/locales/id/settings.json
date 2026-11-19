@@ -821,6 +821,12 @@
 		}
 	},
 	"experimental": {
+		"cordisTextOnlyTurnPolicy": {
+			"label": "Saat model membalas tanpa tool",
+			"retryThenPause": "Coba ulang sekali, lalu jeda",
+			"alwaysPause": "Selalu jeda",
+			"description": "Coba ulang sekali mengirim pengingat untuk menggunakan tool atau attempt_completion. Berlaku setelah tugas menggunakan tool."
+		},
 		"CORDIS_RUNTIME_PREVIEW": {
 			"name": "Pratinjau runtime Cordis",
 			"description": "Aktifkan penerimaan permintaan eksperimental hanya untuk tugas Anthropic baru. Penyedia lain menggunakan alur normal. Eksekusi graf tidak tersedia, dan pratinjau ini tidak memberlakukan batas anggaran keuangan. Chat normal dan delegasi tetap tersedia saat pratinjau dinonaktifkan. Simpan untuk menerapkan: menonaktifkannya menghentikan pengiriman permintaan pratinjau baru dan membatalkan permintaan model pratinjau yang aktif, tetapi tidak dapat membatalkan efek yang sudah terjadi. Mengaktifkannya kembali tidak otomatis melanjutkan tugas yang dihentikan; buka kembali atau mulai tugas untuk menggunakan pengaturan saat ini."

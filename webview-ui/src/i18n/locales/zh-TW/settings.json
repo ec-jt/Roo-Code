@@ -831,6 +831,12 @@
 		}
 	},
 	"experimental": {
+		"cordisTextOnlyTurnPolicy": {
+			"label": "模型未使用工具回覆時",
+			"retryThenPause": "重試一次，然後暫停",
+			"alwaysPause": "一律暫停",
+			"description": "重試一次會傳送提醒，要求使用工具或 attempt_completion。僅在工作已使用過工具後生效。"
+		},
 		"CORDIS_RUNTIME_PREVIEW": {
 			"name": "Cordis 執行階段預覽",
 			"description": "啟用實驗性的請求准入處理，僅適用於新建的 Anthropic 工作。其他供應商仍使用一般流程。不支援圖形執行，此預覽也不會強制執行財務預算限制。關閉後，一般聊天和工作委派仍可使用。儲存後套用：停用會停止傳送新的預覽請求，並取消預覽中進行中的模型請求，但無法復原已產生的影響。重新啟用不會自動繼續已停止的工作；重新開啟或建立工作以使用目前的設定。"

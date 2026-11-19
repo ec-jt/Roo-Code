@@ -164,6 +164,8 @@ export const globalSettingsSchema = z.object({
 	architectureContextMode: architectureContextModeSchema.optional(),
 	architectureDecisionApproval: z.enum(["user", "agent"]).optional(),
 	architectureBootstrap: z.boolean().optional(),
+	/** Cordis runtime: what to do when the model replies with text only and no tool call. Default "retryThenPause". */
+	cordisTextOnlyTurnPolicy: z.enum(["retryThenPause", "alwaysPause"]).optional(),
 	/** @deprecated Retained for settings import compatibility; no proactive percentage trigger. */
 	autoCondenseContextPercent: z.number().optional(),
 

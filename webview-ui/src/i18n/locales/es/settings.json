@@ -821,6 +821,12 @@
 		}
 	},
 	"experimental": {
+		"cordisTextOnlyTurnPolicy": {
+			"label": "Cuando el modelo responde sin una herramienta",
+			"retryThenPause": "Reintentar una vez y luego pausar",
+			"alwaysPause": "Pausar siempre",
+			"description": "Reintentar una vez envía un recordatorio para usar una herramienta o attempt_completion. Se aplica después de que la tarea haya usado una herramienta."
+		},
 		"CORDIS_RUNTIME_PREVIEW": {
 			"name": "Versión preliminar del runtime de Cordis",
 			"description": "Activa la admisión experimental de solicitudes solo para tareas nuevas de Anthropic. Los demás proveedores siguen el flujo normal. La ejecución de grafos no está disponible y esta versión preliminar no aplica límites de presupuesto económico. El chat normal y la delegación siguen disponibles cuando está desactivada. Guarda para aplicar los cambios: desactivarla detiene el envío de nuevas solicitudes de la versión preliminar y cancela las solicitudes activas a los modelos de esta versión, pero no puede deshacer los efectos que ya se han producido. Volver a activarla no reanuda automáticamente las tareas detenidas; vuelve a abrir una tarea o inicia una para usar la configuración actual."

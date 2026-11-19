@@ -1109,6 +1109,66 @@ describe("Task opt-in model dispatch", () => {
 		await expect(loop).resolves.toBeUndefined()
 	})
 
+	describe("cordisTextOnlyTurnPolicy", () => {
+		const resumeAsks = () => task.clineMessages.filter((message) => message.ask === "resume_task").length
+		const usePolicy = async (policy?: "retryThenPause" | "alwaysPause") => {
+			provider.getState.mockResolvedValue({ ...(await provider.getState()), cordisTextOnlyTurnPolicy: policy })
+		}
+		const run = async (streams: Array<() => AsyncGenerator<any>>) => {
+			vi.mocked(task.say).mockRestore()
+			admit.mockResolvedValue({ outcome: "granted", settle })
+			const asksAtCall: number[] = []
+			const mistakesAtCall: number[] = []
+			for (const stream of streams) {
+				create.mockImplementationOnce(() => {
+					asksAtCall.push(resumeAsks())
+					mistakesAtCall.push(task.consecutiveMistakeCount)
+					return stream()
+				})
+			}
+			const loop = (task as any).initiateTaskLoop([{ type: "text", text: "do the work" }])
+			return { loop, asksAtCall, mistakesAtCall }
+		}
+		const finish = async (loop: Promise<unknown>) => {
+			task.handleWebviewAskResponse("noButtonClicked")
+			await expect(loop).resolves.toBeUndefined()
+		}
+
+		it("retries a text-only turn once after a tool turn without asking resume_task", async () => {
+			await usePolicy(undefined) // default is retryThenPause
+			const { loop, asksAtCall, mistakesAtCall } = await run([toolUseOnly, answerStream, answerStream])
+			await waitForResume(1)
+			expect(create).toHaveBeenCalledTimes(3)
+			expect(JSON.stringify(create.mock.calls[2][0].messages)).toContain("You did not use a tool")
+			expect(asksAtCall).toEqual([0, 0, 0]) // the retry went out before any resume_task ask
+			expect(task.clineMessages.some((message) => message.text === "MODEL_NO_TOOLS_USED")).toBe(false)
+			// The text-only retry and pause add no mistake count of their own.
+			expect(task.consecutiveMistakeCount).toBe(mistakesAtCall[1])
+			expect(mistakesAtCall[2]).toBe(mistakesAtCall[1])
+			await finish(loop)
+		})
+
+		it("asks resume_task on the second text-only turn in a row with retryThenPause", async () => {
+			await usePolicy("retryThenPause")
+			const { loop } = await run([toolUseOnly, answerStream, answerStream])
+			await waitForResume(1)
+			expect(create).toHaveBeenCalledTimes(3)
+			expect(task.consecutiveNoToolUseCount).toBe(0)
+			await finish(loop)
+			expect(create).toHaveBeenCalledTimes(3)
+		})
+
+		it("asks resume_task at once after a tool turn with alwaysPause", async () => {
+			await usePolicy("alwaysPause")
+			const { loop } = await run([toolUseOnly, answerStream])
+			await waitForResume(1)
+			expect(create).toHaveBeenCalledTimes(2)
+			expect(JSON.stringify(create.mock.calls[1][0].messages)).not.toContain("You did not use a tool")
+			await finish(loop)
+			expect(create).toHaveBeenCalledTimes(2)
+		})
+	})
+
 	it("settles the interactive loop when cancelled while waiting at a preview stop", async () => {
 		vi.mocked(task.say).mockRestore()
 		const loop = (task as any).initiateTaskLoop([{ type: "text", text: "question" }])

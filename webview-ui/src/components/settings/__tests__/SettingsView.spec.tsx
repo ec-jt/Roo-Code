@@ -414,6 +414,48 @@ describe("SettingsView - Sound Settings", () => {
 		)
 	})
 
+	it("renders the Cordis text-only turn policy with the retryThenPause default", () => {
+		const { activateTab, getSettingsContent } = renderSettingsView()
+		activateTab("experimental")
+		expect(
+			within(getSettingsContent()).getAllByText("settings:experimental.cordisTextOnlyTurnPolicy.label").length,
+		).toBeGreaterThan(0)
+		expect(within(getSettingsContent()).getByRole("button", { name: "retryThenPause" })).toBeInTheDocument()
+		fireEvent.click(screen.getByTestId("save-button"))
+		expect(vscode.postMessage).toHaveBeenCalledWith(
+			expect.objectContaining({
+				type: "updateSettings",
+				updatedSettings: expect.objectContaining({ cordisTextOnlyTurnPolicy: "retryThenPause" }),
+			}),
+		)
+	})
+
+	it("restores and saves the alwaysPause Cordis text-only turn policy", () => {
+		const { rerender } = render(<ExtensionStateContextProvider>{null}</ExtensionStateContextProvider>)
+		act(() => {
+			window.dispatchEvent(
+				new MessageEvent("message", {
+					data: { type: "state", state: { cordisTextOnlyTurnPolicy: "alwaysPause" } },
+				}),
+			)
+		})
+		rerender(
+			<ExtensionStateContextProvider>
+				<SettingsView onDone={vi.fn()} targetSection="experimental" />
+			</ExtensionStateContextProvider>,
+		)
+		expect(
+			within(screen.getByTestId("settings-content")).getByRole("button", { name: "alwaysPause" }),
+		).toBeInTheDocument()
+		fireEvent.click(screen.getByTestId("save-button"))
+		expect(vscode.postMessage).toHaveBeenCalledWith(
+			expect.objectContaining({
+				type: "updateSettings",
+				updatedSettings: expect.objectContaining({ cordisTextOnlyTurnPolicy: "alwaysPause" }),
+			}),
+		)
+	})
+
 	beforeEach(() => {
 		vi.clearAllMocks()
 	})

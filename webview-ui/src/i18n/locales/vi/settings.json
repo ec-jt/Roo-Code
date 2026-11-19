@@ -821,6 +821,12 @@
 		}
 	},
 	"experimental": {
+		"cordisTextOnlyTurnPolicy": {
+			"label": "Khi mô hình trả lời mà không dùng công cụ",
+			"retryThenPause": "Thử lại một lần, rồi tạm dừng",
+			"alwaysPause": "Luôn tạm dừng",
+			"description": "Thử lại một lần sẽ gửi lời nhắc dùng công cụ hoặc attempt_completion. Áp dụng sau khi tác vụ đã dùng công cụ."
+		},
 		"CORDIS_RUNTIME_PREVIEW": {
 			"name": "Bản xem trước runtime Cordis",
 			"description": "Bật cơ chế tiếp nhận yêu cầu thử nghiệm chỉ cho các tác vụ Anthropic mới. Các nhà cung cấp khác dùng luồng xử lý thông thường. Chưa hỗ trợ thực thi đồ thị và bản xem trước này không cưỡng chế giới hạn ngân sách tài chính. Trò chuyện thông thường và ủy quyền vẫn dùng được khi tắt. Lưu để áp dụng: việc tắt sẽ ngừng gửi yêu cầu mới qua bản xem trước và hủy các yêu cầu mô hình đang hoạt động qua bản xem trước, nhưng không thể hoàn tác những tác động đã xảy ra. Bật lại không tự động tiếp tục các tác vụ đã dừng; hãy mở lại hoặc bắt đầu một tác vụ để dùng cài đặt hiện tại."

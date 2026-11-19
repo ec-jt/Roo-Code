@@ -821,6 +821,12 @@
 		}
 	},
 	"experimental": {
+		"cordisTextOnlyTurnPolicy": {
+			"label": "Quand le modèle répond sans outil",
+			"retryThenPause": "Réessayer une fois, puis mettre en pause",
+			"alwaysPause": "Toujours mettre en pause",
+			"description": "Réessayer une fois envoie un rappel d'utiliser un outil ou attempt_completion. S'applique une fois que la tâche a utilisé un outil."
+		},
 		"CORDIS_RUNTIME_PREVIEW": {
 			"name": "Aperçu du runtime Cordis",
 			"description": "Active l'admission expérimentale des requêtes uniquement pour les nouvelles tâches Anthropic. Les autres fournisseurs suivent le fonctionnement normal. L'exécution de graphes n'est pas disponible et cet aperçu ne fait pas respecter les limites budgétaires financières. Le chat normal et la délégation restent disponibles lorsque l'aperçu est désactivé. Enregistre pour appliquer les changements : la désactivation arrête l'envoi de nouvelles requêtes via l'aperçu et annule les requêtes actives aux modèles via celui-ci, mais ne peut pas annuler les effets déjà produits. La réactivation ne reprend pas automatiquement les tâches arrêtées ; rouvre une tâche ou démarres-en une pour utiliser le réglage actuel."

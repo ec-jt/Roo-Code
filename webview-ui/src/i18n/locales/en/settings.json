@@ -974,6 +974,12 @@
 		}
 	},
 	"experimental": {
+		"cordisTextOnlyTurnPolicy": {
+			"label": "When the model replies without a tool",
+			"retryThenPause": "Retry once, then pause",
+			"alwaysPause": "Always pause",
+			"description": "Retry once sends a reminder to use a tool or attempt_completion. It applies after the task has used a tool."
+		},
 		"CORDIS_RUNTIME_PREVIEW": {
 			"name": "Cordis runtime preview",
 			"description": "Opt in to experimental request admission for new Anthropic tasks only. Other providers use the normal path. Graph execution is not available, and this preview does not enforce financial budget limits. Normal chat and delegation remain available when off. Save to apply: disabling stops new preview dispatch and cancels active preview model requests, but cannot undo effects already performed. Re-enabling does not automatically resume stopped tasks; reopen or start a task to use the current setting."
