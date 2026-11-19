@@ -526,6 +526,11 @@
 			"label": "Ratenbegrenzung",
 			"description": "Minimale Zeit zwischen API-Anfragen."
 		},
+		"contextWindowOverride": {
+			"label": "Kontextfenster-Überschreibung (Tokens)",
+			"description": "Zum Testen. Behandelt das Modell so, als hätte sein Kontextfenster diese Größe. Verkleinert das Fenster nur.",
+			"placeholder": "Leer = keine Überschreibung"
+		},
 		"consecutiveMistakeLimit": {
 			"label": "Fehler- & Wiederholungslimit",
 			"description": "Anzahl aufeinanderfolgender Fehler oder wiederholter Aktionen, bevor der Dialog 'Roo hat Probleme' angezeigt wird. Auf 0 setzen, um diesen Sicherheitsmechanismus zu deaktivieren (er wird niemals ausgelöst).",

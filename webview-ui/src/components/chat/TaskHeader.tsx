@@ -13,7 +13,7 @@ import prettyBytes from "pretty-bytes"
 
 import type { ChatWindowState, ClineMessage } from "@roo-code/types"
 
-import { getModelMaxOutputTokens } from "@roo/api"
+import { applyContextWindowOverride, getModelMaxOutputTokens } from "@roo/api"
 
 import { formatLargeNumber } from "@src/utils/format"
 import { cn } from "@src/lib/utils"
@@ -68,7 +68,12 @@ const TaskHeader = ({
 }: TaskHeaderProps) => {
 	const { t } = useTranslation()
 	const { apiConfiguration, currentTaskItem, clineMessages, isBrowserSessionActive, chatWindow } = useExtensionState()
-	const { id: modelId, info: model } = useSelectedModel(apiConfiguration)
+	const { id: modelId, info: selectedModelInfo } = useSelectedModel(apiConfiguration)
+	// Mirror the extension: a profile context window override only lowers the window.
+	const model = useMemo(
+		() => (selectedModelInfo ? applyContextWindowOverride(selectedModelInfo, apiConfiguration) : selectedModelInfo),
+		[selectedModelInfo, apiConfiguration],
+	)
 	const [isTaskExpanded, setIsTaskExpanded] = useState(false)
 
 	const textContainerRef = useRef<HTMLDivElement>(null)

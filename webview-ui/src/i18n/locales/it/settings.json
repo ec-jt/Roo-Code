@@ -526,6 +526,11 @@
 			"label": "Limite di frequenza",
 			"description": "Tempo minimo tra le richieste API."
 		},
+		"contextWindowOverride": {
+			"label": "Sostituzione della finestra di contesto (token)",
+			"description": "Per i test. Tratta il modello come se la sua finestra di contesto avesse questa dimensione. Riduce soltanto la finestra.",
+			"placeholder": "Vuoto = nessuna sostituzione"
+		},
 		"consecutiveMistakeLimit": {
 			"label": "Limite di errori e ripetizioni",
 			"description": "Numero di errori consecutivi o azioni ripetute prima di mostrare la finestra di dialogo 'Roo sta riscontrando problemi'. Imposta a 0 per disabilitare questo meccanismo di sicurezza (non si attiverà mai).",

@@ -100,6 +100,36 @@ export const DEFAULT_HYBRID_REASONING_MODEL_MAX_TOKENS = 16_384
 export const DEFAULT_HYBRID_REASONING_MODEL_THINKING_TOKENS = 8_192
 export const GEMINI_25_PRO_MIN_THINKING_TOKENS = 128
 
+// Context window override
+
+/** Fraction of the overridden context window that the output reserve may use. */
+export const CONTEXT_WINDOW_OVERRIDE_OUTPUT_FRACTION = 0.2
+
+/**
+ * Applies the per-profile `modelContextWindowOverride` to resolved model info.
+ *
+ * - The override only lowers the window: effective window = min(override, real window).
+ * - An invalid, missing, or not-lower override returns `info` unchanged (same object).
+ * - When the window is lowered, `info.maxTokens` is capped to
+ *   ceil(CONTEXT_WINDOW_OVERRIDE_OUTPUT_FRACTION * effective window), so every output reserve
+ *   derived from model info leaves usable input space (64k window: reserve at most 12,800).
+ * - A new object is returned; static model tables are never mutated.
+ */
+export function applyContextWindowOverride(
+	info: ModelInfo,
+	settings?: Pick<ProviderSettings, "modelContextWindowOverride">,
+): ModelInfo {
+	const override = settings?.modelContextWindowOverride
+	if (typeof override !== "number" || !Number.isSafeInteger(override) || override <= 0) return info
+	if (!(typeof info.contextWindow === "number" && override < info.contextWindow)) return info
+	const outputCap = Math.ceil(override * CONTEXT_WINDOW_OVERRIDE_OUTPUT_FRACTION)
+	return {
+		...info,
+		contextWindow: override,
+		...(typeof info.maxTokens === "number" && info.maxTokens > outputCap ? { maxTokens: outputCap } : {}),
+	}
+}
+
 // Max Tokens
 
 export const getModelMaxOutputTokens = ({

@@ -641,6 +641,11 @@
 			"label": "Rate limit",
 			"description": "Minimum time between API requests."
 		},
+		"contextWindowOverride": {
+			"label": "Context window override (tokens)",
+			"description": "For testing. Treats the model as if its context window were this size. Only lowers the window.",
+			"placeholder": "Empty = no override"
+		},
 		"consecutiveMistakeLimit": {
 			"label": "Error & Repetition Limit",
 			"description": "Number of consecutive errors or repeated actions before showing 'Roo is having trouble' dialog. Set to 0 to disable this safety mechanism (it will never trigger).",

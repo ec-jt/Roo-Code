@@ -526,6 +526,11 @@
 			"label": "API 请求频率限制",
 			"description": "设置API请求的最小间隔时间"
 		},
+		"contextWindowOverride": {
+			"label": "上下文窗口覆盖（tokens）",
+			"description": "用于测试。将模型视为其上下文窗口为此大小。只会缩小窗口。",
+			"placeholder": "留空 = 不覆盖"
+		},
 		"consecutiveMistakeLimit": {
 			"label": "错误和重复限制",
 			"description": "在显示“Roo遇到问题”对话框前允许的连续错误或重复操作次数。设置为 0 可禁用此安全机制（它将永远不会触发）。",

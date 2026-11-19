@@ -3,6 +3,7 @@ import OpenAI from "openai"
 
 import { isRetiredProvider, type ProviderSettings, type ModelInfo } from "@roo-code/types"
 
+import { applyContextWindowOverride } from "../shared/api"
 import { ApiStream } from "./transform/stream"
 
 import {
@@ -109,6 +110,28 @@ export interface ApiHandler {
 }
 
 export function buildApiHandler(configuration: ProviderSettings): ApiHandler {
+	return withContextWindowOverride(createProviderHandler(configuration), configuration.modelContextWindowOverride)
+}
+
+/**
+ * Single choke point for the per-profile context window override.
+ * Patches the instance's getModel() so every reader (overflow recovery, context checks,
+ * condensing, diagnostics) sees min(override, real window). The handler instance and class
+ * are preserved (instanceof checks still work). Request parameters that a provider computes
+ * inside its own getModel() (for example maxTokens, thinking budget) are computed from the
+ * real model info before the override is applied, so they do not change.
+ */
+export function withContextWindowOverride(handler: ApiHandler, override: number | undefined): ApiHandler {
+	if (typeof override !== "number" || !Number.isSafeInteger(override) || override <= 0) return handler
+	const getModel = handler.getModel.bind(handler)
+	handler.getModel = () => {
+		const model = getModel()
+		return { ...model, info: applyContextWindowOverride(model.info, { modelContextWindowOverride: override }) }
+	}
+	return handler
+}
+
+function createProviderHandler(configuration: ProviderSettings): ApiHandler {
 	const { apiProvider, ...options } = configuration
 
 	if (apiProvider && isRetiredProvider(apiProvider)) {

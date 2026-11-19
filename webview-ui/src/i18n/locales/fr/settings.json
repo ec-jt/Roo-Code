@@ -526,6 +526,11 @@
 			"label": "Limite de débit",
 			"description": "Temps minimum entre les requêtes API."
 		},
+		"contextWindowOverride": {
+			"label": "Remplacement de la fenêtre de contexte (tokens)",
+			"description": "Pour les tests. Traite le modèle comme si sa fenêtre de contexte avait cette taille. Réduit uniquement la fenêtre.",
+			"placeholder": "Vide = aucun remplacement"
+		},
 		"consecutiveMistakeLimit": {
 			"label": "Limite d'erreurs et de répétitions",
 			"description": "Nombre d'erreurs consécutives ou d'actions répétées avant d'afficher la boîte de dialogue 'Roo a des difficultés'. Mettre à 0 pour désactiver ce mécanisme de sécurité (il ne se déclenchera jamais).",

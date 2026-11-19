@@ -526,6 +526,11 @@
 			"label": "Límite de tasa",
 			"description": "Tiempo mínimo entre solicitudes de API."
 		},
+		"contextWindowOverride": {
+			"label": "Anulación de la ventana de contexto (tokens)",
+			"description": "Para pruebas. Trata el modelo como si su ventana de contexto tuviera este tamaño. Solo reduce la ventana.",
+			"placeholder": "Vacío = sin anulación"
+		},
 		"consecutiveMistakeLimit": {
 			"label": "Límite de errores y repeticiones",
 			"description": "Número de errores consecutivos o acciones repetidas antes de mostrar el diálogo 'Roo está teniendo problemas'. Establecer en 0 para desactivar este mecanismo de seguridad (nunca se activará).",

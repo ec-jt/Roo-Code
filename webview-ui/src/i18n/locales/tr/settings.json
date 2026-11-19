@@ -526,6 +526,11 @@
 			"label": "Hız sınırı",
 			"description": "API istekleri arasındaki minimum süre."
 		},
+		"contextWindowOverride": {
+			"label": "Bağlam penceresi geçersiz kılma (token)",
+			"description": "Test için. Modeli, bağlam penceresi bu boyuttaymış gibi ele alır. Pencereyi yalnızca küçültür.",
+			"placeholder": "Boş = geçersiz kılma yok"
+		},
 		"consecutiveMistakeLimit": {
 			"label": "Hata ve Tekrar Limiti",
 			"description": "'Roo sorun yaşıyor' iletişim kutusunu göstermeden önceki ardışık hata veya tekrarlanan eylem sayısı. Bu güvenlik mekanizmasını devre dışı bırakmak için 0 olarak ayarlayın (asla tetiklenmez).",

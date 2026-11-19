@@ -526,6 +526,11 @@
 			"label": "Rate limit",
 			"description": "Waktu minimum antara permintaan API."
 		},
+		"contextWindowOverride": {
+			"label": "Penggantian jendela konteks (token)",
+			"description": "Untuk pengujian. Memperlakukan model seolah-olah jendela konteksnya berukuran ini. Hanya memperkecil jendela.",
+			"placeholder": "Kosong = tanpa penggantian"
+		},
 		"consecutiveMistakeLimit": {
 			"label": "Batas Kesalahan & Pengulangan",
 			"description": "Jumlah kesalahan berturut-turut atau tindakan berulang sebelum menampilkan dialog 'Roo mengalami masalah'. Atur ke 0 untuk menonaktifkan mekanisme keamanan ini (tidak akan pernah terpicu).",

@@ -526,6 +526,11 @@
 			"label": "Limit szybkości",
 			"description": "Minimalny czas między żądaniami API."
 		},
+		"contextWindowOverride": {
+			"label": "Nadpisanie okna kontekstu (tokeny)",
+			"description": "Do testów. Traktuje model tak, jakby jego okno kontekstu miało ten rozmiar. Tylko zmniejsza okno.",
+			"placeholder": "Puste = brak nadpisania"
+		},
 		"consecutiveMistakeLimit": {
 			"label": "Limit błędów i powtórzeń",
 			"description": "Liczba kolejnych błędów lub powtórzonych akcji przed wyświetleniem okna dialogowego 'Roo ma problemy'. Ustaw na 0, aby wyłączyć ten mechanizm bezpieczeństwa (nigdy się nie uruchomi).",

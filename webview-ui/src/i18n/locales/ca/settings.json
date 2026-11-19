@@ -526,6 +526,11 @@
 			"label": "Límit de freqüència",
 			"description": "Temps mínim entre sol·licituds d'API."
 		},
+		"contextWindowOverride": {
+			"label": "Substitució de la finestra de context (tokens)",
+			"description": "Per a proves. Tracta el model com si la seva finestra de context fos d’aquesta mida. Només redueix la finestra.",
+			"placeholder": "Buit = sense substitució"
+		},
 		"consecutiveMistakeLimit": {
 			"label": "Límit d'errors i repeticions",
 			"description": "Nombre d'errors consecutius o accions repetides abans de mostrar el diàleg 'En Roo està tenint problemes'. Estableix a 0 per desactivar aquest mecanisme de seguretat (no s'activarà mai).",

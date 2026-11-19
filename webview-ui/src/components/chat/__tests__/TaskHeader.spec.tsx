@@ -83,7 +83,8 @@ vi.mock("@/components/ui/hooks/useSelectedModel", () => ({
 
 // Mock getModelMaxOutputTokens from @roo/api
 let mockMaxOutputTokens = 0
-vi.mock("@roo/api", () => ({
+vi.mock("@roo/api", async (importOriginal) => ({
+	applyContextWindowOverride: (await importOriginal<typeof import("@roo/api")>()).applyContextWindowOverride,
 	getModelMaxOutputTokens: () => mockMaxOutputTokens,
 }))
 
@@ -247,6 +248,26 @@ describe("TaskHeader", () => {
 			mockMaxOutputTokens = 200
 			renderTaskHeader({ contextTokens: 100 })
 			expect(screen.getByText("50%")).toBeInTheDocument()
+		})
+		it("uses the profile context window override as the denominator", () => {
+			const original = mockExtensionState.apiConfiguration
+			mockExtensionState.apiConfiguration = { ...original, modelContextWindowOverride: 400 }
+			try {
+				renderTaskHeader({ contextTokens: 200 })
+				expect(screen.getByText("50%")).toBeInTheDocument()
+			} finally {
+				mockExtensionState.apiConfiguration = original
+			}
+		})
+		it("ignores an override larger than the model window", () => {
+			const original = mockExtensionState.apiConfiguration
+			mockExtensionState.apiConfiguration = { ...original, modelContextWindowOverride: 5000 }
+			try {
+				renderTaskHeader({ contextTokens: 200 })
+				expect(screen.getByText("20%")).toBeInTheDocument()
+			} finally {
+				mockExtensionState.apiConfiguration = original
+			}
 		})
 	})
 })

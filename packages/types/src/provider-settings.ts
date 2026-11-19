@@ -187,6 +187,10 @@ const baseProviderSettingsSchema = z.object({
 
 	// Model verbosity.
 	verbosity: verbosityLevelsSchema.optional(),
+
+	// For testing: treat the model as if its context window were this size.
+	// Only lowers the window (min of this and the model's real window). Provider requests are unchanged.
+	modelContextWindowOverride: z.number().int().positive().optional(),
 })
 
 // Several of the providers share common model config properties.

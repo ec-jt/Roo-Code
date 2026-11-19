@@ -526,6 +526,11 @@
 			"label": "Limite de taxa",
 			"description": "Tempo mínimo entre requisições de API."
 		},
+		"contextWindowOverride": {
+			"label": "Substituição da janela de contexto (tokens)",
+			"description": "Para testes. Trata o modelo como se sua janela de contexto tivesse este tamanho. Apenas reduz a janela.",
+			"placeholder": "Vazio = sem substituição"
+		},
 		"consecutiveMistakeLimit": {
 			"label": "Limite de Erros e Repetições",
 			"description": "Número de erros consecutivos ou ações repetidas antes de exibir o diálogo 'Roo está com problemas'. Defina como 0 para desativar este mecanismo de segurança (ele nunca será acionado).",

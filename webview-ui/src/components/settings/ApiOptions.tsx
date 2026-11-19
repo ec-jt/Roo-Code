@@ -106,6 +106,7 @@ import { TodoListSettingsControl } from "./TodoListSettingsControl"
 import { TemperatureControl } from "./TemperatureControl"
 import { RateLimitSecondsControl } from "./RateLimitSecondsControl"
 import { ConsecutiveMistakeLimitControl } from "./ConsecutiveMistakeLimitControl"
+import { ContextWindowOverrideControl } from "./ContextWindowOverrideControl"
 import { BedrockCustomArn } from "./providers/BedrockCustomArn"
 import { buildDocLink } from "@src/utils/docLinks"
 import { BookOpenText } from "lucide-react"
@@ -810,6 +811,10 @@ const ApiOptions = ({
 											: DEFAULT_CONSECUTIVE_MISTAKE_LIMIT
 									}
 									onChange={(value) => setApiConfigurationField("consecutiveMistakeLimit", value)}
+								/>
+								<ContextWindowOverrideControl
+									value={apiConfiguration.modelContextWindowOverride}
+									onChange={(value) => setApiConfigurationField("modelContextWindowOverride", value)}
 								/>
 								{selectedProvider === "poe" && (
 									<VSCodeTextField

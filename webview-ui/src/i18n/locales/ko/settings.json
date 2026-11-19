@@ -526,6 +526,11 @@
 			"label": "속도 제한",
 			"description": "API 요청 간 최소 시간."
 		},
+		"contextWindowOverride": {
+			"label": "컨텍스트 창 재정의 (토큰)",
+			"description": "테스트용입니다. 모델의 컨텍스트 창이 이 크기인 것처럼 처리합니다. 창을 줄이기만 합니다.",
+			"placeholder": "비워 두면 재정의 없음"
+		},
 		"consecutiveMistakeLimit": {
 			"label": "오류 및 반복 제한",
 			"description": "'Roo에 문제가 발생했습니다' 대화 상자를 표시하기 전의 연속 오류 또는 반복 작업 수. 이 안전 메커니즘을 비활성화하려면 0으로 설정하세요(절대 트리거되지 않음).",

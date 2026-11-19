@@ -304,6 +304,20 @@ describe("ApiOptions", () => {
 		expect(screen.getByTestId("rate-limit-seconds-control")).toBeInTheDocument()
 	})
 
+	it("renders the shared context window override field and updates the profile", () => {
+		const setApiConfigurationField = vi.fn()
+		renderApiOptions({
+			apiConfiguration: { apiProvider: "anthropic", modelContextWindowOverride: 64000 },
+			setApiConfigurationField,
+		})
+		const input = screen.getByTestId("context-window-override-input")
+		expect(input).toHaveValue("64000")
+		fireEvent.change(input, { target: { value: "32000" } })
+		expect(setApiConfigurationField).toHaveBeenCalledWith("modelContextWindowOverride", 32000)
+		fireEvent.change(input, { target: { value: "" } })
+		expect(setApiConfigurationField).toHaveBeenCalledWith("modelContextWindowOverride", undefined)
+	})
+
 	it("hides all controls when fromWelcomeView is true", () => {
 		renderApiOptions({ fromWelcomeView: true })
 		expect(screen.queryByTestId("temperature-control")).not.toBeInTheDocument()

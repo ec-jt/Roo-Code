@@ -554,11 +554,11 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	}
 
 	/**
-		* Push text the user sent with a tool approval or denial (including a queued
-		* message drained into that ask) as its own `<user_message>` text block.
-		* Call it after the matching tool_result. Keeping user text out of the
-		* tool_result lets the model tell user input apart from tool output.
-		*/
+	 * Push text the user sent with a tool approval or denial (including a queued
+	 * message drained into that ask) as its own `<user_message>` text block.
+	 * Call it after the matching tool_result. Keeping user text out of the
+	 * tool_result lets the model tell user input apart from tool output.
+	 */
 	public pushUserFeedbackToUserContent(text: string | undefined, images?: string[]): void {
 		if (text) {
 			this.userMessageContent.push({ type: "text", text: formatResponse.userMessage(text) })
@@ -6164,6 +6164,43 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 		if (this.modelOperationClosed || this.abort || this.persistenceClosed)
 			throw new Error("Task dispatch is closed")
+		// Proactive overflow detection for a profile context window override. The provider would
+		// accept the larger real window, so treat crossing the overridden window like a provider
+		// context-limit rejection: run the same recovery once, then retry. Without an override this
+		// path never runs and behavior is unchanged.
+		if (
+			!this.modelOperationPrepared &&
+			!recovery.attempted &&
+			autoCondenseContext &&
+			typeof apiConfiguration?.modelContextWindowOverride === "number"
+		) {
+			const contextTokens = this.getTokenUsage().contextTokens ?? 0
+			const outputReserve =
+				getModelMaxOutputTokens({
+					modelId: resolvedModel.id,
+					model: resolvedModel.info,
+					settings: apiConfiguration,
+				}) ?? 0
+			if (contextTokens > 0 && contextTokens + outputReserve > resolvedModel.info.contextWindow) {
+				recovery.attempted = true
+				// Let "cancel request" abort the proactive compaction like a normal request.
+				const controller = this.modelDispatchAbortController ?? new AbortController()
+				if (!this.modelDispatchRuntime) this.currentRequestAbortController = controller
+				try {
+					await this.handleContextWindowExceededError(
+						requestRevision,
+						condensationHandler,
+						controller.signal,
+						metadata,
+					)
+				} finally {
+					if (this.currentRequestAbortController === controller)
+						this.currentRequestAbortController = undefined
+				}
+				yield* this.attemptApiRequestPinned(retryAttempt, {}, recovery)
+				return
+			}
+		}
 		try {
 			const persistedHistory = structuredClone(this.apiConversationHistory)
 			const historyIdentity = JSON.stringify(persistedHistory)

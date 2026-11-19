@@ -7,6 +7,7 @@ import { saveApiMessages } from "../../task-persistence"
 import { readBranchProvenance, saveRequestSnapshot } from "../model-operation/storage"
 import { attemptCompletionTool } from "../../tools/AttemptCompletionTool"
 import { saveContextRecoverySnapshot } from "../../context-management/context-recovery"
+import { applyContextWindowOverride } from "../../../shared/api"
 
 vi.mock("../../context-management/context-recovery", async (original) => ({
 	...(await original<typeof import("../../context-management/context-recovery")>()),
@@ -512,6 +513,50 @@ describe("Task opt-in model dispatch", () => {
 		if (!mediated) (task as any).modelDispatchRuntime = undefined
 		admit.mockResolvedValue({ outcome: "granted", settle })
 	}
+	describe("profile context window override", () => {
+		const useOverride = (override: number) => {
+			task.apiConfiguration = { ...task.apiConfiguration, modelContextWindowOverride: override }
+			const getModel = task.api.getModel.bind(task.api)
+			vi.spyOn(task.api, "getModel").mockImplementation(() => {
+				const model = getModel()
+				return {
+					...model,
+					info: applyContextWindowOverride(model.info, { modelContextWindowOverride: override }),
+				}
+			})
+		}
+		it("compacts proactively before dispatch when usage crosses the overridden window", async () => {
+			await enableOverflow(false)
+			useOverride(64_000)
+			vi.mocked(task.getTokenUsage).mockReturnValue({ contextTokens: 60_000 } as any)
+			const repair = vi.spyOn(task as any, "handleContextWindowExceededError")
+			create.mockResolvedValueOnce(response()).mockResolvedValueOnce(response("answer"))
+			await consume(task.attemptApiRequest())
+			expect(repair).toHaveBeenCalledOnce()
+			expect(create).toHaveBeenCalledTimes(2) // summary, then the real request; no provider rejection
+			expect(task.apiConversationHistory.some((message) => message.isSummary)).toBe(true)
+		})
+		it("dispatches normally while usage fits the overridden window", async () => {
+			await enableOverflow(false)
+			useOverride(64_000)
+			vi.mocked(task.getTokenUsage).mockReturnValue({ contextTokens: 40_000 } as any)
+			const repair = vi.spyOn(task as any, "handleContextWindowExceededError")
+			create.mockResolvedValueOnce(response("answer"))
+			await consume(task.attemptApiRequest())
+			expect(repair).not.toHaveBeenCalled()
+			expect(create).toHaveBeenCalledOnce()
+		})
+		it("does not compact proactively when automatic compaction is disabled", async () => {
+			admit.mockResolvedValue({ outcome: "granted", settle })
+			;(task as any).modelDispatchRuntime = undefined
+			useOverride(64_000)
+			vi.mocked(task.getTokenUsage).mockReturnValue({ contextTokens: 60_000 } as any)
+			const repair = vi.spyOn(task as any, "handleContextWindowExceededError")
+			create.mockResolvedValueOnce(response("answer"))
+			await consume(task.attemptApiRequest())
+			expect(repair).not.toHaveBeenCalled()
+		})
+	})
 	it.each([false, true])("high usage never dispatches a preflight summary, mediated=%s", async (mediated) => {
 		await enableOverflow(mediated)
 		vi.mocked(task.getTokenUsage).mockReturnValue({ contextTokens: 999999 } as any)

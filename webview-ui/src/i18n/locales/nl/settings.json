@@ -526,6 +526,11 @@
 			"label": "Snelheidslimiet",
 			"description": "Minimale tijd tussen API-verzoeken."
 		},
+		"contextWindowOverride": {
+			"label": "Contextvenster overschrijven (tokens)",
+			"description": "Voor testen. Behandelt het model alsof het contextvenster deze grootte heeft. Verkleint het venster alleen.",
+			"placeholder": "Leeg = geen overschrijving"
+		},
 		"consecutiveMistakeLimit": {
 			"label": "Fout- & Herhalingslimiet",
 			"description": "Aantal opeenvolgende fouten of herhaalde acties voordat het dialoogvenster 'Roo ondervindt problemen' wordt weergegeven. Zet op 0 om dit veiligheidsmechanisme uit te schakelen (wordt nooit geactiveerd).",
