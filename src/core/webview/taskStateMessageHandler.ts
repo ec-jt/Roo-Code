@@ -17,7 +17,12 @@ import {
 /** Native entry point. Webview payloads are validated and destructive/consent actions receive native confirmation. */
 export async function handleTaskStateRequest(provider: ClineProvider, raw: unknown): Promise<void> {
 	const parsed = taskStateNativeRequestSchema.safeParse(raw)
-	if (!parsed.success) return
+	if (!parsed.success) {
+		// Never fail silently. Without a valid requestId the panel cannot correlate a reply,
+		// so log it; the panel's own timeout then surfaces the failure to the user.
+		provider.log(`[taskState] Rejected malformed task-state request: ${parsed.error.issues.length} issue(s)`)
+		return
+	}
 	const request = parsed.data
 	const response: TaskStateNativeResponse = { requestId: request.requestId, taskId: request.taskId }
 	try {
@@ -30,8 +35,12 @@ export async function handleTaskStateRequest(provider: ClineProvider, raw: unkno
 		const mutating = !["read", "export", "stop"].includes(request.action)
 		if (mutating && state.revision !== request.expectedRevision)
 			throw new Error("Task state changed; refresh before retrying")
+		// The user's own enable (initialize) only needs the current open task: it can create a ledger
+		// only where none exists, so it never alters an in-flight request. Everything else stays idle-only.
+		const assertAllowed = () =>
+			request.action === "initialize" ? task.assertTaskStateEnableAllowed() : task.assertTaskStateNativeAllowed()
 		if (mutating) {
-			task.assertTaskStateNativeAllowed()
+			assertAllowed()
 			if (request.action === "fresh-context") {
 				await task.createReviewedTaskStateContext(request.expectedRevision!)
 			} else {
@@ -62,7 +71,7 @@ export async function handleTaskStateRequest(provider: ClineProvider, raw: unkno
 				)
 				if (answer !== "Approve task-state action") throw new Error("Task-state action cancelled")
 				await options.authorize()
-				task.assertTaskStateNativeAllowed()
+				assertAllowed()
 				if ((await store.read(options.validHistoryAnchors)).revision !== request.expectedRevision)
 					throw new Error("Task state changed during review")
 				switch (request.action) {
@@ -129,6 +138,7 @@ export async function handleTaskStateRequest(provider: ClineProvider, raw: unkno
 		if (request.action === "export") response.exportText = renderTaskState(state.snapshot)
 	} catch (error) {
 		response.error = error instanceof Error ? error.message : "Task-state action failed"
+		provider.log(`[taskState] ${request.action} failed for task ${request.taskId}: ${response.error}`)
 	}
 	await provider.postMessageToWebview({ type: "taskStateResponse", taskStateResponse: response })
 }

@@ -12,6 +12,9 @@ import { taskStateTransaction, recordTaskStateMilestone } from "../../services/t
 import { renderTaskState } from "../../services/task-state/render"
 import { TaskStateError } from "../../services/task-state/types"
 
+export const TASK_STATE_DISABLED_GUIDANCE =
+	'Task state must be enabled by the user. Ask the user to enable task state in the task panel ("Task state" below the task header, then "Enable task state"); it can be enabled at any time, including while a question is pending. Until then, continue without task_state (for example, use the todo list).'
+
 export class TaskStateTool extends BaseTool<"task_state"> {
 	readonly name = "task_state" as const
 	async execute(raw: NativeToolArgs["task_state"], task: Task, callbacks: ToolCallbacks) {
@@ -33,7 +36,7 @@ export class TaskStateTool extends BaseTool<"task_state"> {
 					throw new TaskStateError("MODE", "Task state is unavailable in this mode")
 				const current = await store.read(options.validHistoryAnchors)
 				if (!current.snapshot || !current.policy.recallEnabled)
-					throw new TaskStateError("DISABLED", "Task state must be enabled by the user")
+					throw new TaskStateError("DISABLED", TASK_STATE_DISABLED_GUIDANCE)
 				if (args.action === "patch" && current.revision !== args.expected_revision)
 					throw new TaskStateError("CONFLICT", "Reread the current ledger revision")
 				return current
@@ -60,7 +63,9 @@ export class TaskStateTool extends BaseTool<"task_state"> {
 			}
 			callbacks.pushToolResult(`Ledger revision: ${result.revision}\n${renderTaskState(result.snapshot)}`)
 		} catch (error) {
-			task.didToolFailInCurrentTurn = true
+			// DISABLED is a user-controlled state, not a model mistake: it never counts toward the mistake
+			// limit and does not block attempt_completion in this turn.
+			if (!(error instanceof TaskStateError && error.code === "DISABLED")) task.didToolFailInCurrentTurn = true
 			callbacks.pushToolResult(
 				error instanceof TaskStateError
 					? `${error.code}: ${error.message}`

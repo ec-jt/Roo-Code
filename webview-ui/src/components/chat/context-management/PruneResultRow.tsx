@@ -4,6 +4,7 @@ import { Scissors } from "lucide-react"
 import type { ContextPrune } from "@roo-code/types"
 
 import { ContextRecoveryButton } from "./ContextRecoveryButton"
+import { ReducedContentNotes } from "./ReducedContentNotes"
 
 interface PruneResultRowProps {
 	data: ContextPrune
@@ -16,8 +17,6 @@ export function PruneResultRow({ data }: PruneResultRowProps) {
 	const { t } = useTranslation()
 	const prevTokens = data.prevContextTokens ?? 0
 	const newTokens = data.newContextTokens ?? 0
-	const count = data.prunedCount ?? 0
-	const offloaded = data.offloadedCount ?? 0
 
 	return (
 		<div className="mb-2">
@@ -28,16 +27,7 @@ export function PruneResultRow({ data }: PruneResultRowProps) {
 					{prevTokens.toLocaleString()} → {newTokens.toLocaleString()} {t("chat:contextManagement.tokens")}
 				</span>
 			</div>
-			{count > 0 && (
-				<p className="text-xs text-vscode-descriptionForeground mt-1">
-					{t("chat:contextManagement.prune.description", { count })}
-				</p>
-			)}
-			{offloaded > 0 && (
-				<p className="text-xs text-vscode-descriptionForeground mt-1">
-					{t("chat:contextManagement.prune.offloaded", { count: offloaded })}
-				</p>
-			)}
+			<ReducedContentNotes prunedCount={data.prunedCount} offloadedCount={data.offloadedCount} />
 			<ContextRecoveryButton eventId={data.pruneId} />
 		</div>
 	)

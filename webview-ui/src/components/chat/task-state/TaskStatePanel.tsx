@@ -131,8 +131,10 @@ export function TaskStateEditor({ taskId }: { taskId: string }) {
 				secrets.
 			</p>
 			<p>
-				Changes require the current task to be idle and native confirmation. If busy, stop the task and reopen
-				it from History without resuming to review. Refresh to see current runtime status.
+				You can enable task state at any time, including before the first response or while a question is
+				pending; it applies from the next turn. Other changes require the current task to be idle. All changes
+				need native confirmation. If busy, stop the task and reopen it from History without resuming to review.
+				Refresh to see current runtime status.
 			</p>
 			<div className="flex flex-wrap gap-2">
 				<button type="button" className={actionClass} disabled={busy} onClick={refresh}>

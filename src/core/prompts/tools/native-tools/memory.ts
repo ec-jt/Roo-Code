@@ -55,19 +55,26 @@ export const memoryParserArgsSchema = memoryArgsObject.superRefine(refineMemoryA
 export const MEMORY_REVISION_REQUIRED =
 	'Updates and deletion require expected_revision. Call memory with action "read" for this ID first, then pass the exact revision it returns as expected_revision.'
 
+/** Undefined, empty or whitespace-only strings, and the literal string "null" (trimmed, case-insensitive). */
+const blankToNull = (value: unknown) =>
+	value === undefined || (typeof value === "string" && (value.trim() === "" || value.trim().toLowerCase() === "null"))
+		? null
+		: value
+
 /**
- * Tolerate loose model output (for example DeepSeek): treat a missing, empty, or whitespace-only
- * expected_revision as null. Other fields are left for strict validation.
+ * Tolerate loose model output (for example DeepSeek): treat a missing, empty, whitespace-only or
+ * literal "null" expected_revision as null. Structured fields (id, type) get the same treatment
+ * when present, because "null" can never be a valid UUID or topic type. Free-text fields (name,
+ * description, body, query) are left for strict validation, where "null" may be real content.
  */
 export function normalizeMemoryArgs(args: unknown): unknown {
 	if (!args || typeof args !== "object" || Array.isArray(args)) return args
 	const record = args as Record<string, unknown>
-	const revision = record.expected_revision
-	return {
-		...record,
-		expected_revision:
-			revision === undefined || (typeof revision === "string" && revision.trim() === "") ? null : revision,
+	const normalized: Record<string, unknown> = { ...record, expected_revision: blankToNull(record.expected_revision) }
+	for (const key of ["id", "type"] as const) {
+		if (key in record) normalized[key] = blankToNull(record[key])
 	}
+	return normalized
 }
 
 export default {

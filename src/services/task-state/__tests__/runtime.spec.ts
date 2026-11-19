@@ -33,7 +33,7 @@ let usage: number
 beforeEach(async () => {
 	vi.clearAllMocks()
 	Object.assign(vscode.workspace, { isTrusted: true })
-	root = await fs.mkdtemp(path.join(os.tmpdir(), "roo-task-runtime-"))
+	root = await fs.mkdtemp(path.join(await fs.realpath(os.tmpdir()), "roo-task-runtime-"))
 	await fs.mkdir(path.join(root, "task"))
 	usage = 0
 	provider = {
@@ -41,6 +41,7 @@ beforeEach(async () => {
 		getCurrentTask: () => task,
 		getState: async () => ({ mode: "code", customModes: [] }),
 		postMessageToWebview: vi.fn(),
+		log: vi.fn(),
 	}
 	task = {
 		taskId: "task",
@@ -53,6 +54,7 @@ beforeEach(async () => {
 		rooProtectedController: { isWriteProtected: () => false },
 		getTokenUsage: () => ({ totalTokensIn: usage, totalTokensOut: 0 }),
 		assertTaskStateNativeAllowed: vi.fn(),
+		assertTaskStateEnableAllowed: vi.fn(),
 	} as unknown as Task
 })
 afterEach(async () => {
@@ -194,6 +196,89 @@ describe("model tool and native consent boundaries", () => {
 		expect(provider.postMessageToWebview.mock.calls[0][0].taskStateResponse.error).toContain("changed")
 		expect(await pinTaskStateRecall(task)).toBe("")
 	})
+	const approve = () =>
+		vi.mocked(vscode.window.showWarningMessage).mockResolvedValue("Approve task-state action" as any)
+	const enable = (requestId: string) =>
+		handleTaskStateRequest(provider, {
+			requestId,
+			taskId: "task",
+			action: "initialize",
+			expectedRevision: null,
+			operations: [{ op: "set", field: "goal", value: "Build feature" }],
+		})
+	const busy = () =>
+		vi.mocked(task.assertTaskStateNativeAllowed).mockImplementation(() => {
+			throw new Error("Task-state review requires the current idle task with no pending tool results")
+		})
+
+	it("enables before the first API request; a following model read returns a revision", async () => {
+		approve()
+		task.apiConversationHistory = []
+		busy() // A new task is not idle yet; the idle-only check must not block the user's enable.
+		await enable("first")
+		const reply = provider.postMessageToWebview.mock.calls[0][0].taskStateResponse
+		expect(reply.error).toBeUndefined()
+		expect(reply.revision).toMatch(/^[0-9a-f]{64}$/)
+		expect(reply.policy.recallEnabled).toBe(true)
+		expect(task.assertTaskStateEnableAllowed).toHaveBeenCalled()
+		// The first turn then adds history; the ledger stays selected and readable by the model.
+		task.apiConversationHistory.push({ role: "user", content: "Build a feature" })
+		const callbacks = { askApproval: vi.fn(async () => true), pushToolResult: vi.fn(), handleError: vi.fn() }
+		await new TaskStateTool().execute({ action: "read", operations: "null" } as any, task, callbacks)
+		expect(callbacks.pushToolResult.mock.calls[0][0]).toMatch(/^Ledger revision: [0-9a-f]{64}\n/)
+	})
+
+	it("enables while an ask is pending, but other native changes stay idle-only", async () => {
+		approve()
+		busy()
+		await enable("pending-ask")
+		const enabled = provider.postMessageToWebview.mock.calls[0][0].taskStateResponse
+		expect(enabled.error).toBeUndefined()
+		expect(enabled.revision).toMatch(/^[0-9a-f]{64}$/)
+		await handleTaskStateRequest(provider, {
+			requestId: "correct",
+			taskId: "task",
+			action: "correct",
+			expectedRevision: enabled.revision,
+			operations: [{ op: "set", field: "goal", value: "Changed" }],
+		})
+		expect(provider.postMessageToWebview.mock.calls[1][0].taskStateResponse.error).toContain("idle")
+	})
+
+	it("surfaces and logs a failed enable instead of failing silently", async () => {
+		approve()
+		vi.mocked(task.assertTaskStateEnableAllowed).mockImplementation(() => {
+			throw new Error("Task state can only be enabled for the current open task")
+		})
+		await enable("fails")
+		const reply = provider.postMessageToWebview.mock.calls[0][0].taskStateResponse
+		expect(reply.error).toContain("current open task")
+		expect(provider.log).toHaveBeenCalledWith(expect.stringContaining("initialize failed"))
+		expect(await pinTaskStateRecall(task)).toBe("")
+	})
+
+	it("logs malformed requests", async () => {
+		await handleTaskStateRequest(provider, { action: "initialize" })
+		expect(provider.log).toHaveBeenCalledWith(expect.stringContaining("malformed"))
+		expect(provider.postMessageToWebview).not.toHaveBeenCalled()
+	})
+
+	it("returns DISABLED with enable guidance and does not count as a mistake", async () => {
+		const callbacks = { askApproval: vi.fn(async () => true), pushToolResult: vi.fn(), handleError: vi.fn() }
+		Object.assign(task, { consecutiveMistakeCount: 0, didToolFailInCurrentTurn: false })
+		await new TaskStateTool().execute(
+			{ action: "read", expected_revision: null, operations: null },
+			task,
+			callbacks,
+		)
+		const message = callbacks.pushToolResult.mock.calls[0][0] as string
+		expect(message).toMatch(/^DISABLED: /)
+		expect(message).toContain("Ask the user to enable task state in the task panel")
+		expect(task.consecutiveMistakeCount).toBe(0)
+		expect(task.didToolFailInCurrentTurn).toBe(false)
+		expect(callbacks.askApproval).not.toHaveBeenCalled()
+	})
+
 	it("does not inherit all-actions approval", async () => {
 		expect(
 			await checkAutoApproval({

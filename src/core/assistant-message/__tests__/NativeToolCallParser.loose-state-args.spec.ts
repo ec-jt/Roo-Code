@@ -37,6 +37,19 @@ describe("NativeToolCallParser loose task_state and memory arguments", () => {
 			})
 		})
 
+		it('accepts the literal string "null" (case-insensitive, trimmed) as null', () => {
+			// Exact DeepSeek payload from the 4.2.85 live check.
+			const result = parse("task_state", { action: "read", operations: "null" })
+			expect(result.argumentError).toBeUndefined()
+			expect(result.nativeArgs).toEqual({ action: "read", expected_revision: null, operations: null })
+			expect(
+				parse("task_state", { action: "read", expected_revision: "NULL ", operations: " Null" }).nativeArgs,
+			).toEqual({ action: "read", expected_revision: null, operations: null })
+			const patch = parse("task_state", { action: "patch", expected_revision: "null", operations: ops })
+			expect(patch.argumentError).toBeUndefined()
+			expect(patch.nativeArgs).toEqual({ action: "patch", expected_revision: null, operations: ops })
+		})
+
 		it("passes DeepSeek patch without expected_revision to the tool (no schema failure)", () => {
 			const result = parse("task_state", { action: "patch", operations: ops })
 			expect(result.argumentError).toBeUndefined()
@@ -74,6 +87,21 @@ describe("NativeToolCallParser loose task_state and memory arguments", () => {
 			expect(
 				parse("memory", { action: "read", scope: "project", id: memoryId, expected_revision: "" }).nativeArgs,
 			).toMatchObject({ action: "read", id: memoryId, expected_revision: null })
+		})
+
+		it('treats the literal string "null" as null for expected_revision, id and type', () => {
+			expect(
+				parse("memory", { action: "list", scope: "project", expected_revision: "null", id: "NULL " })
+					.nativeArgs,
+			).toEqual({ action: "list", scope: "project", expected_revision: null, id: null })
+			const del = parse("memory", {
+				action: "delete",
+				scope: "project",
+				id: memoryId,
+				expected_revision: "NULL ",
+			})
+			expect(del.argumentError).toBeUndefined()
+			expect(del.nativeArgs).toMatchObject({ action: "delete", id: memoryId, expected_revision: null })
 		})
 
 		it("passes delete without expected_revision to the tool (no schema failure)", () => {

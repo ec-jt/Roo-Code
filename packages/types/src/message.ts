@@ -223,6 +223,10 @@ export const contextCondenseSchema = z.object({
 	newContextTokens: z.number(),
 	summary: z.string(),
 	condenseId: z.string().optional(),
+	/** Large older tool results shortened before the summary ran. */
+	prunedCount: z.number().optional(),
+	/** Older images saved to the task folder before the summary ran. */
+	offloadedCount: z.number().optional(),
 })
 
 export type ContextCondense = z.infer<typeof contextCondenseSchema>
@@ -249,6 +253,10 @@ export const contextTruncationSchema = z.object({
 	newContextTokens: z.number(),
 	fallbackReason: z.enum(["context-limit", "empty-summary"]).optional(),
 	cost: z.number().optional(),
+	/** Large older tool results shortened before truncation ran. */
+	prunedCount: z.number().optional(),
+	/** Older images saved to the task folder before truncation ran. */
+	offloadedCount: z.number().optional(),
 })
 
 export type ContextTruncation = z.infer<typeof contextTruncationSchema>

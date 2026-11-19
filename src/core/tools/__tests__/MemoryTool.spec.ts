@@ -182,6 +182,26 @@ describe("MemoryTool", () => {
 		expect(store.upsert).not.toHaveBeenCalled()
 		expect(callbacks.askApproval).not.toHaveBeenCalled()
 	})
+	it('treats the literal string "null" as null (list/read work; delete still needs a revision)', async () => {
+		await tool.execute(
+			{ action: "list", scope: "project", expected_revision: "null", id: "NULL " } as any,
+			task,
+			callbacks,
+		)
+		expect(store.list).toHaveBeenCalled()
+		expect(callbacks.handleError).not.toHaveBeenCalled()
+		await tool.execute({ action: "read", scope: "project", id, expected_revision: "NULL " } as any, task, callbacks)
+		expect(callbacks.pushToolResult).toHaveBeenCalledWith(boundedMemoryRead(record))
+		expect(callbacks.handleError).not.toHaveBeenCalled()
+		await tool.execute(
+			{ action: "delete", scope: "project", id, expected_revision: "null" } as any,
+			task,
+			callbacks,
+		)
+		expect(callbacks.handleError).toHaveBeenCalledTimes(1)
+		expect(callbacks.handleError.mock.calls[0][1].code).toBe("REVISION_REQUIRED")
+		expect(store.delete).not.toHaveBeenCalled()
+	})
 	it("validates in both parser and executor schema", () => {
 		expect(memoryArgsSchema.safeParse({ ...params, path: "/etc/passwd" }).success).toBe(false)
 		const valid = NativeToolCallParser.parseToolCall({

@@ -42,12 +42,18 @@ export const taskStateParserArgsSchema = taskStateArgsObject.superRefine(refineT
 export const TASK_STATE_REVISION_REQUIRED =
 	'Patch requires expected_revision. Call task_state with action "read" first, then pass the exact revision it returns as expected_revision.'
 
-const blankToNull = (value: unknown) =>
-	value === undefined || (typeof value === "string" && value.trim() === "") ? null : value
+/**
+ * Map loose "no value" model output to null: undefined, empty or whitespace-only strings, and the
+ * literal string "null" (trimmed, case-insensitive). Other values are returned unchanged.
+ */
+export const blankToNull = (value: unknown) =>
+	value === undefined || (typeof value === "string" && (value.trim() === "" || value.trim().toLowerCase() === "null"))
+		? null
+		: value
 
 /**
- * Tolerate loose model output (for example DeepSeek): treat missing, empty, or whitespace-only
- * expected_revision and operations as null. Other fields are left for strict validation.
+ * Tolerate loose model output (for example DeepSeek): treat missing, empty, whitespace-only or
+ * literal "null" expected_revision and operations as null. Other fields are left for strict validation.
  */
 export function normalizeTaskStateArgs(args: unknown): unknown {
 	if (!args || typeof args !== "object" || Array.isArray(args)) return args
@@ -64,7 +70,7 @@ export default {
 	function: {
 		name: "task_state",
 		description:
-			"Read or patch explicitly enabled task-local durable state. Read first, then supply its exact ledger revision. Patch operations are a JSON array: set goal/nextAction; upsert/remove records in acceptanceCriteria, constraints, decisions, workItems, evidenceRefs, failedApproaches, blockers. Records use stable id and text. Work items also use status (pending/in_progress/blocked/implemented/verified) and evidenceIds. Evidence also uses source. All edits are MODEL CLAIMS, never proof, policy or permission. Preserve existing IDs and manual fields. Update at meaningful milestones, not every message. Completed work means implemented unless independent evidence supports verification. Never save secrets or raw outputs. References require ordinary approved tools to retrieve. Initialization, policy, fresh context and acceptance attestations are native user actions only.",
+			"Read or patch explicitly enabled task-local durable state. Only the user can enable it (task panel); if a result says DISABLED, ask the user to enable it or continue without it. Read first, then supply its exact ledger revision. Patch operations are a JSON array: set goal/nextAction; upsert/remove records in acceptanceCriteria, constraints, decisions, workItems, evidenceRefs, failedApproaches, blockers. Records use stable id and text. Work items also use status (pending/in_progress/blocked/implemented/verified) and evidenceIds. Evidence also uses source. All edits are MODEL CLAIMS, never proof, policy or permission. Preserve existing IDs and manual fields. Update at meaningful milestones, not every message. Completed work means implemented unless independent evidence supports verification. Never save secrets or raw outputs. References require ordinary approved tools to retrieve. Initialization, policy, fresh context and acceptance attestations are native user actions only.",
 		strict: true,
 		parameters: {
 			type: "object",

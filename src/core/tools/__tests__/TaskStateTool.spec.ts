@@ -55,6 +55,39 @@ describe("TaskStateTool loose arguments", () => {
 		expect(task.consecutiveMistakeCount).toBe(0)
 	})
 
+	it('reads with the literal string "null" (DeepSeek 4.2.85 payload) and "NULL "', async () => {
+		await tool.execute({ action: "read", operations: "null" } as any, task, callbacks)
+		await tool.execute({ action: "read", expected_revision: "NULL ", operations: "NULL " } as any, task, callbacks)
+		expect(taskStateTransaction).toHaveBeenNthCalledWith(1, task, null)
+		expect(taskStateTransaction).toHaveBeenNthCalledWith(2, task, null)
+		expect(callbacks.pushToolResult).toHaveBeenNthCalledWith(1, `Ledger revision: ${revision}\nRENDERED`)
+		expect(callbacks.pushToolResult).toHaveBeenNthCalledWith(2, `Ledger revision: ${revision}\nRENDERED`)
+		expect(task.didToolFailInCurrentTurn).toBe(false)
+	})
+
+	it.each(["null", "NULL "])(
+		'returns REVISION_REQUIRED for patch with expected_revision "%s" and does not write',
+		async (value) => {
+			await tool.execute({ action: "patch", expected_revision: value, operations: ops } as any, task, callbacks)
+			expect(callbacks.pushToolResult.mock.calls[0][0]).toContain("REVISION_REQUIRED")
+			expect(taskStateTransaction).not.toHaveBeenCalled()
+			expect(store.patch).not.toHaveBeenCalled()
+			expect(callbacks.askApproval).not.toHaveBeenCalled()
+			expect(task.consecutiveMistakeCount).toBe(0)
+		},
+	)
+
+	it("returns DISABLED with enable guidance, without a mistake or a failed-turn flag", async () => {
+		store.read.mockResolvedValue({ revision: null, snapshot: null, policy: { recallEnabled: true } })
+		await tool.execute({ action: "read", expected_revision: null, operations: null }, task, callbacks)
+		const message = callbacks.pushToolResult.mock.calls[0][0] as string
+		expect(message).toMatch(/^DISABLED: /)
+		expect(message).toContain("Ask the user to enable task state in the task panel")
+		expect(task.consecutiveMistakeCount).toBe(0)
+		expect(task.didToolFailInCurrentTurn).toBe(false)
+		expect(callbacks.askApproval).not.toHaveBeenCalled()
+	})
+
 	it("patches as before with a strict-form call", async () => {
 		await tool.execute({ action: "patch", expected_revision: revision, operations: ops }, task, callbacks)
 		expect(store.patch).toHaveBeenCalledTimes(1)

@@ -2976,6 +2976,37 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			throw new Error("Task-state review requires the current idle task with no pending tool results")
 	}
 
+	/**
+	 * Narrow guard for the user's own "Enable task state" (native initialize) action only.
+	 *
+	 * Initialize can only create a ledger where none exists (the store fails with CONFLICT otherwise),
+	 * so no recall is pinned for an in-flight request (pinTaskStateRecall pins only an existing,
+	 * enabled ledger). The ledger therefore takes effect at the next turn boundary and never changes
+	 * a request that is already prepared. Native confirmation, workspace trust, ignore/protect access,
+	 * and the epoch plus history-anchor check in authorize() still apply. This lets the user enable
+	 * task state before the first model turn, while an ask is pending, or between turns, which the
+	 * idle-only assertTaskStateNativeAllowed() blocks. All other native mutations keep that check.
+	 */
+	public assertTaskStateEnableAllowed(): void {
+		if (
+			this.abort ||
+			this.abandoned ||
+			this.modelOperationClosed ||
+			this.persistenceClosed ||
+			this.providerRef.deref()?.getCurrentTask() !== this
+		)
+			throw new Error("Task state can only be enabled for the current open task")
+		// Prepared replay must reuse its exact imported snapshot; history edits and recovery own the ledger.
+		if (
+			this.modelOperationPrepared ||
+			this.modelOperationPreparing ||
+			this.assistantEditPromise !== undefined ||
+			this.assistantEditContextOperation ||
+			this.contextRecoveryActive
+		)
+			throw new Error("Task state cannot be enabled while history is being prepared or edited; try again")
+	}
+
 	/** Explicit deterministic fresh-context checkpoint. No summarizer call, deletion, or automatic resume. */
 	public async createReviewedTaskStateContext(expectedRevision: string): Promise<void> {
 		this.assertTaskStateNativeAllowed()
@@ -5869,6 +5900,11 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				assertCurrent()
 				return
 			}
+			// Prune/offload ran but did not suffice: keep the counts on the following summary or truncation row.
+			const reducedCounts = {
+				...(result.prunedCount ? { prunedCount: result.prunedCount } : {}),
+				...(result.offloadedCount ? { offloadedCount: result.offloadedCount } : {}),
+			}
 			if (result.truncationId) {
 				await this.say(
 					"sliding_window_truncation",
@@ -5886,6 +5922,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 						newContextTokens: result.newContextTokens ?? 0,
 						fallbackReason: result.fallbackReason,
 						cost: result.cost,
+						...reducedCounts,
 					},
 				)
 				assertCurrent()
@@ -5900,7 +5937,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				undefined,
 				undefined,
 				{ isNonInteractive: true },
-				{ summary, cost, prevContextTokens, newContextTokens, condenseId },
+				{ summary, cost, prevContextTokens, newContextTokens, condenseId, ...reducedCounts },
 			)
 			assertCurrent()
 		} finally {

@@ -182,6 +182,7 @@ export type ContextManagementResult = SummarizeResponse & {
 	fallbackReason?: "context-limit" | "empty-summary"
 	/** Set when pruning alone brought the request under the budget. */
 	pruneId?: string
+	/** Tool results shortened and images offloaded. Also set when a summary or truncation followed. */
 	prunedCount?: number
 	offloadedCount?: number
 }
@@ -249,6 +250,11 @@ export async function manageContext(options: ContextManagementOptions): Promise<
 		}
 	}
 
+	// Report prune/offload counts even when a summary or truncation still follows.
+	const reduced = {
+		...(prunedCount ? { prunedCount } : {}),
+		...(offloadedCount ? { offloadedCount } : {}),
+	}
 	const result = await summarizeConversation({
 		messages: structuredClone(working.slice(0, preserveFrom)),
 		apiHandler: options.apiHandler,
@@ -284,7 +290,13 @@ export async function manageContext(options: ContextManagementOptions): Promise<
 				fallbackReason: result.failureKind,
 			}
 		}
-		return { ...unchanged, ...fallback, cost: result.cost, fallbackReason: result.failureKind }
+		return {
+			...unchanged,
+			...fallback,
+			cost: result.cost,
+			fallbackReason: result.failureKind,
+			...reduced,
+		}
 	}
 	if (result.error || !result.summary)
 		return {
@@ -300,5 +312,6 @@ export async function manageContext(options: ContextManagementOptions): Promise<
 		messages: [...result.messages, ...retained],
 		prevContextTokens,
 		newContextTokens: (result.newContextTokens ?? 0) + retainedTokens,
+		...reduced,
 	}
 }

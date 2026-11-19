@@ -4,8 +4,8 @@ Open **Task state** below the current chat task header. Opening the panel reads 
 
 ## Enable and maintain task-local memory
 
-1. Stop the task if it is active. If necessary, reopen it from History without resuming.
-2. Open **Task state** and select **Refresh task state**.
+1. Open **Task state** and select **Refresh task state**. You can enable task state at any time while the task is open, including before the first response and while a question is pending. It applies from the next turn.
+2. For any other change (review and save, policy, fresh context), stop the task if it is active. If necessary, reopen it from History without resuming.
 3. Enter the goal and next action. Use **Records and evidence** to select a collection, enter an ID and text, and add the record to the draft.
 4. Select **Enable task state** for a task with no ledger, or **Review and save state** for an existing ledger.
 5. Review the exact payload in the native confirmation dialog before approving it.

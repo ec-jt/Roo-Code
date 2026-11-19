@@ -449,6 +449,24 @@ describe("Context Management", () => {
 			expect(result.messages.at(-1)).toBe(history.at(-1))
 		})
 
+		it("keeps the offload count on the result when the summary still runs (D3)", async () => {
+			withImages(true)
+			vi.spyOn(condenseModule, "summarizeConversation").mockResolvedValue({
+				messages: [{ role: "user", content: "summary", isSummary: true }],
+				summary: "summary",
+				cost: 0.05,
+				condenseId: "c1",
+			})
+			// Estimate stays over budget, so offload alone is not enough.
+			vi.spyOn(mockApiHandler, "countTokens").mockResolvedValue(200_000)
+			const saveImage = vi.fn(async (_d: string, _m: string, hash: string) => `/t/images/${hash}.png`)
+			const result = await manageContext({ ...base, saveArtifact: async () => "tool-1.txt", saveImage })
+			expect(result.condenseId).toBe("c1")
+			expect(result.pruneId).toBeUndefined()
+			expect(result.offloadedCount).toBe(1)
+			expect(result.prunedCount).toBeUndefined()
+		})
+
 		it("leaves images alone for models without image support", async () => {
 			withImages(false)
 			vi.spyOn(condenseModule, "summarizeConversation").mockResolvedValue({
