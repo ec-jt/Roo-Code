@@ -17,6 +17,7 @@ interface ClineMessage {
 	ts: number
 	text?: string
 	partial?: boolean
+	isAnswered?: boolean
 }
 
 interface ExtensionState {
@@ -1179,6 +1180,67 @@ describe("ChatView - Message Queueing Tests", () => {
 				askResponse: "messageResponse",
 			}),
 		)
+	})
+
+	const sendDuringToolAsk = async (isAnswered: boolean, text: string) => {
+		const { getByTestId } = renderChatView()
+		const now = Date.now()
+		mockPostMessage({
+			clineMessages: [
+				{ type: "say", say: "task", ts: now - 3000, text: "Initial task" },
+				{
+					type: "say",
+					say: "api_req_started",
+					ts: now - 2000,
+					text: JSON.stringify({ apiProtocol: "anthropic", cost: 0.01 }),
+				},
+				{
+					type: "ask",
+					ask: "tool",
+					ts: now,
+					partial: false,
+					isAnswered,
+					text: JSON.stringify({ tool: "updateTodoList", todos: [] }),
+				},
+			],
+		})
+		await waitFor(() => expect(getByTestId("chat-textarea")).toBeInTheDocument())
+		await act(async () => {
+			await new Promise((resolve) => setTimeout(resolve, 50))
+		})
+		vi.mocked(vscode.postMessage).mockClear()
+		const input = getByTestId("chat-textarea").querySelector("input")! as HTMLInputElement
+		await act(async () => {
+			fireEvent.change(input, { target: { value: text } })
+			fireEvent.keyDown(input, { key: "Enter", code: "Enter" })
+		})
+	}
+
+	it("queues messages when the last tool ask is already answered (auto-approved)", async () => {
+		await sendDuringToolAsk(true, "message after auto-approved tool")
+
+		await waitFor(() => {
+			expect(vscode.postMessage).toHaveBeenCalledWith({
+				type: "queueMessage",
+				text: "message after auto-approved tool",
+				images: [],
+			})
+		})
+		expect(vscode.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: "askResponse" }))
+	})
+
+	it("sends feedback directly when the last tool ask is still waiting", async () => {
+		await sendDuringToolAsk(false, "feedback for pending tool")
+
+		await waitFor(() => {
+			expect(vscode.postMessage).toHaveBeenCalledWith({
+				type: "askResponse",
+				askResponse: "messageResponse",
+				text: "feedback for pending tool",
+				images: [],
+			})
+		})
+		expect(vscode.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: "queueMessage" }))
 	})
 
 	it("queues messages during command_output state instead of losing them", async () => {

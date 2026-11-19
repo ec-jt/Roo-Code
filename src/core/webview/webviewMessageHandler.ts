@@ -757,10 +757,16 @@ export const webviewMessageHandler = async (
 				if (
 					provider.getCurrentTask() === task &&
 					!provider.isTaskBackgrounded &&
-					provider.isChatWindowFollowing?.() !== false &&
-					task.clineMessages?.at(-1)?.ts === askTs
-				)
-					task.handleWebviewAskResponse(message.askResponse!, resolved.text, resolved.images)
+					provider.isChatWindowFollowing?.() !== false
+				) {
+					if (task.clineMessages?.at(-1)?.ts === askTs)
+						task.handleWebviewAskResponse(message.askResponse!, resolved.text, resolved.images)
+					// A new row arrived while images were resolved, so the response no
+					// longer targets the current ask. Keep a typed user message instead
+					// of discarding it; the next ask drains the queue.
+					else if (message.askResponse === "messageResponse")
+						task.queueUserMessage(resolved.text, resolved.images)
+				}
 			}
 			break
 

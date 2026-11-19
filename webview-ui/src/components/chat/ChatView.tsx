@@ -317,6 +317,23 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 					// Reset user response flag when a new ask arrives to allow auto-approval
 					userRespondedRef.current = false
 					const isPartial = lastMessage.partial === true
+					// An approval ask that was already answered (e.g. auto-approved) is
+					// no longer waiting for a response. Treat the task as busy so typed
+					// text goes through queueMessage instead of a stale askResponse.
+					if (
+						!isPartial &&
+						lastMessage.isAnswered === true &&
+						(lastMessage.ask === "tool" ||
+							lastMessage.ask === "command" ||
+							lastMessage.ask === "use_mcp_server" ||
+							lastMessage.ask === "browser_action_launch" ||
+							lastMessage.ask === "computer_action")
+					) {
+						setSendingDisabled(true)
+						setClineAsk(undefined)
+						setEnableButtons(false)
+						break
+					}
 					switch (lastMessage.ask) {
 						case "api_req_failed":
 							playSound("progress_loop")

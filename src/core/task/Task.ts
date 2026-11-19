@@ -485,6 +485,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	private askResponseText?: string
 	private askResponseImages?: string[]
 	public lastMessageTs?: number
+	// Number of complete asks currently accepting a response (see askWithExistingApproval).
+	private pendingAskCount = 0
 	private autoApprovalTimeoutRef?: NodeJS.Timeout
 
 	// Tool Use
@@ -2468,6 +2470,31 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		progressStatus?: ToolProgressStatus,
 		isProtected?: boolean,
 	): Promise<{ response: ClineAskResponse; text?: string; images?: string[] }> {
+		// Partial asks never wait for a response, so they do not count as pending.
+		if (partial) return this.askAndWait(type, text, partial, progressStatus, isProtected)
+		// Track that a complete ask is accepting a response. The counter is raised
+		// synchronously before askAndWait() resets the stored response, and lowered
+		// after the response is read or the ask is abandoned.
+		this.pendingAskCount = (this.pendingAskCount || 0) + 1
+		try {
+			return await this.askAndWait(type, text, partial, progressStatus, isProtected)
+		} finally {
+			this.pendingAskCount = Math.max(0, (this.pendingAskCount || 0) - 1)
+		}
+	}
+
+	/** True while a complete ask is between its response reset and its result. */
+	public get isAskPending(): boolean {
+		return (this.pendingAskCount || 0) > 0
+	}
+
+	private async askAndWait(
+		type: ClineAsk,
+		text?: string,
+		partial?: boolean,
+		progressStatus?: ToolProgressStatus,
+		isProtected?: boolean,
+	): Promise<{ response: ClineAskResponse; text?: string; images?: string[] }> {
 		// If this Cline instance was aborted by the provider, then the only
 		// thing keeping us alive is a promise still running in the background,
 		// in which case we don't want to send its result to the webview as it
@@ -2739,6 +2766,10 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 	handleWebviewAskResponse(askResponse: ClineAskResponse, text?: string, images?: string[]) {
 		if (this.modelOperationClosed || this.isAssistantMessageEditing) return
+		// A user message that arrives while no ask is waiting would be stored and
+		// then wiped by the next ask's reset. Queue it so the next ask (or the
+		// queue drain) delivers it as user feedback instead.
+		if (askResponse === "messageResponse" && !this.isAskPending && this.queueUserMessage(text, images)) return
 		// Clear any pending auto-approval timeout when user responds
 		this.cancelAutoApprovalTimeout()
 
@@ -2788,6 +2819,15 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				})
 			}
 		}
+	}
+
+	/**
+	 * Add a user message with content to the message queue.
+	 * Returns false when there is nothing to queue.
+	 */
+	public queueUserMessage(text?: string, images?: string[]): boolean {
+		if (!text?.trim() && !images?.length) return false
+		return this.messageQueueService.addMessage(text ?? "", images) !== undefined
 	}
 
 	/**
@@ -6867,6 +6907,9 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	 */
 	public processQueuedMessages(): void {
 		if (this.isAssistantMessageEditing || this.modelOperationClosed) return
+		// With no ask waiting, a dequeued message would only be queued again (at
+		// the back). Leave the queue intact; the next ask drains it in order.
+		if (!this.isAskPending) return
 		try {
 			if (!this.messageQueueService.isEmpty()) {
 				const queued = this.messageQueueService.dequeueMessage()
