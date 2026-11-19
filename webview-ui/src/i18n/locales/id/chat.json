@@ -542,7 +542,9 @@
 	"planReview": {
 		"title": "Rencana untuk ditinjau",
 		"approve": "Setujui rencana",
-		"keepPlanning": "Lanjutkan perencanaan"
+		"keepPlanning": "Lanjutkan perencanaan",
+		"instructionsLabel": "Instruksi untuk tinjauan rencana",
+		"instructionsPlaceholder": "Tambahkan instruksi (opsional)"
 	},
 	"planOverlay": {
 		"badge": "Rencana",

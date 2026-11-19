@@ -174,6 +174,8 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 	const textAreaRef = useRef<HTMLTextAreaElement>(null)
 	const [sendingDisabled, setSendingDisabled] = useState(false)
 	const [selectedImages, setSelectedImages] = useState<string[]>([])
+	// Optional instructions typed in the plan review box. Sent with Approve or Keep planning.
+	const [planReviewText, setPlanReviewText] = useState("")
 
 	// We need to hold on to the ask because useEffect > lastMessage will always
 	// let us know when an ask comes in and handle it, but by the time
@@ -1775,6 +1777,27 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 	}
 
 	const areButtonsVisible = showScrollToBottom || primaryButtonText || secondaryButtonText
+	const isPlanReview = clineAsk === "plan_review"
+	useEffect(() => {
+		if (!isPlanReview) setPlanReviewText("")
+	}, [isPlanReview])
+
+	// During a plan review, merge the review box text with any chat input so both reach the
+	// same askResponse. Other asks are unchanged.
+	const buttonText = () => {
+		if (!isPlanReview) return inputValue
+		return [planReviewText.trim(), inputValue.trim()].filter(Boolean).join("\n\n")
+	}
+	const clickPrimary = () => {
+		const text = buttonText()
+		if (isPlanReview) setPlanReviewText("")
+		handlePrimaryButtonClick(text, selectedImages)
+	}
+	const clickSecondary = () => {
+		const text = buttonText()
+		if (isPlanReview && !isStreaming) setPlanReviewText("")
+		handleSecondaryButtonClick(text, selectedImages)
+	}
 
 	return (
 		<div
@@ -1880,6 +1903,19 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 					{!historical && !showScrollToBottom && enableButtons && clineAsk === "tool" && (
 						<AlwaysAllowReadOnlyButton message={lastMessage} />
 					)}
+					{!historical && !showScrollToBottom && isPlanReview && enableButtons && (
+						<div className="px-[15px] mb-1">
+							<textarea
+								data-testid="plan-review-text"
+								aria-label={t("chat:planReview.instructionsLabel")}
+								placeholder={t("chat:planReview.instructionsPlaceholder")}
+								value={planReviewText}
+								onChange={(e) => setPlanReviewText(e.target.value)}
+								rows={2}
+								className="w-full resize-y rounded-xs border border-vscode-input-border bg-vscode-input-background px-2 py-1 text-vscode-input-foreground placeholder:text-vscode-descriptionForeground focus:outline-none focus:border-vscode-focusBorder"
+							/>
+						</div>
+					)}
 					{!historical && areButtonsVisible && (
 						<div
 							className={`flex h-9 items-center mb-1 px-[15px] ${
@@ -1936,7 +1972,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 												variant="primary"
 												disabled={!enableButtons}
 												className={secondaryButtonText ? "flex-1 mr-[6px]" : "flex-[2] mr-0"}
-												onClick={() => handlePrimaryButtonClick(inputValue, selectedImages)}>
+												onClick={clickPrimary}>
 												{primaryButtonText}
 											</Button>
 										</StandardTooltip>
@@ -1958,7 +1994,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 												variant="secondary"
 												disabled={!enableButtons}
 												className="flex-1 ml-[6px]"
-												onClick={() => handleSecondaryButtonClick(inputValue, selectedImages)}>
+												onClick={clickSecondary}>
 												{secondaryButtonText}
 											</Button>
 										</StandardTooltip>

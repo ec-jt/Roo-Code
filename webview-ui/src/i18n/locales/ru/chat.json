@@ -537,7 +537,9 @@
 	"planReview": {
 		"title": "План на проверку",
 		"approve": "Одобрить план",
-		"keepPlanning": "Продолжить планирование"
+		"keepPlanning": "Продолжить планирование",
+		"instructionsLabel": "Инструкции для проверки плана",
+		"instructionsPlaceholder": "Добавь инструкции (необязательно)"
 	},
 	"planOverlay": {
 		"badge": "План",

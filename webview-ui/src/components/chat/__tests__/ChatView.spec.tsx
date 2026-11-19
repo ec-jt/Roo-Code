@@ -433,6 +433,83 @@ it.each([
 	expect(vscode.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: "newTask" }))
 })
 
+describe("ChatView - plan review instructions box", () => {
+	const showPlanReview = () =>
+		act(() =>
+			window.dispatchEvent(
+				new MessageEvent("message", {
+					data: {
+						type: "state",
+						state: {
+							currentTaskId: "task",
+							clineMessages: [
+								{ type: "say", say: "text", ts: 1, text: "Task" },
+								{ type: "ask", ask: "plan_review", ts: 2, partial: false, text: "# Plan" },
+							],
+						},
+					},
+				}),
+			),
+		)
+
+	beforeEach(() => vi.clearAllMocks())
+
+	it("Approve plan posts the review box text with the approval", async () => {
+		const view = renderChatView()
+		showPlanReview()
+		const box = await view.findByTestId("plan-review-text")
+		expect(box).toHaveAttribute("placeholder", "chat:planReview.instructionsPlaceholder")
+		fireEvent.change(box, { target: { value: "Use Postgres, not SQLite" } })
+		vi.mocked(vscode.postMessage).mockClear()
+		fireEvent.click(view.getByRole("button", { name: "chat:planReview.approve" }))
+		expect(vscode.postMessage).toHaveBeenCalledWith({
+			type: "askResponse",
+			askResponse: "yesButtonClicked",
+			text: "Use Postgres, not SQLite",
+			images: [],
+		})
+	})
+
+	it("Keep planning posts the review box text as feedback", async () => {
+		const view = renderChatView()
+		showPlanReview()
+		const box = await view.findByTestId("plan-review-text")
+		fireEvent.change(box, { target: { value: "Add a rollback step" } })
+		vi.mocked(vscode.postMessage).mockClear()
+		fireEvent.click(view.getByRole("button", { name: "chat:planReview.keepPlanning" }))
+		expect(vscode.postMessage).toHaveBeenCalledWith({
+			type: "askResponse",
+			askResponse: "noButtonClicked",
+			text: "Add a rollback step",
+			images: [],
+		})
+	})
+
+	it("Approve plan without text posts a plain approval", async () => {
+		const view = renderChatView()
+		showPlanReview()
+		await view.findByTestId("plan-review-text")
+		vi.mocked(vscode.postMessage).mockClear()
+		fireEvent.click(view.getByRole("button", { name: "chat:planReview.approve" }))
+		expect(vscode.postMessage).toHaveBeenCalledWith({ type: "askResponse", askResponse: "yesButtonClicked" })
+	})
+
+	it("typing in the main chat box during a plan review still sends feedback", async () => {
+		const view = renderChatView()
+		showPlanReview()
+		await view.findByTestId("plan-review-text")
+		vi.mocked(vscode.postMessage).mockClear()
+		const input = view.getByTestId("chat-textarea").querySelector("input")!
+		fireEvent.change(input, { target: { value: "Split phase 2" } })
+		fireEvent.keyDown(input, { key: "Enter", code: "Enter" })
+		await waitFor(() =>
+			expect(vscode.postMessage).toHaveBeenCalledWith(
+				expect.objectContaining({ type: "askResponse", askResponse: "messageResponse", text: "Split phase 2" }),
+			),
+		)
+	})
+})
+
 describe("ChatView - Sound Playing Tests", () => {
 	beforeEach(() => vi.clearAllMocks())
 

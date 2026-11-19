@@ -159,6 +159,29 @@ describe("MemoryTool", () => {
 		expect(Buffer.byteLength(read)).toBeLessThanOrEqual(32 * 1024)
 		expect(JSON.parse(read).truncated).toBe(true)
 	})
+	it("lists with loose args (no expected_revision, empty strings)", async () => {
+		await tool.execute({ action: "list", scope: "project", query: null } as any, task, callbacks)
+		expect(store.list).toHaveBeenCalled()
+		expect(callbacks.handleError).not.toHaveBeenCalled()
+		vi.clearAllMocks()
+		vi.mocked(getTaskMemoryStore).mockResolvedValue(store)
+		await tool.execute({ action: "read", scope: "project", id, expected_revision: "" } as any, task, callbacks)
+		expect(callbacks.pushToolResult).toHaveBeenCalledWith(boundedMemoryRead(record))
+		expect(callbacks.handleError).not.toHaveBeenCalled()
+	})
+	it("returns revision guidance for delete or update without expected_revision and does not write", async () => {
+		await tool.execute({ action: "delete", scope: "project", id } as any, task, callbacks)
+		await tool.execute({ ...params, id, expected_revision: "" } as any, task, callbacks)
+		expect(callbacks.handleError).toHaveBeenCalledTimes(2)
+		for (const [, error] of callbacks.handleError.mock.calls) {
+			expect(error.message).toContain('action "read"')
+			expect(error.message).toContain("expected_revision")
+			expect(error.code).toBe("REVISION_REQUIRED")
+		}
+		expect(store.delete).not.toHaveBeenCalled()
+		expect(store.upsert).not.toHaveBeenCalled()
+		expect(callbacks.askApproval).not.toHaveBeenCalled()
+	})
 	it("validates in both parser and executor schema", () => {
 		expect(memoryArgsSchema.safeParse({ ...params, path: "/etc/passwd" }).success).toBe(false)
 		const valid = NativeToolCallParser.parseToolCall({

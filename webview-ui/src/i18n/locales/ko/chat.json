@@ -536,7 +536,9 @@
 	"planReview": {
 		"title": "검토할 계획",
 		"approve": "계획 승인",
-		"keepPlanning": "계속 계획하기"
+		"keepPlanning": "계속 계획하기",
+		"instructionsLabel": "계획 검토 지침",
+		"instructionsPlaceholder": "지침 추가 (선택 사항)"
 	},
 	"planOverlay": {
 		"badge": "계획",

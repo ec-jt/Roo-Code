@@ -42,13 +42,16 @@ export class ExitPlanTool extends BaseTool<"exit_plan"> {
 					task.planOverlay = false
 				}
 				if (text || images?.length) {
+					// Same contract as approval-with-feedback for other tools: the tool result carries
+					// status JSON only; the user's text follows as a separate <user_message> block.
 					await task.say("user_feedback", text ?? "", images)
 					pushToolResult(
-						formatResponse.toolResult(
-							`${PLAN_APPROVED_RESULT}\n<user_message>\n${text ?? ""}\n</user_message>`,
-							images,
-						),
+						JSON.stringify({
+							status: "approved",
+							message: `${PLAN_APPROVED_RESULT} The user sent a message with the approval. It follows this tool result.`,
+						}),
 					)
+					task.pushUserFeedbackToUserContent(text, images)
 				} else {
 					pushToolResult(PLAN_APPROVED_RESULT)
 				}

@@ -536,7 +536,9 @@
 	"planReview": {
 		"title": "Plan à valider",
 		"approve": "Approuver le plan",
-		"keepPlanning": "Continuer à planifier"
+		"keepPlanning": "Continuer à planifier",
+		"instructionsLabel": "Instructions pour la revue du plan",
+		"instructionsPlaceholder": "Ajoute des instructions (facultatif)"
 	},
 	"planOverlay": {
 		"badge": "Plan",

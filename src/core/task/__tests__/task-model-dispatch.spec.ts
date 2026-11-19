@@ -1368,6 +1368,85 @@ describe("Task opt-in model dispatch", () => {
 			expect(admit).toHaveBeenCalledOnce()
 			expect(create).toHaveBeenCalledOnce()
 		})
+
+		// Fault injection through the deepest practical real path: a real Cordis Task with the
+		// real preview runtime, the real interactive task loop, a real AnthropicHandler (pinned via
+		// forMediatedOperation) and a real SDK APIError. Only the SDK transport is mocked.
+		it("e2e: a real SDK 529 overloaded APIError retries automatically and the turn completes", async () => {
+			const { APIError } = await vi.importActual<typeof import("@anthropic-ai/sdk")>("@anthropic-ai/sdk")
+			const apiKey = "sk-ant-e2e-FAULT-INJECTION-KEY"
+			const configuration = { apiProvider: "anthropic" as const, apiModelId: "claude-sonnet-4-6", apiKey }
+			vi.mocked(buildApiHandler).mockImplementation(() => new AnthropicHandler(configuration))
+			provider.getState.mockResolvedValue({
+				...(await provider.getState()),
+				apiConfiguration: configuration,
+				autoApprovalEnabled: true,
+				requestDelaySeconds: 1,
+			})
+			await provider.contextProxy.setValue("experiments", { cordisRuntimePreview: true })
+			const cordis = new Task({
+				provider,
+				apiConfiguration: configuration,
+				startTask: false,
+				workspacePath: "/workspace",
+			})
+			try {
+				expect(cordis.profile).toBe("cordis")
+				const runtime = (cordis as any).modelDispatchRuntime
+				expect(runtime).toBeDefined()
+				const previewAdmit = vi.spyOn(runtime, "admit")
+				vi.spyOn(cordis as any, "getSystemPrompt").mockResolvedValue("system")
+				vi.spyOn(cordis as any, "getFilesReadByRooSafely").mockResolvedValue([])
+				const backoff = vi.spyOn(cordis as any, "backoffAndAnnounce")
+
+				const sdkError = APIError.generate(
+					529,
+					{ type: "error", error: { type: "overloaded_error", message: "Overloaded" } },
+					undefined,
+					{ "x-api-key": apiKey, "request-id": "req_e2e" } as any,
+				)
+				expect(sdkError).toBeInstanceOf(APIError)
+				expect(sdkError.status).toBe(529)
+				create.mockRejectedValueOnce(sdkError).mockImplementationOnce(answerStream)
+
+				const loop = (cordis as any).initiateTaskLoop([{ type: "text", text: "question" }])
+				await vi.waitFor(
+					() => {
+						expect(cordis.clineMessages.filter((m) => m.ask === "resume_task")).toHaveLength(1)
+						expect(cordis.isStreaming).toBe(false)
+					},
+					{ timeout: 10_000 },
+				)
+
+				// Retried automatically (no api_req_failed ask) through a fresh admission.
+				expect(backoff).toHaveBeenCalledOnce()
+				expect(previewAdmit).toHaveBeenCalledTimes(2)
+				expect(create).toHaveBeenCalledTimes(2)
+				expect(create.mock.calls.every(([, options]) => options.maxRetries === 0)).toBe(true)
+				expect(cordis.clineMessages.some((m) => m.ask === "api_req_failed")).toBe(false)
+
+				// The turn completed with the streamed answer.
+				expect(cordis.modelDispatchOutcome).toBeUndefined()
+				expect(
+					cordis.apiConversationHistory.some(
+						(m) => m.role === "assistant" && JSON.stringify(m.content).includes("answer"),
+					),
+				).toBe(true)
+
+				// The retry row carries the cause; no row leaks the API key.
+				const retryRows = cordis.clineMessages.filter(
+					(m) => m.say === "api_req_retry_delayed" || m.say === "error",
+				)
+				expect(retryRows.length).toBeGreaterThan(0)
+				expect(retryRows.some((m) => m.text?.includes("529") && m.text?.includes("Overloaded"))).toBe(true)
+				for (const message of cordis.clineMessages) expect(JSON.stringify(message)).not.toContain(apiKey)
+
+				cordis.handleWebviewAskResponse("noButtonClicked")
+				await expect(loop).resolves.toBeUndefined()
+			} finally {
+				cordis.dispose({ preserveArtifacts: true })
+			}
+		}, 20_000)
 	})
 
 	describe("Cordis profile on a non-Anthropic provider (on by default)", () => {

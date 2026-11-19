@@ -536,7 +536,9 @@
 	"planReview": {
 		"title": "समीक्षा के लिए योजना",
 		"approve": "योजना स्वीकृत करें",
-		"keepPlanning": "योजना बनाना जारी रखें"
+		"keepPlanning": "योजना बनाना जारी रखें",
+		"instructionsLabel": "योजना समीक्षा के लिए निर्देश",
+		"instructionsPlaceholder": "निर्देश जोड़ें (वैकल्पिक)"
 	},
 	"planOverlay": {
 		"badge": "योजना",

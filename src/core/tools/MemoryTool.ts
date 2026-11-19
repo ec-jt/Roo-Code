@@ -4,7 +4,12 @@ import type { Task } from "../task/Task"
 import type { NativeToolArgs } from "../../shared/tools"
 import { BaseTool, type ToolCallbacks } from "./BaseTool"
 import { isToolAllowedForMode } from "./validateToolUse"
-import { memoryArgsSchema } from "../prompts/tools/native-tools/memory"
+import {
+	memoryArgsSchema,
+	normalizeMemoryArgs,
+	memoryRequiresRevision,
+	MEMORY_REVISION_REQUIRED,
+} from "../prompts/tools/native-tools/memory"
 import { getTaskMemoryStore, assertMemoryAccess, assertMemoryTaskOpen } from "../../services/memory/taskMemory"
 import { validateInput } from "../../services/memory/records"
 import { MemoryError, type MemoryRecord, type MemoryList } from "../../services/memory/types"
@@ -45,7 +50,11 @@ export class MemoryTool extends BaseTool<"memory"> {
 
 	async execute(raw: NativeToolArgs["memory"], task: Task, callbacks: ToolCallbacks): Promise<void> {
 		try {
-			const params = memoryArgsSchema.parse(raw)
+			const normalized = normalizeMemoryArgs(raw) as NativeToolArgs["memory"]
+			// Guidance, not a schema failure: updates and deletes never run without the revision check.
+			if (normalized && memoryRequiresRevision(normalized) && normalized.expected_revision === null)
+				throw new MemoryError("REVISION_REQUIRED", MEMORY_REVISION_REQUIRED)
+			const params = memoryArgsSchema.parse(normalized)
 			const { action, scope } = params
 			assertMemoryTaskOpen(task)
 			const checkMode = async () => {

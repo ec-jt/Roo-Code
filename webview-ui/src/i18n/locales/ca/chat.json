@@ -536,7 +536,9 @@
 	"planReview": {
 		"title": "Pla per revisar",
 		"approve": "Aprova el pla",
-		"keepPlanning": "Continua planificant"
+		"keepPlanning": "Continua planificant",
+		"instructionsLabel": "Instruccions per a la revisió del pla",
+		"instructionsPlaceholder": "Afegeix instruccions (opcional)"
 	},
 	"planOverlay": {
 		"badge": "Pla",

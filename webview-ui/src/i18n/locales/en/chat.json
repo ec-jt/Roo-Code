@@ -599,7 +599,9 @@
 	"planReview": {
 		"title": "Plan for review",
 		"approve": "Approve plan",
-		"keepPlanning": "Keep planning"
+		"keepPlanning": "Keep planning",
+		"instructionsLabel": "Instructions for the plan review",
+		"instructionsPlaceholder": "Add instructions (optional)"
 	},
 	"planOverlay": {
 		"badge": "Plan",

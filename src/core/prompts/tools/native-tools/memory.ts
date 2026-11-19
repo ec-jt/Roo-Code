@@ -1,8 +1,7 @@
 import type OpenAI from "openai"
 import { z } from "zod"
 
-// Shared by the parser and executor. Reject unknown fields, including arbitrary paths.
-export const memoryArgsSchema = z
+const memoryArgsObject = z
 	.object({
 		action: z.enum(["list", "read", "upsert", "delete"]),
 		scope: z.enum(["project", "personal"]),
@@ -21,19 +20,55 @@ export const memoryArgsSchema = z
 		query: z.string().max(512).nullish(),
 	})
 	.strict()
-	.superRefine((args, ctx) => {
-		const invalid = (message: string) => ctx.addIssue({ code: z.ZodIssueCode.custom, message })
-		if (["read", "delete"].includes(args.action) && !args.id) invalid("This action requires an ID")
-		if (args.action === "upsert" && (!args.name || !args.description || !args.type || !args.body))
-			invalid("Upsert requires name, description, type, and body")
-		if (args.action === "delete" || (args.action === "upsert" && args.id)) {
-			if (!args.expected_revision) invalid("Updates and deletion require the exact record revision")
-		} else if (args.expected_revision !== null) invalid("Use null expected_revision for creation and reads")
-		if (args.action === "list" && args.id) invalid("List does not accept an ID")
-		if (args.action !== "list" && args.query != null) invalid("Only list accepts a query")
-		if (args.action !== "upsert" && [args.name, args.description, args.type, args.body].some((v) => v != null))
-			invalid("Only upsert accepts topic fields")
-	})
+
+type MemoryArgs = z.infer<typeof memoryArgsObject>
+
+/** True when the action changes an existing record and therefore needs its exact revision. */
+export const memoryRequiresRevision = (args: Pick<MemoryArgs, "action" | "id">) =>
+	args.action === "delete" || (args.action === "upsert" && !!args.id)
+
+const refineMemoryArgs = (requireRevision: boolean) => (args: MemoryArgs, ctx: z.RefinementCtx) => {
+	const invalid = (message: string) => ctx.addIssue({ code: z.ZodIssueCode.custom, message })
+	if (["read", "delete"].includes(args.action) && !args.id) invalid("This action requires an ID")
+	if (args.action === "upsert" && (!args.name || !args.description || !args.type || !args.body))
+		invalid("Upsert requires name, description, type, and body")
+	if (memoryRequiresRevision(args)) {
+		if (requireRevision && !args.expected_revision)
+			invalid("Updates and deletion require the exact record revision")
+	} else if (args.expected_revision !== null) invalid("Use null expected_revision for creation and reads")
+	if (args.action === "list" && args.id) invalid("List does not accept an ID")
+	if (args.action !== "list" && args.query != null) invalid("Only list accepts a query")
+	if (args.action !== "upsert" && [args.name, args.description, args.type, args.body].some((v) => v != null))
+		invalid("Only upsert accepts topic fields")
+}
+
+// Strict executor schema. Reject unknown fields, including arbitrary paths.
+export const memoryArgsSchema = memoryArgsObject.superRefine(refineMemoryArgs(true))
+
+/**
+ * Parser schema. Identical except that an update or delete with a null revision is let through,
+ * so the tool can return revision guidance instead of a schema failure that feeds the mistake
+ * limit. The tool still enforces the revision before any write.
+ */
+export const memoryParserArgsSchema = memoryArgsObject.superRefine(refineMemoryArgs(false))
+
+export const MEMORY_REVISION_REQUIRED =
+	'Updates and deletion require expected_revision. Call memory with action "read" for this ID first, then pass the exact revision it returns as expected_revision.'
+
+/**
+ * Tolerate loose model output (for example DeepSeek): treat a missing, empty, or whitespace-only
+ * expected_revision as null. Other fields are left for strict validation.
+ */
+export function normalizeMemoryArgs(args: unknown): unknown {
+	if (!args || typeof args !== "object" || Array.isArray(args)) return args
+	const record = args as Record<string, unknown>
+	const revision = record.expected_revision
+	return {
+		...record,
+		expected_revision:
+			revision === undefined || (typeof revision === "string" && revision.trim() === "") ? null : revision,
+	}
+}
 
 export default {
 	type: "function",

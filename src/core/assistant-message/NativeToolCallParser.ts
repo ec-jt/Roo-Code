@@ -1,6 +1,6 @@
-import { taskStateArgsSchema } from "../prompts/tools/native-tools/task_state"
+import { taskStateParserArgsSchema, normalizeTaskStateArgs } from "../prompts/tools/native-tools/task_state"
 import { parseJSON } from "partial-json"
-import { memoryArgsSchema } from "../prompts/tools/native-tools/memory"
+import { memoryParserArgsSchema, normalizeMemoryArgs } from "../prompts/tools/native-tools/memory"
 import { parseBrowserControlCommand } from "../tools/browserControlCommand"
 
 import { type ToolName, toolNames, type FileEntry } from "@roo-code/types"
@@ -843,11 +843,14 @@ export class NativeToolCallParser {
 			let usedLegacyFormat = false
 
 			switch (resolvedName) {
+				// Normalize loose model output before strict validation. The tool definitions stay
+				// strict (all fields required) for provider strict mode; only parsing is tolerant.
+				// A missing patch/update revision passes here and the tool returns guidance.
 				case "task_state":
-					nativeArgs = taskStateArgsSchema.parse(args)
+					nativeArgs = taskStateParserArgsSchema.parse(normalizeTaskStateArgs(args))
 					break
 				case "memory":
-					nativeArgs = memoryArgsSchema.parse(args)
+					nativeArgs = memoryParserArgsSchema.parse(normalizeMemoryArgs(args))
 					break
 				case "read_file":
 					// Check for legacy format first: { files: [...] }

@@ -537,7 +537,9 @@
 	"planReview": {
 		"title": "Kế hoạch cần xem xét",
 		"approve": "Phê duyệt kế hoạch",
-		"keepPlanning": "Tiếp tục lập kế hoạch"
+		"keepPlanning": "Tiếp tục lập kế hoạch",
+		"instructionsLabel": "Hướng dẫn cho việc xem xét kế hoạch",
+		"instructionsPlaceholder": "Thêm hướng dẫn (tùy chọn)"
 	},
 	"planOverlay": {
 		"badge": "Kế hoạch",

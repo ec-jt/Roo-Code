@@ -536,7 +536,9 @@
 	"planReview": {
 		"title": "レビュー用のプラン",
 		"approve": "プランを承認",
-		"keepPlanning": "計画を続ける"
+		"keepPlanning": "計画を続ける",
+		"instructionsLabel": "計画レビューへの指示",
+		"instructionsPlaceholder": "指示を追加（任意）"
 	},
 	"planOverlay": {
 		"badge": "プラン",

@@ -536,7 +536,9 @@
 	"planReview": {
 		"title": "Plan ter beoordeling",
 		"approve": "Plan goedkeuren",
-		"keepPlanning": "Verder plannen"
+		"keepPlanning": "Verder plannen",
+		"instructionsLabel": "Instructies voor de planbeoordeling",
+		"instructionsPlaceholder": "Voeg instructies toe (optioneel)"
 	},
 	"planOverlay": {
 		"badge": "Plan",

@@ -536,7 +536,9 @@
 	"planReview": {
 		"title": "Plano para revisão",
 		"approve": "Aprovar plano",
-		"keepPlanning": "Continuar planejando"
+		"keepPlanning": "Continuar planejando",
+		"instructionsLabel": "Instruções para a revisão do plano",
+		"instructionsPlaceholder": "Adicione instruções (opcional)"
 	},
 	"planOverlay": {
 		"badge": "Plano",

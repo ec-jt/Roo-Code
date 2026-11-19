@@ -532,7 +532,9 @@
 	"planReview": {
 		"title": "待審閱的計畫",
 		"approve": "核准計畫",
-		"keepPlanning": "繼續規劃"
+		"keepPlanning": "繼續規劃",
+		"instructionsLabel": "計畫審閱說明",
+		"instructionsPlaceholder": "新增說明（選填）"
 	},
 	"planOverlay": {
 		"badge": "計畫",

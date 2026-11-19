@@ -2,7 +2,11 @@ import type { Task } from "../task/Task"
 import type { NativeToolArgs } from "../../shared/tools"
 import { BaseTool, type ToolCallbacks } from "./BaseTool"
 import { isToolAllowedForMode } from "./validateToolUse"
-import { taskStateArgsSchema } from "../prompts/tools/native-tools/task_state"
+import {
+	taskStateArgsSchema,
+	normalizeTaskStateArgs,
+	TASK_STATE_REVISION_REQUIRED,
+} from "../prompts/tools/native-tools/task_state"
 import { taskStatePatchOperationsSchema } from "../../../packages/types/src/task-state"
 import { taskStateTransaction, recordTaskStateMilestone } from "../../services/task-state/taskState"
 import { renderTaskState } from "../../services/task-state/render"
@@ -12,7 +16,11 @@ export class TaskStateTool extends BaseTool<"task_state"> {
 	readonly name = "task_state" as const
 	async execute(raw: NativeToolArgs["task_state"], task: Task, callbacks: ToolCallbacks) {
 		try {
-			const args = taskStateArgsSchema.parse(raw)
+			const normalized = normalizeTaskStateArgs(raw) as Record<string, unknown>
+			// Guidance, not a schema failure: patch must never run without the revision check.
+			if (normalized?.action === "patch" && normalized.expected_revision === null)
+				throw new TaskStateError("REVISION_REQUIRED", TASK_STATE_REVISION_REQUIRED)
+			const args = taskStateArgsSchema.parse(normalized)
 			const { store, options } = await taskStateTransaction(task, args.expected_revision)
 			const check = async () => {
 				await options.authorize()

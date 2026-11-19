@@ -537,7 +537,9 @@
 	"planReview": {
 		"title": "待审阅的计划",
 		"approve": "批准计划",
-		"keepPlanning": "继续规划"
+		"keepPlanning": "继续规划",
+		"instructionsLabel": "计划审阅说明",
+		"instructionsPlaceholder": "添加说明（可选）"
 	},
 	"planOverlay": {
 		"badge": "计划",

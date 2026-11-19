@@ -537,7 +537,9 @@
 	"planReview": {
 		"title": "İncelenecek plan",
 		"approve": "Planı onayla",
-		"keepPlanning": "Planlamaya devam et"
+		"keepPlanning": "Planlamaya devam et",
+		"instructionsLabel": "Plan incelemesi için talimatlar",
+		"instructionsPlaceholder": "Talimat ekle (isteğe bağlı)"
 	},
 	"planOverlay": {
 		"badge": "Plan",

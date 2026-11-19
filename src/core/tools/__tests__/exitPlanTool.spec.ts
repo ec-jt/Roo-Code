@@ -33,8 +33,13 @@ describe("exitPlanTool", () => {
 			recordToolError: vi.fn(),
 			sayAndCreateMissingParamError: vi.fn().mockResolvedValue("Missing parameter error"),
 			providerRef: { deref: () => provider },
+			userMessageContent: [] as any[],
 		}
-		pushToolResult = vi.fn()
+		// Mirror the real ordering: tool_result first, then any <user_message> block.
+		task.pushUserFeedbackToUserContent = vi.fn((text?: string) => {
+			if (text) task.userMessageContent.push({ type: "text", text: `<user_message>\n${text}\n</user_message>` })
+		})
+		pushToolResult = vi.fn((content: string) => task.userMessageContent.push({ type: "tool_result", content }))
 	})
 
 	const run = (b: ToolUse<"exit_plan">) =>
@@ -55,6 +60,21 @@ describe("exitPlanTool", () => {
 		expect(provider.setTaskPlanOverlay).toHaveBeenCalledWith(task, false)
 		expect(task.planOverlay).toBe(false)
 		expect(pushToolResult).toHaveBeenCalledWith(PLAN_APPROVED_RESULT)
+	})
+
+	it("approve with text returns status-only tool result followed by a <user_message> block", async () => {
+		task.ask.mockResolvedValue({ response: "yesButtonClicked", text: "Use Postgres, not SQLite" })
+		await run(block("# Plan"))
+		expect(task.planOverlay).toBe(false)
+		expect(task.say).toHaveBeenCalledWith("user_feedback", "Use Postgres, not SQLite", undefined)
+		const [toolResult, userMessage] = task.userMessageContent
+		expect(toolResult.type).toBe("tool_result")
+		expect(toolResult.content).not.toContain("Use Postgres")
+		expect(toolResult.content).not.toContain("<user_message>")
+		expect(JSON.parse(toolResult.content)).toMatchObject({ status: "approved" })
+		expect(JSON.parse(toolResult.content).message).toContain(PLAN_APPROVED_RESULT)
+		expect(userMessage).toEqual({ type: "text", text: "<user_message>\nUse Postgres, not SQLite\n</user_message>" })
+		expect(task.userMessageContent).toHaveLength(2)
 	})
 
 	it("keep planning leaves the overlay on and returns the feedback", async () => {
