@@ -491,13 +491,19 @@ describe("Task opt-in model dispatch", () => {
 		},
 	)
 
-	it("does not auto-repair or retry an admitted context-window provider failure", async () => {
+	it("does not auto-repair an unconfirmed context-window failure; retries it as a pre-stream failure", async () => {
 		admit.mockResolvedValue({ outcome: "granted", settle })
-		create.mockRejectedValue(new Error("prompt is too long: context length exceeded"))
-		await expect(task.attemptApiRequest().next()).rejects.toMatchObject({ code: "dispatch-failed" })
-		expect(admit).toHaveBeenCalledOnce()
-		expect(create).toHaveBeenCalledOnce()
-		expect(settle).toHaveBeenCalledExactlyOnceWith("unresolved")
+		const backoff = vi.spyOn(task as any, "backoffAndAnnounce").mockResolvedValue(undefined)
+		const repair = vi.spyOn(task as any, "handleContextWindowExceededError")
+		create
+			.mockRejectedValueOnce(new Error("prompt is too long: context length exceeded"))
+			.mockResolvedValueOnce(response("answer"))
+		await consume(task.attemptApiRequest())
+		expect(repair).not.toHaveBeenCalled()
+		expect(backoff).toHaveBeenCalledOnce()
+		expect(admit).toHaveBeenCalledTimes(2)
+		expect(create).toHaveBeenCalledTimes(2)
+		expect(settle.mock.calls).toEqual([["unresolved"], ["completed"]])
 	})
 
 	const overflow = () =>
@@ -880,15 +886,20 @@ describe("Task opt-in model dispatch", () => {
 	})
 	it.each(["invalid", "rate-limit", "timeout"])("does not compact unrelated %s errors", async (kind) => {
 		await enableOverflow(true)
-		create.mockRejectedValueOnce(
-			Object.assign(new Error("context configuration failed"), {
-				status: kind === "invalid" ? 400 : kind === "rate-limit" ? 429 : 408,
-			}),
-		)
+		const backoff = vi.spyOn(task as any, "backoffAndAnnounce").mockResolvedValue(undefined)
+		create
+			.mockRejectedValueOnce(
+				Object.assign(new Error("context configuration failed"), {
+					status: kind === "invalid" ? 400 : kind === "rate-limit" ? 429 : 408,
+				}),
+			)
+			.mockResolvedValueOnce(response("answer"))
 		const repair = vi.spyOn(task as any, "handleContextWindowExceededError")
-		await expect(consume(task.attemptApiRequest())).rejects.toThrow()
+		await consume(task.attemptApiRequest())
 		expect(repair).not.toHaveBeenCalled()
-		expect(create).toHaveBeenCalledOnce()
+		// A pre-stream Cordis failure takes the ordinary first-chunk retry, never compaction.
+		expect(backoff).toHaveBeenCalledOnce()
+		expect(create).toHaveBeenCalledTimes(2)
 	})
 	it("recognizes explicit structured stream rejection before output", async () => {
 		await enableOverflow(false)
@@ -1199,13 +1210,12 @@ describe("Task opt-in model dispatch", () => {
 		})
 	})
 
-	it.each(["budget-denied", "429", "partial", "disabled"])(
+	it.each(["budget-denied", "partial", "disabled"])(
 		"finalizes an interactive %s stop and waits for explicit input without retrying",
 		async (failure) => {
 			vi.mocked(task.say).mockRestore()
 			const backoff = vi.spyOn(task as any, "backoffAndAnnounce")
 			if (failure !== "budget-denied") admit.mockResolvedValue({ outcome: "granted", settle })
-			if (failure === "429") create.mockRejectedValue(Object.assign(new Error("rate limited"), { status: 429 }))
 			if (failure === "partial") {
 				create.mockImplementation(() =>
 					(async function* () {
@@ -1252,6 +1262,113 @@ describe("Task opt-in model dispatch", () => {
 			await expect(loop).resolves.toBeUndefined()
 		},
 	)
+
+	describe("pre-stream dispatch failure retry", () => {
+		const overloaded = () =>
+			Object.assign(
+				new Error('529 {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}'),
+				{
+					status: 529,
+					headers: { "x-api-key": "sk-ant-secret" },
+					error: { type: "error", error: { type: "overloaded_error", message: "Overloaded" } },
+				},
+			)
+		const detail = "Model dispatch stopped: dispatch-failed (529 overloaded_error: Overloaded)"
+
+		it("retries a pre-stream failure through a fresh admission and completes the turn", async () => {
+			;(task as any).modelOperationPrepared = false
+			admit.mockResolvedValue({ outcome: "granted", settle })
+			const backoff = vi.spyOn(task as any, "backoffAndAnnounce").mockResolvedValue(undefined)
+			create.mockRejectedValueOnce(overloaded()).mockImplementationOnce(answerStream)
+			const chunks = await consume(task.attemptApiRequest())
+			expect(chunks).toContainEqual({ type: "text", text: "answer" })
+			expect(admit).toHaveBeenCalledTimes(2)
+			expect(admit.mock.calls.map(([descriptor]) => descriptor.purpose)).toEqual(["chat", "chat"])
+			expect(admit.mock.calls[0][0].dispatchId).not.toBe(admit.mock.calls[1][0].dispatchId)
+			expect(create).toHaveBeenCalledTimes(2)
+			expect(settle.mock.calls).toEqual([["unresolved"], ["completed"]])
+			// Same backoff as the modes first-chunk path, with the cause visible in the retry row.
+			expect(backoff).toHaveBeenCalledExactlyOnceWith(0, expect.any(ModelDispatchControl))
+			const control = backoff.mock.calls[0][1] as ModelDispatchControl
+			expect(control.code).toBe("dispatch-failed")
+			expect(control.status).toBe(529)
+			expect(control.message).toBe(detail)
+			expect((control.cause as any).status).toBe(529)
+			expect(JSON.stringify(control)).not.toContain("sk-ant-secret")
+		})
+
+		it("goes through admission again and stops when the retry is denied", async () => {
+			admit
+				.mockResolvedValueOnce({ outcome: "granted", settle })
+				.mockResolvedValueOnce({ outcome: "budget-denied" })
+			const backoff = vi.spyOn(task as any, "backoffAndAnnounce").mockResolvedValue(undefined)
+			create.mockRejectedValueOnce(overloaded())
+			await expect(consume(task.attemptApiRequest())).rejects.toMatchObject({ code: "budget-denied" })
+			expect(backoff).toHaveBeenCalledOnce()
+			expect(admit).toHaveBeenCalledTimes(2)
+			expect(create).toHaveBeenCalledOnce()
+			expect(task.modelDispatchOutcome?.code).toBe("budget-denied")
+		})
+
+		it("asks like the modes path when auto approval is off", async () => {
+			provider.getState.mockResolvedValue({ ...(await provider.getState()), autoApprovalEnabled: false })
+			admit.mockResolvedValue({ outcome: "granted", settle })
+			const backoff = vi.spyOn(task as any, "backoffAndAnnounce")
+			const ask = vi.spyOn(task, "ask").mockResolvedValue({ response: "yesButtonClicked" } as any)
+			create.mockRejectedValueOnce(overloaded()).mockImplementationOnce(answerStream)
+			await consume(task.attemptApiRequest())
+			expect(ask).toHaveBeenCalledExactlyOnceWith("api_req_failed", detail)
+			expect(task.say).toHaveBeenCalledWith("api_req_retried")
+			expect(backoff).not.toHaveBeenCalled()
+			expect(admit).toHaveBeenCalledTimes(2)
+		})
+
+		it("keeps the cause in the user-visible error when output already started, without retry", async () => {
+			vi.mocked(task.say).mockRestore()
+			admit.mockResolvedValue({ outcome: "granted", settle })
+			const backoff = vi.spyOn(task as any, "backoffAndAnnounce")
+			create.mockImplementationOnce(() =>
+				(async function* () {
+					yield { type: "content_block_start", index: 0, content_block: { type: "text", text: "partial" } }
+					throw overloaded()
+				})(),
+			)
+			const loop = (task as any).initiateTaskLoop([{ type: "text", text: "question" }])
+			await waitForResume(1)
+			expect(backoff).not.toHaveBeenCalled()
+			expect(admit).toHaveBeenCalledOnce()
+			expect(create).toHaveBeenCalledOnce()
+			expect(task.modelDispatchOutcome).toMatchObject({ code: "dispatch-failed", status: 529, message: detail })
+			const error = task.clineMessages.find((message) => message.say === "error")
+			expect(error?.text).toContain(detail)
+			expect(error?.text).not.toContain("sk-ant-secret")
+			task.handleWebviewAskResponse("noButtonClicked")
+			await expect(loop).resolves.toBeUndefined()
+		})
+
+		it("does not retry a cancelled request", async () => {
+			admit.mockResolvedValue({ outcome: "granted", settle })
+			const backoff = vi.spyOn(task as any, "backoffAndAnnounce").mockResolvedValue(undefined)
+			create.mockImplementationOnce(async () => {
+				task.cancelCurrentRequest()
+				throw overloaded()
+			})
+			await expect(consume(task.attemptApiRequest())).rejects.toMatchObject({ code: "cancelled" })
+			expect(backoff).not.toHaveBeenCalled()
+			expect(admit).toHaveBeenCalledOnce()
+			expect(create).toHaveBeenCalledOnce()
+		})
+
+		it("does not retry a context-limit rejection through the backoff path", async () => {
+			admit.mockResolvedValue({ outcome: "granted", settle })
+			const backoff = vi.spyOn(task as any, "backoffAndAnnounce").mockResolvedValue(undefined)
+			create.mockRejectedValueOnce(overflow())
+			await expect(consume(task.attemptApiRequest())).rejects.toThrow("'Compact on context overflow' is disabled")
+			expect(backoff).not.toHaveBeenCalled()
+			expect(admit).toHaveBeenCalledOnce()
+			expect(create).toHaveBeenCalledOnce()
+		})
+	})
 
 	describe("Cordis profile on a non-Anthropic provider (on by default)", () => {
 		const openAiConfiguration = { apiProvider: "openai-native" as const, apiModelId: "gpt-5.1", apiKey: "secret" }

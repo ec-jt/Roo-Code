@@ -12,10 +12,60 @@ export type ModelDispatchControlCode =
 	| "dispatch-failed"
 	| "context-limit"
 
+const MAX_CAUSE_DETAIL_CHARS = 300
+
+/**
+ * One-line provider failure summary such as "529 overloaded_error: Overloaded".
+ * Uses only the status, the provider error type and the message. Never headers or request bodies.
+ */
+export function describeDispatchCause(cause: unknown, status?: number): string | undefined {
+	if (cause === undefined || cause === null || cause instanceof ModelDispatchControl) return undefined
+	const err = cause as any
+	const body = err?.error?.error
+	const type = typeof body?.type === "string" ? body.type : undefined
+	let message =
+		typeof body?.message === "string"
+			? body.message
+			: typeof err?.message === "string"
+				? err.message
+				: typeof cause === "string"
+					? cause
+					: undefined
+	if (message && status !== undefined && message.startsWith(`${status} `))
+		message = message.slice(`${status} `.length)
+	message = message
+		?.replace(/sk-ant-[A-Za-z0-9_-]+/g, "[redacted]")
+		.replace(/\s+/g, " ")
+		.trim()
+	if (message && message.length > MAX_CAUSE_DETAIL_CHARS) message = `${message.slice(0, MAX_CAUSE_DETAIL_CHARS)}...`
+	const head = [status, type ? `${type}:` : undefined].filter((part) => part !== undefined).join(" ")
+	const detail = [head, message].filter(Boolean).join(" ")
+	return detail || undefined
+}
+
 export class ModelDispatchControl extends Error {
-	constructor(readonly code: ModelDispatchControlCode) {
-		super(`Model dispatch stopped: ${code}`)
+	/** HTTP status of the original provider error, when known. */
+	readonly status?: number
+
+	constructor(
+		readonly code: ModelDispatchControlCode,
+		options?: { cause?: unknown; status?: number },
+	) {
+		const cause = options?.cause
+		const status =
+			options?.status ?? (typeof (cause as any)?.status === "number" ? (cause as any).status : undefined)
+		const detail = describeDispatchCause(cause, status)
+		super(
+			`Model dispatch stopped: ${code}${detail ? ` (${detail})` : ""}`,
+			cause === undefined ? undefined : { cause },
+		)
 		this.name = "ModelDispatchControl"
+		this.status = status
+	}
+
+	/** Serializers (debug logs, serialize-error) see only safe fields, never the raw cause's headers or body. */
+	toJSON() {
+		return { name: this.name, code: this.code, status: this.status, message: this.message }
 	}
 }
 
@@ -123,6 +173,8 @@ export async function admitDispatch(
 	} catch (error) {
 		stopped = true
 		settle("not-dispatched")
-		throw error instanceof ModelDispatchControl ? error : new ModelDispatchControl("dispatch-failed")
+		throw error instanceof ModelDispatchControl
+			? error
+			: new ModelDispatchControl("dispatch-failed", { cause: error })
 	}
 }

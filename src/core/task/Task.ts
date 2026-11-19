@@ -5999,7 +5999,9 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			}
 			if (this.modelDispatchRuntime) {
 				const control =
-					error instanceof ModelDispatchControl ? error : new ModelDispatchControl("dispatch-failed")
+					error instanceof ModelDispatchControl
+						? error
+						: new ModelDispatchControl("dispatch-failed", { cause: error })
 				this.modelDispatchOutcome = control
 				throw control
 			}
@@ -6487,7 +6489,12 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				yield* this.attemptApiRequestPinned(retryAttempt + 1, {}, recovery)
 				return
 			}
-			if (recovery.attempted || this.modelDispatchRuntime) throw error
+			// Cordis: only a pre-stream provider failure (`dispatch-failed`) takes the ordinary
+			// first-chunk retry path below. Each retry re-enters admission through a fresh
+			// mediated handler. Cancellation, staleness, policy, budget and lease stops never retry.
+			const cordisRetryable =
+				this.modelDispatchRuntime && error instanceof ModelDispatchControl && error.code === "dispatch-failed"
+			if (recovery.attempted || (this.modelDispatchRuntime && !cordisRetryable)) throw error
 
 			// note that this api_req_failed ask is unique in that we only present this option if the api hasn't streamed any content yet (ie it fails on the first chunk due), as it would allow them to hit a retry button. However if the api failed mid-stream, it could be in any arbitrary state where some tools may have executed, so that error is handled differently and requires cancelling the task entirely.
 			if (autoApprovalEnabled) {
@@ -6497,6 +6504,11 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				// CRITICAL: Check if task was aborted during the backoff countdown
 				// This prevents infinite loops when users cancel during auto-retry
 				// Without this check, the recursive call below would continue even after abort
+				if (
+					this.modelDispatchRuntime &&
+					(this.abort || this.abandoned || this.modelOperationClosed || abortSignal.aborted)
+				)
+					throw new ModelDispatchControl("cancelled")
 				if (this.abort) {
 					throw new Error(
 						`[Task#attemptApiRequest] task ${this.taskId}.${this.instanceId} aborted during retry`,
@@ -6517,8 +6529,14 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				if (response !== "yesButtonClicked") {
 					// This will never happen since if noButtonClicked, we will
 					// clear current task, aborting this instance.
+					if (this.modelDispatchRuntime) throw error
 					throw new Error("API request failed")
 				}
+				if (
+					this.modelDispatchRuntime &&
+					(this.abort || this.abandoned || this.modelOperationClosed || abortSignal.aborted)
+				)
+					throw new ModelDispatchControl("cancelled")
 
 				await this.say("api_req_retried")
 

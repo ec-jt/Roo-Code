@@ -1,5 +1,5 @@
 import type { Anthropic } from "@anthropic-ai/sdk"
-import { AnthropicHandler } from "../anthropic"
+import { AnthropicHandler, dispatchError } from "../anthropic"
 import { mediateModelHandler } from "../../mediated-handler"
 import { ModelDispatchControl, type DispatchAdmission, type ModelDispatchContext } from "../../dispatch-admission"
 import type { ApiHandler } from "../../index"
@@ -277,5 +277,64 @@ describe("Anthropic dispatch admission", () => {
 		).rejects.toMatchObject({ code: "budget-denied" })
 		expect(messages).toEqual(before)
 		expect(create).not.toHaveBeenCalled()
+	})
+})
+
+describe("dispatchError", () => {
+	it("keeps the original cause, status and message", () => {
+		const original = Object.assign(new Error("529 overloaded"), {
+			status: 529,
+			headers: { "x-api-key": "sk-ant-secret" },
+			error: { type: "error", error: { type: "overloaded_error", message: "Overloaded" } },
+		})
+		const control = dispatchError(original)
+		expect(control).toBeInstanceOf(ModelDispatchControl)
+		expect(control.code).toBe("dispatch-failed")
+		expect(control.status).toBe(529)
+		expect(control.cause).toBe(original)
+		expect(control.message).toBe("Model dispatch stopped: dispatch-failed (529 overloaded_error: Overloaded)")
+		expect(JSON.stringify(control)).not.toContain("sk-ant-secret")
+	})
+
+	it("uses the plain message when there is no structured body or status", () => {
+		const control = dispatchError(new Error("socket hang up"))
+		expect(control.status).toBeUndefined()
+		expect(control.message).toBe("Model dispatch stopped: dispatch-failed (socket hang up)")
+	})
+
+	it("maps a context rejection to context-limit with its cause", () => {
+		const original = Object.assign(new Error("prompt is too long: 200001 tokens > 200000 maximum"), { status: 400 })
+		const control = dispatchError(original)
+		expect(control.code).toBe("context-limit")
+		expect(control.status).toBe(400)
+		expect(control.message).toContain("prompt is too long")
+	})
+
+	it("passes an existing control through unchanged", () => {
+		const control = new ModelDispatchControl("cancelled")
+		expect(dispatchError(control)).toBe(control)
+		expect(control.message).toBe("Model dispatch stopped: cancelled")
+	})
+
+	it("records the cause when a stream fails before the first chunk", async () => {
+		const settle = vi.fn()
+		const context: ModelDispatchContext = {
+			runtime: { admit: vi.fn(async () => ({ outcome: "granted", settle }) as DispatchAdmission) },
+			operationId: "operation",
+			purpose: "chat",
+			signal: new AbortController().signal,
+			isCurrent: () => true,
+		}
+		create.mockRejectedValueOnce(Object.assign(new Error("Service Unavailable"), { status: 503 }))
+		const handler = mediateModelHandler(
+			new AnthropicHandler({ apiKey: "test", apiModelId: "claude-sonnet-4-6" }),
+			context,
+		)
+		await expect(collect(handler)).rejects.toMatchObject({
+			code: "dispatch-failed",
+			status: 503,
+			message: "Model dispatch stopped: dispatch-failed (503 Service Unavailable)",
+		})
+		expect(settle).toHaveBeenCalledExactlyOnceWith("unresolved")
 	})
 })

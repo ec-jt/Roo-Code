@@ -39,10 +39,18 @@ import {
 	convertOpenAIToolChoiceToAnthropic,
 } from "../../core/prompts/tools/native-tools/converters"
 
-function dispatchError(error: unknown): ModelDispatchControl {
-	return error instanceof ModelDispatchControl
-		? error
-		: new ModelDispatchControl(checkContextWindowExceededError(error) ? "context-limit" : "dispatch-failed")
+export function dispatchError(error: unknown): ModelDispatchControl {
+	if (error instanceof ModelDispatchControl) return error
+	const control = new ModelDispatchControl(
+		checkContextWindowExceededError(error) ? "context-limit" : "dispatch-failed",
+		{ cause: error },
+	)
+	debugTrace("[ANTHROPIC][dispatch] dispatch-error", {
+		code: control.code,
+		status: control.status,
+		message: error instanceof Error ? error.message : typeof error === "string" ? error : undefined,
+	})
+	return control
 }
 
 const DEBUG_LOG = "/tmp/roo-cli-debug.log"
@@ -82,6 +90,8 @@ function summarizeAnthropicMessages(messages: Anthropic.Messages.MessageParam[])
 }
 
 function summarizeAnthropicError(error: unknown) {
+	// A dispatch control's raw cause may carry response headers; log only its safe fields.
+	if (error instanceof ModelDispatchControl) return error.toJSON()
 	const err = error as any
 	return {
 		name: err?.name,
