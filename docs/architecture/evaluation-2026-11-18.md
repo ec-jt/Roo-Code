@@ -411,4 +411,22 @@ These came from running the evaluation, not from the questions above:
 | L3: offload count after condense, `opus-64k` | `01a1f5f2` | pass (data), fail (UI)        | The `context_pruned` row had `prunedCount: 1, offloadedCount: 3` (83,665 → 23,495 tokens). The chat window copy step dropped `contextPrune` and the counts, so the UI showed no prune row.                                                                             |
 
 - **4.2.87:** `task_state` patch operations are no longer checked in the parser. The tool renames `record` to `value` and moves flat record fields into `value`, then validates. A patch without a revision still returns `REVISION_REQUIRED` first. An invalid operation returns `INVALID_OPERATIONS` with its index, the failing field and a complete example. The tool description shows one exact patch call. The chat window now passes `contextPrune` and the prune and offload counts to the webview.
-- The 4.2.87 fixes are covered by unit tests only; no live run has used them yet.
+  **Live checks on 4.2.87 (2026-11-19):**
+
+| Check                                   | Task       | Result                 | Evidence                                                                                                                                                                                                    |
+| --------------------------------------- | ---------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| M1: DeepSeek `task_state` patch         | `01a1f60e` | pass                   | One `set` used `collection` instead of `field` and got `INVALID_OPERATIONS ... invalid at field`; the model corrected it and the patch succeeded (ledger revision 2 written by the model).                  |
+| M1: DeepSeek read                       | `01a1f60e` | fail                   | Three reads failed with the generic schema error and reached `mistake_limit_reached`. The stored input `{"operations":"null"}` was lossy; the real call most likely carried a non-null `expected_revision`. |
+| M2: counts on condense rows, `opus-64k` | `01a1f615` | pass (data), fail (UI) | The row had `prunedCount 1, offloadedCount 3`. The summary was longer than the preview limit, so the row rendered as a plain preview without the counts.                                                    |
+
+- **4.2.88:** a `read` ignores `expected_revision` and `operations`. A rejected call keeps the exact arguments the model sent (`rawInput`) in the API history. The generic schema error names the failing path. Context preview rows show tokens, cost and the prune and offload counts.
+
+**Live checks on 4.2.88 (2026-11-19):**
+
+| Check                                    | Task       | Result | Evidence                                                                                                                                                                                    |
+| ---------------------------------------- | ---------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| P1: DeepSeek `task_state` read and patch | `01a1f633` | pass   | Task state enabled while idle. Read returned a revision; three model patches succeeded on the first try (ledger revisions 2, 4, 6 by the model). No generic schema error, no mistake limit. |
+| P2: counts on context rows, `opus-64k`   | `01a1f638` | pass   | The prune row showed "Shortened 1 large older tool result" and "Saved 3 older images to the task folder"; each condense preview showed its token line, cost and pruned count.               |
+
+- P1 did not send the bad read shape, so the 4.2.88 read fix is covered by a replay unit test only.
+- **Open observation:** in r86, r87 and r88 a later condense increased the context instead of reducing it. In r88 it went from 75,923 to 128,376 tokens on a 64k window, and the next request cost $0.52. Not yet investigated (likely in the condense and prune ordering in `src/core/context-management/`).
