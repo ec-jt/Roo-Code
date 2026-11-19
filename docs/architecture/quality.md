@@ -77,3 +77,11 @@ Paths: src/core/task/Task.ts
 Quality property: #efficient
 
 Scenario: In a long task, injected context blocks are re-sent only when their digest changes, so prompt-cache reuse is kept.
+
+Evidence ([evaluation 2026-11-18](evaluation-2026-11-18.md), one sample per run):
+
+- **Cache hit rate:** 93.7% to 94.6% in the S1 and S2 runs, with Architecture context set to Off, Index, Constraints or Full.
+- **Overflow recovery:** verified on 4.2.80 with a 64k context window override, with 0 recovery failures.
+    - **Summaries:** verified (S3).
+    - **Pruning:** verified (S3P). It avoided one of three summaries, and summary cost fell from $0.61 to $0.15.
+    - **Image offload:** not exercised in a live run.

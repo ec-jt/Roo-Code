@@ -156,36 +156,209 @@ Rules are applied to the mean over samples. "Better" means at least 10 percent b
 
 ## 7. Results
 
-Fill in one row per run. Leave cells blank if not measured.
+S1 and S3 runs were done once (one sample). Section 3 recommends two samples, so the conclusions for Q1, Q3 and Q4 are provisional. S2 has four samples (r1, r2, r3, r3b). Three of them are fully valid; see the S2 notes below.
+
+**Setup:**
+
+- Runs were done on 2026-11-18 and 2026-11-19.
+- Model: Anthropic `claude-opus-5-5` (profile "opus", medium reasoning).
+- Builds: S1 and S2 sample 1 ran on 4.2.78. S2 sample 2, the valid S3 rerun and S3P ran on 4.2.80. S2 sample 3 ran on 4.2.81, and sample 3b on 4.2.82.
+- Each run used a fresh copy of a standalone snapshot of `9deda9b58`, with one commit, no history and no copy of this protocol. A search of each snapshot found no scripted text.
+- The operator was a separate Roo subtask that used `computer_action`.
+- Metrics come from the task files `ui_messages.json` and `api_conversation_history.json`, which section 5 says not to read. Only the request counts and token totals were cross-checked against the chat UI. All the drift-message counts below are by request number.
+
+Hit rate in these tables is cache reads divided by tokens in.
 
 ### S1
 
-| Run            | Model | Requests | Tokens in / out | Cache read / write | Hit rate | Cost | Re-opened decisions | Repeated failures | Drift handling | Repeat notes (changed) | Outcome |
-| -------------- | ----- | -------- | --------------- | ------------------ | -------- | ---- | ------------------- | ----------------- | -------------- | ---------------------- | ------- |
-| S1-off         |       |          |                 |                    |          |      |                     |                   |                |                        |         |
-| S1-index       |       |          |                 |                    |          |      |                     |                   |                |                        |         |
-| S1-constraints |       |          |                 |                    |          |      |                     |                   |                |                        |         |
-| S1-full        |       |          |                 |                    |          |      |                     |                   |                |                        |         |
+| Run            | Model           | Requests | Tokens in / out    | Cache read / write  | Hit rate | Cost  | Re-opened decisions | Repeated failures | Drift handling                       | Repeat notes (changed) | Outcome                                             |
+| -------------- | --------------- | -------- | ------------------ | ------------------- | -------- | ----- | ------------------- | ----------------- | ------------------------------------ | ---------------------- | --------------------------------------------------- |
+| S1-off         | claude-opus-5-5 | 25       | 1,886,486 / 20,961 | 1,772,803 / 113,583 | 94.0%    | $0.93 | 0                   | 0                 | reported (C-5, Q-REL-1 at req 11)    | 0                      | completed; focused tests pass; diff good (+164/-20) |
+| S1-index       | claude-opus-5-5 | 23       | 1,629,390 / 15,647 | 1,527,888 / 101,410 | 93.8%    | $0.82 | 0                   | 0                 | reported (C-5 at req 6, drift at 11) | 0                      | completed; focused tests pass; diff good (+116/-2)  |
+| S1-constraints | claude-opus-5-5 | 23       | 1,775,957 / 22,242 | 1,670,081 / 105,784 | 94.0%    | $0.87 | 0                   | 0                 | reported (C-5, Q-REL-1 at req 14)    | 0                      | completed; focused tests pass; diff good (+132/-2)  |
+| S1-full        | claude-opus-5-5 | 26       | 1,972,101 / 17,828 | 1,864,690 / 107,307 | 94.6%    | $0.92 | 0                   | 0                 | reported (C-5, Q-REL-1 at req 11)    | 0                      | completed; focused tests pass; diff good (+119/-2)  |
 
 ### S2
 
-| Run       | Model | Requests | Tokens in / out | Cache read / write | Hit rate | Cost | Plan reviews (keep planning) | Re-opened decisions | Drift handling | Outcome |
-| --------- | ----- | -------- | --------------- | ------------------ | -------- | ---- | ---------------------------- | ------------------- | -------------- | ------- |
-| S2-modes  |       |          |                 |                    |          |      |                              |                     |                |         |
-| S2-cordis |       |          |                 |                    |          |      |                              |                     |                |         |
+| Run           | Model           | Requests | Tokens in / out    | Cache read / write  | Hit rate | Cost  | Plan reviews (keep planning)                     | Re-opened decisions | Drift handling                                                 | Outcome                                                                                                             |
+| ------------- | --------------- | -------- | ------------------ | ------------------- | -------- | ----- | ------------------------------------------------ | ------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| S2-modes      | claude-opus-5-5 | 42       | 5,430,345 / 52,601 | 5,136,134 / 294,043 | 94.6%    | $2.50 | 1 (0)                                            | 0                   | reported (C-5 at req 13)                                       | completed; focused tests pass; diff good (+330/-18, 4 new files)                                                    |
+| S2-cordis     | claude-opus-5-5 | 34       | 3,258,515 / 29,257 | 3,052,453 / 205,926 | 93.7%    | $1.65 | 2 (0)                                            | 0                   | reported (C-5, Q-REL-1 amendment at req 12; proposed ADR)      | completed; focused tests pass; diff good (+371/-18, 3 new files)                                                    |
+| S2-modes-r2   | claude-opus-5-5 | 50       | 6,584,166 / 40,482 | 6,275,104 / 308,862 | 95.3%    | $2.81 | 1 (0); mode switch at req 16                     | 0                   | reported (C-5 follow-up at req 11)                             | completed; tests and type checks pass; diff good                                                                    |
+| S2-cordis-r2  | claude-opus-5-5 | 30       | 2,684,827 / 34,152 | 2,492,267 / 192,440 | 92.8%    | $1.47 | 2 (0)                                            | 0                   | reported (C-5, Q-REL-1, R-2 amendment at req 14; proposed ADR) | finished with text only, then `resume_task` (no `attempt_completion`); new tests pass; diff acceptable              |
+| S2-modes-r3   | claude-opus-5-5 | 33       | 3,674,800 / 35,766 | 3,424,366 / 250,302 | 93.2%    | $1.94 | 1 (0); mode switch at req 8                      | 0                   | reported (C-5, Q-REL-1 follow-up at req 12)                    | completed; focused tests and type checks pass; diff good                                                            |
+| S2-cordis-r3  | claude-opus-5-5 | 28       | 2,544,714 / 24,445 | 2,335,831 / 208,771 | 91.8%    | $1.52 | 1 (0)                                            | 0                   | not rateable: the drift message was lost (product defect)      | completed; focused tests pass; diff good                                                                            |
+| S2-modes-r3b  | claude-opus-5-5 | 48       | 5,551,887 / 49,607 | 5,224,275 / 327,420 | 94.1%    | $2.69 | 0 (0); plan in a follow-up; mode switch at req 9 | 0                   | reported (C-5, Q-REL-1 follow-up at req 14)                    | completed; focused tests and type checks pass; diff good                                                            |
+| S2-cordis-r3b | claude-opus-5-5 | 35       | 3,511,983 / 35,939 | 3,287,123 / 224,720 | 93.6%    | $1.79 | 2 (0)                                            | 0                   | reported (C-5, Q-REL-1 amendment at req 14; proposed ADR)      | completed after one tool reminder (req 34 text-only, `attempt_completion` at req 35); focused tests pass; diff good |
+
+- The second sample (`-r2`) ran on 4.2.80 with the same prompts and scripted replies.
+- The third sample (`-r3`) ran on 4.2.81. S2-cordis-r3 is valid for cost and outcome but not for drift, because its drift message never reached the task.
+- Sample 3b (`-r3b`) ran on 4.2.82 and repeats the pair after both fixes. Its modes cost is probably too high (see the run log).
 
 ### S3
 
-| Run      | Model / window | Requests | Tokens in / out | Pruned rows | Condensed rows | Truncated rows | Images offloaded | Recovery failures | Repeated failures | Outcome |
-| -------- | -------------- | -------- | --------------- | ----------- | -------------- | -------------- | ---------------- | ----------------- | ----------------- | ------- |
-| S3-none  |                |          |                 |             |                |                |                  |                   |                   |         |
-| S3-prune |                |          |                 |             |                |                |                  |                   |                   |         |
-| S3-both  |                |          |                 |             |                |                |                  |                   |                   |         |
+These are the valid rerun on 4.2.80. The first attempt, on 4.2.79, is in the run log.
+
+| Run      | Model / window                      | Requests | Tokens in / out | Pruned rows | Condensed rows | Truncated rows | Images offloaded | Recovery failures | Repeated failures | Outcome                                 |
+| -------- | ----------------------------------- | -------- | --------------- | ----------- | -------------- | -------------- | ---------------- | ----------------- | ----------------- | --------------------------------------- |
+| S3-none  | claude-opus-5-5 / 64,000 (override) | 14       | 651,973 / 5,908 | 0           | 2              | 0              | 0                | 0                 | 1                 | completed; spec passes; diff good       |
+| S3-prune | claude-opus-5-5 / 64,000 (override) | 10       | 453,023 / 4,541 | 0           | 2              | 0              | 0                | 0                 | 0                 | completed; spec passes; diff good       |
+| S3-both  | claude-opus-5-5 / 64,000 (override) | 15       | 704,177 / 5,706 | 0           | 2              | 0              | 0                | 0                 | 0                 | completed; spec passes; diff acceptable |
+
+### S3P: pruning scenario (added after S3)
+
+S3 never pruned, so this scenario forces large tool results early. The task reads three large chat components in full, about 69, 57 and 47 KB. It then writes a report and runs one test. Offload was off in both runs.
+
+| Run       | Model / window                      | Requests | Tokens in / out | Cost  | Pruned rows | Condensed rows | Truncated rows | Re-reads of pruned files | Recovery failures | Outcome                                      |
+| --------- | ----------------------------------- | -------- | --------------- | ----- | ----------- | -------------- | -------------- | ------------------------ | ----------------- | -------------------------------------------- |
+| S3P-none  | claude-opus-5-5 / 64,000 (override) | 8        | 455,946 / 5,179 | $0.90 | 0           | 3              | 0              | not applicable           | 0                 | completed; test 47/47; report accurate; good |
+| S3P-prune | claude-opus-5-5 / 64,000 (override) | 9        | 504,285 / 7,955 | $0.92 | 2           | 2              | 0              | 0                        | 0                 | completed; test 47/47; report accurate; good |
+
+**S3P-prune:**
+
+- At req 3, pruning one tool result cut the context from 78,967 to 21,938 tokens, with no summary.
+- At req 6, a second prune cut it from 65,009 to 37,689 tokens.
+- The two summaries cost $0.15 in S3P-prune, against $0.61 for the three summaries in S3P-none.
+- The model did not re-read a pruned file with `read_file`. It checked line numbers once with a shell command.
 
 ### Run log
 
-Free-text notes per run: unexpected questions, manual answers given, crashes, anything that makes a run not comparable.
+**S1-off, attempts 1 and 2: invalid.**
+
+- **Attempt 1 (4.2.76):** the queued drift message reached the model inside a `read_file` tool result. The model treated it as possible prompt injection.
+    - The cause was a regression from `8de9337e6`: approval feedback was embedded as bare JSON in the tool result.
+    - 4.2.77 fixed it: user text now goes in a separate `<user_message>` block after the tool result.
+- **Attempt 2 (4.2.77):** the model ran `git diff -- docs/architecture/` and saw this protocol in the worktree diff, including the scripted drift messages.
+    - From then on, every run used the orphan snapshot. The table above shows run 3.
+
+**All S1 runs:** before any drift message, the model already stopped on the base prompt. Setting `lastOpenedAt` on open rewrites `history_item.json`, which conflicts with C-5 and Q-REL-1, and the model asked about it. The scripted override was given each time.
+
+- S1-off, constraints and full stopped at the drift message.
+- S1-index stopped twice: once at req 6 (before the drift message) and again at req 11.
+
+**S1-full:** the context block was 5,066 characters, identical to S1-constraints. Full mode adds accepted decisions and risks only when their `Paths` match a file read. In this snapshot, the only accepted ADR has `Paths: docs/architecture/**`, and the R-1 to R-5 risks have Status "proposed", so nothing extra was added.
+
+**S2-modes:**
+
+- At req 5, Roo asked how to count subtasks. Manual answer: "Count each task's direct children only."
+- The plan was approved at req 8.
+- The switch to Code was auto-approved at req 9 (`alwaysAllowModeSwitch` was on).
+
+**S2-cordis:**
+
+- The plan review was approved at req 6.
+- The drift arrived as a second `plan_review` (an amendment) with no text field. I clicked "Approve plan" and also sent the scripted reply as a chat message.
+- The model wrote `docs/architecture/decisions/proposed/ADR-2026-11-18-per-task-subtask-limit.md`.
+
+**S3, first attempt (4.2.79): invalid.**
+
+- In all three runs, the first compaction ended with "The retry after context compaction returned no response."
+- **Cause:** `Task.attemptApiRequest()` counted only `text` and `tool_call` chunks as a response. Anthropic, Bedrock, OpenRouter, Gemini and others emit `tool_call_partial`, so a reply with reasoning plus a tool call was rejected.
+- This bug had been present since 4.2.23. The 64k override made compaction frequent enough to expose it.
+- Fixed in 4.2.80.
+
+**S3 rerun (4.2.80):**
+
+- **Context window:** opus has a 1M-token window. The new per-profile `modelContextWindowOverride` (4.2.79) set it to 64,000 for these runs. Compaction happened at about 51k to 53k tokens.
+- **Prune and offload never triggered:** every overflow went straight to a summary. In the invalid first attempt, one prune happened (S3-prune, req 6), and a summary followed it anyway.
+- **Browser screenshot:** the browser screenshot of the settings page was blank in every run, because navigation timed out. So no images were offloaded.
+- **S3-none:** the repeated failure was a rerun of the full chat suite, done to confirm a `ChatView.spec.tsx` failure. That failure is not related to the task and is present in every S3 workspace.
+- **S3-both:** rated acceptable, not good:
+    - It left `screenshots/webview-settings-attempt.png` in the workspace.
+    - It used `tail -150`, although the prompt asked for full output.
+- **Manual action:** in S3-none, I clicked "Run" (proceed while running) once, when a Vite dev server command blocked the task.
+
+**S2 second sample (4.2.80):**
+
+- **S2-modes-r2:** Roo asked the same subtask-counting question as sample 1, at req 7, and got the same answer. The drift message was sent at req 10 and handled at req 11. The plan was approved at req 15, and the mode switched at req 16.
+- **S2-cordis-r2:**
+    - Plan approved at req 5.
+    - Drift message sent at req 11, one request late, because the poll first saw the count at 11.
+    - The drift amendment was approved at req 14. The scripted reply was then sent as a chat message.
+    - The run ended with a text summary and no `attempt_completion`, so Roo showed `resume_task`. Its new tests pass. It reports 12 `ClineProvider.spec.ts` failures and says they also fail without its change. It wrote a proposed ADR in the workspace.
+- **Both runs:** the drift message arrived in a `<user_message>` block, with no leaks. Grepping the added lines found no migration, only comments that say "never migrated".
+
+**S3P (4.2.80):** neither run overflowed on a single read. Neither run has a Context Truncated row.
+
+**S2-cordis-r2 ending, investigated after sample 2:**
+
+- The run did not stop because of model variance alone. With Cordis on, `Task.makeClineRequests()` treated any reply without a tool call as the end of the turn and asked `resume_task`. It never sent the "use a tool" reminder that the modes profile sends. This branch had existed since 4.2.5.
+- **4.2.81** added the setting `cordisTextOnlyTurnPolicy`. The default `retryThenPause` sends one reminder once the task has used a tool, and pauses only if the next reply also has no tool call. `alwaysPause` keeps the old behaviour.
+
+**S2 third sample (4.2.81):**
+
+- **S2-modes-r3:** the counting question came at req 6 and the plan at req 7. The switch to Code came at req 8. The drift message was sent at req 10 and reported at req 12. At req 32 the run replied with text only; the standard reminder followed and it completed at req 33.
+- **S2-cordis-r3:** the plan was approved at req 9. The drift message was typed and sent at req 10, about 6 s after an auto-approved to-do update, during a 2.7 s checkpoint save. It never reached the task: no `user_feedback` row, nothing in the API history. The run completed with no text-only reply, so the 4.2.81 retry did not run.
+- **Cause of the lost message:** the chat view treated an auto-approved tool ask as still waiting (it ignored `isAnswered`). It sent the text as an answer instead of queuing it. The extension stored it with no ask waiting, and the next ask cleared it. The defect is not specific to Cordis; the 2.7 s checkpoint made the window large enough to hit.
+- **4.2.82** queues a message that arrives when no ask is waiting, and the chat view queues text typed after an answered approval ask.
+
+**S2 sample 3b (4.2.82):**
+
+- Each drift message was checked with a screenshot within 2 s and then in the task files: the input cleared, a "Queued Messages" row showed, and a `user_feedback` row followed within 2 s. Both runs got the drift message at req 12 (the poll skipped req 10). The pair stays matched.
+- **S2-modes-r3b:** the counting question and the plan came as one follow-up. The run waited about 37 minutes at it (network loss, and the user was using the computer), so the prompt cache probably expired; its cost is probably too high. It asked one extra follow-up about translations at req 42, answered with its own first suggestion.
+- **S2-cordis-r3b:** the drift came as an amendment at req 14. I approved it and sent the override as a chat message; the override was queued and delivered about 7 s later. At req 34 the run replied with text only. The 4.2.81 reminder followed, and it called `attempt_completion` at req 35. It wrote a proposed ADR in its workspace, and its own reasoning noted that Code mode should not edit `docs/architecture/`.
+- **Both runs:** every user message arrived in a `<user_message>` block. No migration in the added lines.
 
 ## 8. Conclusions
 
-To be written after the results are in, applying section 6. List each default change with the rule that justifies it, and the record to update (new ADR, [Q-EFF-1](quality.md) measure, or risk).
+- **Q1 and Q4:** answered from one sample per run.
+- **Q2:** answered from four samples (r1, r2, r3, r3b).
+- **Q3:** answered from S3 plus the S3P scenario that was added to it.
+
+**Q1, architecture context default: keep `off` (rule 2). Full stays opt-in (rule 3).**
+
+- Index and Constraints were equal to Off on both measures:
+    - re-opened decisions: 0 in every run;
+    - drift handling: reported in every run, including Off.
+- The model found C-5 without injected context, by reading `docs/architecture/` itself.
+- Hit rates were 93.8% to 94.6%, within 1 point of each other.
+- Full did not beat Constraints: its context block was the same.
+- **Limit:** this repository's records are easy to find, so Off performs well here. In a repository where the model does not look for `docs/architecture/`, the result may differ.
+- **Record:** no change. `architectureContextMode` stays `off` by default.
+
+**Q2, Cordis profile: rule 1 is met. Cordis was cheaper in all four samples, and on 4.2.82 the outcome is equal.**
+
+| Measure      | Cordis r1 | Modes r1 | Cordis r2 | Modes r2 | Cordis r3 | Modes r3 | Cordis r3b | Modes r3b | Change with Cordis (all four) |
+| ------------ | --------- | -------- | --------- | -------- | --------- | -------- | ---------- | --------- | ----------------------------- |
+| API requests | 34        | 42       | 30        | 50       | 28        | 33       | 35         | 48        | 27% fewer (127 vs 173)        |
+| Input tokens | 3.26M     | 5.43M    | 2.68M     | 6.58M    | 2.54M     | 3.67M    | 3.51M      | 5.55M     | 44% fewer (12.0M vs 21.2M)    |
+| Cost         | $1.65     | $2.50    | $1.47     | $2.81    | $1.52     | $1.94    | $1.79      | $2.69     | 35% lower ($6.43 vs $9.94)    |
+
+- Leaving out r3 (Cordis drift not rateable) gives 29% fewer requests, 46% fewer input tokens and 39% lower cost. Leaving out r3b as well (modes cost inflated by the long wait) still leaves Cordis cheaper in r1 and r2.
+- **Drift:** reported with no migration in every run where the message arrived (7 of 8).
+- **Outcome:**
+    - r1: equal (both good).
+    - r2: Cordis ended without `attempt_completion`. Investigation showed a Cordis code path, not only model variance. Fixed in 4.2.81.
+    - r3: both completed and both diffs good, but the Cordis drift message was lost to a product defect (not specific to Cordis). Fixed in 4.2.82.
+    - r3b (4.2.82): equal. Both completed with good diffs. The Cordis run hit a reply without a tool call, got one reminder, and completed.
+- **Record:** accepted [ADR-2026-11-19-keep-cordis-profile-widen-experiment](decisions/accepted/ADR-2026-11-19-keep-cordis-profile-widen-experiment.md). It:
+    - keeps the profile;
+    - turns the profile on by default for all providers, now that the samples agree (the user chose all providers over Anthropic only);
+    - keeps [R-5](risks.md) open for the dispatch runtime, which stays Anthropic-only;
+    - recommends one S2 pair on a non-Anthropic model, because every sample used Anthropic;
+    - records the missing-completion risk as fixed in 4.2.81 and checked live in r3b.
+
+**Q3, overflow recovery: keep `pruneToolResultsOnOverflow` on (rule 1 is met by S3P). Keep `offloadImagesOnOverflow` on (rule 2: not exercised). Rule 3 does not apply.**
+
+- **S3:** no run avoided a summary. There were 0 recovery failures after the 4.2.80 fix.
+- **S3P:** S3P-prune avoided one of the three summaries that S3P-none needed (2 summaries instead of 3).
+    - Its first overflow was handled by pruning alone.
+    - It had 0 recovery failures and the same outcome (both good).
+    - It did not re-read the pruned files with `read_file`.
+    - Summary cost was $0.15 vs $0.61. Total cost was about the same ($0.92 vs $0.90).
+- **Offload:** still not exercised. No run produced a usable image.
+- **Record:** update the notes in [Q-EFF-1](quality.md) and [R-3](risks.md). Pruning is now verified in a live run, and offload is still not.
+
+**Q4, repeat-call note: keep 3/5/8 (rule 2).**
+
+- No "with identical arguments" note appeared in any of the 16 valid runs (S2-cordis-r3 included, since this measure does not depend on drift).
+- **Record:** no change.
+
+**Defect found and fixed during the evaluation**
+
+These came from running the evaluation, not from the questions above:
+
+- **4.2.77:** queued user messages reach the model as user messages.
+- **4.2.80:** a reply with only a tool call is accepted after compaction.
+- **4.2.81:** with Cordis on, a reply without a tool call gets one reminder before the task pauses (setting `cordisTextOnlyTurnPolicy`, default `retryThenPause`).
+- **4.2.82:** a chat message sent while no ask is waiting is queued instead of silently lost.
