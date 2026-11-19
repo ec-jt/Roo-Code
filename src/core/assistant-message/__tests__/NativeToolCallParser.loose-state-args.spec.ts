@@ -65,15 +65,36 @@ describe("NativeToolCallParser loose task_state and memory arguments", () => {
 			).toEqual({ action: "patch", expected_revision: revision, operations: ops })
 		})
 
-		it("still rejects invalid payloads", () => {
-			expect(
-				parse("task_state", { action: "patch", expected_revision: revision, operations: "" }).argumentError,
-			).toBeDefined()
+		it("still rejects invalid top-level payloads", () => {
 			expect(
 				parse("task_state", { action: "read", expected_revision: revision, operations: null }).argumentError,
 			).toBeDefined()
 			expect(parse("task_state", { action: "read", extra: 1 }).argumentError).toBeDefined()
-			expect(parse("task_state", { action: "patch", operations: "not json" }).argumentError).toBeDefined()
+			expect(parse("task_state", { action: "write" }).argumentError).toBeDefined()
+			expect(parse("task_state", { action: "patch", operations: 5 }).argumentError).toBeDefined()
+		})
+
+		it("leaves operations content to the tool (malformed or empty operations pass the parser)", () => {
+			for (const operations of ["not json", "", '[{"op":"upsert","collection":"nope"}]']) {
+				const result = parse("task_state", { action: "patch", expected_revision: revision, operations })
+				expect(result.argumentError).toBeUndefined()
+			}
+		})
+
+		// Exact live 4.2.86 deepseek-flash payloads (hist idx 27 and 29), without expected_revision.
+		it.each([
+			[
+				"A (record wrapper)",
+				'[{"op":"upsert","collection":"evidenceRefs","record":{"id":"ev-verbose-validation","text":"Validation run 2026-11-19: --help lists --verbose; non-verbose core check has no per-file lines; verbose core, webview, and package-nls checks printed the checked relative file paths.","source":"terminal command output in this task"}}]',
+			],
+			[
+				"B (flat record)",
+				'[{"op":"upsert","collection":"evidenceRefs","id":"ev-verbose-validation","text":"Validation run 2026-11-19: --help lists --verbose; non-verbose core check has no per-file lines; verbose core, webview, and package-nls checks printed the checked relative file paths.","source":"terminal command output in this task"}]',
+			],
+		])("passes live shape %s through the parser", (_label, operations) => {
+			const result = parse("task_state", { action: "patch", operations })
+			expect(result.argumentError).toBeUndefined()
+			expect(result.nativeArgs).toEqual({ action: "patch", expected_revision: null, operations })
 		})
 	})
 

@@ -5,9 +5,9 @@ import { isToolAllowedForMode } from "./validateToolUse"
 import {
 	taskStateArgsSchema,
 	normalizeTaskStateArgs,
+	parseTaskStatePatchOperations,
 	TASK_STATE_REVISION_REQUIRED,
 } from "../prompts/tools/native-tools/task_state"
-import { taskStatePatchOperationsSchema } from "../../../packages/types/src/task-state"
 import { taskStateTransaction, recordTaskStateMilestone } from "../../services/task-state/taskState"
 import { renderTaskState } from "../../services/task-state/render"
 import { TaskStateError } from "../../services/task-state/types"
@@ -24,6 +24,13 @@ export class TaskStateTool extends BaseTool<"task_state"> {
 			if (normalized?.action === "patch" && normalized.expected_revision === null)
 				throw new TaskStateError("REVISION_REQUIRED", TASK_STATE_REVISION_REQUIRED)
 			const args = taskStateArgsSchema.parse(normalized)
+			// Validate operations before any transaction, approval or write. A malformed operation
+			// gets a specific error (index, field, valid example) instead of a generic schema failure.
+			let operations: ReturnType<typeof parseTaskStatePatchOperations> | undefined
+			if (args.action === "patch") {
+				operations = parseTaskStatePatchOperations(args.operations)
+				if (!operations.ok) throw new TaskStateError("INVALID_OPERATIONS", operations.message)
+			}
 			const { store, options } = await taskStateTransaction(task, args.expected_revision)
 			const check = async () => {
 				await options.authorize()
@@ -56,7 +63,7 @@ export class TaskStateTool extends BaseTool<"task_state"> {
 					authorize: async () => {
 						await check()
 					},
-					operations: taskStatePatchOperationsSchema.parse(JSON.parse(args.operations!)),
+					operations: operations && operations.ok ? operations.operations : [],
 				})
 				await recordTaskStateMilestone(task)
 				result = await store.read(options.validHistoryAnchors)
@@ -66,6 +73,12 @@ export class TaskStateTool extends BaseTool<"task_state"> {
 			// DISABLED is a user-controlled state, not a model mistake: it never counts toward the mistake
 			// limit and does not block attempt_completion in this turn.
 			if (!(error instanceof TaskStateError && error.code === "DISABLED")) task.didToolFailInCurrentTurn = true
+			// A malformed operation is a model mistake: count it once, like other tool-level argument
+			// errors. REVISION_REQUIRED and DISABLED are guidance and are not counted.
+			if (error instanceof TaskStateError && error.code === "INVALID_OPERATIONS") {
+				task.consecutiveMistakeCount++
+				task.recordToolError("task_state", error.message)
+			}
 			callbacks.pushToolResult(
 				error instanceof TaskStateError
 					? `${error.code}: ${error.message}`

@@ -108,6 +108,45 @@ describe("history preview identity and empty content", () => {
 		})
 		expect(open).not.toHaveBeenCalled()
 	})
+	it("keeps contextPrune data on context_pruned rows", () => {
+		const task = source()
+		const contextPrune = {
+			pruneId: "prune-1",
+			prunedCount: 4,
+			offloadedCount: 3,
+			prevContextTokens: 9000,
+			newContextTokens: 4000,
+		}
+		task.clineMessages = [task.clineMessages[0], { ts: 3, type: "say", say: "context_pruned", contextPrune }]
+		const row = new ChatWindow().snapshot(task).clineMessages[1]
+		expect(row.contextPrune).toEqual(contextPrune)
+	})
+	it.each([
+		["short", "summary text"],
+		["truncated", "y".repeat(CHAT_PREVIEW_BYTES * 2)],
+	])("keeps prunedCount and offloadedCount on condense rows (%s summary)", (_label, summary) => {
+		const task = source()
+		task.clineMessages = [
+			task.clineMessages[0],
+			{
+				ts: 3,
+				type: "say",
+				say: "condense_context",
+				contextCondense: {
+					summary,
+					condenseId: "event-2",
+					cost: 0,
+					prevContextTokens: 1000,
+					newContextTokens: 100,
+					prunedCount: 1,
+					offloadedCount: 2,
+				},
+			},
+		]
+		const row = new ChatWindow().snapshot(task).clineMessages[1]
+		expect(row.contextCondense).toMatchObject({ prunedCount: 1, offloadedCount: 2, condenseId: "event-2" })
+		expect(row.chatPreview?.truncated).toBe(summary.length > CHAT_PREVIEW_BYTES / 6)
+	})
 	const source = () => ({
 		taskId: "task",
 		instanceId: "instance",

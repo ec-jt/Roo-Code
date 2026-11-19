@@ -65,7 +65,14 @@ function preview(message: ClineMessage, limit = CHAT_PREVIEW_BYTES) {
 		conversationHistoryIndex: message.conversationHistoryIndex,
 		...(images.length ? { images } : {}),
 	}
-	for (const key of ["requestId", "checkpoint", "progressStatus", "contextCondense", "contextTruncation"] as const) {
+	for (const key of [
+		"requestId",
+		"checkpoint",
+		"progressStatus",
+		"contextCondense",
+		"contextTruncation",
+		"contextPrune",
+	] as const) {
 		const value = message[key]
 		if (value === undefined) continue
 		if (key === "contextCondense" && message.contextCondense) {
@@ -79,6 +86,9 @@ function preview(message: ClineMessage, limit = CHAT_PREVIEW_BYTES) {
 				prevContextTokens: data.prevContextTokens,
 				newContextTokens: data.newContextTokens,
 				...(data.condenseId && data.condenseId.length <= 128 ? { condenseId: data.condenseId } : {}),
+				// Small numeric counts shown in the context row; keep them even when the summary is cut.
+				...(data.prunedCount !== undefined ? { prunedCount: data.prunedCount } : {}),
+				...(data.offloadedCount !== undefined ? { offloadedCount: data.offloadedCount } : {}),
 			}
 			if (summary !== data.summary || row.contextCondense.condenseId !== data.condenseId) truncated = true
 			continue
