@@ -829,7 +829,7 @@
 		},
 		"CORDIS_RUNTIME_PREVIEW": {
 			"name": "Versión preliminar del runtime de Cordis",
-			"description": "Activa la admisión experimental de solicitudes solo para tareas nuevas de Anthropic. Los demás proveedores siguen el flujo normal. La ejecución de grafos no está disponible y esta versión preliminar no aplica límites de presupuesto económico. El chat normal y la delegación siguen disponibles cuando está desactivada. Guarda para aplicar los cambios: desactivarla detiene el envío de nuevas solicitudes de la versión preliminar y cancela las solicitudes activas a los modelos de esta versión, pero no puede deshacer los efectos que ya se han producido. Volver a activarla no reanuda automáticamente las tareas detenidas; vuelve a abrir una tarea o inicia una para usar la configuración actual."
+			"description": "Activado por defecto. Las tareas nuevas de todos los proveedores usan el perfil Cordis: /plan ofrece una revisión del plan para aprobar, la desviación detectada durante una tarea se plantea como una enmienda del plan y se aplica un conjunto fijo de herramientas (todos los grupos de herramientas, sin switch_mode, modo bloqueado tras la primera solicitud). Las tareas existentes conservan su perfil. Solo las tareas de Anthropic usan además la admisión de solicitudes de la versión preliminar; los demás proveedores siguen el flujo normal. Desactívalo para usar los modos en las tareas nuevas. Guarda para aplicar los cambios: desactivarlo detiene el envío de nuevas solicitudes de la versión preliminar y cancela las solicitudes activas a los modelos de esta versión, pero no puede deshacer los efectos que ya se han producido."
 		},
 		"DIFF_STRATEGY_UNIFIED": {
 			"name": "Usar estrategia de diff unificada experimental",

@@ -384,21 +384,21 @@ describe("SettingsView - Local Browser Settings", () => {
 })
 
 describe("SettingsView - Sound Settings", () => {
-	it("renders the preview off by default and saves opt-in and opt-out", () => {
+	it("renders the preview on by default and saves opt-out and opt-in", () => {
 		const { activateTab, getSettingsContent } = renderSettingsView()
 		activateTab("experimental")
 		const checkbox = within(getSettingsContent()).getByRole("checkbox", {
 			name: "settings:experimental.CORDIS_RUNTIME_PREVIEW.name",
 		})
-		expect(checkbox).not.toBeChecked()
-		fireEvent.click(checkbox)
 		expect(checkbox).toBeChecked()
+		fireEvent.click(checkbox)
+		expect(checkbox).not.toBeChecked()
 		fireEvent.click(screen.getByTestId("save-button"))
 		expect(vscode.postMessage).toHaveBeenCalledWith(
 			expect.objectContaining({
 				type: "updateSettings",
 				updatedSettings: expect.objectContaining({
-					experiments: expect.objectContaining({ cordisRuntimePreview: true }),
+					experiments: expect.objectContaining({ cordisRuntimePreview: false }),
 				}),
 			}),
 		)
@@ -408,7 +408,7 @@ describe("SettingsView - Sound Settings", () => {
 			expect.objectContaining({
 				type: "updateSettings",
 				updatedSettings: expect.objectContaining({
-					experiments: expect.objectContaining({ cordisRuntimePreview: false }),
+					experiments: expect.objectContaining({ cordisRuntimePreview: true }),
 				}),
 			}),
 		)

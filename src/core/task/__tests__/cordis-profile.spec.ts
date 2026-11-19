@@ -22,7 +22,20 @@ describe("resolveTaskProfile", () => {
 	it("uses the experiment flag for new root tasks", () => {
 		expect(resolveTaskProfile({ experiments: { cordisRuntimePreview: true } })).toBe("cordis")
 		expect(resolveTaskProfile({ experiments: { cordisRuntimePreview: false } })).toBe("modes")
-		expect(resolveTaskProfile({})).toBe("modes")
+	})
+
+	it("gives a new root task cordis when the flag is absent (on by default)", () => {
+		expect(resolveTaskProfile({})).toBe("cordis")
+		expect(resolveTaskProfile({ experiments: {} })).toBe("cordis")
+		expect(resolveTaskProfile({ experiments: { customTools: true } })).toBe("cordis")
+		expect(resolveTaskProfile({ experiments: { cordisRuntimePreview: undefined } })).toBe("cordis")
+	})
+
+	it("keeps stored and parent profiles ahead of the default", () => {
+		expect(resolveTaskProfile({ stored: "modes", experiments: {} })).toBe("modes")
+		expect(resolveTaskProfile({ stored: "modes" })).toBe("modes")
+		expect(resolveTaskProfile({ parent: "modes", experiments: {} })).toBe("modes")
+		expect(resolveTaskProfile({ parent: "modes" })).toBe("modes")
 	})
 })
 

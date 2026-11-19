@@ -829,7 +829,7 @@
 		},
 		"CORDIS_RUNTIME_PREVIEW": {
 			"name": "Cordis-runtimepreview",
-			"description": "Schakel de experimentele toelating van verzoeken alleen voor nieuwe Anthropic-taken in. Andere providers gebruiken het normale pad. Graafuitvoering is niet beschikbaar en deze preview dwingt geen financiële budgetlimieten af. Normale chat en delegatie blijven beschikbaar wanneer de preview uitstaat. Sla op om toe te passen: uitschakelen stopt het verzenden van nieuwe previewverzoeken en annuleert actieve modelverzoeken van de preview, maar kan al opgetreden effecten niet ongedaan maken. Opnieuw inschakelen hervat gestopte taken niet automatisch; heropen een taak of start een nieuwe om de huidige instelling te gebruiken."
+			"description": "Standaard aan. Nieuwe taken gebruiken bij elke provider het Cordis-profiel: /plan geeft een planbeoordeling om goed te keuren, afwijkingen tijdens een taak worden als planwijziging voorgesteld, en er geldt een vaste set tools (alle toolgroepen, geen switch_mode, modus vergrendeld na het eerste verzoek). Bestaande taken houden hun profiel. Alleen Anthropic-taken gebruiken ook de verzoektoelating van de preview; andere providers volgen de normale route. Zet het uit om modi te gebruiken voor nieuwe taken. Sla op om toe te passen: uitschakelen stopt het versturen van nieuwe previewverzoeken en annuleert actieve previewmodelverzoeken, maar kan reeds opgetreden effecten niet ongedaan maken."
 		},
 		"DIFF_STRATEGY_UNIFIED": {
 			"name": "Experimentele unified diff-strategie gebruiken",

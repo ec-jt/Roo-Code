@@ -1460,6 +1460,18 @@ describe("webviewMessageHandler - setPlanOverlay", () => {
 		expect(provider.postMessageToWebview).toHaveBeenCalledWith({ type: "invoke", invoke: "newChat" })
 	})
 
+	it.each<Record<string, boolean>>([{}, { customTools: true }])(
+		"creates a new task with the overlay on when the preview key is absent (on by default): %j",
+		async (experiments) => {
+			const provider = makeProvider(undefined, experiments)
+			await webviewMessageHandler(provider, { type: "setPlanOverlay", planOverlayOn: true, text: "Design auth" })
+			expect(provider.createTask).toHaveBeenCalledWith("Design auth", expect.anything(), undefined, {
+				planOverlay: true,
+			})
+			expect(vscode.window.showInformationMessage).not.toHaveBeenCalled()
+		},
+	)
+
 	it("shows info and creates no task when a new task would use the modes profile", async () => {
 		const provider = makeProvider(undefined, { cordisRuntimePreview: false })
 		await webviewMessageHandler(provider, { type: "setPlanOverlay", planOverlayOn: true, text: "Design auth" })

@@ -829,7 +829,7 @@
 		},
 		"CORDIS_RUNTIME_PREVIEW": {
 			"name": "Cordis çalışma zamanı önizlemesi",
-			"description": "Deneysel istek kabulünü yalnızca yeni Anthropic görevleri için etkinleştir. Diğer sağlayıcılar normal akışı kullanır. Graf yürütme kullanılamaz ve bu önizleme mali bütçe sınırlarını zorunlu kılmaz. Kapalıyken normal sohbet ve görev devri kullanılabilir olmaya devam eder. Uygulamak için kaydet: devre dışı bırakmak yeni önizleme isteklerinin gönderimini durdurur ve etkin önizleme model isteklerini iptal eder, ancak zaten oluşmuş etkileri geri alamaz. Yeniden etkinleştirmek durdurulan görevleri otomatik olarak sürdürmez; geçerli ayarı kullanmak için bir görevi yeniden aç veya yeni bir görev başlat."
+			"description": "Varsayılan olarak açık. Yeni görevler her sağlayıcıda Cordis profilini kullanır: /plan onaylaman için bir plan incelemesi sunar, görev sırasında bulunan sapma plan değişikliği olarak önerilir ve sabit bir araç seti uygulanır (tüm araç grupları, switch_mode yok, mod ilk istekten sonra kilitlenir). Mevcut görevler profillerini korur. Önizleme istek kabulünü de yalnızca Anthropic görevleri kullanır; diğer sağlayıcılar normal akışı kullanır. Yeni görevlerde modları kullanmak için kapat. Uygulamak için kaydet: devre dışı bırakmak yeni önizleme isteklerinin gönderimini durdurur ve etkin önizleme model isteklerini iptal eder, ancak zaten oluşmuş etkileri geri alamaz."
 		},
 		"DIFF_STRATEGY_UNIFIED": {
 			"name": "Deneysel birleştirilmiş diff stratejisini kullan",

@@ -829,7 +829,7 @@
 		},
 		"CORDIS_RUNTIME_PREVIEW": {
 			"name": "Aperçu du runtime Cordis",
-			"description": "Active l'admission expérimentale des requêtes uniquement pour les nouvelles tâches Anthropic. Les autres fournisseurs suivent le fonctionnement normal. L'exécution de graphes n'est pas disponible et cet aperçu ne fait pas respecter les limites budgétaires financières. Le chat normal et la délégation restent disponibles lorsque l'aperçu est désactivé. Enregistre pour appliquer les changements : la désactivation arrête l'envoi de nouvelles requêtes via l'aperçu et annule les requêtes actives aux modèles via celui-ci, mais ne peut pas annuler les effets déjà produits. La réactivation ne reprend pas automatiquement les tâches arrêtées ; rouvre une tâche ou démarres-en une pour utiliser le réglage actuel."
+			"description": "Activé par défaut. Les nouvelles tâches utilisent le profil Cordis avec tous les fournisseurs : /plan propose une revue du plan à approuver, une dérive détectée pendant une tâche est signalée sous forme d'amendement du plan, et un ensemble fixe d'outils s'applique (tous les groupes d'outils, pas de switch_mode, mode verrouillé après la première requête). Les tâches existantes gardent leur profil. Seules les tâches Anthropic utilisent aussi l'admission des requêtes de l'aperçu ; les autres fournisseurs suivent le fonctionnement normal. Désactive-le pour utiliser les modes dans les nouvelles tâches. Enregistre pour appliquer : la désactivation arrête l'envoi de nouvelles requêtes via l'aperçu et annule les requêtes actives aux modèles via celui-ci, mais ne peut pas annuler les effets déjà produits."
 		},
 		"DIFF_STRATEGY_UNIFIED": {
 			"name": "Utiliser la stratégie diff unifiée expérimentale",

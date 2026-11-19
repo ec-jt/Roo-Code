@@ -170,7 +170,9 @@ describe("Task opt-in model dispatch", () => {
 		expect(loop).not.toHaveBeenCalled()
 	})
 
-	it.each([undefined, false, true])("selects ordinary Anthropic preview only when enabled: %s", async (enabled) => {
+	it.each([undefined, false, true])("selects ordinary Anthropic preview unless disabled: %s", async (enabled) => {
+		// Absent means on (default); only an explicitly stored false is off.
+		const on = enabled !== false
 		await provider.contextProxy.setValue("experiments", { cordisRuntimePreview: enabled })
 		const ordinary = new Task({
 			provider,
@@ -178,10 +180,10 @@ describe("Task opt-in model dispatch", () => {
 			startTask: false,
 			workspacePath: "/workspace",
 		})
-		expect(Boolean((ordinary as any).modelDispatchRuntime)).toBe(enabled === true)
+		expect(Boolean((ordinary as any).modelDispatchRuntime)).toBe(on)
 		await provider.contextProxy.setValue("experiments", { cordisRuntimePreview: false })
-		expect((ordinary as any).previewDispatchDisabled).toBe(enabled === true)
-		if (enabled === true) {
+		expect((ordinary as any).previewDispatchDisabled).toBe(on)
+		if (on) {
 			await expect(ordinary.condenseContext()).rejects.toMatchObject({ code: "cancelled" })
 			await expect(ordinary.attemptApiRequest().next()).rejects.toMatchObject({ code: "cancelled" })
 		}
@@ -255,6 +257,8 @@ describe("Task opt-in model dispatch", () => {
 	})
 
 	it("keeps a legacy task and its in-flight request unaffected by enable and disable", async () => {
+		// The preview is on by default; a legacy task is one created while it is explicitly off.
+		await provider.contextProxy.setValue("experiments", { cordisRuntimePreview: false })
 		const ordinary = new Task({
 			provider,
 			apiConfiguration: (await provider.getState()).apiConfiguration,
@@ -1248,4 +1252,75 @@ describe("Task opt-in model dispatch", () => {
 			await expect(loop).resolves.toBeUndefined()
 		},
 	)
+
+	describe("Cordis profile on a non-Anthropic provider (on by default)", () => {
+		const openAiConfiguration = { apiProvider: "openai-native" as const, apiModelId: "gpt-5.1", apiKey: "secret" }
+		const makeOpenAiTask = async (experiments: Record<string, boolean | undefined> | undefined) => {
+			await provider.contextProxy.setValue("experiments", experiments)
+			const cordis = new Task({
+				provider,
+				apiConfiguration: openAiConfiguration,
+				startTask: false,
+				workspacePath: "/workspace",
+			})
+			vi.spyOn(cordis as any, "getSystemPrompt").mockResolvedValue("system")
+			vi.spyOn(cordis as any, "getFilesReadByRooSafely").mockResolvedValue([])
+			vi.spyOn(cordis, "say").mockResolvedValue(undefined)
+			return cordis
+		}
+
+		it.each([undefined, {}])("uses the Cordis profile without a dispatch runtime (experiments=%j)", async (exp) => {
+			const cordis = await makeOpenAiTask(exp)
+			expect(cordis.profile).toBe("cordis")
+			expect((cordis as any).modelDispatchRuntime).toBeUndefined()
+			cordis.dispose({ preserveArtifacts: true })
+		})
+
+		it("uses the modes profile when the flag is stored false", async () => {
+			const modes = await makeOpenAiTask({ cordisRuntimePreview: false })
+			expect(modes.profile).toBe("modes")
+			expect((modes as any).modelDispatchRuntime).toBeUndefined()
+			modes.dispose({ preserveArtifacts: true })
+		})
+
+		it("gets the Cordis tool set: exit_plan and no switch_mode", async () => {
+			const { filterNativeToolsForMode } = await import("../../prompts/tools/filter-tools-for-mode")
+			const { getNativeTools } = await import("../../prompts/tools/native-tools")
+			const cordis = await makeOpenAiTask({})
+			const inputs = cordis.profileToolInputs("code", [], [])
+			const names = filterNativeToolsForMode(
+				getNativeTools({ supportsImages: false }),
+				"code",
+				inputs.customModes,
+				{},
+				undefined,
+				{ disabledTools: inputs.disabledTools },
+			).map((tool: any) => tool.function.name)
+			expect(names).toContain("exit_plan")
+			expect(names).not.toContain("switch_mode")
+			cordis.dispose({ preserveArtifacts: true })
+		})
+
+		it("answers a reply without a tool call with noToolsUsed, not resume_task", async () => {
+			const cordis = await makeOpenAiTask({})
+			vi.mocked(cordis.say).mockRestore()
+			expect(cordis.profile).toBe("cordis")
+			const userTurns: string[] = []
+			let calls = 0
+			vi.spyOn(cordis, "attemptApiRequest").mockImplementation(async function* () {
+				calls++
+				userTurns.push(JSON.stringify(cordis.apiConversationHistory.at(-1)?.content ?? ""))
+				if (calls === 1) {
+					yield { type: "text", text: "I think the work is done." }
+					return
+				}
+				;(cordis as any).abort = true
+			} as any)
+			await (cordis as any).initiateTaskLoop([{ type: "text", text: "do the work" }])
+			expect(calls).toBeGreaterThanOrEqual(2)
+			expect(userTurns[1]).toContain("You did not use a tool")
+			expect(cordis.clineMessages.some((message) => message.ask === "resume_task")).toBe(false)
+			cordis.dispose({ preserveArtifacts: true })
+		})
+	})
 })

@@ -2,7 +2,13 @@
 
 import type { ExperimentId } from "@roo-code/types"
 
-import { EXPERIMENT_IDS, experimentConfigsMap, experiments as Experiments } from "../experiments"
+import {
+	EXPERIMENT_IDS,
+	experimentConfigsMap,
+	experimentDefault,
+	experiments as Experiments,
+	isCordisRuntimePreviewEnabled,
+} from "../experiments"
 
 describe("experiments", () => {
 	describe("PREVENT_FOCUS_DISRUPTION", () => {
@@ -11,6 +17,21 @@ describe("experiments", () => {
 			expect(experimentConfigsMap.PREVENT_FOCUS_DISRUPTION).toMatchObject({
 				enabled: false,
 			})
+		})
+	})
+
+	describe("CORDIS_RUNTIME_PREVIEW", () => {
+		it("is on by default; absent means on and a stored false means off", () => {
+			expect(experimentConfigsMap.CORDIS_RUNTIME_PREVIEW).toMatchObject({ enabled: true })
+			expect(experimentDefault.cordisRuntimePreview).toBe(true)
+			expect(Experiments.isEnabled({}, EXPERIMENT_IDS.CORDIS_RUNTIME_PREVIEW)).toBe(true)
+			expect(Experiments.isEnabled({ cordisRuntimePreview: false }, EXPERIMENT_IDS.CORDIS_RUNTIME_PREVIEW)).toBe(
+				false,
+			)
+			expect(isCordisRuntimePreviewEnabled(undefined)).toBe(true)
+			expect(isCordisRuntimePreviewEnabled(null)).toBe(true)
+			expect(isCordisRuntimePreviewEnabled({ cordisRuntimePreview: true })).toBe(true)
+			expect(isCordisRuntimePreviewEnabled({ cordisRuntimePreview: false })).toBe(false)
 		})
 	})
 

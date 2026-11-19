@@ -1,5 +1,6 @@
 import type { ModeConfig, TaskProfile } from "@roo-code/types"
 
+import { isCordisRuntimePreviewEnabled } from "../../shared/experiments"
 import { getModeBySlug } from "../../shared/modes"
 
 /** All tool groups, without file restrictions. The `modes` group is always available. */
@@ -13,7 +14,8 @@ export const CORDIS_ONLY_TOOLS = ["exit_plan"] as const
 
 /**
  * Decides the profile for a new task. Resumed tasks keep their stored profile; children inherit
- * their parent's profile; otherwise the experiment flag at creation time decides. Missing means modes.
+ * their parent's profile; otherwise the experiment flag at creation time decides. The flag is on by
+ * default: an absent key means cordis, a stored `false` means modes.
  */
 export function resolveTaskProfile(options: {
 	stored?: TaskProfile
@@ -22,7 +24,7 @@ export function resolveTaskProfile(options: {
 }): TaskProfile {
 	if (options.stored) return options.stored
 	if (options.parent) return options.parent
-	return options.experiments?.cordisRuntimePreview === true ? "cordis" : "modes"
+	return isCordisRuntimePreviewEnabled(options.experiments) ? "cordis" : "modes"
 }
 
 /**

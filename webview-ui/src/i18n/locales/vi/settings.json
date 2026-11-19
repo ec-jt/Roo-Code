@@ -829,7 +829,7 @@
 		},
 		"CORDIS_RUNTIME_PREVIEW": {
 			"name": "Bản xem trước runtime Cordis",
-			"description": "Bật cơ chế tiếp nhận yêu cầu thử nghiệm chỉ cho các tác vụ Anthropic mới. Các nhà cung cấp khác dùng luồng xử lý thông thường. Chưa hỗ trợ thực thi đồ thị và bản xem trước này không cưỡng chế giới hạn ngân sách tài chính. Trò chuyện thông thường và ủy quyền vẫn dùng được khi tắt. Lưu để áp dụng: việc tắt sẽ ngừng gửi yêu cầu mới qua bản xem trước và hủy các yêu cầu mô hình đang hoạt động qua bản xem trước, nhưng không thể hoàn tác những tác động đã xảy ra. Bật lại không tự động tiếp tục các tác vụ đã dừng; hãy mở lại hoặc bắt đầu một tác vụ để dùng cài đặt hiện tại."
+			"description": "Bật theo mặc định. Tác vụ mới trên mọi nhà cung cấp dùng hồ sơ Cordis: /plan đưa ra bản xem xét kế hoạch để phê duyệt, sai lệch phát hiện trong tác vụ được nêu thành bản sửa đổi kế hoạch, và áp dụng một bộ công cụ cố định (tất cả nhóm công cụ, không có switch_mode, chế độ bị khóa sau yêu cầu đầu tiên). Tác vụ hiện có giữ nguyên hồ sơ. Chỉ tác vụ Anthropic dùng thêm cơ chế tiếp nhận yêu cầu của bản xem trước; các nhà cung cấp khác dùng luồng thông thường. Tắt để dùng chế độ cho tác vụ mới. Lưu để áp dụng: việc tắt sẽ ngừng gửi yêu cầu mới qua bản xem trước và hủy các yêu cầu mô hình đang hoạt động qua bản xem trước, nhưng không thể hoàn tác những tác động đã xảy ra."
 		},
 		"DIFF_STRATEGY_UNIFIED": {
 			"name": "Sử dụng chiến lược diff thống nhất thử nghiệm",

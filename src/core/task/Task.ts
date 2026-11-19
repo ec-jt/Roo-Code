@@ -88,6 +88,7 @@ import {
 // api
 import { ApiHandler, ApiHandlerCreateMessageMetadata, buildApiHandler } from "../../api"
 import { selectPreviewRuntime } from "../../api/preview-runtime"
+import { isCordisRuntimePreviewEnabled } from "../../shared/experiments"
 import { ApiStream, GroundingSource } from "../../api/transform/stream"
 import { maybeRemoveImageBlocks } from "../../api/transform/image-cleaning"
 
@@ -1306,7 +1307,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 		if (this.modelDispatchRuntime) {
 			this.unsubscribePreviewSettings = provider.contextProxy?.onExperimentsChanged?.((settings) => {
-				if (settings?.cordisRuntimePreview === true) return
+				if (isCordisRuntimePreviewEnabled(settings)) return
 				// Keep the runtime/policy attached. Never downgrade a restricted task to legacy dispatch.
 				// This latch is intentionally not cleared on enable; only a fresh task can resume.
 				this.previewDispatchDisabled = true

@@ -2,7 +2,7 @@ import { HTMLAttributes } from "react"
 
 import type { Experiments, ImageGenerationProvider } from "@roo-code/types"
 
-import { EXPERIMENT_IDS, experimentConfigsMap } from "@roo/experiments"
+import { EXPERIMENT_IDS, experimentConfigsMap, experimentDefault } from "@roo/experiments"
 
 import { useAppTranslation } from "@src/i18n/TranslationContext"
 import { cn } from "@src/lib/utils"
@@ -176,7 +176,8 @@ export const ExperimentalSettings = ({
 								<ExperimentalFeature
 									experimentKey={config[0]}
 									enabled={
-										experiments[EXPERIMENT_IDS[config[0] as keyof typeof EXPERIMENT_IDS]] ?? false
+										experiments[EXPERIMENT_IDS[config[0] as keyof typeof EXPERIMENT_IDS]] ??
+										experimentDefault[EXPERIMENT_IDS[config[0] as keyof typeof EXPERIMENT_IDS]]
 									}
 									onChange={(enabled) =>
 										setExperimentEnabled(

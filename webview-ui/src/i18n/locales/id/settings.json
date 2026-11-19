@@ -829,7 +829,7 @@
 		},
 		"CORDIS_RUNTIME_PREVIEW": {
 			"name": "Pratinjau runtime Cordis",
-			"description": "Aktifkan penerimaan permintaan eksperimental hanya untuk tugas Anthropic baru. Penyedia lain menggunakan alur normal. Eksekusi graf tidak tersedia, dan pratinjau ini tidak memberlakukan batas anggaran keuangan. Chat normal dan delegasi tetap tersedia saat pratinjau dinonaktifkan. Simpan untuk menerapkan: menonaktifkannya menghentikan pengiriman permintaan pratinjau baru dan membatalkan permintaan model pratinjau yang aktif, tetapi tidak dapat membatalkan efek yang sudah terjadi. Mengaktifkannya kembali tidak otomatis melanjutkan tugas yang dihentikan; buka kembali atau mulai tugas untuk menggunakan pengaturan saat ini."
+			"description": "Aktif secara default. Tugas baru di semua penyedia memakai profil Cordis: /plan memberikan tinjauan rencana untuk disetujui, penyimpangan yang ditemukan selama tugas diajukan sebagai amandemen rencana, dan berlaku set alat tetap (semua grup alat, tanpa switch_mode, mode terkunci setelah permintaan pertama). Tugas yang sudah ada tetap memakai profilnya. Hanya tugas Anthropic yang juga memakai penerimaan permintaan pratinjau; penyedia lain memakai alur normal. Matikan untuk memakai mode pada tugas baru. Simpan untuk menerapkan: menonaktifkan menghentikan pengiriman permintaan pratinjau baru dan membatalkan permintaan model pratinjau yang aktif, tetapi tidak dapat membatalkan efek yang sudah terjadi."
 		},
 		"DIFF_STRATEGY_UNIFIED": {
 			"name": "Gunakan strategi unified diff eksperimental",

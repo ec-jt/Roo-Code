@@ -47,7 +47,7 @@ import { MessageEnhancer } from "./messageEnhancer"
 
 import { CodeIndexManager } from "../../services/code-index/manager"
 import { checkExistKey } from "../../shared/checkExistApiConfig"
-import { experimentDefault } from "../../shared/experiments"
+import { experimentDefault, isCordisRuntimePreviewEnabled } from "../../shared/experiments"
 import { Terminal } from "../../integrations/terminal/Terminal"
 import { openFile } from "../../integrations/misc/open-file"
 import { openImage, saveImage } from "../../integrations/misc/image-handler"
@@ -714,7 +714,7 @@ export const webviewMessageHandler = async (
 				break
 			}
 			const { experiments } = await provider.getState()
-			if (experiments?.cordisRuntimePreview !== true) {
+			if (!isCordisRuntimePreviewEnabled(experiments)) {
 				void vscode.window.showInformationMessage(t("common:info.plan_overlay_cordis_only"))
 				break
 			}

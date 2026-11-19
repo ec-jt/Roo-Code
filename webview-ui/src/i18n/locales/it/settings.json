@@ -829,7 +829,7 @@
 		},
 		"CORDIS_RUNTIME_PREVIEW": {
 			"name": "Anteprima del runtime Cordis",
-			"description": "Attiva l'ammissione sperimentale delle richieste solo per le nuove attività Anthropic. Gli altri provider usano il flusso normale. L'esecuzione di grafi non è disponibile e questa anteprima non impone limiti di budget finanziario. La chat normale e la delega restano disponibili quando l'anteprima è disattivata. Salva per applicare: la disattivazione interrompe l'invio di nuove richieste tramite l'anteprima e annulla le richieste attive ai modelli tramite l'anteprima, ma non può annullare gli effetti già prodotti. La riattivazione non riprende automaticamente le attività interrotte; riapri o avvia un'attività per usare l'impostazione attuale."
+			"description": "Attivo per impostazione predefinita. Le nuove attività usano il profilo Cordis con ogni provider: /plan fornisce una revisione del piano da approvare, una deviazione rilevata durante un'attività viene proposta come modifica del piano e si applica un set fisso di strumenti (tutti i gruppi di strumenti, niente switch_mode, modalità bloccata dopo la prima richiesta). Le attività esistenti mantengono il loro profilo. Solo le attività Anthropic usano anche l'ammissione delle richieste dell'anteprima; gli altri provider seguono il flusso normale. Disattivalo per usare le modalità nelle nuove attività. Salva per applicare: la disattivazione interrompe l'invio di nuove richieste dell'anteprima e annulla le richieste attive ai modelli dell'anteprima, ma non può annullare gli effetti già prodotti."
 		},
 		"DIFF_STRATEGY_UNIFIED": {
 			"name": "Usa strategia diff unificata sperimentale",

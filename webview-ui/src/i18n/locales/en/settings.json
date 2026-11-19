@@ -982,7 +982,7 @@
 		},
 		"CORDIS_RUNTIME_PREVIEW": {
 			"name": "Cordis runtime preview",
-			"description": "Opt in to experimental request admission for new Anthropic tasks only. Other providers use the normal path. Graph execution is not available, and this preview does not enforce financial budget limits. Normal chat and delegation remain available when off. Save to apply: disabling stops new preview dispatch and cancels active preview model requests, but cannot undo effects already performed. Re-enabling does not automatically resume stopped tasks; reopen or start a task to use the current setting."
+			"description": "On by default. New tasks on every provider use the Cordis profile: /plan gives a plan review to approve, drift found during a task is raised as a plan amendment, and a fixed tool preset applies (all tool groups, no switch_mode, mode locked after the first request). Existing tasks keep their profile. Only Anthropic tasks also use the preview request admission; other providers use the normal request path. Turn off to use modes for new tasks. Save to apply: disabling stops new preview dispatch and cancels active preview model requests, but cannot undo effects already performed."
 		},
 		"DIFF_STRATEGY_UNIFIED": {
 			"name": "Use experimental unified diff strategy",
