@@ -299,10 +299,32 @@ S3 never pruned, so this scenario forces large tool results early. The task read
 - **S2-cordis-r3b:** the drift came as an amendment at req 14. I approved it and sent the override as a chat message; the override was queued and delivered about 7 s later. At req 34 the run replied with text only. The 4.2.81 reminder followed, and it called `attempt_completion` at req 35. It wrote a proposed ADR in its workspace, and its own reasoning noted that Code mode should not edit `docs/architecture/`.
 - **Both runs:** every user message arrived in a `<user_message>` block. No migration in the added lines.
 
+**S2 on 4.2.83, attempt (invalid):**
+
+- Planned as two pairs on DeepSeek (`deepseek-flash`) and Opus. Only S2-modes-ds ran fully: 60 requests, only file reads, no plan, no question, drift not reported (its reasoning noted C-5). Cost $0.18.
+- S2-cordis-ds reached a `plan_review` with a sound plan. Its drift message was never sent: turning Cordis on attached the dispatch runtime to the operator's own Anthropic task, a request failed before streaming, and the task stopped with a bare `dispatch-failed`.
+- **Cause:** `dispatchError()` dropped the original error, and the Cordis path skipped the ordinary first-chunk retry. Fixed in 4.2.84.
+- **Operator lesson:** the Cordis setting is global. Start the operator with Cordis off, switch it on once before the Cordis runs, and never switch it off during a session.
+
+**S2 sample 5 (4.2.84), DeepSeek and Opus:**
+
+| Run            | Model           | Requests | Tokens in | Cost  | Plan reviews | Drift handling                                     | Outcome                                                                 |
+| -------------- | --------------- | -------- | --------- | ----- | ------------ | -------------------------------------------------- | ----------------------------------------------------------------------- |
+| S2-modes-ds    | deepseek-flash  | 60       | 8.31M     | $0.21 | 0            | reported (follow-up citing C-5 at req 19)          | stopped at the 60-request limit while writing tests; acceptable         |
+| S2-modes-opus  | claude-opus-5-5 | 39       | 3.81M     | $1.86 | 0            | reported (follow-up citing C-5 at req 13)          | completed; new tests pass; good                                         |
+| S2-cordis-ds   | deepseek-flash  | 61       | 5.73M     | $0.12 | 1            | reported in text, then built into the plan         | stopped at the 60-request limit while presenting its result; acceptable |
+| S2-cordis-opus | claude-opus-5-5 | 46       | 5.37M     | $2.31 | 2            | reported (amendment citing C-5, Q-REL-1 at req 15) | completed after one tool reminder; new tests pass; good                 |
+
+- The drift message reached every run within 10 s, inside `<user_message>`. No run migrated task data.
+- **S2-cordis-ds:** three `task_state` calls failed schema validation (`expected_revision` missing, `operations: ""`), which raised `mistake_limit_reached` at req 16. The operator answered that prompt with the override. Fixed in 4.2.85.
+- **S2-cordis-opus:** one reply without a tool call, one reminder, then `attempt_completion` (the 4.2.81 path again).
+- No `dispatch-failed` occurred in any run, so the 4.2.84 retry was not exercised live. 4.2.85 adds an end-to-end test with an injected 529.
+- DeepSeek costs 9 to 19 times less per run but takes many small steps. Both DeepSeek runs reached the 60-request limit of this protocol, which is not a product limit.
+
 ## 8. Conclusions
 
 - **Q1 and Q4:** answered from one sample per run.
-- **Q2:** answered from four samples (r1, r2, r3, r3b).
+- **Q2:** answered from five Opus samples (r1, r2, r3, r3b, r5) and one DeepSeek sample (r5).
 - **Q3:** answered from S3 plus the S3P scenario that was added to it.
 
 **Q1, architecture context default: keep `off` (rule 2). Full stays opt-in (rule 3).**
@@ -316,7 +338,7 @@ S3 never pruned, so this scenario forces large tool results early. The task read
 - **Limit:** this repository's records are easy to find, so Off performs well here. In a repository where the model does not look for `docs/architecture/`, the result may differ.
 - **Record:** no change. `architectureContextMode` stays `off` by default.
 
-**Q2, Cordis profile: rule 1 is met. Cordis was cheaper in all four samples, and on 4.2.82 the outcome is equal.**
+**Q2, Cordis profile: rule 1 is met overall. Cordis was cheaper in four of five Opus samples, and on 4.2.82 and later the outcome is equal.**
 
 | Measure      | Cordis r1 | Modes r1 | Cordis r2 | Modes r2 | Cordis r3 | Modes r3 | Cordis r3b | Modes r3b | Change with Cordis (all four) |
 | ------------ | --------- | -------- | --------- | -------- | --------- | -------- | ---------- | --------- | ----------------------------- |
@@ -325,17 +347,21 @@ S3 never pruned, so this scenario forces large tool results early. The task read
 | Cost         | $1.65     | $2.50    | $1.47     | $2.81    | $1.52     | $1.94    | $1.79      | $2.69     | 35% lower ($6.43 vs $9.94)    |
 
 - Leaving out r3 (Cordis drift not rateable) gives 29% fewer requests, 46% fewer input tokens and 39% lower cost. Leaving out r3b as well (modes cost inflated by the long wait) still leaves Cordis cheaper in r1 and r2.
+- **r5 (4.2.84):** Cordis cost more than modes on Opus ($2.31 vs $1.86, 46 vs 39 requests). It is the first sample where Cordis did not save. Over all five Opus samples, Cordis used 18% fewer requests (173 vs 212) and 31% fewer input tokens (17.4M vs 25.0M), and cost 26% less ($8.74 vs $11.80). The saving is smaller than the four-sample figure and varies by run.
+- **DeepSeek (r5, one pair):** both arms reported drift and reached the request limit. Cordis on DeepSeek ran `/plan`, `exit_plan` and `plan_review` without the dispatch runtime, as designed. One pair is not enough to measure a saving.
 - **Drift:** reported with no migration in every run where the message arrived (7 of 8).
 - **Outcome:**
     - r1: equal (both good).
     - r2: Cordis ended without `attempt_completion`. Investigation showed a Cordis code path, not only model variance. Fixed in 4.2.81.
     - r3: both completed and both diffs good, but the Cordis drift message was lost to a product defect (not specific to Cordis). Fixed in 4.2.82.
     - r3b (4.2.82): equal. Both completed with good diffs. The Cordis run hit a reply without a tool call, got one reminder, and completed.
+    - r5 (4.2.84): equal on Opus (both good). On DeepSeek both arms were cut off by the request limit (both acceptable).
 - **Record:** accepted [ADR-2026-11-19-keep-cordis-profile-widen-experiment](decisions/accepted/ADR-2026-11-19-keep-cordis-profile-widen-experiment.md). It:
     - keeps the profile;
     - turns the profile on by default for all providers, now that the samples agree (the user chose all providers over Anthropic only);
     - keeps [R-5](risks.md) open for the dispatch runtime, which stays Anthropic-only;
-    - recommends one S2 pair on a non-Anthropic model, because every sample used Anthropic;
+    - recommends one S2 pair on a non-Anthropic model, because every sample used Anthropic (done in r5 with DeepSeek: Cordis works there, cost not yet measurable);
+    - keeps users with a stored `cordisRuntimePreview: false` off. Older versions saved all defaults, so many existing users keep the modes profile. The user decided not to migrate or prompt; the release notes say how to turn Cordis on.
     - records the missing-completion risk as fixed in 4.2.81 and checked live in r3b.
 
 **Q3, overflow recovery: keep `pruneToolResultsOnOverflow` on (rule 1 is met by S3P). Keep `offloadImagesOnOverflow` on (rule 2: not exercised). Rule 3 does not apply.**
@@ -362,3 +388,6 @@ These came from running the evaluation, not from the questions above:
 - **4.2.80:** a reply with only a tool call is accepted after compaction.
 - **4.2.81:** with Cordis on, a reply without a tool call gets one reminder before the task pauses (setting `cordisTextOnlyTurnPolicy`, default `retryThenPause`).
 - **4.2.82:** a chat message sent while no ask is waiting is queued instead of silently lost.
+- **4.2.83:** Cordis is on by default for all providers (the accepted ADR).
+- **4.2.84:** a Cordis dispatch failure keeps the real error (status and message) and a pre-stream `dispatch-failed` is retried like the modes profile.
+- **4.2.85:** `task_state` and `memory` accept empty or missing `expected_revision` and `operations` on read; a write without a revision returns guidance instead of a schema failure. The plan review has a text field whose text reaches the model as a `<user_message>` after the tool result.

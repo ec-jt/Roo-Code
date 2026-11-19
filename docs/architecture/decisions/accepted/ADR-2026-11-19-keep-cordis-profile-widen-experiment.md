@@ -85,8 +85,10 @@ Follow-ups:
 Risks:
 
 - **Sample size:** this decision rests on four samples per run, one of which (r3) is not rateable for drift, and another (r3b) has an inflated modes cost.
-- **No evidence outside Anthropic:** every sample used `claude-opus-5-5`. On other providers the Cordis profile runs without the dispatch runtime, a combination no live run has used. Other models may follow the `exit_plan` and amendment flow less well.
-- **Existing users:** users who never touched the toggle get Cordis on their next new task. Their mode is then locked after the first request, and `switch_mode` is not available. Call this out in the release notes.
+- **Little evidence outside Anthropic:** sample r5 (4.2.84) ran one pair on `deepseek-flash`. Cordis worked there without the dispatch runtime (`/plan`, `exit_plan`, `plan_review`, drift reported), but both arms hit the protocol's 60-request limit, so no saving is measured. A `task_state` argument defect on DeepSeek was found and fixed in 4.2.85.
+- **Saving varies by run:** in r5 Cordis cost more than modes on Opus ($2.31 vs $1.86). Over five Opus samples it still cost 26% less in total. See section 8 of the evaluation.
+- **Existing users:** users who never touched the toggle get Cordis on their next new task. Their mode is then locked after the first request, and `switch_mode` is not available. Older versions saved all defaults, so many existing users have a stored `false` and stay on the modes profile. Decision (user, 2026-11-19): leave them off, with no migration and no prompt; the release notes say how to turn Cordis on.
+- **Dispatch failures:** before 4.2.84, one pre-stream failure stopped a Cordis task on Anthropic with no cause shown. 4.2.84 keeps the cause and retries; 4.2.85 adds an end-to-end test. Not yet exercised in a live run.
 - **Missing completion:** fixed in 4.2.81 and checked live in r3b. A second reply without a tool call still pauses the task by design. `hasUsedToolInTask` is not saved, so after a task is resumed, the first such reply pauses at once until a tool is used again.
 - **Lost chat messages:** fixed in 4.2.82 and checked live in r3b. The defect affected every profile, not only Cordis.
 - [R-5](../../risks.md) stays open for the dispatch runtime: only Anthropic requests go through dispatch admission. The profile no longer depends on it.
