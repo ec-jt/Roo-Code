@@ -1,7 +1,9 @@
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Pencil } from "lucide-react"
+import { VSCodeBadge } from "@vscode/webview-ui-toolkit/react"
 import { ContextRecoveryButton } from "./context-management/ContextRecoveryButton"
+import { ReducedContentNotes } from "./context-management/ReducedContentNotes"
 import { UserMessageEditor } from "./UserMessageEditor"
 import type { ChatWindowState, ClineMessage } from "@roo-code/types"
 import { Button } from "@/components/ui"
@@ -65,6 +67,30 @@ export function ChatWindowControls({ window }: { window: ChatWindowState }) {
 					This approval contains a large message. Its authorization details are shown in full.
 				</p>
 			)}
+		</div>
+	)
+}
+
+/**
+ * Header for context-management rows (condense, truncation, prune) shown as a preview. The
+ * summary text may be cut for size, but the small numeric fields are always kept by the
+ * extension, so the token change, cost and pruned/offloaded counts stay visible.
+ */
+function ContextPreviewHeader({ message }: { message: ClineMessage }) {
+	const { t } = useTranslation()
+	const data = message.contextCondense ?? message.contextTruncation ?? message.contextPrune
+	if (!data) return null
+	const cost = message.contextCondense?.cost ?? 0
+	return (
+		<div data-testid="context-preview-header">
+			<div className="flex items-center gap-2 text-sm">
+				<span className="text-vscode-descriptionForeground">
+					{(data.prevContextTokens ?? 0).toLocaleString()} → {(data.newContextTokens ?? 0).toLocaleString()}{" "}
+					{t("chat:contextManagement.tokens")}
+				</span>
+				{cost > 0 && <VSCodeBadge>${cost.toFixed(2)}</VSCodeBadge>}
+			</div>
+			<ReducedContentNotes prunedCount={data.prunedCount} offloadedCount={data.offloadedCount} />
 		</div>
 	)
 }
@@ -159,6 +185,7 @@ export function PlainHistoryMessage({ message, window }: { message: ClineMessage
 					{t("chat:subtasks.goToSubtask")}
 				</Button>
 			)}
+			<ContextPreviewHeader message={message} />
 			<ContextRecoveryButton
 				eventId={
 					message.contextCondense?.condenseId ??

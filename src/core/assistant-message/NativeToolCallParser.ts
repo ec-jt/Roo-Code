@@ -1,3 +1,4 @@
+import type { ZodError } from "zod"
 import { taskStateParserArgsSchema, normalizeTaskStateArgs } from "../prompts/tools/native-tools/task_state"
 import { parseJSON } from "partial-json"
 import { memoryParserArgsSchema, normalizeMemoryArgs } from "../prompts/tools/native-tools/memory"
@@ -743,10 +744,14 @@ export class NativeToolCallParser {
 	): ToolUse {
 		const name = resolveToolAlias(toolCall.name) as ToolName
 		const params: ToolUse["params"] = {}
+		let rawInput: Record<string, unknown> | undefined
 		try {
 			// Only complete JSON can contribute diagnostic params. Never salvage executable args.
 			const args = JSON.parse(toolCall.arguments)
 			if (args && typeof args === "object" && !Array.isArray(args)) {
+				// Keep the exact object for API history, so the model (and diagnostics) see what was
+				// actually sent: params drop unknown keys and turn null into the string "null".
+				rawInput = args
 				for (const [key, value] of Object.entries(args)) {
 					if (toolParamNames.includes(key as ToolParamName)) {
 						params[key as ToolParamName] = typeof value === "string" ? value : JSON.stringify(value)
@@ -765,6 +770,7 @@ export class NativeToolCallParser {
 			nativeArgs: undefined,
 			partial: false,
 			argumentError,
+			...(rawInput ? { rawInput } : {}),
 		}
 	}
 
@@ -1304,11 +1310,27 @@ export class NativeToolCallParser {
 		} catch (error) {
 			return this.argumentErrorBlock(
 				toolCall,
-				error instanceof ToolArgumentError
-					? error.message
-					: "Arguments do not match the tool schema. Resend a complete JSON object with the required fields and types.",
+				error instanceof ToolArgumentError ? error.message : this.schemaErrorMessage(error),
 			)
 		}
+	}
+
+	/**
+	 * Generic schema failure text. For a ZodError, name the first failing field and its reason, for
+	 * example "Arguments do not match the tool schema at expected_revision: Read requires null
+	 * expected_revision." The reason is capped so long received values never reach the model.
+	 */
+	private static schemaErrorMessage(error: unknown): string {
+		const base = "Arguments do not match the tool schema"
+		const tail = ". Resend a complete JSON object with the required fields and types."
+		// Duck-typed: schemas from packages/types may use a different zod instance than this module.
+		const issues = (error as Partial<ZodError> | null)?.issues
+		if (!(error instanceof Error) || error.name !== "ZodError" || !Array.isArray(issues)) return base + tail
+		const issue = issues[0]
+		if (!issue) return base + tail
+		const field = issue.path.length ? issue.path.join(".") : "(arguments)"
+		const reason = issue.message.length > 120 ? `${issue.message.slice(0, 117)}...` : issue.message
+		return `${base} at ${field}: ${reason}${tail}`
 	}
 
 	/**

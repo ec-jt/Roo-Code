@@ -5335,10 +5335,14 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 								seenToolUseIds.add(sanitizedId)
 								// Native parsers add absent optional fields as undefined. Omit
 								// those fields here, matching their persisted JSON representation.
+								// An invalid call keeps the exact object the model sent (rawInput), so the
+								// history shows its real mistake rather than lossy string params.
 								const input = Object.fromEntries(
-									Object.entries(toolUse.nativeArgs || toolUse.params).filter(
-										([, value]) => value !== undefined,
-									),
+									Object.entries(
+										toolUse.nativeArgs ||
+											(toolUse.argumentError !== undefined ? toolUse.rawInput : undefined) ||
+											toolUse.params,
+									).filter(([, value]) => value !== undefined),
 								)
 
 								// Use originalName (alias) if present for API history consistency.

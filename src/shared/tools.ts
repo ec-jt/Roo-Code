@@ -183,6 +183,11 @@ export interface ToolUse<TName extends ToolName = ToolName> {
 	partial: boolean
 	/** Final argument validation failure. This block must never execute, even if nativeArgs is present. */
 	argumentError?: string
+	/**
+	 * The complete JSON object the model sent, kept only for calls with argumentError. Used for API
+	 * history instead of the lossy string params. Never used for execution.
+	 */
+	rawInput?: Record<string, unknown>
 	// nativeArgs is properly typed based on TName if it's in NativeToolArgs, otherwise never
 	nativeArgs?: TName extends keyof NativeToolArgs ? NativeToolArgs[TName] : never
 	/**

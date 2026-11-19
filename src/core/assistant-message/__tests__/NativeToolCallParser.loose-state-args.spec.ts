@@ -65,13 +65,36 @@ describe("NativeToolCallParser loose task_state and memory arguments", () => {
 			).toEqual({ action: "patch", expected_revision: revision, operations: ops })
 		})
 
-		it("still rejects invalid top-level payloads", () => {
+		it("ignores expected_revision and operations on a read (read-only, uses neither)", () => {
+			for (const args of [
+				{ action: "read", expected_revision: revision, operations: null },
+				{ action: "read", expected_revision: "<revision from read>", operations: "null" },
+				{ action: "read", expected_revision: null, operations: ops },
+			]) {
+				const result = parse("task_state", args)
+				expect(result.argumentError).toBeUndefined()
+				expect(result.nativeArgs).toEqual({ action: "read", expected_revision: null, operations: null })
+			}
+		})
+
+		it("still rejects invalid top-level payloads and names the failing field", () => {
+			const extra = parse("task_state", { action: "read", extra: 1 }).argumentError
+			expect(extra).toContain("Arguments do not match the tool schema at (arguments): Unrecognized key")
+			expect(extra).toContain("extra")
+			expect(parse("task_state", { action: "write" }).argumentError).toContain("schema at action:")
+			expect(parse("task_state", { action: "patch", operations: 5 }).argumentError).toContain(
+				"schema at operations: Expected string, received number",
+			)
 			expect(
-				parse("task_state", { action: "read", expected_revision: revision, operations: null }).argumentError,
-			).toBeDefined()
-			expect(parse("task_state", { action: "read", extra: 1 }).argumentError).toBeDefined()
-			expect(parse("task_state", { action: "write" }).argumentError).toBeDefined()
-			expect(parse("task_state", { action: "patch", operations: 5 }).argumentError).toBeDefined()
+				parse("task_state", { action: "patch", expected_revision: "abc", operations: ops }).argumentError,
+			).toContain("schema at expected_revision: Invalid")
+		})
+
+		it("caps the reason so long received values never reach the model", () => {
+			const long = "x".repeat(5000)
+			const error = parse("task_state", { action: long }).argumentError!
+			expect(error).not.toContain(long)
+			expect(error.length).toBeLessThan(400)
 		})
 
 		it("leaves operations content to the tool (malformed or empty operations pass the parser)", () => {

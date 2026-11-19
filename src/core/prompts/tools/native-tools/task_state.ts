@@ -26,10 +26,12 @@ type TaskStateArgs = z.infer<typeof taskStateArgsObject>
  * the parser's generic schema failure.
  */
 const refineTaskStateArgs = (requireRevision: boolean) => (args: TaskStateArgs, ctx: z.RefinementCtx) => {
-	if (args.action === "read" && (args.expected_revision !== null || args.operations !== null))
-		ctx.addIssue({ code: "custom", message: "Read requires null revision and operations" })
+	if (args.action === "read" && args.expected_revision !== null)
+		ctx.addIssue({ code: "custom", path: ["expected_revision"], message: "Read requires null expected_revision" })
+	if (args.action === "read" && args.operations !== null)
+		ctx.addIssue({ code: "custom", path: ["operations"], message: "Read requires null operations" })
 	if (args.action === "patch" && requireRevision && !args.expected_revision)
-		ctx.addIssue({ code: "custom", message: "Patch requires an exact revision" })
+		ctx.addIssue({ code: "custom", path: ["expected_revision"], message: "Patch requires an exact revision" })
 }
 
 /** Executor schema. Patch always requires the exact ledger revision. */
@@ -141,11 +143,14 @@ export const blankToNull = (value: unknown) =>
 
 /**
  * Tolerate loose model output (for example DeepSeek): treat missing, empty, whitespace-only or
- * literal "null" expected_revision and operations as null. Other fields are left for strict validation.
+ * literal "null" expected_revision and operations as null. A read is read-only and uses neither
+ * field, so any value sent with a read (for example a stale revision or a placeholder) is
+ * discarded instead of failing the call. Other fields are left for strict validation.
  */
 export function normalizeTaskStateArgs(args: unknown): unknown {
 	if (!args || typeof args !== "object" || Array.isArray(args)) return args
 	const record = args as Record<string, unknown>
+	if (record.action === "read") return { ...record, expected_revision: null, operations: null }
 	return {
 		...record,
 		expected_revision: blankToNull(record.expected_revision),

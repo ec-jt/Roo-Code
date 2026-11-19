@@ -156,6 +156,84 @@ describe("bounded chat view", () => {
 			})
 		},
 	)
+	// D-M2a (4.2.87 live): real summaries exceed the preview budget, so condense rows are previews.
+	// The counts, token change and cost must still show on the preview row.
+	it("shows tokens, cost and prune/offload counts on a truncated condense preview", () => {
+		render(
+			<ExtensionStateContextProvider>
+				<ChatView isHidden={false} showAnnouncement={false} hideAnnouncement={() => {}} />
+			</ExtensionStateContextProvider>,
+		)
+		push(page(1), [
+			{
+				ts: 150,
+				type: "say",
+				say: "condense_context",
+				contextCondense: {
+					summary: "Cut summary",
+					condenseId: "event-1",
+					cost: 0.52,
+					prevContextTokens: 180_000,
+					newContextTokens: 21_000,
+					prunedCount: 1,
+					offloadedCount: 3,
+				},
+				chatPreview: { index: 149, label: "Context summary", truncated: true, hasContent: true },
+			},
+			live,
+		])
+		expect(screen.getByText("Context summary (preview)")).toBeInTheDocument()
+		const header = screen.getByTestId("context-preview-header")
+		expect(header).toHaveTextContent(/180,000 → 21,000/)
+		expect(header).toHaveTextContent("$0.52")
+		expect(header).toHaveTextContent(/prune\.description/)
+		expect(header).toHaveTextContent(/prune\.offloaded/)
+		// Existing preview controls stay.
+		expect(screen.getByText("Cut summary")).toBeInTheDocument()
+		expect(screen.getByRole("button", { name: "Open full message" })).toBeInTheDocument()
+	})
+	it("renders a context_pruned preview row with its counts", () => {
+		render(
+			<ExtensionStateContextProvider>
+				<PlainHistoryMessage
+					window={page(1)}
+					message={{
+						ts: 9,
+						type: "say",
+						say: "context_pruned",
+						contextPrune: {
+							pruneId: "p1",
+							prevContextTokens: 50_000,
+							newContextTokens: 30_000,
+							prunedCount: 2,
+							offloadedCount: 0,
+						},
+						chatPreview: { index: 8, truncated: true, label: "Context pruned", hasContent: true },
+					}}
+				/>
+			</ExtensionStateContextProvider>,
+		)
+		expect(screen.getByTestId("plain-history-message")).toBeInTheDocument()
+		const header = screen.getByTestId("context-preview-header")
+		expect(header).toHaveTextContent(/50,000 → 30,000/)
+		expect(header).toHaveTextContent(/prune\.description/)
+		expect(header).not.toHaveTextContent(/prune\.offloaded/)
+	})
+	it("adds no context header to other preview rows", () => {
+		render(
+			<PlainHistoryMessage
+				window={page(1)}
+				message={{
+					ts: 2,
+					type: "ask",
+					ask: "tool",
+					text: "{",
+					chatPreview: { index: 1, truncated: true, label: "readFile", hasContent: true },
+				}}
+			/>,
+		)
+		expect(screen.queryByTestId("context-preview-header")).toBeNull()
+	})
 	it.each(["command_output", "mcp_server_response"] as const)(
 		"retains standalone %s at the latest-page boundary",
 		(say) => {
