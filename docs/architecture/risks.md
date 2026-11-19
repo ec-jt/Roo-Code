@@ -34,6 +34,7 @@ Evidence from the [2026-11-18 evaluation](evaluation-2026-11-18.md), S3 rerun on
 - **Recovery:** 6 summaries across 3 runs, with 0 re-opened decisions. One run repeated a failed approach, but that run had pruning off.
 - **Earlier defect, fixed:** in 4.2.23 to 4.2.79, recovery ended the task when the reply after the summary contained only a tool call.
 - **Pruning verified (S3P scenario):** pruning ran before a summary in a live task. The model did not re-read the pruned files with `read_file`, and there was no recovery failure.
+- **Offload verified (4.2.85, live check C3):** images were offloaded before a summary. Afterwards the model stated it could not see the offloaded image instead of inventing its content.
 
 ### R-4: Prompt-cache invalidation from context changes
 

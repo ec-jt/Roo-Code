@@ -364,7 +364,7 @@ S3 never pruned, so this scenario forces large tool results early. The task read
     - keeps users with a stored `cordisRuntimePreview: false` off. Older versions saved all defaults, so many existing users keep the modes profile. The user decided not to migrate or prompt; the release notes say how to turn Cordis on.
     - records the missing-completion risk as fixed in 4.2.81 and checked live in r3b.
 
-**Q3, overflow recovery: keep `pruneToolResultsOnOverflow` on (rule 1 is met by S3P). Keep `offloadImagesOnOverflow` on (rule 2: not exercised). Rule 3 does not apply.**
+**Q3, overflow recovery: keep `pruneToolResultsOnOverflow` on (rule 1 is met by S3P). Keep `offloadImagesOnOverflow` on (now exercised live, see the 4.2.85 checks). Rule 3 does not apply.**
 
 - **S3:** no run avoided a summary. There were 0 recovery failures after the 4.2.80 fix.
 - **S3P:** S3P-prune avoided one of the three summaries that S3P-none needed (2 summaries instead of 3).
@@ -372,8 +372,8 @@ S3 never pruned, so this scenario forces large tool results early. The task read
     - It had 0 recovery failures and the same outcome (both good).
     - It did not re-read the pruned files with `read_file`.
     - Summary cost was $0.15 vs $0.61. Total cost was about the same ($0.92 vs $0.90).
-- **Offload:** still not exercised. No run produced a usable image.
-- **Record:** update the notes in [Q-EFF-1](quality.md) and [R-3](risks.md). Pruning is now verified in a live run, and offload is still not.
+- **Offload:** exercised once, in live check C3 on 4.2.85 (`opus-64k`). Three images read with `read_file` were replaced by `[Image offloaded: ...]` placeholders and saved as PNG files. Offload alone did not bring the context under budget, so condense still ran twice (83,668 → 76,139 → 75,854 tokens). The model then said it could not see the image instead of guessing. The offload count was not shown when condense followed; fixed in 4.2.86.
+- **Record:** update the notes in [Q-EFF-1](quality.md) and [R-3](risks.md). Pruning and offload are now both verified in a live run.
 
 **Q4, repeat-call note: keep 3/5/8 (rule 2).**
 
@@ -391,3 +391,15 @@ These came from running the evaluation, not from the questions above:
 - **4.2.83:** Cordis is on by default for all providers (the accepted ADR).
 - **4.2.84:** a Cordis dispatch failure keeps the real error (status and message) and a pre-stream `dispatch-failed` is retried like the modes profile.
 - **4.2.85:** `task_state` and `memory` accept empty or missing `expected_revision` and `operations` on read; a write without a revision returns guidance instead of a schema failure. The plan review has a text field whose text reaches the model as a `<user_message>` after the tool result.
+- **4.2.86:** the string `"null"` counts as null in `task_state` and `memory` arguments; the user can enable task state at any time, including before the first model turn or while an ask is pending; a disabled `task_state` call says how to enable it; condense and truncation rows show how many tool results were pruned and images offloaded.
+
+**Live checks on 4.2.85 (2026-11-19):**
+
+| Check                                        | Task       | Result | Evidence                                                                                                                                                                            |
+| -------------------------------------------- | ---------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| C1: plan review text field, `deepseek-flash` | `01a1f5c0` | pass   | The turn after `exit_plan` held `[tool_result (status JSON only), <user_message>Use the name --silent...</user_message>, environment_details]`; the model used `--silent`.          |
+| C1: `task_state`, `deepseek-flash`           | `01a1f5c0` | fail   | First call `{"action":"read","operations":"null"}` failed schema validation; the second returned `DISABLED`. Enabling during the task failed. Both fixed in 4.2.86.                 |
+| C2: real pre-stream 529, Cordis on Anthropic | `01a1f5ba` | pass   | A local fault proxy returned two 529s. Two `api_req_retry_delayed` rows showed `dispatch-failed (529 overloaded_error: Overloaded)`; the task retried and completed; no key leaked. |
+| C3: image offload, `opus-64k`                | `01a1f5bd` | pass   | 3 images offloaded to PNG files, then condense; the model said it could not see the image.                                                                                          |
+
+The 4.2.86 fixes are covered by unit tests only; no live run has used them yet.

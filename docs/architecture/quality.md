@@ -84,4 +84,4 @@ Evidence ([evaluation 2026-11-18](evaluation-2026-11-18.md), one sample per run)
 - **Overflow recovery:** verified on 4.2.80 with a 64k context window override, with 0 recovery failures.
     - **Summaries:** verified (S3).
     - **Pruning:** verified (S3P). It avoided one of three summaries, and summary cost fell from $0.61 to $0.15.
-    - **Image offload:** not exercised in a live run.
+    - **Image offload:** verified on 4.2.85 (live check C3, `opus-64k`). Three images were replaced by placeholders and saved as files; condense still followed. Since 4.2.86 the condense row shows the offload count.
