@@ -503,6 +503,22 @@ describe("Task opt-in model dispatch", () => {
 			yield { type: "content_block_start", index: 0, content_block: { type: "text", text } }
 			yield { type: "message_stop" }
 		})()
+	const toolUseOnly = () =>
+		(async function* () {
+			yield { type: "content_block_start", index: 0, content_block: { type: "thinking", thinking: "plan" } }
+			yield {
+				type: "content_block_start",
+				index: 1,
+				content_block: { type: "tool_use", id: "toolu_1", name: "read_file", input: {} },
+			}
+			yield { type: "content_block_delta", index: 1, delta: { type: "input_json_delta", partial_json: "{}" } }
+			yield { type: "message_stop" }
+		})()
+	const thinkingOnly = () =>
+		(async function* () {
+			yield { type: "content_block_start", index: 0, content_block: { type: "thinking", thinking: "plan" } }
+			yield { type: "message_stop" }
+		})()
 	const consume = async (stream: ReturnType<Task["attemptApiRequest"]>) => {
 		const chunks = []
 		for await (const chunk of stream) chunks.push(chunk)
@@ -545,6 +561,32 @@ describe("Task opt-in model dispatch", () => {
 			await consume(task.attemptApiRequest())
 			expect(repair).not.toHaveBeenCalled()
 			expect(create).toHaveBeenCalledOnce()
+		})
+		it("accepts a tool-call-only reply after proactive compaction", async () => {
+			await enableOverflow(false)
+			useOverride(64_000)
+			vi.mocked(task.getTokenUsage).mockReturnValue({ contextTokens: 60_000 } as any)
+			create.mockResolvedValueOnce(response()).mockResolvedValueOnce(toolUseOnly())
+			const chunks = await consume(task.attemptApiRequest())
+			expect(chunks.some((chunk: any) => chunk.type === "tool_call_partial" && chunk.name === "read_file")).toBe(
+				true,
+			)
+		})
+		it("still rejects a reasoning-only reply after proactive compaction", async () => {
+			await enableOverflow(false)
+			useOverride(64_000)
+			vi.mocked(task.getTokenUsage).mockReturnValue({ contextTokens: 60_000 } as any)
+			create.mockResolvedValueOnce(response()).mockResolvedValueOnce(thinkingOnly())
+			await expect(consume(task.attemptApiRequest())).rejects.toThrow("returned no response")
+		})
+		it("accepts a tool-call-only reply after a provider-rejected overflow", async () => {
+			await enableOverflow(false)
+			create
+				.mockRejectedValueOnce(overflow())
+				.mockResolvedValueOnce(response())
+				.mockResolvedValueOnce(toolUseOnly())
+			const chunks = await consume(task.attemptApiRequest())
+			expect(chunks.some((chunk: any) => chunk.type === "tool_call_partial")).toBe(true)
 		})
 		it("does not compact proactively when automatic compaction is disabled", async () => {
 			admit.mockResolvedValue({ outcome: "granted", settle })

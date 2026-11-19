@@ -5909,7 +5909,13 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				if (chunk.type !== "usage") emittedOutput = true
 				// Empty block-start events and reasoning alone cannot satisfy the
 				// outer task loop's response check. Do not reset recovery via its grace retry.
-				if ((chunk.type === "text" && chunk.text.trim().length > 0) || chunk.type === "tool_call")
+				// Most providers (Anthropic, Bedrock, OpenRouter, Gemini, ...) stream tool calls
+				// only as tool_call_partial chunks; the start of one counts as a response.
+				if (
+					(chunk.type === "text" && chunk.text.trim().length > 0) ||
+					chunk.type === "tool_call" ||
+					(chunk.type === "tool_call_partial" && Boolean(chunk.id || chunk.name))
+				)
 					producedResponse = true
 				yield chunk
 			}
