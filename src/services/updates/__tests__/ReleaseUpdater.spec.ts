@@ -1,6 +1,6 @@
 import * as vscode from "vscode"
 import type { MockInstance } from "vitest"
-import { ReleaseUpdater } from "../ReleaseUpdater"
+import { ReleaseUpdater, installedReceiptKey } from "../ReleaseUpdater"
 import { findReleaseUpdate, downloadVerifiedRelease } from "../githubRelease"
 
 vi.mock("../githubRelease", () => ({
@@ -185,6 +185,33 @@ describe("release updater consent and lifecycle", () => {
 		expect(findReleaseUpdate).toHaveBeenCalledOnce()
 		resolve(candidate)
 		await pending
+	})
+	it("scopes the install receipt to the extension host", () => {
+		expect(installedReceiptKey(undefined, "mac")).toBe("githubReleaseUpdater.installedVersion:local:mac")
+		expect(installedReceiptKey("ssh-remote", "box")).toBe("githubReleaseUpdater.installedVersion:ssh-remote:box")
+		expect(installedReceiptKey("ssh-remote", "a")).not.toBe(installedReceiptKey("ssh-remote", "b"))
+	})
+	it("ignores a legacy shared receipt written by another host and can still update", async () => {
+		values.set("githubReleaseUpdater.installedVersion", "4.2.93")
+		const fresh = new ReleaseUpdater(
+			{
+				globalState: {
+					get: (key: string) => values.get(key),
+					update: async (key: string, value: unknown) => {
+						values.set(key, value)
+					},
+				},
+			} as unknown as vscode.ExtensionContext,
+			() => false,
+			vi.fn(),
+		)
+		expect(fresh.snapshot()).toMatchObject({ phase: "idle", installedVersion: undefined })
+		confirm.mockResolvedValue("Install update")
+		await fresh.handle("install")
+		expect(execute).toHaveBeenCalledOnce()
+		expect(values.get(installedReceiptKey())).toBe("4.2.30")
+		expect(values.get("githubReleaseUpdater.installedVersion")).toBeUndefined()
+		fresh.dispose()
 	})
 	it("only reloads after explicit confirmation with no loaded task", async () => {
 		confirm.mockResolvedValue("Install update")

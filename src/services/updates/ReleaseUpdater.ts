@@ -1,3 +1,4 @@
+import * as os from "os"
 import * as vscode from "vscode"
 import type { ReleaseUpdateState } from "@roo-code/types"
 import { Package } from "../../shared/package"
@@ -12,8 +13,20 @@ import {
 // Deliberately not in importable/synced Roo settings: enabling code installation
 // requires native confirmation on this extension host, not a settings import.
 const AUTO_KEY = "githubReleaseUpdater.automatic"
-const INSTALLED_KEY = "githubReleaseUpdater.installedVersion"
+const LEGACY_INSTALLED_KEY = "githubReleaseUpdater.installedVersion"
 const INTERVAL_MS = 6 * 60 * 60_000
+
+/**
+ * The install receipt must be scoped to this extension host. globalState is shared
+ * between the local and remote (SSH, WSL, container) extension hosts of a window, so an
+ * unscoped receipt written by the local host made a remote host report "installed,
+ * reload" and refuse further updates while it was still on the old version.
+ * The extension host process runs on the remote machine, so os.hostname() tells
+ * different SSH hosts apart.
+ */
+export function installedReceiptKey(remoteName = vscode.env.remoteName, hostname = os.hostname()): string {
+	return `githubReleaseUpdater.installedVersion:${remoteName ?? "local"}:${hostname}`
+}
 
 export type ReleaseUpdateAction =
 	| "status"
@@ -34,13 +47,16 @@ export class ReleaseUpdater implements vscode.Disposable {
 	private automaticRevision = 0
 	private timer?: ReturnType<typeof setTimeout>
 	private interval?: ReturnType<typeof setInterval>
+	private readonly installedKey: string
 
 	constructor(
 		private readonly context: vscode.ExtensionContext,
 		private readonly hasLoadedTask: () => boolean,
 		private readonly publish: (state: ReleaseUpdateState) => void,
 	) {
-		const recorded = context.globalState.get<string>(INSTALLED_KEY)
+		this.installedKey = installedReceiptKey()
+		// The legacy unscoped receipt is ignored: it cannot say which host it belongs to.
+		const recorded = context.globalState.get<string>(this.installedKey)
 		const installedVersion =
 			recorded && isStrictVersion(recorded) && compareStrictVersions(recorded, Package.version) > 0
 				? recorded
@@ -243,7 +259,11 @@ export class ReleaseUpdater implements vscode.Disposable {
 				message: `VS Code completed installation of Roo ${candidate.version}. Reload this window when ready to activate it.`,
 			})
 			try {
-				await this.context.globalState.update(INSTALLED_KEY, candidate.version)
+				await this.context.globalState.update(this.installedKey, candidate.version)
+				// Clear the legacy shared receipt so older builds on other hosts stop
+				// reporting this host's install as their own.
+				if (this.context.globalState.get(LEGACY_INSTALLED_KEY) !== undefined)
+					await this.context.globalState.update(LEGACY_INSTALLED_KEY, undefined)
 			} catch {
 				/* Installation succeeded; a receipt failure must not report an install failure. */
 			}
