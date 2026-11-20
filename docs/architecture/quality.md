@@ -56,6 +56,12 @@ Quality property: #secure
 
 Scenario: A command or log contains a credential (for example a remote URL with a token). Roo and its agents do not print or persist it in task state or release notes.
 
+Environment inheritance check (2026-11-20, from the Harness² pattern of removing credentials before launching agent subprocesses):
+
+- **MCP stdio servers:** `McpHub` starts them with `getDefaultEnvironment()` from the MCP SDK, which passes only a fixed allowlist (on POSIX: `HOME`, `LOGNAME`, `PATH`, `SHELL`, `TERM`, `USER`), plus the `env` block the user writes in the server config. `${env:NAME}` placeholders are resolved only where the user writes them. No change needed.
+- **Provider keys:** Roo keeps them in VS Code secret storage, not in `process.env`. No subprocess receives them from Roo.
+- **Terminal commands** (`ExecaTerminalProcess`, the VS Code terminal): commands inherit the full environment of the VS Code process, like a terminal the user opens. If VS Code was started with a credential in its environment, a command such as `env` can print it into the task history. This is accepted: removing variables would break user commands that need them (for example cloud CLI credentials). A possible future option is an opt-in list of variable names to remove before a command runs.
+
 ### Q-USE-1: Mode changes keep the model
 
 Status: accepted
