@@ -2,7 +2,7 @@ import { Anthropic } from "@anthropic-ai/sdk"
 import crypto from "crypto"
 
 import { ApiHandler, ApiHandlerCreateMessageMetadata } from "../../api"
-import { summarizeConversation, SummarizeResponse } from "../condense"
+import { getEffectiveApiHistory, summarizeConversation, SummarizeResponse } from "../condense"
 import { ApiMessage } from "../task-persistence/apiMessages"
 import { RooIgnoreController } from "../ignore/RooIgnoreController"
 import { truncateAfterOverflow } from "./overflow-truncation"
@@ -305,13 +305,74 @@ export async function manageContext(options: ContextManagementOptions): Promise<
 			error: result.error || "Context compaction produced no summary.",
 			errorDetails: result.errorDetails,
 		}
-	const retained = working.slice(preserveFrom)
-	const retainedTokens = await estimateTokenCount(messageContentBlocks(retained), options.apiHandler)
+	// Step 3 (only when the summary is not enough): the kept tail holds the newest tool
+	// exchange verbatim. A huge newest result (for example a 6,800-line read) can keep the
+	// prompt over the window, or make it larger than before. Shorten the tail's tool results
+	// too (head and tail kept, full text saved), then offload its images. Fixed sequence; no loop.
+	let retained = working.slice(preserveFrom)
+	const summaryTokens = result.newContextTokens ?? 0
+	let newContextTokens =
+		summaryTokens + (await estimateTokenCount(messageContentBlocks(retained), options.apiHandler))
+	const inputLimit = options.contextWindow - (options.maxTokens ?? 0)
+	const budget = inputLimit * (1 - PRUNE_SAFETY_MARGIN)
+	let tailPruned = 0
+	let tailOffloaded = 0
+	if (newContextTokens > budget) {
+		if (options.pruneToolResults !== false && options.saveArtifact) {
+			const pruned = await pruneToolResults(retained, retained.length, {
+				thresholdChars: DEFAULT_PRUNE_THRESHOLD_CHARS,
+				headChars: DEFAULT_PRUNE_HEAD_CHARS,
+				tailChars: DEFAULT_PRUNE_TAIL_CHARS,
+				save: options.saveArtifact,
+			})
+			retained = pruned.messages
+			tailPruned = pruned.prunedCount
+		}
+		if (options.offloadImages !== false && options.saveImage && options.apiHandler.getModel().info.supportsImages) {
+			const offloaded = await offloadImages(retained, retained.length, options.saveImage)
+			retained = offloaded.messages
+			tailOffloaded = offloaded.offloadedCount
+		}
+		if (tailPruned + tailOffloaded > 0)
+			newContextTokens =
+				summaryTokens + (await estimateTokenCount(messageContentBlocks(retained), options.apiHandler))
+		// Truncation cannot help here: after a summary it protects the summary and the newest
+		// tool interaction, which is all that remains. Do not send a prompt known to overflow.
+		if (Number.isFinite(inputLimit) && inputLimit > 0 && newContextTokens > inputLimit) {
+			return {
+				...unchanged,
+				cost: result.cost,
+				error:
+					`Context is still too large after automatic recovery (about ${newContextTokens} tokens; ` +
+					`the limit is ${inputLimit} for a ${options.contextWindow}-token window). History was not changed. ` +
+					"Use a larger-context model or start a new task with a reviewed handoff.",
+			}
+		}
+	}
+	const allPruned = prunedCount + tailPruned
+	const allOffloaded = offloadedCount + tailOffloaded
+	// Report the true pre-recovery size. The caller's value is the last request's usage,
+	// which does not include tool results added since then.
+	let truePrev = prevContextTokens
+	try {
+		const tools = options.metadata?.tools?.length
+			? [{ type: "text" as const, text: JSON.stringify(options.metadata.tools) }]
+			: []
+		const before = await options.apiHandler.countTokens([
+			{ type: "text", text: options.systemPrompt },
+			...messageContentBlocks(getEffectiveApiHistory(messages)),
+			...tools,
+		])
+		if (Number.isFinite(before) && before > truePrev) truePrev = before
+	} catch {
+		// Keep the caller's value.
+	}
 	return {
 		...result,
 		messages: [...result.messages, ...retained],
-		prevContextTokens,
-		newContextTokens: (result.newContextTokens ?? 0) + retainedTokens,
-		...reduced,
+		prevContextTokens: truePrev,
+		newContextTokens,
+		...(allPruned ? { prunedCount: allPruned } : {}),
+		...(allOffloaded ? { offloadedCount: allOffloaded } : {}),
 	}
 }

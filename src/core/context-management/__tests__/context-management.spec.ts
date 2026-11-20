@@ -296,7 +296,13 @@ describe("Context Management", () => {
 				summary: "summary",
 				cost: 0,
 			})
-			const result = await manageContext({ ...options, totalTokens: 1, contextLimitExceeded: true })
+			const result = await manageContext({
+				...options,
+				contextWindow: 100_000,
+				maxTokens: 10_000,
+				totalTokens: 1,
+				contextLimitExceeded: true,
+			})
 			expect(summarize.mock.calls[0][0].messages).toEqual(messages.slice(0, -1))
 			expect(result.messages.at(-1)).toBe(messages.at(-1))
 			expect(result.summary).toBe("summary")
@@ -404,6 +410,103 @@ describe("Context Management", () => {
 		})
 	})
 
+	describe("post-summary bound (r88: condense grew 75,923 -> 128,376 on a 64k window)", () => {
+		// Count about 1 token per 4 characters of text, including tool-result text.
+		const charCount = async (blocks: Anthropic.Messages.ContentBlockParam[]) =>
+			Math.ceil(
+				blocks.reduce((sum, block) => {
+					if (block.type === "text") return sum + block.text.length
+					if (block.type === "tool_result")
+						return (
+							sum +
+							(typeof block.content === "string"
+								? block.content.length
+								: (block.content ?? []).reduce(
+										(n, part) => n + (part.type === "text" ? part.text.length : 0),
+										0,
+									))
+						)
+					return sum + JSON.stringify(block).length
+				}, 0) / 4,
+			)
+		// 64k override window; reserve 12,800 (20% cap), so input limit 51,200 and budget 46,080.
+		const window = { contextWindow: 64_000, maxTokens: 12_800 }
+		const huge = "line of Task.ts source code\n".repeat(8_000) // about 224,000 chars, about 56,000 tokens
+		const history: ApiMessage[] = [
+			{ role: "user", content: "task" },
+			{ role: "assistant", content: [{ type: "tool_use", id: "a", name: "read_file", input: {} }] },
+			{ role: "user", content: [{ type: "tool_result", tool_use_id: "a", content: "small" }] },
+			{ role: "assistant", content: [{ type: "tool_use", id: "b", name: "read_file", input: { offset: 2001 } }] },
+			{ role: "user", content: [{ type: "tool_result", tool_use_id: "b", content: huge }] },
+		]
+		const base = {
+			messages: history,
+			totalTokens: 40_000,
+			...window,
+			apiHandler: mockApiHandler,
+			autoCondenseContext: true,
+			contextLimitExceeded: true,
+			systemPrompt: "system",
+			taskId,
+		}
+		const summaryResult = {
+			messages: [...history.slice(0, 3), { role: "user" as const, content: "summary", isSummary: true }],
+			summary: "summary",
+			cost: 0.05,
+			condenseId: "c1",
+			newContextTokens: 3_000,
+		}
+		afterEach(() => vi.restoreAllMocks())
+
+		it("shortens the huge newest tool result in the kept tail and reports the true size", async () => {
+			vi.spyOn(condenseModule, "summarizeConversation").mockResolvedValue(summaryResult)
+			vi.spyOn(mockApiHandler, "countTokens").mockImplementation(charCount)
+			const saveArtifact = vi.fn(async () => "tool-tail.txt")
+			const result = await manageContext({ ...base, saveArtifact })
+			expect(result.error).toBeUndefined()
+			expect(result.condenseId).toBe("c1")
+			expect(saveArtifact).toHaveBeenCalledWith(huge)
+			const tail = result.messages.at(-1)!
+			expect(JSON.stringify(tail)).toContain("tool result middle pruned")
+			expect(JSON.stringify(tail)).toContain("tool-tail.txt")
+			// The tool pair stays intact.
+			expect(result.messages.at(-2)).toBe(history[3])
+			expect(result.prunedCount).toBe(1)
+			// Final context fits the overridden window and is smaller than before.
+			expect(result.newContextTokens!).toBeLessThanOrEqual((64_000 - 12_800) * 0.9)
+			// prev is the measured pre-recovery prompt (includes the huge result), not the stale 40,000.
+			expect(result.prevContextTokens).toBeGreaterThan(50_000)
+			expect(result.newContextTokens!).toBeLessThan(result.prevContextTokens)
+		})
+
+		it("refuses to send when the summary does not shrink the context and nothing more can be cut", async () => {
+			vi.spyOn(condenseModule, "summarizeConversation").mockResolvedValue(summaryResult)
+			vi.spyOn(mockApiHandler, "countTokens").mockImplementation(charCount)
+			// Pruning disabled: the kept tail cannot be reduced.
+			const result = await manageContext({ ...base, pruneToolResults: false, saveArtifact: async () => "x" })
+			expect(result.error).toContain("still too large after automatic recovery")
+			expect(result.messages).toBe(history)
+			expect(result.cost).toBe(0.05)
+		})
+
+		it("leaves the kept tail unchanged when the summary already fits", async () => {
+			const small: ApiMessage[] = [
+				...history.slice(0, 4),
+				{ role: "user", content: [{ type: "tool_result", tool_use_id: "b", content: "x".repeat(20_000) }] },
+			]
+			vi.spyOn(condenseModule, "summarizeConversation").mockResolvedValue({
+				...summaryResult,
+				messages: [...small.slice(0, 3), { role: "user", content: "summary", isSummary: true }],
+			})
+			vi.spyOn(mockApiHandler, "countTokens").mockImplementation(charCount)
+			const saveArtifact = vi.fn(async () => "never.txt")
+			const result = await manageContext({ ...base, messages: small, saveArtifact })
+			expect(saveArtifact).not.toHaveBeenCalled()
+			expect(result.messages.at(-1)).toBe(small.at(-1))
+			expect(result.prunedCount).toBeUndefined()
+		})
+	})
+
 	describe("image offload before summary", () => {
 		const image = {
 			type: "image" as const,
@@ -457,8 +560,8 @@ describe("Context Management", () => {
 				cost: 0.05,
 				condenseId: "c1",
 			})
-			// Estimate stays over budget, so offload alone is not enough.
-			vi.spyOn(mockApiHandler, "countTokens").mockResolvedValue(200_000)
+			// Estimate stays over budget, so offload alone is not enough. The summary then fits.
+			vi.spyOn(mockApiHandler, "countTokens").mockResolvedValueOnce(200_000).mockResolvedValue(1_000)
 			const saveImage = vi.fn(async (_d: string, _m: string, hash: string) => `/t/images/${hash}.png`)
 			const result = await manageContext({ ...base, saveArtifact: async () => "tool-1.txt", saveImage })
 			expect(result.condenseId).toBe("c1")
