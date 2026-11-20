@@ -115,6 +115,8 @@ export class AttemptCompletionTool extends BaseTool<"attempt_completion"> {
 					await task.assertCanDelegate()
 					if (this.returningChildren.has(task) || this.returnedChildren.has(task)) return
 					this.returningChildren.add(task)
+					// The child's work ends here; its instance is closed by the return below.
+					task.recordEvaluationStop?.("completed")
 					try {
 						await provider.reopenParentFromDelegation({
 							parentTaskId: task.parentTaskId,
@@ -170,6 +172,7 @@ export class AttemptCompletionTool extends BaseTool<"attempt_completion"> {
 	}
 
 	private emitTaskCompleted(task: Task): void {
+		task.recordEvaluationStop?.("completed")
 		// Force final token usage update before emitting TaskCompleted.
 		// This ensures the latest stats are captured regardless of throttle timer.
 		task.emitFinalTokenUsageUpdate()

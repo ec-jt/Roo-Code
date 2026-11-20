@@ -4,8 +4,8 @@ Format: [`RECORD-FORMAT.md`](RECORD-FORMAT.md).
 
 ### R-1: Task.ts is very large
 
-Status: proposed
-Source: inferred
+Status: accepted
+Accepted-by: user
 Last-verified: 2026-11-13
 Paths: src/core/task/Task.ts
 
@@ -13,17 +13,19 @@ Paths: src/core/task/Task.ts
 
 ### R-2: Version-2 snapshots are not readable by older builds
 
-Status: proposed
-Source: inferred
+Status: accepted
+Accepted-by: user
 Last-verified: 2026-11-13
 Paths: src/core/task/model-operation/\*\*
 
 Rolling back to a build that reads only version-1 envelopes cannot replay newer snapshots ([`../snapshot-storage.md`](../snapshot-storage.md)). Related: [Q-REL-1](quality.md).
 
+Note (2026-11-20): rollback also affects memory lessons. A build before 4.2.95 treats a `lesson` topic as an invalid record. In that project it then blocks saving topics and Forget all, and cannot forget a lesson. Recovery: delete the lesson files by hand, or forget them in 4.2.95 or later. See [ADR-2026-11-20-feature-gating-evaluation-and-lessons](decisions/accepted/ADR-2026-11-20-feature-gating-evaluation-and-lessons.md).
+
 ### R-3: Summaries lose decisions and failed approaches
 
-Status: proposed
-Source: inferred
+Status: accepted
+Accepted-by: user
 Last-verified: 2026-11-13
 Paths: src/core/condense/\*\*, src/shared/support-prompt.ts
 
@@ -38,8 +40,8 @@ Evidence from the [2026-11-18 evaluation](evaluation-2026-11-18.md), S3 rerun on
 
 ### R-4: Prompt-cache invalidation from context changes
 
-Status: proposed
-Source: inferred
+Status: accepted
+Accepted-by: user
 Last-verified: 2026-11-13
 Paths: src/core/task/Task.ts, src/core/context-management/\*\*
 
@@ -47,11 +49,44 @@ Rewriting earlier messages (pruning, offload, summary) breaks cache reuse from t
 
 ### R-5: Cordis preview admission is Anthropic-only
 
-Status: proposed
-Source: inferred
+Status: accepted
+Accepted-by: user
 Last-verified: 2026-11-13
 Paths: src/api/preview-runtime.ts, src/api/dispatch-admission.ts
 
 The `cordisRuntimePreview` dispatch path covers only Anthropic. Other providers use the normal path, so behaviour can differ by provider.
 
 Note (2026-11-19): the accepted [ADR-2026-11-19-keep-cordis-profile-widen-experiment](decisions/accepted/ADR-2026-11-19-keep-cordis-profile-widen-experiment.md) turns the Cordis profile on by default for all providers. This risk then covers only the dispatch runtime: on other providers a Cordis task has no dispatch admission, and a reply without a tool call takes the normal reminder path. All evaluation samples used Anthropic.
+
+### R-6: Evaluation results can be invalid or biased
+
+Status: accepted
+Accepted-by: user
+Last-verified: 2026-11-20
+Paths: docs/architecture/evaluation-\*.md
+
+The 2026-11-18 evaluation set defaults and an accepted ADR from small samples. Known weaknesses:
+
+- one sample per run for S1 and S3;
+- S2 samples on five different builds;
+- outcomes scored by an operator who knew which arm was which;
+- protocol leaks found only by hand (S1 attempt 2 saw the protocol through `git diff`);
+- invalid runs recorded only in prose;
+- runs stopped by the protocol's request limit scored like finished runs.
+
+Mitigation: the evaluation tooling in [ADR-2026-11-20-feature-gating-evaluation-and-lessons](decisions/accepted/ADR-2026-11-20-feature-gating-evaluation-and-lessons.md). It adds a run manifest and pools only runs with matching manifests. It also adds a leak check before each run, a matrix check, stop reasons, and blind pairwise review. These ideas come from Harness² (`google-research/harness2`, commit `6868817`: `core/runmark.py`, `core/context.py`, `core/ledger.py`, `core/selection.py`). Related: [Q-EFF-2](quality.md).
+
+### R-7: Subtasks share the parent's workspace
+
+Status: accepted
+Accepted-by: user
+Last-verified: 2026-11-20
+Paths: src/core/tools/NewTaskTool.ts, src/core/webview/worktree/\*\*
+
+`new_task` takes no working directory. A child task runs in the parent's workspace folder, on the same files and the same checkpoint history, while the parent waits. Effects:
+
+- a child sees and can change the parent's uncommitted work;
+- two independent attempts at the same change cannot run side by side or be compared;
+- evaluation runs need a separate snapshot made by hand.
+
+Worktree support exists in `src/core/webview/worktree/`, but only as user actions. Mitigation: an optional isolated subtask workspace, development mode only at first. See [ADR-2026-11-20-feature-gating-evaluation-and-lessons](decisions/accepted/ADR-2026-11-20-feature-gating-evaluation-and-lessons.md).

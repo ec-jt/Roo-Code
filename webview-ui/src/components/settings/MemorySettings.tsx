@@ -96,6 +96,26 @@ export function MemorySettings() {
 						/>
 						{t("settings:memory.enabled")}
 					</label>
+					<label className={`flex gap-2 ml-6 ${state.enabled ? "" : "opacity-50"}`}>
+						<input
+							type="checkbox"
+							checked={state.enabled && state.saveLessons}
+							disabled={!state.enabled}
+							onChange={(e) =>
+								send({
+									action: "lessons",
+									saveLessons: e.target.checked,
+									lessonRevision: state.lessonRevision,
+								})
+							}
+						/>
+						<span>
+							{t("settings:memory.saveLessons")}
+							<span className="block text-xs text-vscode-descriptionForeground">
+								{t("settings:memory.saveLessonsHelp")}
+							</span>
+						</span>
+					</label>
 					<label className="flex gap-2">
 						<input
 							type="checkbox"
@@ -207,7 +227,7 @@ export function MemorySettings() {
 						setDraft({ ...draft, type: e.target.value as MemoryTopic["type"] })
 						setDirty(true)
 					}}>
-					{(["user", "feedback", "project", "reference"] as const).map((type) => (
+					{(["user", "feedback", "project", "reference", "lesson"] as const).map((type) => (
 						<option key={type} value={type}>
 							{t(`settings:memory.types.${type}`)}
 						</option>

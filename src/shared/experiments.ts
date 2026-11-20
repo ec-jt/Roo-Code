@@ -6,6 +6,7 @@ export const EXPERIMENT_IDS = {
 	RUN_SLASH_COMMAND: "runSlashCommand",
 	CUSTOM_TOOLS: "customTools",
 	CORDIS_RUNTIME_PREVIEW: "cordisRuntimePreview",
+	EVALUATION_RECORDING: "evaluationRecording",
 } as const satisfies Record<string, ExperimentId>
 
 type _AssertExperimentIds = AssertEqual<Equals<ExperimentId, Values<typeof EXPERIMENT_IDS>>>
@@ -23,6 +24,8 @@ export const experimentConfigsMap: Record<ExperimentKey, ExperimentConfig> = {
 	CUSTOM_TOOLS: { enabled: false },
 	// On by default (ADR-2026-11-19-keep-cordis-profile-widen-experiment). A stored `false` stays off.
 	CORDIS_RUNTIME_PREVIEW: { enabled: true },
+	// Off by default (ADR-2026-11-20-feature-gating-evaluation-and-lessons). Writes evaluation.json for new tasks.
+	EVALUATION_RECORDING: { enabled: false },
 }
 
 export const experimentDefault = Object.fromEntries(

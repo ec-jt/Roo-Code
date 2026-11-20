@@ -70,6 +70,17 @@ export class MemoryController {
 			this.watch()
 			const store = await this.store()
 			const consent = await store.getConsent()
+			let lessons: { saveLessons: boolean; revision: string; error?: string }
+			try {
+				lessons = await store.getLessonConsent()
+			} catch (error) {
+				// Fail closed, but keep the browser usable so the user can rewrite the toggle.
+				lessons = {
+					saveLessons: false,
+					revision: "invalid",
+					error: error instanceof Error ? error.message : "Invalid lesson settings",
+				}
+			}
 			const list = await store.list(scope, query, 200)
 			const selected = selectedId ? await store.read(scope, selectedId) : undefined
 			if (sequence !== this.sequence || (await this.store()).project.key !== store.project.key) return
@@ -82,10 +93,15 @@ export class MemoryController {
 				enabled: consent.enabled,
 				personalRecall: consent.personalRecall,
 				consentRevision: consent.revision,
+				saveLessons: lessons.saveLessons,
+				lessonRevision: lessons.revision,
 				listRevision: list.revision,
 				records: list.records.map(({ body: _body, ...record }) => record),
 				selected,
-				errors: list.errors.slice(0, 20).map((issue) => `${issue.file}: ${issue.message}`),
+				errors: [
+					...(lessons.error ? [`lessons: ${lessons.error}`] : []),
+					...list.errors.slice(0, 20).map((issue) => `${issue.file}: ${issue.message}`),
+				],
 				omitted: list.omitted,
 			}
 			await this.provider.postMessageToWebview({ type: "memoryBrowser", memoryBrowser: state })
@@ -130,6 +146,34 @@ export class MemoryController {
 				}
 				await assertCurrent()
 				await store.setConsent({ enabled, personalRecall }, consent.revision)
+			} else if (request.action === "lessons") {
+				if (request.consentRevision !== consent.revision)
+					throw new Error("Memory settings changed. Refresh first.")
+				let current: { saveLessons: boolean; revision: string }
+				try {
+					current = await store.getLessonConsent()
+				} catch {
+					current = { saveLessons: false, revision: "invalid" }
+				}
+				if (request.lessonRevision !== current.revision)
+					throw new Error("Lesson settings changed. Refresh first.")
+				const saveLessons = request.saveLessons === true
+				if (saveLessons && !consent.enabled) throw new Error("Enable project memory before saving lessons.")
+				if (saveLessons && !current.saveLessons) {
+					const answer = await vscode.window.showWarningMessage(
+						"Save lessons for this project?",
+						{
+							modal: true,
+							detail: `Project: ${store.project.label}\nStore: ${store.getDirectory("project")}\n\nThe model may save lessons (cue, lesson and evidence from a task) as project memory topics, after your normal memory approval. Lessons are stored for this project and are sent to the selected model provider on recall, as lower-trust reference data. A lesson without evidence is rejected. Turning this off keeps saved lessons; forget them in this browser.`,
+						},
+						"Save lessons",
+					)
+					if (answer !== "Save lessons") return await this.refresh(request.scope)
+				}
+				await assertCurrent()
+				if ((await store.getConsent()).revision !== consent.revision)
+					throw new Error("Memory settings changed. Refresh first.")
+				await store.setLessonConsent({ saveLessons }, current.revision)
 			} else if (request.action === "save") {
 				if (!request.input) throw new Error("Missing memory content")
 				const input = { ...request.input, ...(request.id ? { id: request.id } : {}) }

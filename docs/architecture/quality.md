@@ -1,11 +1,11 @@
 # 10. Quality requirements
 
-Format: [`RECORD-FORMAT.md`](RECORD-FORMAT.md). All goals below are inferred from existing docs and code and are not yet confirmed by the user.
+Format: [`RECORD-FORMAT.md`](RECORD-FORMAT.md). All goals below were confirmed by the user on 2026-11-20.
 
 ### Q-REL-1: Task history survives upgrades and rollbacks
 
-Status: proposed
-Source: inferred
+Status: accepted
+Accepted-by: user
 Last-verified: 2026-11-13
 Paths: src/core/task-persistence/**, src/core/task/model-operation/**
 
@@ -15,8 +15,8 @@ Scenario: A user upgrades the extension and reopens an older task. The task open
 
 ### Q-REL-2: Overflow recovery is bounded
 
-Status: proposed
-Source: inferred
+Status: accepted
+Accepted-by: user
 Last-verified: 2026-11-13
 Paths: src/core/context-management/**, src/core/condense/**
 
@@ -26,8 +26,8 @@ Scenario: The provider rejects a request for context size. Roo reduces context a
 
 ### Q-REL-3: Recovery events are reversible
 
-Status: proposed
-Source: inferred
+Status: accepted
+Accepted-by: user
 Last-verified: 2026-11-13
 Paths: src/core/context-management/context-recovery.ts
 
@@ -37,8 +37,8 @@ Scenario: After compaction or truncation, the user selects Recover in new branch
 
 ### Q-SEC-1: Repository content is lower-trust data
 
-Status: proposed
-Source: inferred
+Status: accepted
+Accepted-by: user
 Last-verified: 2026-11-13
 Paths: src/services/memory/**, src/services/task-state/**
 
@@ -48,8 +48,8 @@ Scenario: Injected context (memory, ledger, architecture records) contains text 
 
 ### Q-SEC-2: Secrets are not exposed
 
-Status: proposed
-Source: inferred
+Status: accepted
+Accepted-by: user
 Last-verified: 2026-11-13
 
 Quality property: #secure
@@ -58,8 +58,8 @@ Scenario: A command or log contains a credential (for example a remote URL with 
 
 ### Q-USE-1: Mode changes keep the model
 
-Status: proposed
-Source: inferred
+Status: accepted
+Accepted-by: user
 Last-verified: 2026-11-13
 Paths: src/core/webview/ClineProvider.ts
 
@@ -69,8 +69,8 @@ Scenario: The user changes the mode of an open task. The task keeps its provider
 
 ### Q-EFF-1: Context cost stays predictable
 
-Status: proposed
-Source: inferred
+Status: accepted
+Accepted-by: user
 Last-verified: 2026-11-13
 Paths: src/core/task/Task.ts
 
@@ -85,3 +85,17 @@ Evidence ([evaluation 2026-11-18](evaluation-2026-11-18.md), one sample per run)
     - **Summaries:** verified (S3).
     - **Pruning:** verified (S3P). It avoided one of three summaries, and summary cost fell from $0.61 to $0.15.
     - **Image offload:** verified on 4.2.85 (live check C3, `opus-64k`). Three images were replaced by placeholders and saved as files; condense still followed. Since 4.2.86 the condense row shows the offload count.
+    - **Note (2026-11-20):** these checks used a 64k context window override, and before 4.2.95 that override also triggered recovery before sending. From 4.2.95 recovery runs only after a provider rejection ([C-6](constraints.md)), so future overflow checks use a fault proxy.
+
+### Q-EFF-2: Cordis profile costs no more than the modes profile
+
+Status: accepted
+Accepted-by: user
+Last-verified: 2026-11-20
+Paths: src/api/preview-runtime.ts, src/core/tools/ExitPlanTool.ts, src/core/task/Task.ts
+
+Quality property: #efficient
+
+Scenario: The same planned feature request (evaluation scenario S2) runs with the Cordis profile and with the modes profile, on the same build, model and settings. Over at least two matched samples per provider, the Cordis profile uses no more API requests, input tokens or cost than the modes profile, with an equal outcome under blind review. Related: [ADR-2026-11-19-keep-cordis-profile-widen-experiment](decisions/accepted/ADR-2026-11-19-keep-cordis-profile-widen-experiment.md), [R-6](risks.md).
+
+Evidence: five Opus samples on 4.2.78 to 4.2.84 (Cordis 26% lower total cost, but more expensive in r5). The samples mixed builds and were scored by the operator, not blind ([R-6](risks.md)).

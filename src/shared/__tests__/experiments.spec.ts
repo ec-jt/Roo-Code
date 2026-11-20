@@ -35,6 +35,16 @@ describe("experiments", () => {
 		})
 	})
 
+	describe("EVALUATION_RECORDING", () => {
+		it("is off by default; only a stored true turns it on", () => {
+			expect(EXPERIMENT_IDS.EVALUATION_RECORDING).toBe("evaluationRecording")
+			expect(experimentConfigsMap.EVALUATION_RECORDING).toMatchObject({ enabled: false })
+			expect(experimentDefault.evaluationRecording).toBe(false)
+			expect(Experiments.isEnabled({}, EXPERIMENT_IDS.EVALUATION_RECORDING)).toBe(false)
+			expect(Experiments.isEnabled({ evaluationRecording: true }, EXPERIMENT_IDS.EVALUATION_RECORDING)).toBe(true)
+		})
+	})
+
 	describe("isEnabled", () => {
 		it("returns false when experiment is not enabled", () => {
 			const experiments: Record<ExperimentId, boolean> = {
@@ -43,6 +53,7 @@ describe("experiments", () => {
 				runSlashCommand: false,
 				customTools: false,
 				cordisRuntimePreview: false,
+				evaluationRecording: false,
 			}
 			expect(Experiments.isEnabled(experiments, EXPERIMENT_IDS.PREVENT_FOCUS_DISRUPTION)).toBe(false)
 		})
@@ -54,6 +65,7 @@ describe("experiments", () => {
 				runSlashCommand: false,
 				customTools: false,
 				cordisRuntimePreview: false,
+				evaluationRecording: false,
 			}
 			expect(Experiments.isEnabled(experiments, EXPERIMENT_IDS.PREVENT_FOCUS_DISRUPTION)).toBe(true)
 		})
@@ -65,6 +77,7 @@ describe("experiments", () => {
 				runSlashCommand: false,
 				customTools: false,
 				cordisRuntimePreview: false,
+				evaluationRecording: false,
 			}
 			expect(Experiments.isEnabled(experiments, EXPERIMENT_IDS.PREVENT_FOCUS_DISRUPTION)).toBe(false)
 		})

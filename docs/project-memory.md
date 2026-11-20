@@ -18,6 +18,25 @@ Project memory stores short, inspectable topics on the extension host. It is sep
 
 Recalled topics enter prompts sent to the selected model/provider. Local storage does not mean local inference. Secret-pattern checks are best effort, not a privacy or sandbox guarantee. Do not save credentials, private keys, session cookies, copied sensitive output, or speculative facts. Forgetting a topic does not erase prior prompts, task transcripts, request snapshots, backups, or provider-held data. Use task deletion controls separately and start a new task when a clean conversation context is needed.
 
+## Lessons
+
+**Save lessons** is a per-project sub-toggle under **Enable project memory**. It is off by default and disabled while project memory is off. Turning it on needs a native confirmation, which states that lessons are stored for this project and are sent to the model provider on recall.
+
+A lesson is a project topic with `type: lesson`. Its body must contain these lines (other lines are free notes):
+
+```
+cue: when the test runner reports "vitest: command not found"
+lesson: run vitest from the package directory that lists it, not from the repository root
+evidence: task 0d3f0c6e-6a3b-4e47-9a51-2f1f7e3c9b10, execute_command call after request 4
+confidence: high
+```
+
+`cue`, `lesson` and `evidence` are required and must not be empty. `evidence` must name a task ID (UUID) and should name the request or tool call that showed the lesson. `confidence` is optional: `low`, `medium`, `high`, or a number from 0 to 1. A lesson that fails these checks is rejected with the error code `INVALID_LESSON`. The normal secret checks apply.
+
+The model may create or update a lesson only when project memory and **Save lessons** are both on. The gate is checked before approval, after approval and again inside the store commit. When the toggle is off, the memory tool returns a message that tells the model how the user can turn it on; nothing is saved. Reading, recall, forgetting and clearing lessons follow the normal project memory rules, also when the toggle is off. The tool description tells the model to save a lesson only with concrete evidence from the current task, and otherwise to save nothing (`NO_ENTRY`, no tool call). There is no extra model call and no background summarizer. Lessons appear in the normal recall index, labelled `(lesson)`, as lower-trust data.
+
+The toggle is stored in its own control file, `memory/controls/<project key>.lessons-consent.yaml`, with the keys `saveLessons` and `revision`. It is never added to the consent document, because older builds validate that document strictly. A missing file means off; an invalid file reads as off. Older builds ignore the file. An older build reports a lesson topic as an invalid topic (`Invalid memory type`) and does not delete it; in that build, saving, clearing and forgetting that topic are blocked until the file is deleted by hand or the newer build forgets it.
+
 ## Identity and files
 
 The caller supplies the extension global-storage root and the actual task workspace folder. [Project resolution](../src/services/memory/project.ts) hashes the canonical local Git common directory. Main checkouts, subdirectories, and linked worktrees share a project. Independent clones, nested repositories, and submodules remain separate. No remote URL or network request participates. Outside Git, the canonical selected folder is the identity, not its home or ancestor directory. Project moves need explicit migration and renewed scope review; there is no automatic migration or synchronization.

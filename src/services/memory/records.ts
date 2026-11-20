@@ -1,6 +1,6 @@
 import { parseDocument, stringify } from "yaml"
 import { hash } from "./files"
-import { MEMORY_LIMITS, MemoryError, type MemoryInput, type MemoryRecord } from "./types"
+import { MEMORY_LIMITS, MEMORY_TYPES, MemoryError, type MemoryInput, type MemoryRecord } from "./types"
 
 export const ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 
@@ -48,6 +48,44 @@ export function assertNoSecrets(text: string): void {
 	}
 }
 
+export interface MemoryLessonFields {
+	cue: string
+	lesson: string
+	evidence: string
+	confidence?: string
+}
+
+const LESSON_KEYS = ["cue", "lesson", "evidence", "confidence"] as const
+const TASK_ID_TOKEN = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/i
+const CONFIDENCE = /^(?:low|medium|high|0(?:\.\d+)?|1(?:\.0+)?)$/i
+
+/**
+ * A lesson body holds one `key: value` line each for cue, lesson and evidence, and optionally
+ * confidence. Other lines are free notes. Evidence must name a task ID (UUID) and should name the
+ * request or tool call that showed the lesson.
+ */
+export function parseLesson(body: string): MemoryLessonFields {
+	const invalid = (message: string): never => {
+		throw new MemoryError("INVALID_LESSON", message)
+	}
+	const fields: Partial<Record<(typeof LESSON_KEYS)[number], string>> = {}
+	for (const line of body.split(/\r?\n/)) {
+		const match = /^\s*(cue|lesson|evidence|confidence)\s*:(.*)$/i.exec(line)
+		if (!match) continue
+		const key = match[1].toLowerCase() as (typeof LESSON_KEYS)[number]
+		if (fields[key] !== undefined) invalid(`Lesson has more than one "${key}:" line`)
+		fields[key] = match[2].trim()
+	}
+	for (const key of ["cue", "lesson", "evidence"] as const) {
+		if (!fields[key]) invalid(`Lesson requires a non-empty "${key}:" line (cue, lesson and evidence are required)`)
+	}
+	if (!TASK_ID_TOKEN.test(fields.evidence!))
+		invalid('Lesson "evidence:" must name the task ID and the request or tool call that showed it')
+	if (fields.confidence !== undefined && !CONFIDENCE.test(fields.confidence))
+		invalid('Lesson "confidence:" must be low, medium, high, or a number from 0 to 1')
+	return fields as MemoryLessonFields
+}
+
 export function validateInput(input: MemoryInput): void {
 	if (!input || typeof input !== "object" || Array.isArray(input))
 		throw new MemoryError("INVALID_RECORD", "Invalid memory input")
@@ -57,12 +95,12 @@ export function validateInput(input: MemoryInput): void {
 	if (input.id !== undefined) validateId(input.id)
 	field(input.name, "name", 160)
 	field(input.description, "description", 512)
-	if (!["user", "feedback", "project", "reference"].includes(input.type))
-		throw new MemoryError("INVALID_RECORD", "Invalid memory type")
+	if (!MEMORY_TYPES.includes(input.type)) throw new MemoryError("INVALID_RECORD", "Invalid memory type")
 	if (input.sourceTaskId !== undefined) field(input.sourceTaskId, "sourceTaskId", 160)
 	if (typeof input.body !== "string" || !input.body.trim() || input.body.includes(String.fromCharCode(0)))
 		throw new MemoryError("INVALID_RECORD", "Invalid memory body")
 	assertNoSecrets([input.name, input.description, input.body, input.sourceTaskId ?? ""].join("\n"))
+	if (input.type === "lesson") parseLesson(input.body)
 }
 
 export function serializeRecord(record: Omit<MemoryRecord, "revision">): string {

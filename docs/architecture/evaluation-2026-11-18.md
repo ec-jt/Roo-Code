@@ -445,6 +445,8 @@ These came from running the evaluation, not from the questions above:
 
 - **4.2.89 run:** the check before sending used the last request's usage, which did not include tool results added since. Two requests went out above 64k without recovery (122,934 and 74,042 input tokens); they succeeded only because the real window was 1M.
 - **Decision (user, 2026-11-20):** keep [C-6](constraints.md) and the overflow-only ADR unchanged. Only profiles with a context window override check before sending, because the provider does not enforce the override. Models without an override recover after the provider rejects a request for size, then retry once.
+- **Reversed (user, 2026-11-20, later the same day):** "no need to estimate, stick to C-6, just trigger when it fails". 4.2.95 removes the check before sending for override profiles. Every profile now reduces context only after a provider rejection. The override still sets the reported window and the summary budget, but it no longer causes compaction on its own. The R1 results below describe 4.2.91 and 4.2.92 behaviour that no longer exists.
+- **Protocol consequence:** overflow scenarios (S3, S3P, R1) can no longer use a context window override to force compaction on a large-window model. Future overflow runs use the fault proxy method of R2, which makes the provider reject the request with "prompt is too long".
 - **4.2.90 live check (invalid):** both paths detected the overflow, but recovery stopped with "Not enough earlier history to compact" because the overflow came from the first large tool batch and nothing could be summarized. Fixed in 4.2.91.
 
 **Live checks on 4.2.91 (2026-11-20):**

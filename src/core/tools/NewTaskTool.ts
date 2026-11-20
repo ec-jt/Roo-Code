@@ -116,17 +116,24 @@ export class NewTaskTool extends BaseTool<"new_task"> {
 			// exact new_task row instead of relying on childIds array order.
 			const newTaskMessageTs = task.lastMessageTs
 
-			// Delegate parent and open child as sole active task
-			const child = await provider.delegateParentAndOpenChild({
-				parentTaskId: task.taskId,
-				parentInstanceId: task.instanceId,
-				expectedRevision,
-				message: unescapedMessage,
-				initialTodos: todoItems,
-				mode,
-				reason,
-				newTaskMessageTs,
-			})
+			// Delegate parent and open child as sole active task. Closing the parent instance here
+			// does not end the parent task, so it must not be recorded as a stop (evaluation recording).
+			task.evaluationRecorder?.suspendStops(true)
+			let child: Awaited<ReturnType<typeof provider.delegateParentAndOpenChild>>
+			try {
+				child = await provider.delegateParentAndOpenChild({
+					parentTaskId: task.taskId,
+					parentInstanceId: task.instanceId,
+					expectedRevision,
+					message: unescapedMessage,
+					initialTodos: todoItems,
+					mode,
+					reason,
+					newTaskMessageTs,
+				})
+			} finally {
+				task.evaluationRecorder?.suspendStops(false)
+			}
 
 			// Reflect delegation in tool result (no pause/unpause, no wait)
 			pushToolResult(`Delegated to child task ${child.taskId}`)

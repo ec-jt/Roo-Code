@@ -1,4 +1,11 @@
 {
+	"memory": {
+		"saveLessons": "Lektionen speichern",
+		"saveLessonsHelp": "Das Modell darf Lektionen mit Belegen aus einer Aufgabe speichern. Beim Abrufen werden sie an den Modellanbieter gesendet.",
+		"types": {
+			"lesson": "Lektion"
+		}
+	},
 	"back": "Zurück zur Aufgabenansicht",
 	"common": {
 		"save": "Speichern",
@@ -830,6 +837,10 @@
 		"CORDIS_RUNTIME_PREVIEW": {
 			"name": "Cordis-Runtime-Vorschau",
 			"description": "Standardmäßig aktiviert. Neue Aufgaben nutzen bei jedem Anbieter das Cordis-Profil: /plan liefert eine Planprüfung zur Freigabe, eine während der Aufgabe erkannte Abweichung wird als Planänderung vorgeschlagen, und es gilt ein festes Tool-Set (alle Tool-Gruppen, kein switch_mode, Modus nach der ersten Anfrage gesperrt). Bestehende Aufgaben behalten ihr Profil. Nur Anthropic-Aufgaben nutzen zusätzlich die Vorschau-Zulassung von Anfragen; andere Anbieter nutzen den normalen Ablauf. Deaktiviere es, um für neue Aufgaben Modi zu nutzen. Speichere, um die Änderung anzuwenden: Das Deaktivieren stoppt den Versand neuer Vorschau-Anfragen und bricht aktive Modellanfragen der Vorschau ab, kann aber bereits eingetretene Auswirkungen nicht rückgängig machen."
+		},
+		"EVALUATION_RECORDING": {
+			"name": "Auswertungsaufzeichnung",
+			"description": "Standardmäßig deaktiviert. Jede neue Aufgabe schreibt eine Datei evaluation.json in ihren eigenen Aufgabenordner: ein Ausführungsmanifest (Erweiterungsversion, Anbieter, Modell, Modus, ein Digest der verhaltensrelevanten Einstellungen, ein Hash der ersten Nachricht) und den Grund, warum die Aufgabe beendet wurde. Es werden kein Prompt-Text, keine API-Schlüssel und keine URLs gespeichert, nur Hashes. Bestehende und fortgesetzte Aufgaben werden nicht verändert."
 		},
 		"DIFF_STRATEGY_UNIFIED": {
 			"name": "Experimentelle einheitliche Diff-Strategie verwenden",

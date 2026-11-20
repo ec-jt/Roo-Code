@@ -1,4 +1,11 @@
 {
+	"memory": {
+		"saveLessons": "Salva lezioni",
+		"saveLessonsHelp": "Il modello può salvare lezioni con prove da un'attività. Vengono inviate al fornitore del modello al richiamo.",
+		"types": {
+			"lesson": "Lezione"
+		}
+	},
 	"back": "Torna alla vista attività",
 	"common": {
 		"save": "Salva",
@@ -830,6 +837,10 @@
 		"CORDIS_RUNTIME_PREVIEW": {
 			"name": "Anteprima del runtime Cordis",
 			"description": "Attivo per impostazione predefinita. Le nuove attività usano il profilo Cordis con ogni provider: /plan fornisce una revisione del piano da approvare, una deviazione rilevata durante un'attività viene proposta come modifica del piano e si applica un set fisso di strumenti (tutti i gruppi di strumenti, niente switch_mode, modalità bloccata dopo la prima richiesta). Le attività esistenti mantengono il loro profilo. Solo le attività Anthropic usano anche l'ammissione delle richieste dell'anteprima; gli altri provider seguono il flusso normale. Disattivalo per usare le modalità nelle nuove attività. Salva per applicare: la disattivazione interrompe l'invio di nuove richieste dell'anteprima e annulla le richieste attive ai modelli dell'anteprima, ma non può annullare gli effetti già prodotti."
+		},
+		"EVALUATION_RECORDING": {
+			"name": "Registrazione della valutazione",
+			"description": "Disattivato per impostazione predefinita. Ogni nuova attività scrive un file evaluation.json nella propria cartella: un manifesto di esecuzione (versione dell'estensione, provider, modello, modalità, un digest delle impostazioni che influiscono sul comportamento, un hash del primo messaggio) e il motivo per cui l'attività si è fermata. Non vengono salvati testo del prompt, chiavi API o URL, solo hash. Le attività esistenti e riprese non vengono modificate."
 		},
 		"DIFF_STRATEGY_UNIFIED": {
 			"name": "Usa strategia diff unificata sperimentale",

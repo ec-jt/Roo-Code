@@ -1,4 +1,11 @@
 {
+	"memory": {
+		"saveLessons": "Zapisuj lekcje",
+		"saveLessonsHelp": "Model może zapisywać lekcje z dowodami z zadania. Przy przywołaniu są wysyłane do dostawcy modelu.",
+		"types": {
+			"lesson": "Lekcja"
+		}
+	},
 	"back": "Wróć do widoku zadań",
 	"common": {
 		"save": "Zapisz",
@@ -830,6 +837,10 @@
 		"CORDIS_RUNTIME_PREVIEW": {
 			"name": "Wersja zapoznawcza runtime Cordis",
 			"description": "Domyślnie włączone. Nowe zadania u każdego dostawcy używają profilu Cordis: /plan daje przegląd planu do zatwierdzenia, odstępstwo wykryte w trakcie zadania jest zgłaszane jako poprawka planu, a obowiązuje stały zestaw narzędzi (wszystkie grupy narzędzi, bez switch_mode, tryb zablokowany po pierwszym żądaniu). Istniejące zadania zachowują swój profil. Tylko zadania Anthropic korzystają też z przyjmowania żądań w wersji zapoznawczej; pozostali dostawcy używają zwykłej ścieżki. Wyłącz, aby w nowych zadaniach używać trybów. Zapisz, aby zastosować zmiany: wyłączenie zatrzymuje wysyłanie nowych żądań przez wersję zapoznawczą i anuluje jej aktywne żądania do modeli, ale nie może cofnąć skutków już wykonanych działań."
+		},
+		"EVALUATION_RECORDING": {
+			"name": "Rejestrowanie ewaluacji",
+			"description": "Domyślnie wyłączone. Każde nowe zadanie zapisuje plik evaluation.json we własnym folderze zadania: manifest uruchomienia (wersja rozszerzenia, dostawca, model, tryb, skrót ustawień wpływających na zachowanie, hash pierwszej wiadomości) oraz powód zatrzymania zadania. Nie są zapisywane treść promptu, klucze API ani adresy URL, tylko hashe. Istniejące i wznowione zadania nie są zmieniane."
 		},
 		"DIFF_STRATEGY_UNIFIED": {
 			"name": "Użyj eksperymentalnej ujednoliconej strategii diff",

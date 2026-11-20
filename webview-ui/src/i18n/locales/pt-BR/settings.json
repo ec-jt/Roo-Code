@@ -1,4 +1,11 @@
 {
+	"memory": {
+		"saveLessons": "Salvar lições",
+		"saveLessonsHelp": "O modelo pode salvar lições com evidências de uma tarefa. Elas são enviadas ao provedor do modelo ao serem lembradas.",
+		"types": {
+			"lesson": "Lição"
+		}
+	},
 	"back": "Voltar para a visão de tarefas",
 	"common": {
 		"save": "Salvar",
@@ -830,6 +837,10 @@
 		"CORDIS_RUNTIME_PREVIEW": {
 			"name": "Prévia do runtime Cordis",
 			"description": "Ativado por padrão. Novas tarefas em todos os provedores usam o perfil Cordis: /plan gera uma revisão do plano para aprovar, um desvio encontrado durante a tarefa é apresentado como emenda ao plano e vale um conjunto fixo de ferramentas (todos os grupos de ferramentas, sem switch_mode, modo bloqueado após a primeira solicitação). Tarefas existentes mantêm o perfil. Só as tarefas Anthropic usam também a admissão de solicitações da prévia; os outros provedores usam o fluxo normal. Desative para usar modos em novas tarefas. Salve para aplicar: desativar interrompe o envio de novas solicitações pela prévia e cancela as solicitações ativas aos modelos feitas por ela, mas não pode desfazer os efeitos já produzidos."
+		},
+		"EVALUATION_RECORDING": {
+			"name": "Registro de avaliação",
+			"description": "Desativado por padrão. Cada nova tarefa grava um arquivo evaluation.json na própria pasta da tarefa: um manifesto da execução (versão da extensão, provedor, modelo, modo, um resumo das configurações que afetam o comportamento, um hash da primeira mensagem) e o motivo pelo qual a tarefa parou. Nenhum texto de prompt, chave de API ou URL é armazenado, apenas hashes. Tarefas existentes e retomadas não são alteradas."
 		},
 		"DIFF_STRATEGY_UNIFIED": {
 			"name": "Usar estratégia diff unificada experimental",

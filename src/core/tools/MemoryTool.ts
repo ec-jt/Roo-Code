@@ -13,6 +13,7 @@ import {
 import { getTaskMemoryStore, assertMemoryAccess, assertMemoryTaskOpen } from "../../services/memory/taskMemory"
 import { validateInput } from "../../services/memory/records"
 import { MemoryError, type MemoryRecord, type MemoryList } from "../../services/memory/types"
+import { LESSONS_DISABLED_MESSAGE } from "../../services/memory/MemoryStore"
 
 const metadata = ({ body, ...record }: MemoryRecord) => record
 
@@ -74,6 +75,13 @@ export class MemoryTool extends BaseTool<"memory"> {
 			assertMemoryAccess(task, store, scope, params.id ?? undefined)
 			const consent = await store.getConsent()
 			const read = action === "read" || action === "list"
+			// Only writes are gated. Reading, recall, forgetting and clearing follow normal memory rules.
+			let lessonWrite = action === "upsert" && params.type === "lesson"
+			const assertLessonGate = async () => {
+				if (!lessonWrite) return
+				if (scope !== "project") throw new MemoryError("INVALID_LESSON", "Lessons are project memory only")
+				if (!(await store.canSaveLessons())) throw new MemoryError("LESSONS_DISABLED", LESSONS_DISABLED_MESSAGE)
+			}
 			const recheck = async () => {
 				await checkMode()
 				assertMemoryAccess(task, store, scope, params.id ?? undefined)
@@ -86,8 +94,18 @@ export class MemoryTool extends BaseTool<"memory"> {
 				) {
 					throw new MemoryError("DISABLED", "Memory consent is disabled or changed; start a new operation")
 				}
+				await assertLessonGate()
 			}
-			await recheck()
+			try {
+				await recheck()
+			} catch (error) {
+				// Guidance, not a schema failure or a mistake: tell the model how the user can turn it on.
+				if (error instanceof MemoryError && error.code === "LESSONS_DISABLED") {
+					callbacks.pushToolResult(LESSONS_DISABLED_MESSAGE)
+					return
+				}
+				throw error
+			}
 			const input =
 				action === "upsert"
 					? {
@@ -102,6 +120,14 @@ export class MemoryTool extends BaseTool<"memory"> {
 			if (input) validateInput(input)
 			// Retain the exact record and revision across approval, including the body being forgotten.
 			const existing = params.id ? await store.read(scope, params.id) : undefined
+			// Rewriting an existing lesson is a lesson write too, even if the type changes.
+			if (action === "upsert" && existing?.type === "lesson" && !lessonWrite) {
+				lessonWrite = true
+				if (!(await store.canSaveLessons())) {
+					callbacks.pushToolResult(LESSONS_DISABLED_MESSAGE)
+					return
+				}
+			}
 			await recheck()
 			if (params.id && !existing) throw new MemoryError("NOT_FOUND", "Memory topic was not found")
 			if (!read && params.id && existing?.revision !== params.expected_revision)

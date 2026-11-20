@@ -51,10 +51,12 @@ Changes never list, read in bulk, migrate, rewrite, or delete existing task data
 
 Status: accepted
 Accepted-by: user
-Last-verified: 2026-11-13
+Last-verified: 2026-11-20
 Paths: src/core/context-management/**, src/core/condense/**, src/core/task/Task.ts
 
-Context reduction runs only after the provider rejects a request for size. There is no proactive threshold. One retry after recovery, then stop. See [ADR-2026-11-13-overflow-only-context-recovery](decisions/proposed/ADR-2026-11-13-overflow-only-context-recovery.md).
+Context reduction runs only after the provider rejects a request for size. There is no proactive threshold. One retry after recovery, then stop. See [ADR-2026-11-13-overflow-only-context-recovery](decisions/accepted/ADR-2026-11-13-overflow-only-context-recovery.md).
+
+This applies to every profile, including profiles with a context window override (user, 2026-11-20). The 4.2.90 to 4.2.94 check before sending for override profiles was removed in 4.2.95. Size checks inside the one allowed recovery (4.2.89: shorten kept tool results, refuse to send a prompt that still exceeds the window) are part of recovery and are allowed.
 
 ### C-7: User-visible strings are localized
 

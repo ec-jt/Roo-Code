@@ -12,6 +12,8 @@ const state = {
 	enabled: false,
 	personalRecall: false,
 	consentRevision: "disabled",
+	saveLessons: false,
+	lessonRevision: "disabled",
 	listRevision: "list",
 	records: [],
 	errors: [],
@@ -38,6 +40,26 @@ it("loads disabled settings and sends project-correlated immediate consent", () 
 			projectKey: "project",
 			consentRevision: "disabled",
 			enabled: true,
+		}),
+	})
+})
+it("disables Save lessons while project memory is off and sends a lessons request when on", () => {
+	render(<MemorySettings />)
+	receive(state)
+	const lessons = screen.getByRole("checkbox", { name: /settings:memory.saveLessons/ })
+	expect(lessons).toBeDisabled()
+	expect(lessons).not.toBeChecked()
+	receive({ ...state, enabled: true, consentRevision: "grant" })
+	const enabled = screen.getByRole("checkbox", { name: /settings:memory.saveLessons/ })
+	expect(enabled).not.toBeDisabled()
+	fireEvent.click(enabled)
+	expect(vscode.postMessage).toHaveBeenLastCalledWith({
+		type: "memoryBrowserRequest",
+		memoryBrowserRequest: expect.objectContaining({
+			action: "lessons",
+			saveLessons: true,
+			lessonRevision: "disabled",
+			consentRevision: "grant",
 		}),
 	})
 })

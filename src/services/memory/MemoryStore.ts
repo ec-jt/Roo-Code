@@ -9,6 +9,7 @@ import {
 	MemoryError,
 	type MemoryAuthorization,
 	type MemoryConsent,
+	type MemoryLessonConsent,
 	type MemoryIndex,
 	type MemoryInput,
 	type MemoryIssue,
@@ -27,6 +28,9 @@ interface Inventory {
 }
 
 const DEFAULT_CONSENT: MemoryConsent = { enabled: false, personalRecall: false, revision: "disabled" }
+const DEFAULT_LESSON_CONSENT: MemoryLessonConsent = { saveLessons: false, revision: "disabled" }
+export const LESSONS_DISABLED_MESSAGE =
+	'Saving lessons is turned off for this project. Ask the user to turn on "Save lessons" in Settings > Memory (project memory must also be on). Nothing was saved.'
 const INDEX_HEADER = "<!-- Roo managed memory index: "
 
 export class MemoryStore {
@@ -54,6 +58,77 @@ export class MemoryStore {
 
 	private get controlPath(): string {
 		return path.join(this.storageRoot, "memory", "controls", `${this.project.key}.md`)
+	}
+
+	/**
+	 * Separate from the consent document on purpose: older builds validate that document strictly and
+	 * would turn memory off if it gained a key. Older builds never read this file.
+	 */
+	private get lessonControlPath(): string {
+		return path.join(this.storageRoot, "memory", "controls", `${this.project.key}.lessons-consent.yaml`)
+	}
+
+	/** Side-effect-free. A missing file means off. An invalid file fails closed (off). */
+	async getLessonConsent(): Promise<MemoryLessonConsent> {
+		const text = await readText(this.lessonControlPath, 4096)
+		if (text === undefined) return { ...DEFAULT_LESSON_CONSENT }
+		const data = parseYaml(text)
+		if (
+			Object.keys(data).sort().join(",") !== "revision,saveLessons" ||
+			typeof data.saveLessons !== "boolean" ||
+			typeof data.revision !== "string" ||
+			!ID_PATTERN.test(data.revision)
+		) {
+			throw new MemoryError("INVALID_CONSENT", "Invalid lesson settings; saving lessons is blocked")
+		}
+		return data as unknown as MemoryLessonConsent
+	}
+
+	/** UI-authorized only. Uses the consent lock so it serializes with consent and commits. */
+	async setLessonConsent(
+		settings: Pick<MemoryLessonConsent, "saveLessons">,
+		expectedRevision: string,
+	): Promise<MemoryLessonConsent> {
+		if (
+			!settings ||
+			typeof settings.saveLessons !== "boolean" ||
+			Object.keys(settings).some((key) => key !== "saveLessons")
+		)
+			throw new MemoryError("INVALID_CONSENT", "Invalid lesson settings")
+		return locked(`${this.controlPath}.guard`, async (assertLock) => {
+			if (settings.saveLessons && !(await this.getConsent()).enabled)
+				throw new MemoryError("DISABLED", "Enable project memory before turning on Save lessons")
+			let old: MemoryLessonConsent
+			try {
+				old = await this.getLessonConsent()
+			} catch (error) {
+				// A user may repair an invalid file by writing fresh settings; the raw hash still guards races.
+				if (!(error instanceof MemoryError && error.code === "INVALID_CONSENT")) throw error
+				old = { saveLessons: false, revision: "invalid" }
+			}
+			if (old.revision !== expectedRevision)
+				throw new MemoryError("CONFLICT", "Lesson settings changed; refresh settings")
+			const raw = await readText(this.lessonControlPath, 4096)
+			const result = { saveLessons: settings.saveLessons, revision: randomUUID() }
+			assertLock()
+			await atomicText(this.lessonControlPath, stringify(result), raw === undefined ? null : hash(raw), 4096)
+			return result
+		})
+	}
+
+	/** True only when project memory is on and the lesson toggle is on. Invalid files read as off. */
+	async canSaveLessons(): Promise<boolean> {
+		try {
+			return (await this.getConsent()).enabled && (await this.getLessonConsent()).saveLessons
+		} catch {
+			return false
+		}
+	}
+
+	private async requireLessonWrite(scope: MemoryScope, input: MemoryInput): Promise<void> {
+		if (input.type !== "lesson") return
+		if (scope !== "project") throw new MemoryError("INVALID_LESSON", "Lessons are project memory only")
+		if (!(await this.canSaveLessons())) throw new MemoryError("LESSONS_DISABLED", LESSONS_DISABLED_MESSAGE)
 	}
 
 	/** Side-effect-free, including when the storage root does not exist. Invalid controls fail closed. */
@@ -309,8 +384,10 @@ export class MemoryStore {
 			)
 		const consent = await this.getConsent()
 		if (!consent.enabled) throw new MemoryError("DISABLED", "Enable project memory before saving")
+		await this.requireLessonWrite(scope, input)
 		return locked(path.join(this.getDirectory(scope), ".scope"), async (assertLock) => {
 			await this.requireConsent(consent)
+			await this.requireLessonWrite(scope, input)
 			const existing = input.id ? await this.read(scope, input.id) : undefined
 			if (input.id && (!existing || existing.revision !== options.expectedRevision))
 				throw new MemoryError("CONFLICT", "Memory changed or was forgotten; reread before retrying")
@@ -330,6 +407,7 @@ export class MemoryStore {
 			// The callback may show UI or call setConsent. Acquire the independent consent lock only afterwards.
 			await locked(`${this.controlPath}.guard`, async (assertConsentLock) => {
 				await this.requireConsent(consent)
+				await this.requireLessonWrite(scope, input)
 				const current = await this.inventory(scope)
 				if (current.revision !== inventory.revision)
 					throw new MemoryError("CONFLICT", "Memory inventory changed during authorization; retry")

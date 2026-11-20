@@ -1,5 +1,7 @@
 export type MemoryScope = "project" | "personal"
-export type MemoryType = "user" | "feedback" | "project" | "reference"
+export type MemoryType = "user" | "feedback" | "project" | "reference" | "lesson"
+
+export const MEMORY_TYPES: readonly MemoryType[] = Object.freeze(["user", "feedback", "project", "reference", "lesson"])
 
 export interface MemoryProject {
 	key: string
@@ -33,6 +35,16 @@ export interface MemoryConsent {
 	enabled: boolean
 	personalRecall: boolean
 	/** Changes on every settings write, including disable/re-enable. */
+	revision: string
+}
+
+/**
+ * Per-project "Save lessons" sub-toggle. Stored in its own control file, never in the consent
+ * document, so builds that predate lessons keep reading their strict consent document unchanged.
+ */
+export interface MemoryLessonConsent {
+	saveLessons: boolean
+	/** "disabled" when the file is missing; otherwise a UUID that changes on every write. */
 	revision: string
 }
 

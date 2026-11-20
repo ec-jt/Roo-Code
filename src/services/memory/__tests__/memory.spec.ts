@@ -343,6 +343,112 @@ describe("MemoryStore", () => {
 	})
 })
 
+describe("MemoryStore lessons", () => {
+	const taskId = "0d3f0c6e-6a3b-4e47-9a51-2f1f7e3c9b10"
+	const lesson: MemoryInput = {
+		name: "Run vitest from its package",
+		description: "Avoid vitest not found",
+		type: "lesson",
+		body: `cue: vitest: command not found\nlesson: run from the package directory\nevidence: task ${taskId}, execute_command after request 4\nconfidence: high\n`,
+	}
+	const lessonsFile = () =>
+		path.join(store.storageRoot, "memory", "controls", `${store.project.key}.lessons-consent.yaml`)
+	const turnOn = async () => store.setLessonConsent({ saveLessons: true }, (await store.getLessonConsent()).revision)
+
+	it("reads a missing control file as off and never adds keys to the consent document", async () => {
+		expect(await store.getLessonConsent()).toEqual({ saveLessons: false, revision: "disabled" })
+		await enable()
+		const consentFile = path.join(store.storageRoot, "memory", "controls", `${store.project.key}.md`)
+		const before = await fs.readFile(consentFile, "utf8")
+		await turnOn()
+		expect(await fs.readFile(consentFile, "utf8")).toBe(before)
+		expect(Object.keys(await store.getConsent()).sort()).toEqual(["enabled", "personalRecall", "revision"])
+		expect(await store.getLessonConsent()).toMatchObject({ saveLessons: true })
+		expect(await store.canSaveLessons()).toBe(true)
+	})
+
+	it("refuses to turn on while project memory is off and rejects stale revisions", async () => {
+		await expect(store.setLessonConsent({ saveLessons: true }, "disabled")).rejects.toMatchObject({
+			code: "DISABLED",
+		})
+		await enable()
+		await turnOn()
+		await expect(store.setLessonConsent({ saveLessons: false }, "disabled")).rejects.toMatchObject({
+			code: "CONFLICT",
+		})
+		await expect(
+			store.setLessonConsent({ saveLessons: true, extra: 1 } as never, "disabled"),
+		).rejects.toMatchObject({ code: "INVALID_CONSENT" })
+	})
+
+	it("fails closed on an invalid control file", async () => {
+		await enable()
+		await turnOn()
+		await fs.writeFile(lessonsFile(), "saveLessons: yes\n")
+		await expect(store.getLessonConsent()).rejects.toMatchObject({ code: "INVALID_CONSENT" })
+		expect(await store.canSaveLessons()).toBe(false)
+		await expect(create(store, "project", lesson)).rejects.toMatchObject({ code: "LESSONS_DISABLED" })
+		// Ordinary memory keeps working.
+		expect((await create()).type).toBe("feedback")
+	})
+
+	it("gates lesson writes but not reads, recall or forgetting", async () => {
+		await enable()
+		await expect(create(store, "project", lesson)).rejects.toMatchObject({ code: "LESSONS_DISABLED" })
+		await turnOn()
+		const saved = await create(store, "project", lesson)
+		expect(saved.type).toBe("lesson")
+		await store.setLessonConsent({ saveLessons: false }, (await store.getLessonConsent()).revision)
+		expect(await store.read("project", saved.id)).toEqual(saved)
+		const index = await store.getRecallIndex()
+		expect(index.text).toContain(`project:${saved.id}`)
+		expect(index.text).toContain("(lesson)")
+		await expect(
+			store.upsert("project", { ...lesson, id: saved.id }, { expectedRevision: saved.revision, authorize }),
+		).rejects.toMatchObject({ code: "LESSONS_DISABLED" })
+		await store.delete("project", saved.id, { expectedRevision: saved.revision, authorize })
+		expect(await store.read("project", saved.id)).toBeUndefined()
+	})
+
+	it("rechecks the toggle after authorization", async () => {
+		await enable()
+		await turnOn()
+		await expect(
+			store.upsert("project", lesson, {
+				expectedRevision: null,
+				authorize: async () => {
+					await store.setLessonConsent({ saveLessons: false }, (await store.getLessonConsent()).revision)
+				},
+			}),
+		).rejects.toMatchObject({ code: "LESSONS_DISABLED" })
+		expect((await store.list("project")).total).toBe(0)
+	})
+
+	it.each([
+		["missing cue", lesson.body.replace(/^cue:.*\n/m, "")],
+		["empty lesson", lesson.body.replace(/^lesson:.*$/m, "lesson:   ")],
+		["missing evidence", lesson.body.replace(/^evidence:.*\n/m, "")],
+		["evidence without task ID", lesson.body.replace(/^evidence:.*$/m, "evidence: I remember it")],
+		["duplicate cue", `${lesson.body}cue: again\n`],
+		["bad confidence", lesson.body.replace(/^confidence:.*$/m, "confidence: certain")],
+	])("rejects a lesson with %s as INVALID_LESSON", async (_name, body) => {
+		await enable()
+		await turnOn()
+		await expect(create(store, "project", { ...lesson, body })).rejects.toMatchObject({
+			code: "INVALID_LESSON",
+		})
+	})
+
+	it("keeps lessons project-only and applies secret checks", async () => {
+		await enable(store, true)
+		await turnOn()
+		await expect(create(store, "personal", lesson)).rejects.toMatchObject({ code: "INVALID_LESSON" })
+		await expect(
+			create(store, "project", { ...lesson, body: `${lesson.body}token: ghp_${"a".repeat(30)}\n` }),
+		).rejects.toMatchObject({ code: "SECRET" })
+	})
+})
+
 describe("resolveMemoryProject", () => {
 	const git = (cwd: string, args: string[]) => exec("git", args, { cwd, timeout: 5000, maxBuffer: 64 * 1024 })
 

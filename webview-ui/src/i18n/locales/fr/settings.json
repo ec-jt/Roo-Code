@@ -1,4 +1,11 @@
 {
+	"memory": {
+		"saveLessons": "Enregistrer les leçons",
+		"saveLessonsHelp": "Le modèle peut enregistrer des leçons avec des preuves issues d'une tâche. Elles sont envoyées au fournisseur du modèle lors du rappel.",
+		"types": {
+			"lesson": "Leçon"
+		}
+	},
 	"back": "Retour à la vue des tâches",
 	"common": {
 		"save": "Enregistrer",
@@ -830,6 +837,10 @@
 		"CORDIS_RUNTIME_PREVIEW": {
 			"name": "Aperçu du runtime Cordis",
 			"description": "Activé par défaut. Les nouvelles tâches utilisent le profil Cordis avec tous les fournisseurs : /plan propose une revue du plan à approuver, une dérive détectée pendant une tâche est signalée sous forme d'amendement du plan, et un ensemble fixe d'outils s'applique (tous les groupes d'outils, pas de switch_mode, mode verrouillé après la première requête). Les tâches existantes gardent leur profil. Seules les tâches Anthropic utilisent aussi l'admission des requêtes de l'aperçu ; les autres fournisseurs suivent le fonctionnement normal. Désactive-le pour utiliser les modes dans les nouvelles tâches. Enregistre pour appliquer : la désactivation arrête l'envoi de nouvelles requêtes via l'aperçu et annule les requêtes actives aux modèles via celui-ci, mais ne peut pas annuler les effets déjà produits."
+		},
+		"EVALUATION_RECORDING": {
+			"name": "Enregistrement d'évaluation",
+			"description": "Désactivé par défaut. Chaque nouvelle tâche écrit un fichier evaluation.json dans son propre dossier : un manifeste d'exécution (version de l'extension, fournisseur, modèle, mode, une empreinte des paramètres qui influencent le comportement, un hash du premier message) et la raison de l'arrêt de la tâche. Aucun texte de prompt, aucune clé d'API ni URL n'est stocké, seulement des hashes. Les tâches existantes et reprises ne sont pas modifiées."
 		},
 		"DIFF_STRATEGY_UNIFIED": {
 			"name": "Utiliser la stratégie diff unifiée expérimentale",

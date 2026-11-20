@@ -88,7 +88,13 @@ import {
 // api
 import { ApiHandler, ApiHandlerCreateMessageMetadata, buildApiHandler } from "../../api"
 import { selectPreviewRuntime } from "../../api/preview-runtime"
-import { isCordisRuntimePreviewEnabled } from "../../shared/experiments"
+import { EXPERIMENT_IDS, experiments as Experiments, isCordisRuntimePreviewEnabled } from "../../shared/experiments"
+import {
+	abortStopReason,
+	countApiRequests,
+	EvaluationRecorder,
+	writeTaskEvaluationManifest,
+} from "./evaluation-recording"
 import { ApiStream, GroundingSource } from "../../api/transform/stream"
 import { maybeRemoveImageBlocks } from "../../api/transform/image-cleaning"
 
@@ -312,6 +318,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	readonly parentTaskId?: string
 	childTaskId?: string
 	pendingNewTaskToolCallId?: string
+	/** Set at creation when `evaluationRecording` was on (ADR-2026-11-20-feature-gating-evaluation-and-lessons). */
+	readonly evaluationRecorder?: EvaluationRecorder
 
 	readonly instanceId: string
 	readonly metadata: TaskMetadata
@@ -1202,6 +1210,19 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		this.consecutiveMistakeLimit = consecutiveMistakeLimit ?? DEFAULT_CONSECUTIVE_MISTAKE_LIMIT
 		this.providerRef = new WeakRef(provider)
 		this.globalStoragePath = provider.context.globalStorageUri.fsPath
+		// Decided once, here. A resumed instance only adds a missing stop to its own existing file.
+		this.evaluationRecorder = EvaluationRecorder.create(
+			Experiments.isEnabled(
+				(provider.contextProxy?.getValue ? provider.contextProxy.getValue("experiments") : experimentsConfig) ??
+					{},
+				EXPERIMENT_IDS.EVALUATION_RECORDING,
+			),
+			{
+				taskId: this.taskId,
+				kind: historyItem ? "attach" : "new",
+				getTaskDirectory: () => getTaskDirectoryPath(this.globalStoragePath, this.taskId),
+			},
+		)
 		this.urlContentFetcher = new UrlContentFetcher(provider.context)
 		this.browserSession = new BrowserSession(provider.context, (isActive: boolean) => {
 			// Add a message to indicate browser session status change
@@ -3644,6 +3665,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			await this.providerRef.deref()?.postStateToWebviewWithoutTaskHistory()
 
 			await this.say("text", task, images)
+			void writeTaskEvaluationManifest(this, task)
 
 			// Check for too many MCP tools and warn the user
 			const { enabledToolCount, enabledServerCount } = await this.getEnabledMcpToolsCount()
@@ -3687,8 +3709,14 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			if (this.abandoned === true || this.abort === true || this.abortReason === "user_cancelled") {
 				return
 			}
+			this.recordEvaluationStop("error")
 			throw error
 		}
+	}
+
+	/** Best effort; the first call wins (ADR-2026-11-20-feature-gating-evaluation-and-lessons). */
+	public recordEvaluationStop(reason: Parameters<EvaluationRecorder["recordStop"]>[0]): void {
+		void this.evaluationRecorder?.recordStop(reason, countApiRequests(this.clineMessages))
 	}
 
 	private async resumeTaskFromHistory() {
@@ -3966,6 +3994,10 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		// Reset consecutive error counters on abort (manual intervention)
 		this.consecutiveNoToolUseCount = 0
 		this.consecutiveNoAssistantMessagesCount = 0
+
+		this.recordEvaluationStop(
+			abortStopReason({ abortReason: this.abortReason, lastAsk: this.clineMessages.at(-1)?.ask }),
+		)
 
 		// Force final token usage update before abort event
 		this.emitFinalTokenUsageUpdate()
@@ -4379,6 +4411,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			}
 
 			if (this.consecutiveMistakeLimit > 0 && this.consecutiveMistakeCount >= this.consecutiveMistakeLimit) {
+				this.recordEvaluationStop("mistake-limit")
 				const { response, text, images } = await this.ask(
 					"mistake_limit_reached",
 					t("common:errors.mistake_limit_guidance"),
@@ -6286,56 +6319,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 		if (this.modelOperationClosed || this.abort || this.persistenceClosed)
 			throw new Error("Task dispatch is closed")
-		// Proactive overflow detection for a profile context window override. The provider would
-		// accept the larger real window, so treat crossing the overridden window like a provider
-		// context-limit rejection: run the same recovery once, then retry. Without an override this
-		// path never runs and behavior is unchanged (C-6: other models recover only after a real
-		// provider rejection). The size is an estimate of the request about to be sent, not the
-		// last request's usage, which misses tool results added since then.
-		if (
-			!this.modelOperationPrepared &&
-			!recovery.attempted &&
-			autoCondenseContext &&
-			typeof apiConfiguration?.modelContextWindowOverride === "number"
-		) {
-			const contextTokens = await this.estimatePendingRequestTokens(
-				requestHandler,
-				systemPrompt,
-				messagesWithoutImages as ApiMessage[],
-				metadata,
-			)
-			const outputReserve =
-				getModelMaxOutputTokens({
-					modelId: resolvedModel.id,
-					model: resolvedModel.info,
-					settings: apiConfiguration,
-				}) ?? 0
-			if (contextTokens > 0 && contextTokens + outputReserve > resolvedModel.info.contextWindow) {
-				recovery.attempted = true
-				// Let "cancel request" abort the proactive compaction like a normal request.
-				const controller = this.modelDispatchAbortController ?? new AbortController()
-				if (!this.modelDispatchRuntime) this.currentRequestAbortController = controller
-				try {
-					await this.handleContextWindowExceededError(
-						requestRevision,
-						condensationHandler,
-						controller.signal,
-						metadata,
-					)
-				} finally {
-					if (this.currentRequestAbortController === controller)
-						this.currentRequestAbortController = undefined
-				}
-				// Keep the provider start callback so the reused api_req_started row records
-				// when the request that is actually sent starts (O2).
-				yield* this.attemptApiRequestPinned(
-					retryAttempt,
-					{ onProviderStart: options.onProviderStart },
-					recovery,
-				)
-				return
-			}
-		}
+		// C-6: no pre-send size estimate. Context reduction runs only after the provider
+		// rejects a request for size, for every profile including context window overrides.
 		try {
 			const persistedHistory = structuredClone(this.apiConversationHistory)
 			const historyIdentity = JSON.stringify(persistedHistory)
@@ -6469,13 +6454,6 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		const abortSignal = requestController.signal
 		// Reset the flag after using it
 		this.skipPrevResponseIdOnce = false
-		// Mark the history this request covers, so the next pre-send estimate counts only newer messages.
-		this.preSendMark = {
-			history: this.apiConversationHistory,
-			length: this.apiConversationHistory.length,
-			last: this.apiConversationHistory.at(-1),
-			usage: this.getTokenUsage().contextTokens ?? 0,
-		}
 
 		// The provider accepts reasoning items alongside standard messages; cast to the expected parameter type.
 		const stream = requestHandler.createMessage(
@@ -6908,63 +6886,6 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 	public getTokenUsage(): TokenUsage {
 		return this.chatHistoryIndex.ensure(this.clineMessages).tokenUsage
-	}
-
-	/** History position at the last dispatched request; see estimatePendingRequestTokens. */
-	private preSendMark?: { history: ApiMessage[]; length: number; last: ApiMessage | undefined; usage: number }
-
-	/**
-	 * Estimates the input size of the request about to be sent.
-	 * Cheap path: the last request's usage plus a local count of the user messages appended
-	 * since that request (its tool results). The assistant reply is already in the usage
-	 * output tokens. The cheap path needs the history to be unchanged up to the last request
-	 * (same array, same message at the mark) and new usage recorded after the mark. Otherwise
-	 * (first request, resume, condense, edit, failed request) count the whole prompt locally: system prompt, effective history and tools.
-	 * On a counting error, fall back to the last usage.
-	 */
-	private async estimatePendingRequestTokens(
-		handler: ApiHandler,
-		systemPrompt: string,
-		messages: ApiMessage[],
-		metadata: ApiHandlerCreateMessageMetadata,
-	): Promise<number> {
-		const contextTokens = this.getTokenUsage().contextTokens ?? 0
-		const blocks = (list: ApiMessage[]): Anthropic.Messages.ContentBlockParam[] =>
-			list.flatMap((message) =>
-				typeof message.content === "string"
-					? [{ type: "text" as const, text: message.content }]
-					: message.content,
-			)
-		const mark = this.preSendMark
-		try {
-			if (
-				contextTokens > 0 &&
-				mark &&
-				// Usage must come from the marked request; otherwise it misses that request's input.
-				contextTokens !== mark.usage &&
-				mark.history === this.apiConversationHistory &&
-				this.apiConversationHistory.length >= mark.length &&
-				this.apiConversationHistory[mark.length - 1] === mark.last
-			) {
-				const added = blocks(
-					this.apiConversationHistory.slice(mark.length).filter((message) => message.role === "user"),
-				)
-				if (added.length === 0) return contextTokens
-				const tail = await handler.countTokens(added)
-				return contextTokens + (Number.isFinite(tail) && tail > 0 ? tail : 0)
-			}
-			const tools = metadata.tools?.length
-				? [{ type: "text" as const, text: JSON.stringify(metadata.tools) }]
-				: []
-			const full = await handler.countTokens([
-				{ type: "text", text: systemPrompt },
-				...blocks(messages),
-				...tools,
-			])
-			return Number.isFinite(full) && full > contextTokens ? full : contextTokens
-		} catch {
-			return contextTokens
-		}
 	}
 
 	public recordToolUsage(toolName: ToolName) {

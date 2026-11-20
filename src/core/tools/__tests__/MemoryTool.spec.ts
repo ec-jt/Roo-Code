@@ -38,12 +38,14 @@ describe("MemoryTool", () => {
 	let store: any
 	let state: any
 	let consent: any
+	let lessonsOn = false
 	let callbacks: any
 	const tool = new MemoryTool()
 	beforeEach(() => {
 		vi.clearAllMocks()
 		Object.assign(vscode.workspace, { isTrusted: true })
 		state = { mode: "code", customModes: [] }
+		lessonsOn = false
 		consent = { enabled: true, personalRecall: false, revision: "grant" }
 		store = {
 			getConsent: vi.fn(async () => ({ ...consent })),
@@ -56,6 +58,7 @@ describe("MemoryTool", () => {
 				return record
 			}),
 			delete: vi.fn(async (_scope, _id, options) => options.authorize()),
+			canSaveLessons: vi.fn(async () => lessonsOn),
 		}
 		vi.mocked(getTaskMemoryStore).mockResolvedValue(store)
 		task = {
@@ -201,6 +204,68 @@ describe("MemoryTool", () => {
 		expect(callbacks.handleError).toHaveBeenCalledTimes(1)
 		expect(callbacks.handleError.mock.calls[0][1].code).toBe("REVISION_REQUIRED")
 		expect(store.delete).not.toHaveBeenCalled()
+	})
+	describe("lessons", () => {
+		const lessonParams = {
+			...params,
+			type: "lesson",
+			body: "cue: flaky test\nlesson: rerun with --no-cache\nevidence: task 0d3f0c6e-6a3b-4e47-9a51-2f1f7e3c9b10, request 3\n",
+		} as const
+		it("returns toggle guidance, not a schema failure, while Save lessons is off", async () => {
+			await tool.execute(lessonParams, task, callbacks)
+			expect(callbacks.pushToolResult).toHaveBeenCalledWith(expect.stringContaining("Save lessons"))
+			expect(callbacks.handleError).not.toHaveBeenCalled()
+			expect(callbacks.askApproval).not.toHaveBeenCalled()
+			expect(store.upsert).not.toHaveBeenCalled()
+		})
+		it("saves a lesson with evidence when the toggle is on", async () => {
+			lessonsOn = true
+			await tool.execute(lessonParams, task, callbacks)
+			expect(store.upsert).toHaveBeenCalledWith(
+				"project",
+				expect.objectContaining({ type: "lesson" }),
+				expect.anything(),
+			)
+			expect(callbacks.handleError).not.toHaveBeenCalled()
+		})
+		it("rejects a lesson without evidence with INVALID_LESSON", async () => {
+			lessonsOn = true
+			await tool.execute({ ...lessonParams, body: "cue: a\nlesson: b\n" }, task, callbacks)
+			expect(store.upsert).not.toHaveBeenCalled()
+			expect(callbacks.handleError.mock.calls[0][1].code).toBe("INVALID_LESSON")
+		})
+		it("rechecks the toggle inside the commit callback", async () => {
+			lessonsOn = true
+			store.upsert.mockImplementation(
+				async (_scope: unknown, _input: unknown, options: { authorize: () => Promise<void> }) => {
+					lessonsOn = false
+					await options.authorize()
+					return record
+				},
+			)
+			await tool.execute(lessonParams, task, callbacks)
+			expect(callbacks.handleError).toHaveBeenCalled()
+			expect(callbacks.handleError.mock.calls[0][1].code).toBe("LESSONS_DISABLED")
+		})
+		it("still reads and forgets existing lessons while the toggle is off", async () => {
+			const existing = { ...record, type: "lesson" as const }
+			store.read.mockResolvedValue(existing)
+			await tool.execute({ action: "read", scope: "project", id, expected_revision: null }, task, callbacks)
+			expect(callbacks.pushToolResult).toHaveBeenCalledWith(boundedMemoryRead(existing))
+			await tool.execute(
+				{ action: "delete", scope: "project", id, expected_revision: record.revision },
+				task,
+				callbacks,
+			)
+			expect(store.delete).toHaveBeenCalled()
+			expect(callbacks.handleError).not.toHaveBeenCalled()
+		})
+		it("treats changing an existing lesson's type as a lesson write", async () => {
+			store.read.mockResolvedValue({ ...record, type: "lesson" })
+			await tool.execute({ ...params, id, expected_revision: record.revision }, task, callbacks)
+			expect(store.upsert).not.toHaveBeenCalled()
+			expect(callbacks.pushToolResult).toHaveBeenCalledWith(expect.stringContaining("Save lessons"))
+		})
 	})
 	it("validates in both parser and executor schema", () => {
 		expect(memoryArgsSchema.safeParse({ ...params, path: "/etc/passwd" }).success).toBe(false)

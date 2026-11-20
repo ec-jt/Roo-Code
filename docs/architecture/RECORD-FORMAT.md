@@ -83,6 +83,10 @@ pnpm check:architecture -- --approval agent
 pnpm check:architecture -- --root docs/architecture
 ```
 
+## Evidence for decisions written by a model
+
+A model may write a proposed decision only when it can cite evidence for the problem: a task ID with a request number, a file and line, a test name, or an evaluation run. A proposal without evidence stays a plan amendment and is not written as a record. Put the evidence in the `Problem` section.
+
 ## Lifecycle
 
 1. Create a decision in `decisions/proposed/` with `Status: proposed`.

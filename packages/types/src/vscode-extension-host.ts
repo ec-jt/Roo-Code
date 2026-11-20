@@ -65,7 +65,7 @@ export interface MemoryTopic {
 	id: string
 	name: string
 	description: string
-	type: "user" | "feedback" | "project" | "reference"
+	type: "user" | "feedback" | "project" | "reference" | "lesson"
 	body: string
 	createdAt: string
 	modifiedAt: string
@@ -81,6 +81,9 @@ export interface MemoryBrowserState {
 	enabled: boolean
 	personalRecall: boolean
 	consentRevision: string
+	/** Project "Save lessons" sub-toggle, stored apart from the consent document. */
+	saveLessons: boolean
+	lessonRevision: string
 	listRevision: string
 	records: Omit<MemoryTopic, "body">[]
 	selected?: MemoryTopic
@@ -88,13 +91,15 @@ export interface MemoryBrowserState {
 	omitted: number
 }
 export interface MemoryBrowserRequest {
-	action: "refresh" | "consent" | "read" | "save" | "delete" | "clear" | "open"
+	action: "refresh" | "consent" | "lessons" | "read" | "save" | "delete" | "clear" | "open"
 	scope: "project" | "personal"
 	projectKey?: string
 	expectedRevision?: string | null
 	consentRevision?: string
 	enabled?: boolean
 	personalRecall?: boolean
+	saveLessons?: boolean
+	lessonRevision?: string
 	id?: string
 	query?: string
 	input?: Pick<MemoryTopic, "name" | "description" | "type" | "body">

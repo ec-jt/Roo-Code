@@ -1,4 +1,11 @@
 {
+	"memory": {
+		"saveLessons": "Lessen opslaan",
+		"saveLessonsHelp": "Het model mag lessen met bewijs uit een taak opslaan. Bij ophalen worden ze naar de modelprovider gestuurd.",
+		"types": {
+			"lesson": "Les"
+		}
+	},
 	"back": "Terug naar takenoverzicht",
 	"common": {
 		"save": "Opslaan",
@@ -830,6 +837,10 @@
 		"CORDIS_RUNTIME_PREVIEW": {
 			"name": "Cordis-runtimepreview",
 			"description": "Standaard aan. Nieuwe taken gebruiken bij elke provider het Cordis-profiel: /plan geeft een planbeoordeling om goed te keuren, afwijkingen tijdens een taak worden als planwijziging voorgesteld, en er geldt een vaste set tools (alle toolgroepen, geen switch_mode, modus vergrendeld na het eerste verzoek). Bestaande taken houden hun profiel. Alleen Anthropic-taken gebruiken ook de verzoektoelating van de preview; andere providers volgen de normale route. Zet het uit om modi te gebruiken voor nieuwe taken. Sla op om toe te passen: uitschakelen stopt het versturen van nieuwe previewverzoeken en annuleert actieve previewmodelverzoeken, maar kan reeds opgetreden effecten niet ongedaan maken."
+		},
+		"EVALUATION_RECORDING": {
+			"name": "Evaluatieregistratie",
+			"description": "Standaard uit. Elke nieuwe taak schrijft een bestand evaluation.json in de eigen taakmap: een uitvoeringsmanifest (extensieversie, provider, model, modus, een digest van de instellingen die het gedrag beïnvloeden, een hash van het eerste bericht) en de reden waarom de taak stopte. Er wordt geen prompttekst, API-sleutel of URL opgeslagen, alleen hashes. Bestaande en hervatte taken worden niet gewijzigd."
 		},
 		"DIFF_STRATEGY_UNIFIED": {
 			"name": "Experimentele unified diff-strategie gebruiken",

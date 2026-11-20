@@ -1,4 +1,11 @@
 {
+	"memory": {
+		"saveLessons": "Lưu bài học",
+		"saveLessonsHelp": "Mô hình có thể lưu bài học kèm bằng chứng từ một tác vụ. Khi gợi lại, chúng được gửi tới nhà cung cấp mô hình.",
+		"types": {
+			"lesson": "Bài học"
+		}
+	},
 	"back": "Quay lại chế độ xem tác vụ",
 	"common": {
 		"save": "Lưu",
@@ -830,6 +837,10 @@
 		"CORDIS_RUNTIME_PREVIEW": {
 			"name": "Bản xem trước runtime Cordis",
 			"description": "Bật theo mặc định. Tác vụ mới trên mọi nhà cung cấp dùng hồ sơ Cordis: /plan đưa ra bản xem xét kế hoạch để phê duyệt, sai lệch phát hiện trong tác vụ được nêu thành bản sửa đổi kế hoạch, và áp dụng một bộ công cụ cố định (tất cả nhóm công cụ, không có switch_mode, chế độ bị khóa sau yêu cầu đầu tiên). Tác vụ hiện có giữ nguyên hồ sơ. Chỉ tác vụ Anthropic dùng thêm cơ chế tiếp nhận yêu cầu của bản xem trước; các nhà cung cấp khác dùng luồng thông thường. Tắt để dùng chế độ cho tác vụ mới. Lưu để áp dụng: việc tắt sẽ ngừng gửi yêu cầu mới qua bản xem trước và hủy các yêu cầu mô hình đang hoạt động qua bản xem trước, nhưng không thể hoàn tác những tác động đã xảy ra."
+		},
+		"EVALUATION_RECORDING": {
+			"name": "Ghi lại đánh giá",
+			"description": "Tắt theo mặc định. Mỗi tác vụ mới ghi một tệp evaluation.json vào thư mục tác vụ của chính nó: một manifest lần chạy (phiên bản tiện ích, nhà cung cấp, mô hình, chế độ, bản tóm tắt các cài đặt ảnh hưởng đến hành vi, mã băm của tin nhắn đầu tiên) và lý do tác vụ dừng. Không lưu văn bản prompt, khóa API hay URL, chỉ lưu mã băm. Các tác vụ hiện có và tác vụ được tiếp tục không bị thay đổi."
 		},
 		"DIFF_STRATEGY_UNIFIED": {
 			"name": "Sử dụng chiến lược diff thống nhất thử nghiệm",

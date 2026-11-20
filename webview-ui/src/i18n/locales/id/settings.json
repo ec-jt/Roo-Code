@@ -1,4 +1,11 @@
 {
+	"memory": {
+		"saveLessons": "Simpan pelajaran",
+		"saveLessonsHelp": "Model dapat menyimpan pelajaran dengan bukti dari tugas. Pelajaran dikirim ke penyedia model saat dipanggil kembali.",
+		"types": {
+			"lesson": "Pelajaran"
+		}
+	},
 	"back": "Kembali ke tampilan tugas",
 	"common": {
 		"save": "Simpan",
@@ -830,6 +837,10 @@
 		"CORDIS_RUNTIME_PREVIEW": {
 			"name": "Pratinjau runtime Cordis",
 			"description": "Aktif secara default. Tugas baru di semua penyedia memakai profil Cordis: /plan memberikan tinjauan rencana untuk disetujui, penyimpangan yang ditemukan selama tugas diajukan sebagai amandemen rencana, dan berlaku set alat tetap (semua grup alat, tanpa switch_mode, mode terkunci setelah permintaan pertama). Tugas yang sudah ada tetap memakai profilnya. Hanya tugas Anthropic yang juga memakai penerimaan permintaan pratinjau; penyedia lain memakai alur normal. Matikan untuk memakai mode pada tugas baru. Simpan untuk menerapkan: menonaktifkan menghentikan pengiriman permintaan pratinjau baru dan membatalkan permintaan model pratinjau yang aktif, tetapi tidak dapat membatalkan efek yang sudah terjadi."
+		},
+		"EVALUATION_RECORDING": {
+			"name": "Perekaman evaluasi",
+			"description": "Nonaktif secara default. Setiap tugas baru menulis file evaluation.json di folder tugasnya sendiri: manifes eksekusi (versi ekstensi, penyedia, model, mode, digest pengaturan yang memengaruhi perilaku, hash pesan pertama) dan alasan tugas berhenti. Tidak ada teks prompt, kunci API, atau URL yang disimpan, hanya hash. Tugas yang sudah ada dan yang dilanjutkan tidak diubah."
 		},
 		"DIFF_STRATEGY_UNIFIED": {
 			"name": "Gunakan strategi unified diff eksperimental",

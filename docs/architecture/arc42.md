@@ -23,7 +23,7 @@ Roo Code is a VS Code extension that runs an AI coding agent. The agent works in
 
 ### 1.2 Quality goals
 
-Top quality goals in priority order. Tags follow the [Q42 quality model](https://quality.arc42.org). Scenarios and status are in [`quality.md`](quality.md); all are proposed until the user confirms them.
+Top quality goals in priority order. Tags follow the [Q42 quality model](https://quality.arc42.org). Scenarios and status are in [`quality.md`](quality.md); all were confirmed by the user on 2026-11-20.
 
 | Priority | Quality goal | Goals                                                                                                        |
 | -------- | ------------ | ------------------------------------------------------------------------------------------------------------ |
@@ -31,6 +31,7 @@ Top quality goals in priority order. Tags follow the [Q42 quality model](https:/
 | 2        | #secure      | Repository content is lower-trust data; secrets are not exposed (Q-SEC-1, Q-SEC-2)                           |
 | 3        | #efficient   | Context cost stays predictable; prompt-cache reuse is kept (Q-EFF-1)                                         |
 | 4        | #usable      | Mode changes keep the model (Q-USE-1)                                                                        |
+| 5        | #efficient   | Cordis profile costs no more than the modes profile (Q-EFF-2)                                                |
 
 ## 3. Context and scope
 
@@ -38,6 +39,8 @@ Top quality goals in priority order. Tags follow the [Q42 quality model](https:/
 - The extension host (`src/`) calls model providers (Anthropic, OpenAI, Bedrock, Gemini, OpenRouter, local servers, and others) over HTTPS.
 - MCP servers, terminals, the browser bridge (`apps/browser-bridge/`), and the workspace file system are external systems that tools reach.
 - Task data lives in VS Code global storage. The extension never migrates or deletes it ([C-5](constraints.md)).
+- Subtasks run in the parent task's workspace folder, one at a time. There is no per-task sandbox or worktree ([R-7](risks.md)).
+- Evaluation operator (development only): a person or a separate Roo task that runs the scenarios in [`evaluation-2026-11-18.md`](evaluation-2026-11-18.md) against an installed build, in a separate workspace snapshot for each run.
 
 ## 5. Building block view
 
@@ -54,6 +57,31 @@ Top quality goals in priority order. Tags follow the [Q42 quality model](https:/
 | Services                    | `src/services/`                                      | Task state, memory, MCP, checkpoints, updates, browser            |
 | API handlers                | `src/api/`                                           | Provider adapters, dispatch admission, Cordis preview runtime     |
 | Webview UI                  | `webview-ui/`                                        | React chat and settings UI                                        |
+
+## 6. Runtime view: Cordis plan and drift amendment
+
+The other runtime flows are in the documents listed in the index. This is the Cordis profile flow ([ADR-2026-11-19-keep-cordis-profile-widen-experiment](decisions/accepted/ADR-2026-11-19-keep-cordis-profile-widen-experiment.md)).
+
+```mermaid
+sequenceDiagram
+  participant U as User
+  participant T as Task loop
+  participant M as Model
+  U->>T: message with /plan
+  T->>M: request with plan overlay
+  M->>T: exit_plan with plan
+  T->>U: plan_review
+  U->>T: approve, or keep planning with text
+  T->>M: tool result plus user_message
+  M->>T: tool calls during implementation
+  U->>T: message that conflicts with a record
+  M->>T: exit_plan with amendment citing IDs
+  T->>U: plan_review for the amendment
+  U->>T: approve, or keep planning with text
+  M->>T: attempt_completion
+```
+
+A reply without a tool call gets one reminder before the task pauses (`cordisTextOnlyTurnPolicy`, default `retryThenPause`). On providers other than Anthropic there is no dispatch runtime, so the normal reminder path applies ([R-5](risks.md)).
 
 ## 12. Glossary
 

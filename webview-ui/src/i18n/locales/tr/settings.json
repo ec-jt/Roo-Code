@@ -1,4 +1,11 @@
 {
+	"memory": {
+		"saveLessons": "Dersleri kaydet",
+		"saveLessonsHelp": "Model, bir görevden kanıtla birlikte dersler kaydedebilir. Hatırlandığında model sağlayıcısına gönderilir.",
+		"types": {
+			"lesson": "Ders"
+		}
+	},
 	"back": "Görev görünümüne dön",
 	"common": {
 		"save": "Kaydet",
@@ -830,6 +837,10 @@
 		"CORDIS_RUNTIME_PREVIEW": {
 			"name": "Cordis çalışma zamanı önizlemesi",
 			"description": "Varsayılan olarak açık. Yeni görevler her sağlayıcıda Cordis profilini kullanır: /plan onaylaman için bir plan incelemesi sunar, görev sırasında bulunan sapma plan değişikliği olarak önerilir ve sabit bir araç seti uygulanır (tüm araç grupları, switch_mode yok, mod ilk istekten sonra kilitlenir). Mevcut görevler profillerini korur. Önizleme istek kabulünü de yalnızca Anthropic görevleri kullanır; diğer sağlayıcılar normal akışı kullanır. Yeni görevlerde modları kullanmak için kapat. Uygulamak için kaydet: devre dışı bırakmak yeni önizleme isteklerinin gönderimini durdurur ve etkin önizleme model isteklerini iptal eder, ancak zaten oluşmuş etkileri geri alamaz."
+		},
+		"EVALUATION_RECORDING": {
+			"name": "Değerlendirme kaydı",
+			"description": "Varsayılan olarak kapalı. Her yeni görev kendi görev klasörüne bir evaluation.json dosyası yazar: bir çalıştırma manifestosu (eklenti sürümü, sağlayıcı, model, mod, davranışı etkileyen ayarların özeti, ilk mesajın hash'i) ve görevin durma nedeni. İstem metni, API anahtarları veya URL'ler saklanmaz, yalnızca hash'ler saklanır. Mevcut ve devam ettirilen görevler değiştirilmez."
 		},
 		"DIFF_STRATEGY_UNIFIED": {
 			"name": "Deneysel birleştirilmiş diff stratejisini kullan",
