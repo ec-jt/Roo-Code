@@ -254,8 +254,8 @@
 		},
 		"prune": {
 			"title": "工具結果已精簡",
-			"description": "已縮短 {{count}} 個較舊的大型工具結果。完整文字已儲存在任務資料夾中。",
-			"description_other": "已縮短 {{count}} 個較舊的大型工具結果。完整文字已儲存在任務資料夾中。",
+			"description": "已縮短 {{count}} 個大型工具結果。完整文字已儲存在任務資料夾中。",
+			"description_other": "已縮短 {{count}} 個大型工具結果。完整文字已儲存在任務資料夾中。",
 			"offloaded": "已將 {{count}} 張較早的圖片儲存到任務資料夾，並替換為參照。",
 			"offloaded_other": "已將 {{count}} 張較早的圖片儲存到任務資料夾，並替換為參照。"
 		}

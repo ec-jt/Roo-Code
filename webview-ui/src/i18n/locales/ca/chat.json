@@ -360,8 +360,8 @@
 		},
 		"prune": {
 			"title": "Resultats d'eines retallats",
-			"description": "S'ha escurçat {{count}} resultat d'eina antic i gran. El text complet es desa a la carpeta de la tasca.",
-			"description_other": "S'han escurçat {{count}} resultats d'eines antics i grans. El text complet es desa a la carpeta de la tasca.",
+			"description": "S'ha escurçat {{count}} resultat d'eina gran. El text complet es desa a la carpeta de la tasca.",
+			"description_other": "S'han escurçat {{count}} resultats d'eines grans. El text complet es desa a la carpeta de la tasca.",
 			"offloaded": "S'ha desat {{count}} imatge antiga a la carpeta de la tasca i s'ha substituït per una referència.",
 			"offloaded_other": "S'han desat {{count}} imatges antigues a la carpeta de la tasca i s'han substituït per referències."
 		}

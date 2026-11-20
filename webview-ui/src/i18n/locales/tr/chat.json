@@ -361,8 +361,8 @@
 		},
 		"prune": {
 			"title": "Araç sonuçları kısaltıldı",
-			"description": "{{count}} büyük eski araç sonucu kısaltıldı. Tam metin görev klasörüne kaydedildi.",
-			"description_other": "{{count}} büyük eski araç sonucu kısaltıldı. Tam metin görev klasörüne kaydedildi.",
+			"description": "{{count}} büyük araç sonucu kısaltıldı. Tam metin görev klasörüne kaydedildi.",
+			"description_other": "{{count}} büyük araç sonucu kısaltıldı. Tam metin görev klasörüne kaydedildi.",
 			"offloaded": "{{count}} eski görsel görev klasörüne kaydedildi ve bir referansla değiştirildi.",
 			"offloaded_other": "{{count}} eski görsel görev klasörüne kaydedildi ve referanslarla değiştirildi."
 		}

@@ -6280,14 +6280,21 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		// Proactive overflow detection for a profile context window override. The provider would
 		// accept the larger real window, so treat crossing the overridden window like a provider
 		// context-limit rejection: run the same recovery once, then retry. Without an override this
-		// path never runs and behavior is unchanged.
+		// path never runs and behavior is unchanged (C-6: other models recover only after a real
+		// provider rejection). The size is an estimate of the request about to be sent, not the
+		// last request's usage, which misses tool results added since then.
 		if (
 			!this.modelOperationPrepared &&
 			!recovery.attempted &&
 			autoCondenseContext &&
 			typeof apiConfiguration?.modelContextWindowOverride === "number"
 		) {
-			const contextTokens = this.getTokenUsage().contextTokens ?? 0
+			const contextTokens = await this.estimatePendingRequestTokens(
+				requestHandler,
+				systemPrompt,
+				messagesWithoutImages as ApiMessage[],
+				metadata,
+			)
 			const outputReserve =
 				getModelMaxOutputTokens({
 					modelId: resolvedModel.id,
@@ -6447,6 +6454,13 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		const abortSignal = requestController.signal
 		// Reset the flag after using it
 		this.skipPrevResponseIdOnce = false
+		// Mark the history this request covers, so the next pre-send estimate counts only newer messages.
+		this.preSendMark = {
+			history: this.apiConversationHistory,
+			length: this.apiConversationHistory.length,
+			last: this.apiConversationHistory.at(-1),
+			usage: this.getTokenUsage().contextTokens ?? 0,
+		}
 
 		// The provider accepts reasoning items alongside standard messages; cast to the expected parameter type.
 		const stream = requestHandler.createMessage(
@@ -6866,6 +6880,63 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 	public getTokenUsage(): TokenUsage {
 		return this.chatHistoryIndex.ensure(this.clineMessages).tokenUsage
+	}
+
+	/** History position at the last dispatched request; see estimatePendingRequestTokens. */
+	private preSendMark?: { history: ApiMessage[]; length: number; last: ApiMessage | undefined; usage: number }
+
+	/**
+	 * Estimates the input size of the request about to be sent.
+	 * Cheap path: the last request's usage plus a local count of the user messages appended
+	 * since that request (its tool results). The assistant reply is already in the usage
+	 * output tokens. The cheap path needs the history to be unchanged up to the last request
+	 * (same array, same message at the mark) and new usage recorded after the mark. Otherwise
+	 * (first request, resume, condense, edit, failed request) count the whole prompt locally: system prompt, effective history and tools.
+	 * On a counting error, fall back to the last usage.
+	 */
+	private async estimatePendingRequestTokens(
+		handler: ApiHandler,
+		systemPrompt: string,
+		messages: ApiMessage[],
+		metadata: ApiHandlerCreateMessageMetadata,
+	): Promise<number> {
+		const contextTokens = this.getTokenUsage().contextTokens ?? 0
+		const blocks = (list: ApiMessage[]): Anthropic.Messages.ContentBlockParam[] =>
+			list.flatMap((message) =>
+				typeof message.content === "string"
+					? [{ type: "text" as const, text: message.content }]
+					: message.content,
+			)
+		const mark = this.preSendMark
+		try {
+			if (
+				contextTokens > 0 &&
+				mark &&
+				// Usage must come from the marked request; otherwise it misses that request's input.
+				contextTokens !== mark.usage &&
+				mark.history === this.apiConversationHistory &&
+				this.apiConversationHistory.length >= mark.length &&
+				this.apiConversationHistory[mark.length - 1] === mark.last
+			) {
+				const added = blocks(
+					this.apiConversationHistory.slice(mark.length).filter((message) => message.role === "user"),
+				)
+				if (added.length === 0) return contextTokens
+				const tail = await handler.countTokens(added)
+				return contextTokens + (Number.isFinite(tail) && tail > 0 ? tail : 0)
+			}
+			const tools = metadata.tools?.length
+				? [{ type: "text" as const, text: JSON.stringify(metadata.tools) }]
+				: []
+			const full = await handler.countTokens([
+				{ type: "text", text: systemPrompt },
+				...blocks(messages),
+				...tools,
+			])
+			return Number.isFinite(full) && full > contextTokens ? full : contextTokens
+		} catch {
+			return contextTokens
+		}
 	}
 
 	public recordToolUsage(toolName: ToolName) {

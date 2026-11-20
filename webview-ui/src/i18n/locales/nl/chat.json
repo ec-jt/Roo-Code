@@ -382,8 +382,8 @@
 		},
 		"prune": {
 			"title": "Toolresultaten ingekort",
-			"description": "{{count}} groot ouder toolresultaat ingekort. De volledige tekst staat in de taakmap.",
-			"description_other": "{{count}} grote oudere toolresultaten ingekort. De volledige tekst staat in de taakmap.",
+			"description": "{{count}} groot toolresultaat ingekort. De volledige tekst staat in de taakmap.",
+			"description_other": "{{count}} grote toolresultaten ingekort. De volledige tekst staat in de taakmap.",
 			"offloaded": "{{count}} oudere afbeelding opgeslagen in de taakmap en vervangen door een verwijzing.",
 			"offloaded_other": "{{count}} oudere afbeeldingen opgeslagen in de taakmap en vervangen door verwijzingen."
 		}

@@ -598,6 +598,121 @@ describe("Task opt-in model dispatch", () => {
 			const chunks = await consume(task.attemptApiRequest())
 			expect(chunks.some((chunk: any) => chunk.type === "tool_call_partial")).toBe(true)
 		})
+		describe("pre-send estimate (D1)", () => {
+			// Rough local count: 1 token per 4 characters of text.
+			const countByChars = () =>
+				vi
+					.spyOn(AnthropicHandler.prototype, "countTokens")
+					.mockImplementation(async (blocks: any[]) =>
+						Math.ceil(
+							blocks.reduce(
+								(sum, block) =>
+									sum +
+									(typeof block.text === "string" ? block.text.length : 0) +
+									(typeof block.content === "string" ? block.content.length : 0),
+								0,
+							) / 4,
+						),
+					)
+			// Shape of r89 req2: the last request used 39k; since then the model read a 2,000-line file.
+			const afterLargeRead = (lines: number) => {
+				;(task as any).preSendMark = {
+					history: task.apiConversationHistory,
+					length: task.apiConversationHistory.length,
+					last: task.apiConversationHistory.at(-1),
+					usage: 0,
+				}
+				vi.mocked(task.getTokenUsage).mockReturnValue({ contextTokens: 39_000 } as any)
+				task.apiConversationHistory.push(
+					{
+						role: "assistant",
+						content: [{ type: "tool_use", id: "read-1", name: "read_file", input: { path: "a.ts" } }],
+					},
+					{
+						role: "user",
+						content: [
+							{
+								type: "tool_result",
+								tool_use_id: "read-1",
+								content: Array.from({ length: lines }, (_, i) => `${i + 1} | const value${i} = ${i}`)
+									.join("\n")
+									.padEnd(lines * 60, " "),
+							},
+						],
+					},
+				)
+			}
+			it("counts tool results added since the last request and recovers before sending", async () => {
+				await enableOverflow(false)
+				useOverride(64_000)
+				countByChars()
+				afterLargeRead(2000) // ~30k tokens on top of 39k
+				const repair = vi.spyOn(task as any, "handleContextWindowExceededError").mockResolvedValue(undefined)
+				create.mockResolvedValueOnce(response("answer"))
+				await consume(task.attemptApiRequest())
+				expect(repair).toHaveBeenCalledOnce()
+				expect(create).toHaveBeenCalledOnce() // no provider rejection was needed
+			})
+			it("runs recovery at most once per request even if the estimate stays high", async () => {
+				await enableOverflow(false)
+				useOverride(64_000)
+				countByChars()
+				afterLargeRead(4000)
+				const repair = vi.spyOn(task as any, "handleContextWindowExceededError").mockResolvedValue(undefined)
+				create.mockResolvedValueOnce(response("answer"))
+				await consume(task.attemptApiRequest())
+				expect(repair).toHaveBeenCalledOnce()
+				expect(create).toHaveBeenCalledOnce()
+			})
+			it("leaves history untouched when the estimate is under the window", async () => {
+				await enableOverflow(false)
+				useOverride(64_000)
+				countByChars()
+				afterLargeRead(100) // ~1.5k tokens
+				const before = structuredClone(task.apiConversationHistory)
+				const repair = vi.spyOn(task as any, "handleContextWindowExceededError")
+				create.mockResolvedValueOnce(response("answer"))
+				await consume(task.attemptApiRequest())
+				expect(repair).not.toHaveBeenCalled()
+				expect(create).toHaveBeenCalledOnce()
+				expect(task.apiConversationHistory.slice(0, before.length)).toEqual(before)
+			})
+			it("does not recover proactively when automatic compaction is disabled", async () => {
+				admit.mockResolvedValue({ outcome: "granted", settle })
+				;(task as any).modelDispatchRuntime = undefined
+				useOverride(64_000)
+				countByChars()
+				afterLargeRead(2000)
+				const repair = vi.spyOn(task as any, "handleContextWindowExceededError")
+				create.mockResolvedValueOnce(response("answer"))
+				await consume(task.attemptApiRequest())
+				expect(repair).not.toHaveBeenCalled()
+			})
+			it("keeps overflow-only recovery for models without an override (C-6)", async () => {
+				await enableOverflow(false)
+				const getModel = task.api.getModel.bind(task.api)
+				vi.spyOn(task.api, "getModel").mockImplementation(() => {
+					const model = getModel()
+					return { ...model, info: { ...model.info, contextWindow: 64_000 } }
+				})
+				countByChars()
+				afterLargeRead(2000)
+				const repair = vi.spyOn(task as any, "handleContextWindowExceededError")
+				create.mockResolvedValueOnce(response("answer"))
+				await consume(task.attemptApiRequest())
+				expect(repair).not.toHaveBeenCalled()
+				expect(create).toHaveBeenCalledOnce()
+			})
+			it("records the dispatched history so the next estimate counts only the new tail", async () => {
+				await enableOverflow(false)
+				useOverride(64_000)
+				create.mockResolvedValueOnce(response("answer"))
+				await consume(task.attemptApiRequest())
+				const mark = (task as any).preSendMark
+				expect(mark.history).toBe(task.apiConversationHistory)
+				expect(mark.length).toBe(task.apiConversationHistory.length)
+			})
+		})
 		it("does not compact proactively when automatic compaction is disabled", async () => {
 			admit.mockResolvedValue({ outcome: "granted", settle })
 			;(task as any).modelDispatchRuntime = undefined

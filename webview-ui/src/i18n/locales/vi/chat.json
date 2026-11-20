@@ -361,8 +361,8 @@
 		},
 		"prune": {
 			"title": "Đã rút gọn kết quả công cụ",
-			"description": "Đã rút gọn {{count}} kết quả công cụ cũ và lớn. Toàn bộ văn bản được lưu trong thư mục tác vụ.",
-			"description_other": "Đã rút gọn {{count}} kết quả công cụ cũ và lớn. Toàn bộ văn bản được lưu trong thư mục tác vụ.",
+			"description": "Đã rút gọn {{count}} kết quả công cụ lớn. Toàn bộ văn bản được lưu trong thư mục tác vụ.",
+			"description_other": "Đã rút gọn {{count}} kết quả công cụ lớn. Toàn bộ văn bản được lưu trong thư mục tác vụ.",
 			"offloaded": "Đã lưu {{count}} hình ảnh cũ vào thư mục tác vụ và thay bằng một tham chiếu.",
 			"offloaded_other": "Đã lưu {{count}} hình ảnh cũ vào thư mục tác vụ và thay bằng tham chiếu."
 		}
