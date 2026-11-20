@@ -394,6 +394,8 @@ These came from running the evaluation, not from the questions above:
 - **4.2.86:** the string `"null"` counts as null in `task_state` and `memory` arguments; the user can enable task state at any time, including before the first model turn or while an ask is pending; a disabled `task_state` call says how to enable it; condense and truncation rows show how many tool results were pruned and images offloaded.
 - **4.2.87 and 4.2.88:** see the live-check sections below.
 - **4.2.89:** after a summary, recovery also shortens oversized tool results in the kept messages and refuses to send a prompt that still exceeds the window.
+- **4.2.90:** for profiles with a context window override, the check before sending estimates the pending request (last usage plus the tool results added since) instead of using the last request's usage alone. Models without an override are unchanged (C-6). The prune note now reads "Shortened N large tool results".
+- **4.2.91:** when the first large tool batch overflows and there is no earlier history to summarize, recovery shortens the latest tool results and retries once, instead of stopping with "Not enough earlier history to compact".
 
 **Live checks on 4.2.85 (2026-11-19):**
 
@@ -436,4 +438,21 @@ These came from running the evaluation, not from the questions above:
     - **Cause:** recovery kept the newest tool exchange after the summary point verbatim, and prune and offload only covered messages before it. In r88 condense 3 the kept result was a 220,139-character `read_file` of `Task.ts`; the new summary was about 12k characters, so the next request used 139,088 input tokens on a 64k window. r86 (220,139 characters) and r87 (92,961) had the same shape. No check ran after the summary, so the prompt was sent; it only succeeded because the real window was 1M.
     - **Reporting:** the row's "before" value was the last request's usage, which did not include the tool result added since, so the row showed growth that had already happened.
     - **Fix (4.2.89, `manageContext`):** when the estimate after the summary exceeds the budget, recovery shortens tool results in the kept messages (head and tail kept, full text saved) and offloads their images, once each. If the prompt still exceeds the input limit, recovery returns an error with history unchanged instead of sending. The row reports the measured pre-recovery size and the counts include the kept messages. Behaviour is unchanged when no overflow occurs or when the summary already fits.
-    - Covered by unit tests only; no live run yet.
+    - Verified live on 4.2.89 (task `01a1f657`, `opus-64k`): the condense row went from 247,715 to 45,789 tokens with 5 tool results shortened, 3 of them in the kept tail, and the next request used 49,142 input tokens.
+
+**Overflow detection before sending (D1), 4.2.90 and 4.2.91:**
+
+- **4.2.89 run:** the check before sending used the last request's usage, which did not include tool results added since. Two requests went out above 64k without recovery (122,934 and 74,042 input tokens); they succeeded only because the real window was 1M.
+- **Decision (user, 2026-11-20):** keep [C-6](constraints.md) and the overflow-only ADR unchanged. Only profiles with a context window override check before sending, because the provider does not enforce the override. Models without an override recover after the provider rejects a request for size, then retry once.
+- **4.2.90 live check (invalid):** both paths detected the overflow, but recovery stopped with "Not enough earlier history to compact" because the overflow came from the first large tool batch and nothing could be summarized. Fixed in 4.2.91.
+
+**Live checks on 4.2.91 (2026-11-20):**
+
+| Check                                                       | Task       | Result | Evidence                                                                                                                                                                                                                                                                |
+| ----------------------------------------------------------- | ---------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| R1: override profile `opus-64k`, check before sending       | `01a1f68e` | pass   | After two 2,000-line reads, a `context_pruned` row (92,019 → 22,742 tokens, 2 results shortened) came before request 2, which used 45,185 tokens. The largest request in the task was 50,615 tokens. Two later condenses followed. The answer was correct.              |
+| R2: no override, provider rejects with "prompt is too long" | `01a1f692` | pass   | A fault proxy rejected the 331,976-byte request that carried the large batch. Recovery shortened 2 results (92,028 → 22,751), the single retry (146,963 bytes) succeeded, and the task completed with no user action. Nothing was shortened before the rejection (C-6). |
+
+- No API key appeared in either task's files.
+- Not exercised live: the "Context is still too large after automatic recovery" stop, and image offload in the latest input.
+- Low-priority observations: request rows that went through recovery before sending have no `providerStartedAt`; in R2 the user sees the prune row but no row for the rejection itself.
