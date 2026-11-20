@@ -365,6 +365,10 @@
 			"description_other": "{{count}} büyük araç sonucu kısaltıldı. Tam metin görev klasörüne kaydedildi.",
 			"offloaded": "{{count}} eski görsel görev klasörüne kaydedildi ve bir referansla değiştirildi.",
 			"offloaded_other": "{{count}} eski görsel görev klasörüne kaydedildi ve referanslarla değiştirildi."
+		},
+		"rejected": {
+			"title": "Bağlam çok büyük",
+			"description": "Sağlayıcı, bağlam çok büyük olduğu için isteği reddetti. Kurtarılıyor ve bir kez yeniden deneniyor."
 		}
 	},
 	"skill": {

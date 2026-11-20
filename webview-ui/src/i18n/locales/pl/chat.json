@@ -364,6 +364,10 @@
 			"description_other": "Skrócono {{count}} dużych wyników narzędzi. Pełny tekst zapisano w folderze zadania.",
 			"offloaded": "Zapisano {{count}} starszy obraz w folderze zadania i zastąpiono go odwołaniem.",
 			"offloaded_other": "Zapisano {{count}} starszych obrazów w folderze zadania i zastąpiono je odwołaniami."
+		},
+		"rejected": {
+			"title": "Kontekst jest za duży",
+			"description": "Dostawca odrzucił żądanie, ponieważ kontekst jest za duży. Trwa odzyskiwanie i jedna ponowna próba."
 		}
 	},
 	"skill": {

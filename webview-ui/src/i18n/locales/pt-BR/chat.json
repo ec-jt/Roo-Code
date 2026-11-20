@@ -364,6 +364,10 @@
 			"description_other": "{{count}} resultados de ferramentas grandes foram encurtados. O texto completo está salvo na pasta da tarefa.",
 			"offloaded": "{{count}} imagem antiga foi salva na pasta da tarefa e substituída por uma referência.",
 			"offloaded_other": "{{count}} imagens antigas foram salvas na pasta da tarefa e substituídas por referências."
+		},
+		"rejected": {
+			"title": "Contexto grande demais",
+			"description": "O provedor rejeitou a solicitação porque o contexto é grande demais. Recuperando e tentando novamente uma vez."
 		}
 	},
 	"skill": {

@@ -364,6 +364,10 @@
 			"description_other": "{{count}} große Tool-Ergebnisse gekürzt. Der vollständige Text ist im Aufgabenordner gespeichert.",
 			"offloaded": "{{count}} älteres Bild im Aufgabenordner gespeichert und durch einen Verweis ersetzt.",
 			"offloaded_other": "{{count}} ältere Bilder im Aufgabenordner gespeichert und durch Verweise ersetzt."
+		},
+		"rejected": {
+			"title": "Kontext zu groß",
+			"description": "Der Anbieter hat die Anfrage abgelehnt, weil der Kontext zu groß ist. Wiederherstellung läuft, dann ein erneuter Versuch."
 		}
 	},
 	"skill": {

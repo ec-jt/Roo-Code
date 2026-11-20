@@ -365,6 +365,10 @@
 			"description_other": "Đã rút gọn {{count}} kết quả công cụ lớn. Toàn bộ văn bản được lưu trong thư mục tác vụ.",
 			"offloaded": "Đã lưu {{count}} hình ảnh cũ vào thư mục tác vụ và thay bằng một tham chiếu.",
 			"offloaded_other": "Đã lưu {{count}} hình ảnh cũ vào thư mục tác vụ và thay bằng tham chiếu."
+		},
+		"rejected": {
+			"title": "Ngữ cảnh quá lớn",
+			"description": "Nhà cung cấp đã từ chối yêu cầu vì ngữ cảnh quá lớn. Đang khôi phục và thử lại một lần."
 		}
 	},
 	"skill": {

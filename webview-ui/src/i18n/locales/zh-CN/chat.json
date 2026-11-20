@@ -365,6 +365,10 @@
 			"description_other": "已缩短 {{count}} 个大型工具结果。完整文本已保存在任务文件夹中。",
 			"offloaded": "已将 {{count}} 张较早的图片保存到任务文件夹，并替换为引用。",
 			"offloaded_other": "已将 {{count}} 张较早的图片保存到任务文件夹，并替换为引用。"
+		},
+		"rejected": {
+			"title": "上下文过大",
+			"description": "提供商因上下文过大拒绝了请求。正在恢复并重试一次。"
 		}
 	},
 	"skill": {

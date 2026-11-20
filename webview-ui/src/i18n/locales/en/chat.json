@@ -328,6 +328,10 @@
 			"description_other": "Shortened {{count}} large tool results. The full text is saved in the task folder.",
 			"offloaded": "Saved {{count}} older image to the task folder and replaced it with a reference.",
 			"offloaded_other": "Saved {{count}} older images to the task folder and replaced them with references."
+		},
+		"rejected": {
+			"title": "Context too large",
+			"description": "The provider rejected the request because the context is too large. Recovering and retrying once."
 		}
 	},
 	"skill": {

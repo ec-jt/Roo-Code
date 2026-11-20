@@ -5086,7 +5086,9 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 						})
 				} catch (error) {
 					if (error instanceof ContextRecoveryError) {
-						await abortStream(this.abort ? "user_cancelled" : "streaming_failed", error.message)
+						// The error row below carries the text. Do not also attach it to the request
+						// row, which would show the same text a second time (r90 O1).
+						await abortStream(this.abort ? "user_cancelled" : "streaming_failed")
 						if (!this.abort && !this.abandoned) await this.say("error", error.message)
 						return true
 					}
@@ -6317,7 +6319,13 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 					if (this.currentRequestAbortController === controller)
 						this.currentRequestAbortController = undefined
 				}
-				yield* this.attemptApiRequestPinned(retryAttempt, {}, recovery)
+				// Keep the provider start callback so the reused api_req_started row records
+				// when the request that is actually sent starts (O2).
+				yield* this.attemptApiRequestPinned(
+					retryAttempt,
+					{ onProviderStart: options.onProviderStart },
+					recovery,
+				)
 				return
 			}
 		}
@@ -6540,8 +6548,17 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 						"Provider context limit exceeded. Automatic compaction and truncation were skipped because 'Compact on context overflow' is disabled in Settings > Context Management. Enable it for future requests, or Compact manually or change models before retrying.",
 					)
 				recovery.attempted = true
+				// Show the provider rejection before the recovery row. Only this path shows it:
+				// the override pre-send check above never reached the provider.
+				await this.say("context_limit_rejected", undefined, undefined, undefined, undefined, undefined, {
+					isNonInteractive: true,
+				})
 				await this.handleContextWindowExceededError(requestRevision, condensationHandler, abortSignal, metadata)
-				yield* this.attemptApiRequestPinned(retryAttempt + 1, {}, recovery)
+				yield* this.attemptApiRequestPinned(
+					retryAttempt + 1,
+					{ onProviderStart: options.onProviderStart },
+					recovery,
+				)
 				return
 			}
 			// Cordis: only a pre-stream provider failure (`dispatch-failed`) takes the ordinary
@@ -6572,7 +6589,11 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 				// Delegate generator output from the recursive call with
 				// incremented retry count.
-				yield* this.attemptApiRequestPinned(retryAttempt + 1, {}, recovery)
+				yield* this.attemptApiRequestPinned(
+					retryAttempt + 1,
+					{ onProviderStart: options.onProviderStart },
+					recovery,
+				)
 
 				return
 			} else {
@@ -6596,7 +6617,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				await this.say("api_req_retried")
 
 				// Delegate generator output from the recursive call.
-				yield* this.attemptApiRequestPinned(0, {}, recovery)
+				yield* this.attemptApiRequestPinned(0, { onProviderStart: options.onProviderStart }, recovery)
 				return
 			}
 		}

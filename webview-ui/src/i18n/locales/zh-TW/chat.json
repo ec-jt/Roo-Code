@@ -258,6 +258,10 @@
 			"description_other": "已縮短 {{count}} 個大型工具結果。完整文字已儲存在任務資料夾中。",
 			"offloaded": "已將 {{count}} 張較早的圖片儲存到任務資料夾，並替換為參照。",
 			"offloaded_other": "已將 {{count}} 張較早的圖片儲存到任務資料夾，並替換為參照。"
+		},
+		"rejected": {
+			"title": "上下文過大",
+			"description": "提供者因上下文過大拒絕了請求。正在復原並重試一次。"
 		}
 	},
 	"skill": {

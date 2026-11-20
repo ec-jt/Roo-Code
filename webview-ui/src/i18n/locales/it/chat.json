@@ -364,6 +364,10 @@
 			"description_other": "Accorciati {{count}} risultati di strumenti grandi. Il testo completo è salvato nella cartella dell'attività.",
 			"offloaded": "{{count}} immagine precedente salvata nella cartella dell'attività e sostituita da un riferimento.",
 			"offloaded_other": "{{count}} immagini precedenti salvate nella cartella dell'attività e sostituite da riferimenti."
+		},
+		"rejected": {
+			"title": "Contesto troppo grande",
+			"description": "Il provider ha rifiutato la richiesta perché il contesto è troppo grande. Recupero in corso e un nuovo tentativo."
 		}
 	},
 	"skill": {

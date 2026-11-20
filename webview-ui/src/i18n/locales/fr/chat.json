@@ -364,6 +364,10 @@
 			"description_other": "{{count}} résultats d'outils volumineux raccourcis. Le texte complet est enregistré dans le dossier de la tâche.",
 			"offloaded": "{{count}} image ancienne enregistrée dans le dossier de la tâche et remplacée par une référence.",
 			"offloaded_other": "{{count}} images anciennes enregistrées dans le dossier de la tâche et remplacées par des références."
+		},
+		"rejected": {
+			"title": "Contexte trop volumineux",
+			"description": "Le fournisseur a rejeté la requête car le contexte est trop volumineux. Récupération puis une nouvelle tentative."
 		}
 	},
 	"skill": {

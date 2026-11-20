@@ -261,6 +261,10 @@
 			"description_other": "{{count}} hasil tool yang besar dipersingkat. Teks lengkap disimpan di folder tugas.",
 			"offloaded": "{{count}} gambar lama disimpan ke folder tugas dan diganti dengan referensi.",
 			"offloaded_other": "{{count}} gambar lama disimpan ke folder tugas dan diganti dengan referensi."
+		},
+		"rejected": {
+			"title": "Konteks terlalu besar",
+			"description": "Penyedia menolak permintaan karena konteks terlalu besar. Memulihkan dan mencoba ulang satu kali."
 		}
 	},
 	"skill": {

@@ -1358,6 +1358,14 @@ export const ChatRowContent = ({
 					return null
 				case "context_pruned":
 					return message.contextPrune ? <PruneResultRow data={message.contextPrune} /> : null
+				case "context_limit_rejected":
+					// Information only: the task continues with recovery and one retry.
+					return (
+						<WarningRow
+							title={t("chat:contextManagement.rejected.title")}
+							message={t("chat:contextManagement.rejected.description")}
+						/>
+					)
 				case "codebase_search_result":
 					let parsed: {
 						content: {

@@ -791,6 +791,46 @@ describe("Task opt-in model dispatch", () => {
 					expect(prunedRow()).toHaveLength(1)
 				})
 
+				const sayOrder = () =>
+					vi
+						.mocked(task.say)
+						.mock.calls.map(([type]) => type)
+						.filter((type) => type === "context_limit_rejected" || type === "context_pruned")
+
+				it("r91 O2/O3 override pre-send: provider start is recorded, no rejection row", async () => {
+					await enableOverflow(false)
+					useOverride(64_000)
+					countByChars()
+					firstBatch()
+					create.mockResolvedValueOnce(response("answer"))
+					const onProviderStart = vi.fn()
+					await consume(task.attemptApiRequest(0, { onProviderStart }))
+					expect(create).toHaveBeenCalledOnce()
+					expect(onProviderStart).toHaveBeenCalledOnce()
+					expect(sayOrder()).toEqual(["context_pruned"])
+				})
+
+				it("r91 O2/O3 rejection: one rejection row before the prune row, provider start for each send", async () => {
+					await enableOverflow(false)
+					countByChars()
+					firstBatch()
+					create.mockRejectedValueOnce(overflow()).mockResolvedValueOnce(response("answer"))
+					const onProviderStart = vi.fn()
+					await consume(task.attemptApiRequest(0, { onProviderStart }))
+					expect(create).toHaveBeenCalledTimes(2)
+					expect(onProviderStart).toHaveBeenCalledTimes(2)
+					expect(sayOrder()).toEqual(["context_limit_rejected", "context_pruned"])
+					expect(task.say).toHaveBeenCalledWith(
+						"context_limit_rejected",
+						undefined,
+						undefined,
+						undefined,
+						undefined,
+						undefined,
+						{ isNonInteractive: true },
+					)
+				})
+
 				it("no override: pruning off stops with the still-too-large error and no retry", async () => {
 					provider.getState.mockResolvedValue({
 						...(await provider.getState()),
@@ -1039,6 +1079,41 @@ describe("Task opt-in model dispatch", () => {
 			expect(backoff).not.toHaveBeenCalled()
 		},
 	)
+	it("r91 O2: the request row records providerStartedAt for the retry after a rejection", async () => {
+		await enableOverflow(false)
+		create
+			.mockRejectedValueOnce(overflow())
+			.mockResolvedValueOnce(response())
+			.mockResolvedValueOnce(response("answer"))
+		// Record each timing update the request row receives (publishTiming).
+		const timings: any[] = []
+		vi.spyOn(task as any, "updateClineMessage").mockImplementation(async (message: any) => {
+			if (message.say === "api_req_started") timings.push(JSON.parse(message.text).timing)
+		})
+		const loop = task.recursivelyMakeClineRequests([]).catch(() => true)
+		// The loop continues after the answer; wait for the first chunk, then stop the task.
+		await vi.waitFor(() => expect(timings.some((timing) => timing.firstChunkAt)).toBe(true), { timeout: 3000 })
+		;(task as any).abort = true
+		await loop
+		const firstChunk = timings.findIndex((timing) => timing.firstChunkAt)
+		const sent = timings[firstChunk]
+		expect(create.mock.calls.length).toBeGreaterThanOrEqual(3)
+		// One provider start for the rejected send and one for the retry that answered. Before the
+		// fix the retry did not publish, so the row kept the rejected send's start time.
+		expect(timings.slice(0, firstChunk).filter((timing) => timing.providerStartedAt)).toHaveLength(2)
+		expect(sent.providerStartedAt).toEqual(expect.any(Number))
+		expect(sent.firstChunkAt).toBeGreaterThanOrEqual(sent.providerStartedAt)
+	})
+	it("r90 O1: a recovery failure shows its text once (error row only, not on the request row)", async () => {
+		await enableOverflow(false)
+		create.mockRejectedValueOnce(overflow()).mockResolvedValueOnce(response()).mockRejectedValueOnce(overflow())
+		await task.recursivelyMakeClineRequests([])
+		const row = task.clineMessages.filter((message) => message.say === "api_req_started").at(-1)!
+		const info = JSON.parse(row.text!)
+		expect(info.cancelReason).toBe("streaming_failed")
+		expect(info.streamingFailedMessage).toBeUndefined()
+		expect(task.say).toHaveBeenCalledWith("error", expect.stringContaining("single retry"))
+	})
 	it.each(["empty-text", "empty-thinking", "reasoning-only", "whitespace"])(
 		"outer loop stops after a recovered response containing only %s",
 		async (kind) => {
