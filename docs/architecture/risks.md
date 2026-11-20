@@ -76,17 +76,17 @@ The 2026-11-18 evaluation set defaults and an accepted ADR from small samples. K
 
 Mitigation: the evaluation tooling in [ADR-2026-11-20-feature-gating-evaluation-and-lessons](decisions/accepted/ADR-2026-11-20-feature-gating-evaluation-and-lessons.md). It adds a run manifest and pools only runs with matching manifests. It also adds a leak check before each run, a matrix check, stop reasons, and blind pairwise review. These ideas come from Harness² (`google-research/harness2`, commit `6868817`: `core/runmark.py`, `core/context.py`, `core/ledger.py`, `core/selection.py`). Related: [Q-EFF-2](quality.md).
 
-### R-7: Subtasks share the parent's workspace
+### R-7: Subtasks can only share the parent's workspace
 
 Status: accepted
 Accepted-by: user
 Last-verified: 2026-11-20
 Paths: src/core/tools/NewTaskTool.ts, src/core/webview/worktree/\*\*
 
-`new_task` takes no working directory. A child task runs in the parent's workspace folder, on the same files and the same checkpoint history, while the parent waits. Effects:
+`new_task` takes no working directory. A child task always runs in the parent's workspace folder, on the same files and the same checkpoint history, while the parent waits. Sharing is the right choice for many subtasks, for example when the parent builds on the child's changes. The risk is that there is no other choice when the requirements need isolation:
 
-- a child sees and can change the parent's uncommitted work;
+- a child always sees and can change the parent's uncommitted work;
 - two independent attempts at the same change cannot run side by side or be compared;
 - evaluation runs need a separate snapshot made by hand.
 
-Worktree support exists in `src/core/webview/worktree/`, but only as user actions. Mitigation: an optional isolated subtask workspace, development mode only at first. See [ADR-2026-11-20-feature-gating-evaluation-and-lessons](decisions/accepted/ADR-2026-11-20-feature-gating-evaluation-and-lessons.md).
+Worktree support exists in `src/core/webview/worktree/`, but only as user actions. Mitigation: let the parent choose `shared` or `isolated` for each subtask from the requirements (user, 2026-11-20). See [ADR-2026-11-20-isolated-subtask-workspace](decisions/proposed/ADR-2026-11-20-isolated-subtask-workspace.md).
