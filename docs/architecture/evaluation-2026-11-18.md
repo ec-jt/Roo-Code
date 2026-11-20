@@ -392,6 +392,8 @@ These came from running the evaluation, not from the questions above:
 - **4.2.84:** a Cordis dispatch failure keeps the real error (status and message) and a pre-stream `dispatch-failed` is retried like the modes profile.
 - **4.2.85:** `task_state` and `memory` accept empty or missing `expected_revision` and `operations` on read; a write without a revision returns guidance instead of a schema failure. The plan review has a text field whose text reaches the model as a `<user_message>` after the tool result.
 - **4.2.86:** the string `"null"` counts as null in `task_state` and `memory` arguments; the user can enable task state at any time, including before the first model turn or while an ask is pending; a disabled `task_state` call says how to enable it; condense and truncation rows show how many tool results were pruned and images offloaded.
+- **4.2.87 and 4.2.88:** see the live-check sections below.
+- **4.2.89:** after a summary, recovery also shortens oversized tool results in the kept messages and refuses to send a prompt that still exceeds the window.
 
 **Live checks on 4.2.85 (2026-11-19):**
 
@@ -411,7 +413,8 @@ These came from running the evaluation, not from the questions above:
 | L3: offload count after condense, `opus-64k` | `01a1f5f2` | pass (data), fail (UI)        | The `context_pruned` row had `prunedCount: 1, offloadedCount: 3` (83,665 → 23,495 tokens). The chat window copy step dropped `contextPrune` and the counts, so the UI showed no prune row.                                                                             |
 
 - **4.2.87:** `task_state` patch operations are no longer checked in the parser. The tool renames `record` to `value` and moves flat record fields into `value`, then validates. A patch without a revision still returns `REVISION_REQUIRED` first. An invalid operation returns `INVALID_OPERATIONS` with its index, the failing field and a complete example. The tool description shows one exact patch call. The chat window now passes `contextPrune` and the prune and offload counts to the webview.
-  **Live checks on 4.2.87 (2026-11-19):**
+
+**Live checks on 4.2.87 (2026-11-19):**
 
 | Check                                   | Task       | Result                 | Evidence                                                                                                                                                                                                    |
 | --------------------------------------- | ---------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -429,4 +432,8 @@ These came from running the evaluation, not from the questions above:
 | P2: counts on context rows, `opus-64k`   | `01a1f638` | pass   | The prune row showed "Shortened 1 large older tool result" and "Saved 3 older images to the task folder"; each condense preview showed its token line, cost and pruned count.               |
 
 - P1 did not send the bad read shape, so the 4.2.88 read fix is covered by a replay unit test only.
-- **Open observation:** in r86, r87 and r88 a later condense increased the context instead of reducing it. In r88 it went from 75,923 to 128,376 tokens on a 64k window, and the next request cost $0.52. Not yet investigated (likely in the condense and prune ordering in `src/core/context-management/`).
+- **Condense that grew the context (r86, r87, r88), fixed in 4.2.89:**
+    - **Cause:** recovery kept the newest tool exchange after the summary point verbatim, and prune and offload only covered messages before it. In r88 condense 3 the kept result was a 220,139-character `read_file` of `Task.ts`; the new summary was about 12k characters, so the next request used 139,088 input tokens on a 64k window. r86 (220,139 characters) and r87 (92,961) had the same shape. No check ran after the summary, so the prompt was sent; it only succeeded because the real window was 1M.
+    - **Reporting:** the row's "before" value was the last request's usage, which did not include the tool result added since, so the row showed growth that had already happened.
+    - **Fix (4.2.89, `manageContext`):** when the estimate after the summary exceeds the budget, recovery shortens tool results in the kept messages (head and tail kept, full text saved) and offloads their images, once each. If the prompt still exceeds the input limit, recovery returns an error with history unchanged instead of sending. The row reports the measured pre-recovery size and the counts include the kept messages. Behaviour is unchanged when no overflow occurs or when the summary already fits.
+    - Covered by unit tests only; no live run yet.
