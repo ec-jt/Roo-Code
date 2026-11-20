@@ -20,6 +20,7 @@
 		"delete_custom_mode_with_rules": "Êtes-vous sûr de vouloir supprimer ce mode {scope} ?\n\nCela supprimera également le dossier de règles associé à l'adresse :\n{rulesFolderPath}"
 	},
 	"errors": {
+		"isolated_worktree_missing": "Cette sous-tâche s'exécutait dans un worktree git isolé qui n'existe plus : {{path}}. Elle n'est pas rouverte dans un autre espace de travail. Restaure le worktree pour la reprendre.",
 		"invalid_data_uri": "Format d'URI de données invalide",
 		"error_copying_image": "Erreur lors de la copie de l'image : {{errorMessage}}",
 		"error_saving_image": "Erreur lors de l'enregistrement de l'image : {{errorMessage}}",

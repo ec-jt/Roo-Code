@@ -8,6 +8,7 @@ import { extractTextFromFile } from "../../integrations/misc/extract-text"
 import { regexSearchFiles } from "../../services/ripgrep"
 import { getReadablePath } from "../../utils/path"
 import { isPathOutsideWorkspace } from "../../utils/pathUtils"
+import { getTaskWorkspaceRoots } from "./subtask-workspace"
 import type { ToolUse } from "../../shared/tools"
 import { BaseTool, ToolCallbacks } from "./BaseTool"
 import { runReadOnlyTool } from "./runReadOnlyTool"
@@ -43,7 +44,7 @@ export class FileSystemTool extends BaseTool<"file_system"> {
 		}
 
 		const absolutePath = path.resolve(task.cwd, relPath)
-		const isOutsideWorkspace = isPathOutsideWorkspace(absolutePath)
+		const isOutsideWorkspace = isPathOutsideWorkspace(absolutePath, getTaskWorkspaceRoots(task))
 		const approval = JSON.stringify({
 			tool: "fileSystem",
 			action,
@@ -96,7 +97,7 @@ export class FileSystemTool extends BaseTool<"file_system"> {
 			path: getReadablePath(task.cwd, relPath),
 			query: block.params.regex ?? "",
 			content: "",
-			isOutsideWorkspace: isPathOutsideWorkspace(absolutePath),
+			isOutsideWorkspace: isPathOutsideWorkspace(absolutePath, getTaskWorkspaceRoots(task)),
 		} satisfies ClineSayTool)
 		await task.ask("tool", partialMessage, block.partial).catch(() => {})
 	}

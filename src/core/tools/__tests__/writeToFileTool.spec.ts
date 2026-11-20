@@ -377,6 +377,25 @@ describe("writeToFileTool", () => {
 			expect(mockedIsPathOutsideWorkspace).toHaveBeenCalled()
 		})
 
+		it("treats a file in an isolated subtask's worktree as inside the workspace", async () => {
+			const actual = await vi.importActual<typeof import("../../../utils/pathUtils")>("../../../utils/pathUtils")
+			mockedIsPathOutsideWorkspace.mockImplementation(actual.isPathOutsideWorkspace)
+			const worktree = "/repos/project-subtask-1234abcd"
+			mockedPathResolve.mockReturnValue(`${worktree}/test/file.txt`)
+			mockCline.cwd = worktree
+			mockCline.subtaskWorkspace = { mode: "isolated", worktreePath: worktree, branch: "b", baseCommit: "c" }
+
+			try {
+				await executeWriteFileTool({})
+			} finally {
+				delete mockCline.subtaskWorkspace
+			}
+
+			expect(mockedIsPathOutsideWorkspace).toHaveBeenCalledWith(`${worktree}/test/file.txt`, [worktree])
+			const approvalMessage = JSON.parse(mockAskApproval.mock.calls[0][1])
+			expect(approvalMessage.isOutsideWorkspace).toBe(false)
+		})
+
 		it("processes files with large content", async () => {
 			const largeContent = "Line\n".repeat(10000)
 			await executeWriteFileTool({ content: largeContent })

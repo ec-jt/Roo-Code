@@ -20,6 +20,7 @@
 		"delete_custom_mode_with_rules": "Czy na pewno chcesz usunąć ten tryb {scope}?\n\nSpowoduje to również usunięcie powiązanego folderu reguł pod adresem:\n{rulesFolderPath}"
 	},
 	"errors": {
+		"isolated_worktree_missing": "To podzadanie działało w izolowanym worktree git, który już nie istnieje: {{path}}. Nie jest otwierane w innym obszarze roboczym. Przywróć worktree, aby je wznowić.",
 		"invalid_data_uri": "Nieprawidłowy format URI danych",
 		"error_copying_image": "Błąd kopiowania obrazu: {{errorMessage}}",
 		"error_saving_image": "Błąd zapisywania obrazu: {{errorMessage}}",

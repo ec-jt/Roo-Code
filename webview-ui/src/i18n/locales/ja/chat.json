@@ -291,6 +291,7 @@
 		"didSwitchWithReason": "Rooは次の理由で<code>{{mode}}</code>モードに切り替えました: {{reason}}"
 	},
 	"subtasks": {
+		"isolatedWorkspace": "分離されたワークスペース: 専用ブランチ上の新しい git worktree。コミットされていない変更は含まれず、自動的にマージされることはありません。",
 		"wantsToCreate": "Rooは<code>{{mode}}</code>モードで新しいサブタスクを作成したい",
 		"wantsToFinish": "Rooはこのサブタスクを終了したい",
 		"newTaskContent": "サブタスク指示",

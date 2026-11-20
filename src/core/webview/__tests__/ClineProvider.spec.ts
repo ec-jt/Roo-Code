@@ -1772,6 +1772,34 @@ describe("ClineProvider", () => {
 		})
 	})
 
+	describe("createTaskWithHistoryItem isolated subtask workspace", () => {
+		test("refuses to resume an isolated subtask whose worktree no longer exists", async () => {
+			await provider.resolveWebviewView(mockWebviewView)
+			const removeSpy = vi.spyOn(provider as any, "removeClineFromStack")
+			const historyItem = {
+				id: "iso-child",
+				parentTaskId: "parent",
+				ts: Date.now(),
+				task: "Isolated child",
+				number: 2,
+				tokensIn: 0,
+				tokensOut: 0,
+				totalCost: 0,
+				workspace: "/nonexistent/project-subtask-1",
+				workspaceMode: "isolated" as const,
+				worktreePath: "/nonexistent/project-subtask-1",
+				worktreeBranch: "roo/subtask/iso-child",
+			}
+			await expect(provider.createTaskWithHistoryItem(historyItem)).rejects.toThrow(
+				"errors.isolated_worktree_missing",
+			)
+			expect(vscode.window.showErrorMessage).toHaveBeenCalledWith("errors.isolated_worktree_missing")
+			// No task was opened, so nothing could run in the parent's workspace.
+			expect(removeSpy).not.toHaveBeenCalled()
+			expect(provider.getCurrentTask()).toBeUndefined()
+		})
+	})
+
 	describe("createTaskWithHistoryItem mode validation", () => {
 		test("validates and falls back to default mode when restored mode no longer exists", async () => {
 			await provider.resolveWebviewView(mockWebviewView)

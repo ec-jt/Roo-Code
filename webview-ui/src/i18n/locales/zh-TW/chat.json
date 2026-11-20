@@ -348,6 +348,7 @@
 		"didSwitchWithReason": "Roo 已切換至 {{mode}} 模式，原因：{{reason}}"
 	},
 	"subtasks": {
+		"isolatedWorkspace": "隔離工作區：在獨立分支上的新 git worktree。不包含未提交的變更，也不會自動合併任何內容。",
 		"wantsToCreate": "Roo 想要在 {{mode}} 模式下建立新的子任務",
 		"wantsToFinish": "Roo 想要完成此子任務",
 		"newTaskContent": "子任務指示",

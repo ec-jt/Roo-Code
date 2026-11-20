@@ -291,6 +291,7 @@
 		"didSwitchWithReason": "Roo <code>{{mode}}</code> मोड में स्विच कर गया क्योंकि: {{reason}}"
 	},
 	"subtasks": {
+		"isolatedWorkspace": "अलग वर्कस्पेस: अपनी शाखा पर एक नया git worktree। बिना कमिट किए बदलाव शामिल नहीं हैं, और कुछ भी अपने आप मर्ज नहीं होता।",
 		"wantsToCreate": "Roo <code>{{mode}}</code> मोड में एक नया उपकार्य बनाना चाहता है",
 		"wantsToFinish": "Roo इस उपकार्य को समाप्त करना चाहता है",
 		"newTaskContent": "उपकार्य निर्देश",

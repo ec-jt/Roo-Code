@@ -67,6 +67,7 @@ import { resolveImageMentions } from "../mentions/resolveImageMentions"
 import { RooIgnoreController } from "../ignore/RooIgnoreController"
 import { getWorkspacePath } from "../../utils/path"
 import { isPathOutsideWorkspace } from "../../utils/pathUtils"
+import { getTaskWorkspaceRoots } from "../tools/subtask-workspace"
 import { Mode, defaultModeSlug } from "../../shared/modes"
 import { getModels, flushModels, refreshModels } from "../../api/providers/fetchers/modelCache"
 import { GetModelsOptions } from "../../shared/api"
@@ -1298,7 +1299,7 @@ export const webviewMessageHandler = async (
 				}
 				const absPath = path.resolve(cwd, relPath)
 				// Workspace-boundary validation: prevent path traversal attacks
-				if (isPathOutsideWorkspace(absPath)) {
+				if (isPathOutsideWorkspace(absPath, getTaskWorkspaceRoots(provider.getCurrentTask()))) {
 					provider.postMessageToWebview({
 						type: "fileContent",
 						fileContent: { path: relPath, content: null, error: "Path is outside workspace" },

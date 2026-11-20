@@ -20,6 +20,7 @@
 		"delete_custom_mode_with_rules": "Sei sicuro di voler eliminare questa modalità {scope}?\n\nQuesto eliminerà anche la cartella delle regole associata in:\n{rulesFolderPath}"
 	},
 	"errors": {
+		"isolated_worktree_missing": "Questa sottoattività era eseguita in un worktree git isolato che non esiste più: {{path}}. Non viene riaperta in un altro spazio di lavoro. Ripristina il worktree per riprenderla.",
 		"invalid_data_uri": "Formato URI dati non valido",
 		"error_copying_image": "Errore durante la copia dell'immagine: {{errorMessage}}",
 		"error_saving_image": "Errore durante il salvataggio dell'immagine: {{errorMessage}}",

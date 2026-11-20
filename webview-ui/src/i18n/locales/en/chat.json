@@ -415,6 +415,7 @@
 		"didSwitchWithReason": "Roo switched to {{mode}} mode because: {{reason}}"
 	},
 	"subtasks": {
+		"isolatedWorkspace": "Isolated workspace: a new git worktree on its own branch. Uncommitted changes are not included, and nothing is merged automatically.",
 		"wantsToCreate": "Roo wants to create a new subtask in {{mode}} mode",
 		"wantsToFinish": "Roo wants to mark this as completed",
 		"newTaskContent": "Subtask Instructions",

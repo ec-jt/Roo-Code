@@ -20,6 +20,7 @@
 		"delete_custom_mode_with_rules": "क्या आप वाकई इस {scope} मोड को हटाना चाहते हैं?\n\nयह संबंधित नियम फ़ोल्डर को भी यहाँ हटा देगा:\n{rulesFolderPath}"
 	},
 	"errors": {
+		"isolated_worktree_missing": "यह सबटास्क एक अलग git worktree में चल रहा था जो अब मौजूद नहीं है: {{path}}। इसे किसी दूसरे वर्कस्पेस में नहीं खोला जाता। इसे फिर से शुरू करने के लिए worktree को पुनर्स्थापित करें।",
 		"invalid_data_uri": "अमान्य डेटा URI फॉर्मेट",
 		"error_copying_image": "छवि कॉपी करने में त्रुटि: {{errorMessage}}",
 		"error_saving_image": "छवि सहेजने में त्रुटि: {{errorMessage}}",

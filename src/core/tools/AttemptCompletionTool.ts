@@ -10,6 +10,7 @@ import type { ToolUse } from "../../shared/tools"
 import { t } from "../../i18n"
 
 import { BaseTool, ToolCallbacks } from "./BaseTool"
+import { summarizeIsolatedWorkspace } from "./subtask-workspace"
 
 interface AttemptCompletionParams {
 	result: string
@@ -118,11 +119,15 @@ export class AttemptCompletionTool extends BaseTool<"attempt_completion"> {
 					// The child's work ends here; its instance is closed by the return below.
 					task.recordEvaluationStop?.("completed")
 					try {
+						// An isolated child returns its branch and diff stat; nothing is merged.
+						const completionResultSummary = task.subtaskWorkspace
+							? `${result}\n\n${await summarizeIsolatedWorkspace(task.subtaskWorkspace)}`
+							: result
 						await provider.reopenParentFromDelegation({
 							parentTaskId: task.parentTaskId,
 							childTaskId: task.taskId,
 							childInstanceId: task.instanceId,
-							completionResultSummary: result,
+							completionResultSummary,
 						})
 						this.returnedChildren.add(task)
 						pushToolResult("")

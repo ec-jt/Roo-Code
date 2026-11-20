@@ -1,6 +1,7 @@
 # ADR-2026-11-20-isolated-subtask-workspace: Shared or isolated workspace for each subtask
 
-Status: proposed
+Status: accepted
+Accepted-by: user
 Last-verified: 2026-11-20
 Paths: src/core/tools/NewTaskTool.ts, src/core/webview/worktree/**, src/services/checkpoints/**
 
@@ -16,7 +17,7 @@ Harness² runs each candidate in its own folder (`research/harness2/src/harness2
 
 The user decided (2026-11-20) that a subtask can either be isolated or share the workspace, depending on the requirements.
 
-## Proposal
+## Decision
 
 Add a `workspace` parameter to `new_task` with two values. The parent chooses it for each subtask from the requirements. The user sees the choice in the `new_task` approval.
 
@@ -27,7 +28,7 @@ Add a `workspace` parameter to `new_task` with two values. The parent chooses it
 
 Rules for `isolated`:
 
-1. Roo creates the worktree with the existing worktree handlers and runs the child in it.
+1. Roo creates the worktree with the existing `worktreeService` from `@roo-code/core` (the service behind `src/core/webview/worktree/handlers.ts`) and runs the child in it. The worktree is created in `ClineProvider.performDelegation`, before the parent is closed, so a failure leaves the parent unchanged. `.worktreeinclude` files are not copied into subtask worktrees.
 2. On completion, the handoff contains the branch name and `git diff --stat`.
 3. The parent, or the user, reviews and merges the branch. Roo never merges on its own.
 4. Roo removes the worktree only after the user approves.
@@ -46,7 +47,9 @@ Gating: development mode only at first ([ADR-2026-11-20-feature-gating-evaluatio
 - **Copy the workspace folder instead of a worktree.** Rejected: slow for large repositories, and it does not give a reviewable branch.
 - **Fall back to shared when the worktree fails.** Rejected: the parent chose isolation for a reason, and a silent fallback hides that it was not met.
 
-## Acceptance criteria
+## Consequences
+
+### Acceptance criteria
 
 - Without the parameter, and with `shared`, behaviour is unchanged. Existing subtask tests pass.
 - With `isolated`, the child writes only inside its worktree. After it completes, the parent's working tree is unchanged, and the handoff has the branch name and diff stat.
@@ -55,9 +58,12 @@ Gating: development mode only at first ([ADR-2026-11-20-feature-gating-evaluatio
 - In a production extension host, the parameter is not in the tool schema. A test proves this.
 - No existing task data changes ([C-5](../../constraints.md)). No extra service is needed ([C-1](../../constraints.md)).
 
-## Risks
+### Risks
 
 - **Wrong choice by the model:** it may isolate a subtask that needed the parent's uncommitted state, or share one that should have been isolated. Mitigation: the selection guidance in the tool description, and the user sees the choice in the approval.
 - **Disk use:** one worktree per isolated subtask. Mitigation: remove after approval.
 - **Missing dependencies:** `node_modules` and build output are not in a new worktree, so the child may need an install first.
 - **Outdated base:** without uncommitted parent changes, the isolated child can work from an older state.
+- **Workspace boundary (implemented in 4.2.96):** file tools treat the worktree root as inside the workspace for an isolated task only, through `getTaskWorkspaceRoots()` passed to `isPathOutsideWorkspace()`. Shared tasks keep the editor folders as the only boundary.
+- **Editor-folder services:** MCP servers, project modes (`.roomodes`) and codebase indexing still come from the editor folder, not the worktree.
+- **Orphaned worktree:** if creating the child fails after the worktree exists, the worktree and branch remain. Remove them with the worktree UI.

@@ -10,19 +10,26 @@ import { parseMarkdownChecklist } from "./UpdateTodoListTool"
 import { Package } from "../../shared/package"
 import { BaseTool, ToolCallbacks } from "./BaseTool"
 import type { ToolUse } from "../../shared/tools"
+import {
+	formatIsolatedDelegation,
+	isSubtaskWorkspaceEnabled,
+	parseSubtaskWorkspace,
+	planIsolatedWorkspace,
+} from "./subtask-workspace"
 
 interface NewTaskParams {
 	mode: string
 	message: string
 	todos?: string
 	reason?: string
+	workspace?: string | null
 }
 
 export class NewTaskTool extends BaseTool<"new_task"> {
 	readonly name = "new_task" as const
 
 	async execute(params: NewTaskParams, task: Task, callbacks: ToolCallbacks): Promise<void> {
-		const { mode, message, todos, reason } = params
+		const { mode, message, todos, reason, workspace } = params
 		const { askApproval, handleError, pushToolResult } = callbacks
 
 		try {
@@ -98,11 +105,30 @@ export class NewTaskTool extends BaseTool<"new_task"> {
 				return
 			}
 
+			// The workspace choice exists only in a development host. Elsewhere every subtask is shared.
+			const workspaceMode = isSubtaskWorkspaceEnabled(provider) ? parseSubtaskWorkspace(workspace) : "shared"
+			if (workspaceMode === "isolated") {
+				// Fail before approval when isolation is impossible. Never fall back to shared.
+				try {
+					await planIsolatedWorkspace(task.cwd)
+				} catch (error) {
+					task.recordToolError("new_task")
+					task.didToolFailInCurrentTurn = true
+					pushToolResult(
+						formatResponse.toolError(
+							`Cannot create an isolated workspace: ${(error as Error)?.message ?? String(error)}. No subtask was created. Use workspace "shared" only if the subtask does not need isolation.`,
+						),
+					)
+					return
+				}
+			}
+
 			const toolMessage = JSON.stringify({
 				tool: "newTask",
 				mode: targetMode.name,
 				content: message,
 				todos: todoItems,
+				...(workspaceMode === "isolated" ? { workspace: workspaceMode } : {}),
 			})
 
 			const didApprove = await askApproval("tool", toolMessage)
@@ -130,13 +156,18 @@ export class NewTaskTool extends BaseTool<"new_task"> {
 					mode,
 					reason,
 					newTaskMessageTs,
+					...(workspaceMode === "isolated" ? { workspace: workspaceMode } : {}),
 				})
 			} finally {
 				task.evaluationRecorder?.suspendStops(false)
 			}
 
 			// Reflect delegation in tool result (no pause/unpause, no wait)
-			pushToolResult(`Delegated to child task ${child.taskId}`)
+			pushToolResult(
+				child.subtaskWorkspace
+					? formatIsolatedDelegation(child.taskId, child.subtaskWorkspace)
+					: `Delegated to child task ${child.taskId}`,
+			)
 			return
 		} catch (error) {
 			await handleError("creating new task", error)
@@ -148,12 +179,16 @@ export class NewTaskTool extends BaseTool<"new_task"> {
 		const mode: string | undefined = block.params.mode
 		const message: string | undefined = block.params.message
 		const todos: string | undefined = block.params.todos
+		const isolated =
+			isSubtaskWorkspaceEnabled(task.providerRef.deref()) &&
+			parseSubtaskWorkspace((block.nativeArgs as { workspace?: unknown } | undefined)?.workspace) === "isolated"
 
 		const partialMessage = JSON.stringify({
 			tool: "newTask",
 			mode: mode ?? "",
 			content: message ?? "",
 			todos: todos,
+			...(isolated ? { workspace: "isolated" } : {}),
 		})
 
 		await task.ask("tool", partialMessage, block.partial).catch(() => {})

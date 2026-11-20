@@ -692,6 +692,7 @@ export class NativeToolCallParser {
 						message: partialArgs.message,
 						todos: partialArgs.todos,
 						reason: partialArgs.reason,
+						...(partialArgs.workspace != null ? { workspace: partialArgs.workspace } : {}),
 					}
 				}
 				break
@@ -1266,6 +1267,7 @@ export class NativeToolCallParser {
 							message: args.message,
 							todos: args.todos,
 							reason: args.reason ?? undefined,
+							...(args.workspace != null ? { workspace: args.workspace } : {}),
 						} as NativeArgsFor<ToolName>
 					}
 					break

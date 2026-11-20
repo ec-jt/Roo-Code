@@ -39,7 +39,7 @@ Top quality goals in priority order. Tags follow the [Q42 quality model](https:/
 - The extension host (`src/`) calls model providers (Anthropic, OpenAI, Bedrock, Gemini, OpenRouter, local servers, and others) over HTTPS.
 - MCP servers, terminals, the browser bridge (`apps/browser-bridge/`), and the workspace file system are external systems that tools reach.
 - Task data lives in VS Code global storage. The extension never migrates or deletes it ([C-5](constraints.md)).
-- Subtasks run in the parent task's workspace folder, one at a time. A per-subtask choice between a shared and an isolated workspace is proposed ([R-7](risks.md)).
+- Subtasks run in the parent task's workspace folder, one at a time. A per-subtask choice between a shared and an isolated workspace was accepted on 2026-11-20 ([R-7](risks.md)).
 - Evaluation operator (development only): a person or a separate Roo task that runs the scenarios in [`evaluation-2026-11-18.md`](evaluation-2026-11-18.md) against an installed build, in a separate workspace snapshot for each run.
 
 ## 5. Building block view

@@ -20,6 +20,7 @@
 		"delete_custom_mode_with_rules": "Bạn có chắc chắn muốn xóa chế độ {scope} này không?\n\nThao tác này cũng sẽ xóa thư mục quy tắc liên quan tại:\n{rulesFolderPath}"
 	},
 	"errors": {
+		"isolated_worktree_missing": "Tác vụ con này chạy trong một git worktree tách biệt không còn tồn tại: {{path}}. Nó không được mở lại trong không gian làm việc khác. Khôi phục worktree để tiếp tục.",
 		"invalid_data_uri": "Định dạng URI dữ liệu không hợp lệ",
 		"error_copying_image": "Lỗi khi sao chép hình ảnh: {{errorMessage}}",
 		"error_saving_image": "Lỗi khi lưu hình ảnh: {{errorMessage}}",

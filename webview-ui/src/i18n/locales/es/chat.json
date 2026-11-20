@@ -291,6 +291,7 @@
 		"didSwitchWithReason": "Roo cambió a modo <code>{{mode}}</code> porque: {{reason}}"
 	},
 	"subtasks": {
+		"isolatedWorkspace": "Espacio de trabajo aislado: un nuevo worktree de git en su propia rama. Los cambios sin confirmar no se incluyen y no se fusiona nada automáticamente.",
 		"wantsToCreate": "Roo quiere crear una nueva subtarea en modo <code>{{mode}}</code>",
 		"wantsToFinish": "Roo quiere finalizar esta subtarea",
 		"newTaskContent": "Instrucciones de la subtarea",

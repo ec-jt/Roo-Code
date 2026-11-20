@@ -292,6 +292,7 @@
 		"didSwitchWithReason": "Roo đã chuyển sang chế độ <code>{{mode}}</code> vì: {{reason}}"
 	},
 	"subtasks": {
+		"isolatedWorkspace": "Không gian làm việc tách biệt: một git worktree mới trên nhánh riêng. Các thay đổi chưa commit không được bao gồm và không có gì được hợp nhất tự động.",
 		"wantsToCreate": "Roo muốn tạo một nhiệm vụ phụ mới trong chế độ <code>{{mode}}</code>",
 		"wantsToFinish": "Roo muốn hoàn thành nhiệm vụ phụ này",
 		"newTaskContent": "Hướng dẫn nhiệm vụ phụ",

@@ -820,6 +820,11 @@ export const ChatRowContent = ({
 							</span>
 						</div>
 						<div className="border-l border-muted-foreground/80 ml-2 pl-4 pb-1">
+							{tool.workspace === "isolated" && (
+								<div className="text-vscode-descriptionForeground mb-1">
+									{t("chat:subtasks.isolatedWorkspace")}
+								</div>
+							)}
 							<MarkdownBlock markdown={tool.content} />
 							<div>
 								{childTaskId && !isFollowedBySubtaskResult && (

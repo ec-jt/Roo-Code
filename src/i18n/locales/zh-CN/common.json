@@ -20,6 +20,7 @@
 		"delete_custom_mode_with_rules": "您确定要删除此 {scope} 模式吗？\n\n这也将删除位于以下位置的关联规则文件夹：\n{rulesFolderPath}"
 	},
 	"errors": {
+		"isolated_worktree_missing": "此子任务运行在一个已不存在的隔离 git worktree 中：{{path}}。它不会在其他工作区中重新打开。请恢复该 worktree 以继续。",
 		"invalid_mcp_config": "项目MCP配置格式无效",
 		"invalid_mcp_settings_format": "MCP设置JSON格式无效。请确保您的设置遵循正确的JSON格式。",
 		"invalid_mcp_settings_syntax": "MCP设置JSON格式无效。请检查您的设置文件是否有语法错误。",

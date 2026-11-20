@@ -20,6 +20,7 @@
 		"delete_custom_mode_with_rules": "Bist du sicher, dass du diesen {scope}-Modus löschen möchtest?\n\nDadurch wird auch der zugehörige Regelordner unter folgender Adresse gelöscht:\n{rulesFolderPath}"
 	},
 	"errors": {
+		"isolated_worktree_missing": "Diese Unteraufgabe lief in einem isolierten Git-Worktree, der nicht mehr existiert: {{path}}. Sie wird nicht in einem anderen Arbeitsbereich geöffnet. Stelle den Worktree wieder her, um sie fortzusetzen.",
 		"invalid_data_uri": "Ungültiges Daten-URI-Format",
 		"error_copying_image": "Fehler beim Kopieren des Bildes: {{errorMessage}}",
 		"error_saving_image": "Fehler beim Speichern des Bildes: {{errorMessage}}",

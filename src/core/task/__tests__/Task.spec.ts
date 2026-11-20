@@ -320,6 +320,69 @@ describe("Cline", () => {
 	})
 
 	describe("constructor", () => {
+		it("gives an isolated child its worktree as cwd and keeps a shared child in the parent's folder", () => {
+			const parent = new Task({
+				provider: mockProvider,
+				apiConfiguration: mockApiConfig,
+				task: "Parent",
+				taskId: "parent-ws",
+				workspacePath: "/repo/project",
+				startTask: false,
+			})
+			const shared = new Task({
+				provider: mockProvider,
+				apiConfiguration: mockApiConfig,
+				task: "Shared child",
+				parentTask: parent,
+				workspacePath: "/ignored",
+				startTask: false,
+			})
+			const subtaskWorkspace = {
+				mode: "isolated" as const,
+				worktreePath: "/repo/project-subtask-0001",
+				branch: "roo/subtask/iso-child",
+				baseCommit: "abc123",
+			}
+			const isolated = new Task({
+				provider: mockProvider,
+				apiConfiguration: mockApiConfig,
+				task: "Isolated child",
+				taskId: "iso-child",
+				parentTask: parent,
+				subtaskWorkspace,
+				startTask: false,
+			})
+			expect(shared.cwd).toBe("/repo/project")
+			expect(shared.subtaskWorkspace).toBeUndefined()
+			expect(isolated.cwd).toBe("/repo/project-subtask-0001")
+			expect(isolated.subtaskWorkspace).toEqual(subtaskWorkspace)
+
+			// A resumed isolated child reads its worktree from the history item.
+			const resumed = new Task({
+				provider: mockProvider,
+				apiConfiguration: mockApiConfig,
+				historyItem: {
+					id: "iso-child",
+					parentTaskId: "parent-ws",
+					number: 2,
+					ts: 1,
+					task: "Isolated child",
+					tokensIn: 0,
+					tokensOut: 0,
+					totalCost: 0,
+					workspace: "/repo/project-subtask-0001",
+					workspaceMode: "isolated",
+					worktreePath: "/repo/project-subtask-0001",
+					worktreeBranch: "roo/subtask/iso-child",
+					worktreeBaseCommit: "abc123",
+				},
+				workspacePath: "/repo/project-subtask-0001",
+				startTask: false,
+			})
+			expect(resumed.cwd).toBe("/repo/project-subtask-0001")
+			expect(resumed.subtaskWorkspace).toEqual(subtaskWorkspace)
+		})
+
 		it("preserves durable lineage without relying on a live root or stack", () => {
 			const root = new Task({
 				provider: mockProvider,

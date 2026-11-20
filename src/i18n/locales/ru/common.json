@@ -20,6 +20,7 @@
 		"delete_custom_mode_with_rules": "Вы уверены, что хотите удалить этот режим {scope}?\n\nЭто также приведет к удалению соответствующей папки правил по адресу:\n{rulesFolderPath}"
 	},
 	"errors": {
+		"isolated_worktree_missing": "Эта подзадача выполнялась в изолированном git worktree, которого больше нет: {{path}}. Она не открывается в другом рабочем пространстве. Восстановите worktree, чтобы продолжить её.",
 		"invalid_data_uri": "Неверный формат URI данных",
 		"error_copying_image": "Ошибка копирования изображения: {{errorMessage}}",
 		"error_saving_image": "Ошибка сохранения изображения: {{errorMessage}}",

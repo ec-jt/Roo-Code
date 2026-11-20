@@ -20,6 +20,7 @@
 		"delete_custom_mode_with_rules": "Weet je zeker dat je deze {scope}-modus wilt verwijderen?\n\nDit verwijdert ook de bijbehorende regelsmap op:\n{rulesFolderPath}"
 	},
 	"errors": {
+		"isolated_worktree_missing": "Deze subtaak draaide in een geïsoleerde git-worktree die niet meer bestaat: {{path}}. Hij wordt niet in een andere werkruimte geopend. Herstel de worktree om verder te gaan.",
 		"invalid_data_uri": "Ongeldig data-URI-formaat",
 		"error_copying_image": "Fout bij kopiëren van afbeelding: {{errorMessage}}",
 		"error_saving_image": "Fout bij opslaan van afbeelding: {{errorMessage}}",

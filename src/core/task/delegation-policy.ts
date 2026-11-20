@@ -66,6 +66,8 @@ export interface DelegationRequest {
 	reason?: string
 	/** Timestamp of the approved new_task message, used to link that row to its child. */
 	newTaskMessageTs?: number
+	/** "isolated" runs the child in its own git worktree. Missing means shared. */
+	workspace?: "shared" | "isolated"
 }
 
 /** Nested auto-approval is a separate opt-in, never implied by ordinary subtasks or all-actions. */

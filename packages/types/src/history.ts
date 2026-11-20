@@ -33,6 +33,14 @@ export const historyItemSchema = z.object({
 	awaitingChildId: z.string().optional(), // Child currently awaited (set when delegated)
 	completedByChildId: z.string().optional(), // Child that completed and resumed this parent
 	completionResultSummary: z.string().optional(), // Summary from completed child
+	// Isolated subtask workspace (development builds only). Missing means "shared".
+	workspaceMode: z.enum(["shared", "isolated"]).optional(),
+	/** Root of the git worktree an isolated subtask runs in. */
+	worktreePath: z.string().optional(),
+	/** Branch of that worktree: roo/subtask/<id>. */
+	worktreeBranch: z.string().optional(),
+	/** Commit the worktree was created from. */
+	worktreeBaseCommit: z.string().optional(),
 })
 
 export type HistoryItem = z.infer<typeof historyItemSchema>

@@ -1,5 +1,10 @@
 // npx vitest core/tools/__tests__/newTaskTool.spec.ts
 
+import { execFileSync } from "child_process"
+import * as fs from "fs"
+import * as os from "os"
+import * as path from "path"
+
 import type { AskApproval, HandleError, NativeToolArgs, ToolUse } from "../../../shared/tools"
 
 // Mock vscode module
@@ -676,5 +681,112 @@ describe("newTaskTool delegation flow", () => {
 
 		// Assert: tool result reflects delegation
 		expect(mockPushToolResult).toHaveBeenCalledWith(expect.stringContaining("Delegated to child task child-1"))
+	})
+})
+
+describe("newTaskTool workspace parameter", () => {
+	let tmp: string
+	beforeEach(() => {
+		vi.clearAllMocks()
+		mockAskApproval.mockResolvedValue(true)
+		vi.mocked(getModeBySlug).mockReturnValue({
+			slug: "code",
+			name: "Code Mode",
+			roleDefinition: "r",
+			groups: ["read"],
+		})
+		vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({ get: vi.fn().mockReturnValue(false) } as any)
+		tmp = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), "roo-newtask-"))
+	})
+	afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }))
+
+	const makeTask = (extensionMode: number, cwd: string, delegate = vi.fn()) => {
+		const provider = {
+			contextProxy: { extensionMode },
+			getState: vi.fn().mockResolvedValue({ customModes: [] }),
+			delegateParentAndOpenChild: delegate,
+		}
+		return {
+			provider,
+			task: {
+				cwd,
+				taskId: "parent",
+				consecutiveMistakeCount: 0,
+				recordToolError: vi.fn(),
+				didToolFailInCurrentTurn: false,
+				ask: vi.fn().mockResolvedValue(undefined),
+				providerRef: { deref: () => provider },
+			} as any,
+		}
+	}
+
+	const block = (workspace: string | null): ToolUse<"new_task"> => ({
+		type: "tool_use",
+		name: "new_task",
+		params: { mode: "code", message: "Try an alternative" },
+		partial: false,
+		nativeArgs: { mode: "code", message: "Try an alternative", workspace } as NativeToolArgs["new_task"],
+	})
+
+	const run = (task: any, b: ToolUse<"new_task">) =>
+		newTaskTool.handle(task, b, {
+			askApproval: mockAskApproval,
+			handleError: mockHandleError,
+			pushToolResult: mockPushToolResult,
+		})
+
+	it("isolated in a non-git folder returns an error and creates no child", async () => {
+		const delegate = vi.fn()
+		const { task } = makeTask(2, tmp, delegate)
+		await run(task, block("isolated"))
+		expect(delegate).not.toHaveBeenCalled()
+		expect(mockAskApproval).not.toHaveBeenCalled()
+		expect(mockPushToolResult).toHaveBeenCalledWith(expect.stringContaining("not inside a git repository"))
+		expect(mockPushToolResult).toHaveBeenCalledWith(expect.stringContaining("No subtask was created"))
+		expect(task.didToolFailInCurrentTurn).toBe(true)
+	})
+
+	it("isolated in a git repository shows the choice in the approval and passes it to delegation", async () => {
+		execFileSync("git", ["init", "-q"], { cwd: tmp })
+		execFileSync("git", ["-c", "user.email=t@e", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "x"], {
+			cwd: tmp,
+		})
+		const delegate = vi.fn().mockResolvedValue({
+			taskId: "child-iso",
+			subtaskWorkspace: {
+				mode: "isolated",
+				worktreePath: "/w/project-subtask-1",
+				branch: "roo/subtask/child-iso",
+				baseCommit: "0123456789abcdef",
+			},
+		})
+		const { task } = makeTask(2, tmp, delegate)
+		await run(task, block("isolated"))
+		expect(JSON.parse(mockAskApproval.mock.calls[0][1] as string)).toMatchObject({
+			tool: "newTask",
+			workspace: "isolated",
+		})
+		expect(delegate).toHaveBeenCalledWith(expect.objectContaining({ workspace: "isolated" }))
+		const result = mockPushToolResult.mock.calls[0][0] as string
+		expect(result).toContain("branch roo/subtask/child-iso at /w/project-subtask-1")
+		expect(result).toContain("uncommitted changes are not in the worktree")
+	})
+
+	it.each([null, "shared"])("workspace %s keeps the shared behaviour", async (value) => {
+		const delegate = vi.fn().mockResolvedValue({ taskId: "child-s" })
+		const { task } = makeTask(2, tmp, delegate)
+		await run(task, block(value))
+		expect(JSON.parse(mockAskApproval.mock.calls[0][1] as string)).not.toHaveProperty("workspace")
+		expect(delegate.mock.calls[0][0]).not.toHaveProperty("workspace")
+		expect(mockPushToolResult).toHaveBeenCalledWith("Delegated to child task child-s")
+	})
+
+	it("ignores isolated outside development mode", async () => {
+		const delegate = vi.fn().mockResolvedValue({ taskId: "child-p" })
+		const { task } = makeTask(1, tmp, delegate)
+		await run(task, block("isolated"))
+		expect(delegate).toHaveBeenCalled()
+		expect(delegate.mock.calls[0][0]).not.toHaveProperty("workspace")
+		expect(JSON.parse(mockAskApproval.mock.calls[0][1] as string)).not.toHaveProperty("workspace")
 	})
 })

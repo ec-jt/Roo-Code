@@ -20,6 +20,7 @@
 		"delete_custom_mode_with_rules": "Anda yakin ingin menghapus mode {scope} ini?\n\nIni juga akan menghapus folder aturan terkait di:\n{rulesFolderPath}"
 	},
 	"errors": {
+		"isolated_worktree_missing": "Subtugas ini berjalan di worktree git terisolasi yang sudah tidak ada: {{path}}. Subtugas tidak dibuka di workspace lain. Pulihkan worktree untuk melanjutkannya.",
 		"invalid_data_uri": "Format data URI tidak valid",
 		"error_copying_image": "Error menyalin gambar: {{errorMessage}}",
 		"error_opening_image": "Error membuka gambar: {{error}}",

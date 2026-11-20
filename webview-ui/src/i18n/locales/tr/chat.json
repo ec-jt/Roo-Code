@@ -292,6 +292,7 @@
 		"didSwitchWithReason": "Roo <code>{{mode}}</code> moduna geçti çünkü: {{reason}}"
 	},
 	"subtasks": {
+		"isolatedWorkspace": "Yalıtılmış çalışma alanı: kendi dalında yeni bir git worktree. Commit edilmemiş değişiklikler dahil edilmez ve hiçbir şey otomatik olarak birleştirilmez.",
 		"wantsToCreate": "Roo <code>{{mode}}</code> modunda yeni bir alt görev oluşturmak istiyor",
 		"wantsToFinish": "Roo bu alt görevi bitirmek istiyor",
 		"newTaskContent": "Alt Görev Talimatları",

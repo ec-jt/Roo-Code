@@ -142,7 +142,7 @@ export type NativeToolArgs = {
 	edit_file: { file_path: string; old_string: string; new_string: string; expected_replacements?: number }
 	apply_patch: { patch: string }
 	list_files: { path: string; recursive?: boolean }
-	new_task: { mode: string; message: string; todos?: string; reason?: string }
+	new_task: { mode: string; message: string; todos?: string; reason?: string; workspace?: string | null }
 	ask_followup_question: {
 		question: string
 		follow_up: Array<{ text: string; mode?: string }>

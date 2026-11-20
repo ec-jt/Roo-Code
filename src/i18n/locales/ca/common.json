@@ -24,6 +24,7 @@
 		"delete_custom_mode_with_rules": "Esteu segur que voleu suprimir aquest mode {scope}?\n\nAixò també suprimirà la carpeta de regles associada a:\n{rulesFolderPath}"
 	},
 	"errors": {
+		"isolated_worktree_missing": "Aquesta subtasca s'executava en un worktree de git aïllat que ja no existeix: {{path}}. No es torna a obrir en un altre espai de treball. Restaura el worktree per reprendre-la.",
 		"invalid_data_uri": "Format d'URI de dades no vàlid",
 		"error_copying_image": "Error copiant la imatge: {{errorMessage}}",
 		"error_saving_image": "Error desant la imatge: {{errorMessage}}",

@@ -353,6 +353,7 @@
 		"didSwitchWithReason": "Roo beralih ke mode {{mode}} karena: {{reason}}"
 	},
 	"subtasks": {
+		"isolatedWorkspace": "Workspace terisolasi: worktree git baru di branch sendiri. Perubahan yang belum di-commit tidak disertakan, dan tidak ada yang digabung otomatis.",
 		"wantsToCreate": "Roo ingin membuat subtugas baru dalam mode {{mode}}",
 		"wantsToFinish": "Roo ingin menyelesaikan subtugas ini",
 		"newTaskContent": "Instruksi Subtugas",

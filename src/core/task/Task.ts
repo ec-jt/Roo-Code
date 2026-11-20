@@ -23,6 +23,11 @@ import { v7 as uuidv7 } from "uuid"
 import EventEmitter from "events"
 
 import { AskIgnoredError } from "./AskIgnoredError"
+import {
+	type IsolatedSubtaskWorkspace,
+	subtaskWorkspaceFromHistory,
+	subtaskWorkspaceHistoryFields,
+} from "../tools/subtask-workspace"
 import { recoverSubtaskLinks } from "./subtask-links"
 import { isAuthorizationAsk, type TaskApprovalPort } from "../tool-execution/approval"
 import {
@@ -296,6 +301,8 @@ export interface TaskOptions extends CreateTaskOptions {
 	onCreated?: (task: Task) => void
 	initialTodos?: TodoItem[]
 	workspacePath?: string
+	/** Isolated subtask workspace (ADR-2026-11-20-isolated-subtask-workspace). Missing means shared. */
+	subtaskWorkspace?: IsolatedSubtaskWorkspace
 	/** Initial status for the task's history item (e.g., "active" for child tasks) */
 	initialStatus?: "active" | "delegated" | "completed"
 }
@@ -336,6 +343,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	planOverlay: boolean
 	readonly taskNumber: number
 	readonly workspacePath: string
+	/** Set only for a subtask that runs in its own git worktree. */
+	readonly subtaskWorkspace?: IsolatedSubtaskWorkspace
 
 	/**
 	 * The mode associated with this task. Persisted across sessions
@@ -1133,6 +1142,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		onCreated,
 		initialTodos,
 		workspacePath,
+		subtaskWorkspace,
 		initialStatus,
 		planOverlay,
 	}: TaskOptions) {
@@ -1188,8 +1198,12 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		}
 
 		// Normal use-case is usually retry similar history task with new workspace.
+		// An isolated subtask has its own workspace (its worktree), never the parent's.
+		this.subtaskWorkspace = subtaskWorkspace ?? subtaskWorkspaceFromHistory(historyItem)
 		this.workspacePath = parentTask
-			? parentTask.workspacePath
+			? this.subtaskWorkspace
+				? (workspacePath ?? this.subtaskWorkspace.worktreePath)
+				: parentTask.workspacePath
 			: (workspacePath ?? getWorkspacePath(path.join(os.homedir(), "Desktop")))
 
 		this.instanceId = crypto.randomUUID().slice(0, 8)
@@ -2402,7 +2416,10 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 			const provider = this.providerRef.deref()
 			if (strict && !provider) throw new Error("Provider unavailable while persisting task history")
-			await provider?.updateTaskHistory(historyItem)
+			await provider?.updateTaskHistory({
+				...historyItem,
+				...subtaskWorkspaceHistoryFields(this.subtaskWorkspace),
+			})
 			return true
 		} catch (error) {
 			if (strict) throw error

@@ -291,6 +291,7 @@
 		"didSwitchWithReason": "Roo è passato alla modalità <code>{{mode}}</code> perché: {{reason}}"
 	},
 	"subtasks": {
+		"isolatedWorkspace": "Spazio di lavoro isolato: un nuovo worktree git sul proprio branch. Le modifiche non committate non sono incluse e nulla viene unito automaticamente.",
 		"wantsToCreate": "Roo vuole creare una nuova sottoattività in modalità <code>{{mode}}</code>",
 		"wantsToFinish": "Roo vuole completare questa sottoattività",
 		"newTaskContent": "Istruzioni sottoattività",

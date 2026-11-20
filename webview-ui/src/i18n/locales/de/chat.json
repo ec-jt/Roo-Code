@@ -291,6 +291,7 @@
 		"didSwitchWithReason": "Roo hat zum <code>{{mode}}</code>-Modus gewechselt, weil: {{reason}}"
 	},
 	"subtasks": {
+		"isolatedWorkspace": "Isolierter Arbeitsbereich: ein neuer Git-Worktree auf einem eigenen Branch. Nicht committete Änderungen sind nicht enthalten, und nichts wird automatisch zusammengeführt.",
 		"wantsToCreate": "Roo möchte eine neue Teilaufgabe im <code>{{mode}}</code>-Modus erstellen",
 		"wantsToFinish": "Roo möchte diese Teilaufgabe abschließen",
 		"newTaskContent": "Teilaufgabenanweisungen",

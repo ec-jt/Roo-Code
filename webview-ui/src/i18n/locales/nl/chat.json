@@ -286,6 +286,7 @@
 		"didSwitchWithReason": "Roo is overgeschakeld naar {{mode}} modus omdat: {{reason}}"
 	},
 	"subtasks": {
+		"isolatedWorkspace": "Geïsoleerde werkruimte: een nieuwe git-worktree op een eigen branch. Niet-gecommitte wijzigingen zijn niet inbegrepen en er wordt niets automatisch samengevoegd.",
 		"wantsToCreate": "Roo wil een nieuwe subtaak aanmaken in {{mode}} modus",
 		"wantsToFinish": "Roo wil deze subtaak voltooien",
 		"newTaskContent": "Subtaak-instructies",

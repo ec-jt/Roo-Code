@@ -90,6 +90,38 @@ describe("attemptCompletionTool", () => {
 		expect(mockHandleError).toHaveBeenCalled()
 	})
 
+	it("appends the isolated workspace summary to the result the parent receives", async () => {
+		const reopenParentFromDelegation = vi.fn().mockResolvedValue(undefined)
+		const provider = {
+			getTaskWithId: vi.fn().mockResolvedValue({ historyItem: { id: "task_1", status: "active" } }),
+			getCurrentTask: () => mockTask,
+			reopenParentFromDelegation,
+		}
+		Object.assign(mockTask, {
+			parentTaskId: "parent",
+			instanceId: "i1",
+			assertCanDelegate: vi.fn().mockResolvedValue(undefined),
+			subtaskWorkspace: {
+				mode: "isolated",
+				worktreePath: "/nonexistent/project-subtask-1",
+				branch: "roo/subtask/task_1",
+				baseCommit: "abc",
+			},
+			providerRef: { deref: () => provider },
+		})
+		await attemptCompletionTool.execute({ result: "Child summary" }, mockTask as Task, {
+			askApproval: mockAskApproval,
+			handleError: mockHandleError,
+			pushToolResult: mockPushToolResult,
+			toolDescription: mockToolDescription,
+		})
+		expect(mockHandleError).not.toHaveBeenCalled()
+		const summary = reopenParentFromDelegation.mock.calls[0][0].completionResultSummary as string
+		expect(summary.startsWith("Child summary\n\n")).toBe(true)
+		expect(summary).toContain("Isolated workspace: branch roo/subtask/task_1 at /nonexistent/project-subtask-1")
+		expect(summary).toContain("not merged")
+	})
+
 	describe("todo list validation", () => {
 		it("should allow completion when there is no todo list", async () => {
 			const block: AttemptCompletionToolUse = {

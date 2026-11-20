@@ -15,6 +15,7 @@ import {
 	filterMcpToolsForMode,
 	resolveToolAlias,
 } from "../prompts/tools/filter-tools-for-mode"
+import { applySubtaskWorkspaceSchema, isSubtaskWorkspaceEnabled } from "../tools/subtask-workspace"
 
 interface BuildToolsOptions {
 	provider: ClineProvider
@@ -121,9 +122,13 @@ export async function buildNativeToolsArrayWithRestrictions(options: BuildToolsO
 	const supportsImages = modelInfo?.supportsImages ?? false
 
 	// Build native tools with dynamic read_file tool based on settings.
-	let nativeTools = getNativeTools({
-		supportsImages,
-	})
+	// The new_task `workspace` parameter exists only in a development host (absent in production).
+	let nativeTools = applySubtaskWorkspaceSchema(
+		getNativeTools({
+			supportsImages,
+		}),
+		isSubtaskWorkspaceEnabled(provider),
+	)
 	const nativeToolEnabled = (state as any)?.nativeToolEnabled as Record<string, boolean> | undefined
 	const braveApiKey = (state as any)?.braveApiKey as string | undefined
 	const githubToken = (state as any)?.githubToken as string | undefined

@@ -97,6 +97,8 @@ import { readContextRecoverySnapshot } from "../context-management/context-recov
 import { formatSubtaskHandoff } from "../task/subtask-handoff"
 import { ModelOperationCoordinator, ModelOperationBlocked } from "../task/model-operation/coordinator"
 import { authorizeDelegation, DelegationPolicyError, type DelegationRequest } from "../task/delegation-policy"
+import { createIsolatedWorkspace, missingIsolatedWorktree } from "../tools/subtask-workspace"
+import { v7 as uuidv7 } from "uuid"
 import type { RequestSnapshot } from "../task/model-operation/storage"
 import { assertContextFits } from "../task/model-operation/normalization"
 import { buildNativeToolsArrayWithRestrictions } from "../task/build-tools"
@@ -1326,6 +1328,13 @@ export class ClineProvider
 	) {
 		if (!options?.internal) this.assertTaskForegrounded()
 		options?.assertCurrent?.()
+		// An isolated subtask reopens only in its own worktree, never in the parent's workspace.
+		const missingWorktree = missingIsolatedWorktree(historyItem)
+		if (missingWorktree) {
+			const message = t("common:errors.isolated_worktree_missing", { path: missingWorktree })
+			void vscode.window.showErrorMessage(message)
+			throw new Error(message)
+		}
 		const isCliRuntime = process.env.ROO_CLI_RUNTIME === "1"
 		// CLI injects runtime provider settings from command flags/env at startup.
 		// Restoring provider profiles from task history can overwrite those
@@ -3791,7 +3800,10 @@ export class ClineProvider
 		text?: string,
 		images?: string[],
 		parentTask?: Task,
-		options: CreateTaskOptions & Partial<Pick<TaskOptions, "apiConfiguration" | "initialTaskContext">> = {},
+		options: CreateTaskOptions &
+			Partial<
+				Pick<TaskOptions, "apiConfiguration" | "initialTaskContext" | "subtaskWorkspace" | "workspacePath">
+			> = {},
 		configuration: RooCodeSettings = {},
 	): Promise<Task> {
 		if (!parentTask) this.assertTaskForegrounded()
@@ -4100,6 +4112,23 @@ export class ClineProvider
 		assertCurrent()
 		const delegationMessage = findLast(parent.clineMessages ?? [], (entry) => newTaskContent(entry) === message)
 
+		// Isolated: create the worktree before the parent is closed. A failure stops the
+		// delegation here with the reason, creates no child and never falls back to shared.
+		let isolated: Pick<TaskOptions, "taskId" | "subtaskWorkspace" | "workspacePath"> = {}
+		if (params.workspace === "isolated") {
+			const childTaskId = uuidv7()
+			let created: Awaited<ReturnType<typeof createIsolatedWorkspace>>
+			try {
+				created = await createIsolatedWorkspace(parent.cwd, childTaskId)
+			} catch (error) {
+				throw new Error(
+					`Cannot create an isolated workspace: ${(error as Error)?.message ?? String(error)}. No subtask was created.`,
+				)
+			}
+			isolated = { taskId: childTaskId, subtaskWorkspace: created.workspace, workspacePath: created.childCwd }
+			assertCurrent()
+		}
+
 		// 3) Enforce single-open invariant by closing/disposing the parent first
 		//    This ensures we never have >1 tasks open at any time during delegation.
 		//    Await abort completion to ensure clean disposal and prevent unhandled rejections.
@@ -4143,11 +4172,13 @@ export class ClineProvider
 		if (architectureIds.length)
 			childMessage = `${childMessage}\n\nArchitecture IDs in scope: ${architectureIds.join(", ")}`
 
+		// An isolated child runs in the worktree created above for its pre-allocated ID.
 		const child = await this.createTask(childMessage, undefined, parent as any, {
 			initialTodos,
 			initialStatus: "active",
 			startTask: false,
 			...inheritedOptions,
+			...isolated,
 		})
 
 		// 5) Persist parent delegation metadata BEFORE the child starts writing.

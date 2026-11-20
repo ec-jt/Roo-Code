@@ -1108,6 +1108,8 @@ export interface ClineSayTool {
 	filePattern?: string
 	mode?: string
 	reason?: string
+	/** For newTask: workspace of the subtask. Missing means shared. */
+	workspace?: "shared" | "isolated"
 	isOutsideWorkspace?: boolean
 	isProtected?: boolean
 	additionalFileCount?: number // Number of additional files in the same read_file request

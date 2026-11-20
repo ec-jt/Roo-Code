@@ -20,6 +20,7 @@
 		"delete_custom_mode_with_rules": "您確定要刪除此 {scope} 模式嗎？\n\n這也將刪除位於以下位置的關聯規則資料夾：\n{rulesFolderPath}"
 	},
 	"errors": {
+		"isolated_worktree_missing": "此子任務執行於一個已不存在的隔離 git worktree 中：{{path}}。它不會在其他工作區中重新開啟。請還原該 worktree 以繼續。",
 		"invalid_data_uri": "資料 URI 格式無效",
 		"error_copying_image": "複製圖片時發生錯誤：{{errorMessage}}",
 		"error_saving_image": "儲存圖片時發生錯誤：{{errorMessage}}",

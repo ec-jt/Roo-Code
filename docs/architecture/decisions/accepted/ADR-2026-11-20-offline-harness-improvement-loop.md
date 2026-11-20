@@ -1,6 +1,7 @@
 # ADR-2026-11-20-offline-harness-improvement-loop: Development-only harness improvement from execution evidence
 
-Status: proposed
+Status: accepted
+Accepted-by: user
 Last-verified: 2026-11-20
 Paths: src/core/prompts/**, src/core/prompts/tools/**, scripts/eval-protocol.ts, docs/eval-protocol-tooling.md
 
@@ -21,7 +22,7 @@ Harness² (`google-research/harness2`, commit `6868817`) improves a harness with
 - **Fallback:** an invalid proposal gets one retry, then the current harness is kept (`_run_stage`).
 - **Cost:** about 4k rollouts per task.
 
-## Proposal
+## Decision
 
 A development-only loop, run from repository scripts. Nothing is registered in a production extension host.
 
@@ -43,13 +44,15 @@ A development-only loop, run from repository scripts. Nothing is registered in a
 - **Keep fixing by hand from logs.** This is the status quo. It works, but each edit is not compared against the previous harness on the same task.
 - **Use the Harness² code directly.** Rejected: it targets OpenCode and Codex runners and benchmark adapters, not a VS Code extension.
 
-## Acceptance criteria
+## Consequences
+
+### Acceptance criteria
 
 - No new command, setting or tool is shipped in the VSIX.
 - One loop cycle on S2 produces a composed edit with cited evidence, and a `matrix` report with no invalid cells.
 - The blind comparison of the composed edit against the base is recorded in a new evaluation file.
 
-## Risks
+### Risks
 
 - **Cost:** model spend per cycle is several times one S2 pair. Limit each cycle to one scenario.
 - **Overfitting:** an edit that helps S1 to S3 may not help other tasks. Rotate scenarios and keep the evidence rule.

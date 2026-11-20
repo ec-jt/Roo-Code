@@ -20,6 +20,7 @@
 		"delete_custom_mode_with_rules": "Are you sure you want to delete this {scope} mode?\n\nThis will also delete the associated rules folder at:\n{rulesFolderPath}"
 	},
 	"errors": {
+		"isolated_worktree_missing": "This subtask ran in an isolated git worktree that no longer exists: {{path}}. It is not reopened in another workspace. Restore the worktree to resume it.",
 		"invalid_data_uri": "Invalid data URI format",
 		"error_copying_image": "Error copying image: {{errorMessage}}",
 		"error_opening_image": "Error opening image: {{error}}",

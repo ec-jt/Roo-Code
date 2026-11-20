@@ -89,4 +89,4 @@ Paths: src/core/tools/NewTaskTool.ts, src/core/webview/worktree/\*\*
 - two independent attempts at the same change cannot run side by side or be compared;
 - evaluation runs need a separate snapshot made by hand.
 
-Worktree support exists in `src/core/webview/worktree/`, but only as user actions. Mitigation: let the parent choose `shared` or `isolated` for each subtask from the requirements (user, 2026-11-20). See [ADR-2026-11-20-isolated-subtask-workspace](decisions/proposed/ADR-2026-11-20-isolated-subtask-workspace.md).
+Worktree support exists in `src/core/webview/worktree/`, but only as user actions. Mitigation: let the parent choose `shared` or `isolated` for each subtask from the requirements (user, 2026-11-20). See [ADR-2026-11-20-isolated-subtask-workspace](decisions/accepted/ADR-2026-11-20-isolated-subtask-workspace.md).
