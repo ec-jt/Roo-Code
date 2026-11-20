@@ -396,6 +396,7 @@ These came from running the evaluation, not from the questions above:
 - **4.2.89:** after a summary, recovery also shortens oversized tool results in the kept messages and refuses to send a prompt that still exceeds the window.
 - **4.2.90:** for profiles with a context window override, the check before sending estimates the pending request (last usage plus the tool results added since) instead of using the last request's usage alone. Models without an override are unchanged (C-6). The prune note now reads "Shortened N large tool results".
 - **4.2.91:** when the first large tool batch overflows and there is no earlier history to summarize, recovery shortens the latest tool results and retries once, instead of stopping with "Not enough earlier history to compact".
+- **4.2.92:** a request sent after recovery records its own provider start time. A provider rejection for size shows a "Context too large" warning row before recovery. A recovery error appears once instead of twice.
 
 **Live checks on 4.2.85 (2026-11-19):**
 
@@ -455,4 +456,14 @@ These came from running the evaluation, not from the questions above:
 
 - No API key appeared in either task's files.
 - Not exercised live: the "Context is still too large after automatic recovery" stop, and image offload in the latest input.
-- Low-priority observations: request rows that went through recovery before sending have no `providerStartedAt`; in R2 the user sees the prune row but no row for the rejection itself.
+- Low-priority observations (fixed in 4.2.92): request rows that went through recovery had no `providerStartedAt`; in R2 the user saw the prune row but no row for the rejection itself.
+
+**Live checks on 4.2.92 (2026-11-20):**
+
+| Check                                                       | Task       | Result | Evidence                                                                                                                                                                                                                                                                                        |
+| ----------------------------------------------------------- | ---------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| R1: override profile `opus-64k`, check before sending       | `01a1f886` | pass   | Prune (92,018 → 22,740) before request 2; largest request 49,330 tokens. All 5 request rows have `providerStartedAt`, each after its recovery row. No "Context too large" row. Correct answer.                                                                                                  |
+| R2: no override, provider rejects with "prompt is too long" | `01a1f88d` | pass   | Rows in order: request, "Context too large" warning, `context_pruned` (92,027 → 22,749), then the single retry. The request row's `providerStartedAt` (10:42:38.507) is the retry's, after the rejection at 10:42:37.829. The task completed with no user action. No API key in the task files. |
+
+- Not exercised: a recovery error, so the single-error-row fix is covered by unit tests only.
+- New low-priority observations: deleting a profile while a finished task is open rewrote that task's `apiConfigName`; selecting a profile with a finished task open showed the "Change model" dialog.
