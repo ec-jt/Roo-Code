@@ -505,6 +505,93 @@ describe("Context Management", () => {
 			expect(result.messages.at(-1)).toBe(small.at(-1))
 			expect(result.prunedCount).toBeUndefined()
 		})
+
+		describe("first tool batch overflows (r90 D1: no earlier history to summarize)", () => {
+			// r90 R1 shape: task prompt, two parallel reads, two ~120k-char results (~60k tokens).
+			const bigA = "a".repeat(120_000)
+			const bigB = "b".repeat(120_000)
+			const firstBatch: ApiMessage[] = [
+				{ role: "user", content: "Read ClineProvider.ts and Task.ts in full" },
+				{
+					role: "assistant",
+					content: [
+						{ type: "tool_use", id: "r1", name: "read_file", input: { path: "ClineProvider.ts" } },
+						{ type: "tool_use", id: "r2", name: "read_file", input: { path: "Task.ts" } },
+					],
+				},
+				{
+					role: "user",
+					content: [
+						{ type: "tool_result", tool_use_id: "r1", content: bigA },
+						{ type: "tool_result", tool_use_id: "r2", content: bigB },
+					],
+				},
+			]
+			const first = { ...base, messages: firstBatch }
+
+			it("shortens the latest tool results and returns a prune result under the input limit", async () => {
+				const summarize = vi.spyOn(condenseModule, "summarizeConversation")
+				vi.spyOn(mockApiHandler, "countTokens").mockImplementation(charCount)
+				let n = 0
+				const saveArtifact = vi.fn(async () => `tool-${++n}.txt`)
+				const result = await manageContext({ ...first, saveArtifact })
+				expect(result.error).toBeUndefined()
+				expect(summarize).not.toHaveBeenCalled()
+				expect(result.pruneId).toEqual(expect.any(String))
+				expect(result.prunedCount).toBe(2)
+				expect(saveArtifact).toHaveBeenCalledWith(bigA)
+				expect(saveArtifact).toHaveBeenCalledWith(bigB)
+				const latest = result.messages[2].content as Anthropic.Messages.ToolResultBlockParam[]
+				expect(latest.map((block) => block.tool_use_id)).toEqual(["r1", "r2"])
+				expect(String(latest[0].content)).toContain("tool result middle pruned")
+				expect(String(latest[0].content)).toContain("tool-1.txt")
+				expect(String(latest[1].content)).toContain("tool-2.txt")
+				expect(String(latest[0].content).length).toBeLessThan(6_000)
+				// The prompt and the tool calls are unchanged, so every pair stays intact.
+				expect(result.messages.slice(0, 2)).toEqual(firstBatch.slice(0, 2))
+				expect(result.messages).toHaveLength(3)
+				expect(result.newContextTokens!).toBeLessThanOrEqual(64_000 - 12_800)
+				expect(result.prevContextTokens).toBeGreaterThan(60_000)
+				// The input history is not mutated.
+				expect((firstBatch[2].content as any)[0].content).toBe(bigA)
+			})
+
+			it("returns the still-too-large error and leaves history unchanged when pruning is off", async () => {
+				vi.spyOn(mockApiHandler, "countTokens").mockImplementation(charCount)
+				const saveArtifact = vi.fn(async () => "never.txt")
+				const result = await manageContext({ ...first, pruneToolResults: false, saveArtifact })
+				expect(saveArtifact).not.toHaveBeenCalled()
+				expect(result.error).toContain("still too large after automatic recovery")
+				expect(result.error).not.toContain("Not enough earlier history")
+				expect(result.pruneId).toBeUndefined()
+				expect(result.messages).toBe(firstBatch)
+			})
+
+			it("returns the still-too-large error when the pruned results still do not fit", async () => {
+				vi.spyOn(mockApiHandler, "countTokens").mockImplementation(charCount)
+				const ids = Array.from({ length: 50 }, (_, i) => `t${i}`)
+				const many: ApiMessage[] = [
+					firstBatch[0],
+					{
+						role: "assistant",
+						content: ids.map((id) => ({ type: "tool_use" as const, id, name: "read_file", input: {} })),
+					},
+					{
+						role: "user",
+						content: ids.map((id) => ({
+							type: "tool_result" as const,
+							tool_use_id: id,
+							content: "z".repeat(10_000),
+						})),
+					},
+				]
+				const result = await manageContext({ ...first, messages: many, saveArtifact: async () => "t.txt" })
+				expect(result.error).toContain("still too large after automatic recovery")
+				expect(result.error).toContain("the limit is 51200 for a 64000-token window")
+				expect(result.pruneId).toBeUndefined()
+				expect(result.messages).toBe(many)
+			})
+		})
 	})
 
 	describe("image offload before summary", () => {

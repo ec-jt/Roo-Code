@@ -703,6 +703,113 @@ describe("Task opt-in model dispatch", () => {
 				expect(repair).not.toHaveBeenCalled()
 				expect(create).toHaveBeenCalledOnce()
 			})
+			describe("first tool batch overflows (r90 D1: no earlier history to summarize)", () => {
+				// r90 R1/R2 shape: task prompt, two parallel reads, two ~120k-char results.
+				const firstBatch = () => {
+					task.apiConversationHistory = [
+						{ role: "user", content: "Read ClineProvider.ts and Task.ts in full" },
+						{
+							role: "assistant",
+							content: [
+								{ type: "tool_use", id: "r1", name: "read_file", input: { path: "ClineProvider.ts" } },
+								{ type: "tool_use", id: "r2", name: "read_file", input: { path: "Task.ts" } },
+							],
+						},
+						{
+							role: "user",
+							content: [
+								{ type: "tool_result", tool_use_id: "r1", content: "a".repeat(120_000) },
+								{ type: "tool_result", tool_use_id: "r2", content: "b".repeat(120_000) },
+							],
+						},
+					]
+					;(task as any).preSendMark = undefined
+					vi.mocked(task.getTokenUsage).mockReturnValue({ contextTokens: 39_648 } as any)
+					let n = 0
+					return vi
+						.spyOn(task as any, "saveToolResultArtifact")
+						.mockImplementation(async () => `tool-${++n}.txt`)
+				}
+				const sentText = (call: number) => JSON.stringify(create.mock.calls[call][0].messages)
+				const prunedRow = () =>
+					vi
+						.mocked(task.say)
+						.mock.calls.filter(([type]) => type === "context_pruned")
+						.map((call) => call[9] as any)
+
+				it("override profile: the pre-send check prunes the latest results and sends once", async () => {
+					await enableOverflow(false)
+					useOverride(64_000)
+					countByChars()
+					const save = firstBatch()
+					const repair = vi.spyOn(task as any, "handleContextWindowExceededError")
+					create.mockResolvedValueOnce(response("answer"))
+					await consume(task.attemptApiRequest())
+					expect(repair).toHaveBeenCalledOnce()
+					expect(save).toHaveBeenCalledTimes(2)
+					expect(create).toHaveBeenCalledOnce()
+					expect(sentText(0)).toContain("tool result middle pruned")
+					expect(sentText(0)).not.toContain("a".repeat(10_000))
+					const rows = prunedRow()
+					expect(rows).toHaveLength(1)
+					expect(rows[0]).toMatchObject({ pruneId: expect.any(String), prunedCount: 2 })
+					expect(rows[0].newContextTokens).toBeLessThan(64_000)
+					// Tool calls and results stay paired in the saved history.
+					expect(task.apiConversationHistory).toHaveLength(3)
+					expect((task.apiConversationHistory[2].content as any[]).map((b) => b.tool_use_id)).toEqual([
+						"r1",
+						"r2",
+					])
+				})
+
+				it("no override: a 'prompt is too long' rejection prunes and retries once", async () => {
+					await enableOverflow(false)
+					countByChars()
+					const save = firstBatch()
+					create.mockRejectedValueOnce(overflow()).mockResolvedValueOnce(response("answer"))
+					await consume(task.attemptApiRequest())
+					expect(create).toHaveBeenCalledTimes(2)
+					expect(sentText(0)).toContain("a".repeat(10_000))
+					expect(sentText(1)).toContain("tool result middle pruned")
+					expect(save).toHaveBeenCalledTimes(2)
+					expect(prunedRow()).toHaveLength(1)
+					expect(saveContextRecoverySnapshot).toHaveBeenCalledWith(
+						"/storage",
+						expect.objectContaining({ eventId: prunedRow()[0].pruneId }),
+					)
+				})
+
+				it("no override: retries at most once after a prune", async () => {
+					await enableOverflow(false)
+					countByChars()
+					firstBatch()
+					create.mockRejectedValueOnce(overflow()).mockRejectedValueOnce(overflow())
+					await expect(consume(task.attemptApiRequest())).rejects.toThrow(
+						"again after automatic context recovery and its single retry",
+					)
+					expect(create).toHaveBeenCalledTimes(2)
+					expect(prunedRow()).toHaveLength(1)
+				})
+
+				it("no override: pruning off stops with the still-too-large error and no retry", async () => {
+					provider.getState.mockResolvedValue({
+						...(await provider.getState()),
+						autoCondenseContext: undefined,
+						pruneToolResultsOnOverflow: false,
+					})
+					;(task as any).modelDispatchRuntime = undefined
+					countByChars()
+					const save = firstBatch()
+					const before = structuredClone(task.apiConversationHistory)
+					create.mockRejectedValueOnce(overflow())
+					await expect(consume(task.attemptApiRequest())).rejects.toThrow(
+						"still too large after automatic recovery",
+					)
+					expect(save).not.toHaveBeenCalled()
+					expect(create).toHaveBeenCalledOnce()
+					expect(task.apiConversationHistory).toEqual(before)
+				})
+			})
 			it("records the dispatched history so the next estimate counts only the new tail", async () => {
 				await enableOverflow(false)
 				useOverride(64_000)

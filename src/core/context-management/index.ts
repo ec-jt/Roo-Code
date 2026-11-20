@@ -187,6 +187,77 @@ export type ContextManagementResult = SummarizeResponse & {
 	offloadedCount?: number
 }
 
+function stillTooLargeError(tokens: number | undefined, inputLimit: number, contextWindow: number): string {
+	return (
+		`Context is still too large after automatic recovery (about ${tokens ?? "unknown"} tokens; ` +
+		`the limit is ${inputLimit} for a ${contextWindow}-token window). History was not changed. ` +
+		"Use a larger-context model or start a new task with a reviewed handoff."
+	)
+}
+
+/**
+ * Overflow recovery when there is no earlier history to summarize, for example when the
+ * first large tool batch overflows: `[task prompt, assistant tool calls, user tool results]`.
+ * Shortens tool results (head and tail kept, full text saved) and offloads images in the
+ * whole history, including the latest input. Tool calls and results stay paired because
+ * only the result text changes. Runs only inside overflow recovery (C-6).
+ */
+async function reduceWithoutSummary(
+	options: ContextManagementOptions,
+	unchanged: ContextManagementResult,
+): Promise<ContextManagementResult> {
+	const { messages } = options
+	const inputLimit = options.contextWindow - (options.maxTokens ?? 0)
+	const countAll = async (history: ApiMessage[]) => {
+		try {
+			return await options.apiHandler.countTokens([
+				{ type: "text", text: options.systemPrompt },
+				...messageContentBlocks(history),
+			])
+		} catch {
+			return undefined
+		}
+	}
+	let working = messages
+	let prunedCount = 0
+	let offloadedCount = 0
+	if (options.pruneToolResults !== false && options.saveArtifact) {
+		const pruned = await pruneToolResults(working, working.length, {
+			thresholdChars: DEFAULT_PRUNE_THRESHOLD_CHARS,
+			headChars: DEFAULT_PRUNE_HEAD_CHARS,
+			tailChars: DEFAULT_PRUNE_TAIL_CHARS,
+			save: options.saveArtifact,
+		})
+		working = pruned.messages
+		prunedCount = pruned.prunedCount
+	}
+	if (options.offloadImages !== false && options.saveImage && options.apiHandler.getModel().info.supportsImages) {
+		const offloaded = await offloadImages(working, working.length, options.saveImage)
+		working = offloaded.messages
+		offloadedCount = offloaded.offloadedCount
+	}
+	const estimate = await countAll(working)
+	if (prunedCount + offloadedCount === 0)
+		return { ...unchanged, error: stillTooLargeError(estimate, inputLimit, options.contextWindow) }
+	// Compare with the input limit, not the 0.9 summary budget: no summary can follow here,
+	// so a stricter margin would only refuse requests that fit. The provider stays the final
+	// judge, and a second rejection stops after the single retry. When the count fails, the
+	// reduced history is still sent once for the same reason.
+	if (estimate !== undefined && Number.isFinite(inputLimit) && inputLimit > 0 && estimate > inputLimit)
+		return { ...unchanged, error: stillTooLargeError(estimate, inputLimit, options.contextWindow) }
+	const before = await countAll(messages)
+	return {
+		messages: working,
+		summary: "",
+		cost: 0,
+		prevContextTokens: Math.max(unchanged.prevContextTokens, before ?? 0),
+		...(estimate !== undefined ? { newContextTokens: estimate } : {}),
+		pruneId: crypto.randomUUID(),
+		prunedCount,
+		...(offloadedCount ? { offloadedCount } : {}),
+	}
+}
+
 /** Summarize only on explicit overflow; truncate only for an eligible summary failure. */
 export async function manageContext(options: ContextManagementOptions): Promise<ContextManagementResult> {
 	const { messages, totalTokens: prevContextTokens } = options
@@ -202,8 +273,8 @@ export async function manageContext(options: ContextManagementOptions): Promise<
 		(message) => Array.isArray(message.content) && message.content.some((block) => block.type === "tool_result"),
 	)
 	if (hasToolResults && preserveFrom > 0) preserveFrom--
-	if (preserveFrom < 2)
-		return { ...unchanged, error: "Not enough earlier history to compact. Use manual context management." }
+	// Too little earlier history to summarize: shorten the latest input instead (D1, 4.2.91).
+	if (preserveFrom < 2) return reduceWithoutSummary(options, unchanged)
 
 	// Step 1: prune large old tool results. Step 2: offload old images to files.
 	// If that is enough, skip the summary.
@@ -342,10 +413,7 @@ export async function manageContext(options: ContextManagementOptions): Promise<
 			return {
 				...unchanged,
 				cost: result.cost,
-				error:
-					`Context is still too large after automatic recovery (about ${newContextTokens} tokens; ` +
-					`the limit is ${inputLimit} for a ${options.contextWindow}-token window). History was not changed. ` +
-					"Use a larger-context model or start a new task with a reviewed handoff.",
+				error: stillTooLargeError(newContextTokens, inputLimit, options.contextWindow),
 			}
 		}
 	}
