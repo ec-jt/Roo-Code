@@ -555,6 +555,12 @@ export type ExtensionState = Pick<
 	runningTask?: RunningTaskInfo
 	commandActivities?: CommandActivityInfo[]
 	modelOperation?: ModelOperationState
+	/**
+	 * True when the open task is finished (see `isTaskFinished` in
+	 * `src/shared/taskFinished.ts`). Profile changes then affect only the global
+	 * profile, and the chat picker does not open the "Change model" dialog.
+	 */
+	currentTaskFinished?: boolean
 	currentTaskItem?: HistoryItem
 	currentTaskTodos?: TodoItem[] // Initial todos for the current task
 	apiConfiguration: ProviderSettings

@@ -47,6 +47,7 @@ const assistant: ClineMessage = {
 }
 let state: ModelOperationState | undefined
 let profiles: { id: string; name: string }[]
+let finished: boolean | undefined
 const emptyList: never[] = []
 const emptyConfiguration = {}
 
@@ -142,6 +143,7 @@ function confirm(label: string) {
 beforeEach(() => {
 	vi.clearAllMocks()
 	state = { ...source }
+	finished = undefined
 	profiles = [
 		{ id: "target-profile", name: "Saved target" },
 		{ id: "other", name: "Other" },
@@ -150,6 +152,7 @@ beforeEach(() => {
 		() =>
 			({
 				modelOperation: state,
+				currentTaskFinished: finished,
 				listApiConfigMeta: profiles,
 				currentApiConfigName: "Saved target",
 				filePaths: emptyList,
@@ -232,6 +235,35 @@ it("allows a next-request choice even when immediate restart is blocked", () => 
 		}),
 	})
 	expect(operations()).toHaveLength(0)
+})
+
+it("changes only the global profile for a finished task, without the Change model dialog", () => {
+	finished = true
+	state = { ...source, requestId: undefined, activeProfileName: "Other" }
+	// On a completion ask the composer is enabled, so selection is not disabled.
+	render(<Harness streaming={false} selectionDisabled={false} />)
+	// The picker shows the global profile, not the finished task's saved profile.
+	expect(screen.getByRole("button", { name: "Select profile Saved target" })).toBeEnabled()
+	fireEvent.click(screen.getByRole("button", { name: /Select profile/ }))
+	expect(vscode.postMessage).toHaveBeenCalledWith({ type: "loadApiConfigurationById", text: "target-profile" })
+	expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+	expect(operations()).toHaveLength(0)
+})
+
+it("still opens the Change model dialog while streaming, even if the last ask was a completion", () => {
+	finished = true
+	render(<Harness streaming={true} />)
+	fireEvent.click(screen.getByRole("button", { name: /Select profile/ }))
+	expect(screen.getByRole("dialog")).toHaveAccessibleName("Change model")
+	expect(vscode.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: "loadApiConfigurationById" }))
+})
+
+it("keeps the Change model dialog for an unfinished idle task", () => {
+	finished = false
+	render(<Harness streaming={false} />)
+	fireEvent.click(screen.getByRole("button", { name: /Select profile/ }))
+	expect(screen.getByRole("dialog")).toHaveAccessibleName("Change model")
+	expect(vscode.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: "loadApiConfigurationById" }))
 })
 
 it("keeps the profile selector usable when the composer is disabled but not streaming", () => {

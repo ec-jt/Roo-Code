@@ -433,6 +433,99 @@ describe("ClineProvider - Sticky Provider Profile", () => {
 			// No history item => no updateTaskHistory call.
 			expect(updateTaskHistorySpy).not.toHaveBeenCalled()
 		})
+
+		describe("finished task (keepFinishedTaskProfile)", () => {
+			const finishedMessages = [
+				{ ts: 1, type: "say", say: "completion_result", text: "done" },
+				{ ts: 2, type: "ask", ask: "completion_result", text: "" },
+			]
+			const makeTask = (clineMessages: any[]) => ({
+				taskId: "finished-task",
+				_taskApiConfigName: "opus-reject",
+				clineMessages,
+				apiConversationHistory: [],
+				setTaskApiConfigName: vi.fn().mockImplementation(function (this: any, name: string) {
+					this._taskApiConfigName = name
+				}),
+				emit: vi.fn(),
+				saveClineMessages: vi.fn(),
+				updateApiConfiguration: vi.fn(),
+			})
+			const mockProfile = (name: string) => {
+				vi.spyOn(provider.providerSettingsManager, "activateProfile").mockResolvedValue({
+					name,
+					id: `${name}-id`,
+					apiProvider: "anthropic",
+				})
+				vi.spyOn(provider.providerSettingsManager, "listConfig").mockResolvedValue([
+					{ name, id: `${name}-id`, apiProvider: "anthropic" },
+				])
+			}
+
+			it("changes only the global profile for a finished task", async () => {
+				const task = makeTask(finishedMessages)
+				await provider.addClineToStack(task as any)
+				const updateTaskHistorySpy = vi
+					.spyOn(provider, "updateTaskHistory")
+					.mockImplementation(() => Promise.resolve([]))
+				mockProfile("deepseek")
+
+				await provider.activateProviderProfile(
+					{ name: "deepseek" },
+					{ explicitTaskSelection: true, keepFinishedTaskProfile: true },
+				)
+
+				expect(provider.contextProxy.getValue("currentApiConfigName")).toBe("deepseek")
+				expect(task._taskApiConfigName).toBe("opus-reject")
+				expect(task.setTaskApiConfigName).not.toHaveBeenCalled()
+				expect(task.updateApiConfiguration).not.toHaveBeenCalled()
+				expect(updateTaskHistorySpy).not.toHaveBeenCalled()
+			})
+
+			it("keeps the task-sticky update for an unfinished task", async () => {
+				const task = makeTask([{ ts: 1, type: "ask", ask: "followup", text: "?" }])
+				await provider.addClineToStack(task as any)
+				vi.spyOn(provider, "updateTaskHistory").mockImplementation(() => Promise.resolve([]))
+				mockProfile("deepseek")
+
+				await provider.activateProviderProfile(
+					{ name: "deepseek" },
+					{ explicitTaskSelection: true, keepFinishedTaskProfile: true },
+				)
+
+				expect(task.setTaskApiConfigName).toHaveBeenCalledWith("deepseek")
+				expect(task._taskApiConfigName).toBe("deepseek")
+				expect(task.updateApiConfiguration).toHaveBeenCalled()
+			})
+
+			it("keeps the task-sticky update while a completion is still partial", async () => {
+				const task = makeTask([{ ts: 1, type: "ask", ask: "completion_result", text: "", partial: true }])
+				await provider.addClineToStack(task as any)
+				vi.spyOn(provider, "updateTaskHistory").mockImplementation(() => Promise.resolve([]))
+				mockProfile("deepseek")
+
+				await provider.activateProviderProfile(
+					{ name: "deepseek" },
+					{ explicitTaskSelection: true, keepFinishedTaskProfile: true },
+				)
+
+				expect(task.setTaskApiConfigName).toHaveBeenCalledWith("deepseek")
+			})
+
+			it("does not change a finished task's profile when saving another profile", async () => {
+				const task = makeTask(finishedMessages)
+				await provider.addClineToStack(task as any)
+				vi.spyOn(provider, "updateTaskHistory").mockImplementation(() => Promise.resolve([]))
+				vi.spyOn(provider.providerSettingsManager, "saveConfig").mockResolvedValue("deepseek-id")
+				vi.spyOn(provider.providerSettingsManager, "listConfig").mockResolvedValue([])
+				vi.spyOn(provider.providerSettingsManager, "setModeConfig").mockResolvedValue()
+
+				await provider.upsertProviderProfile("deepseek", { apiProvider: "anthropic" })
+
+				expect(task.setTaskApiConfigName).not.toHaveBeenCalled()
+				expect(task.updateApiConfiguration).not.toHaveBeenCalled()
+			})
+		})
 	})
 
 	describe("createTaskWithHistoryItem", () => {

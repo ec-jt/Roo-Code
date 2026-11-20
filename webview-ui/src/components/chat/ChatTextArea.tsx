@@ -103,16 +103,20 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 			lockApiConfigAcrossModes,
 			modelOperation,
 			currentTaskItem,
+			currentTaskFinished,
 		} = useExtensionState()
 
 		// Find the ID and display text for the currently selected API configuration.
+		// A finished task keeps its saved profile, so the picker shows the global profile.
 		const { currentConfigId, displayName } = useMemo(() => {
 			const currentConfig = listApiConfigMeta?.find((config) =>
 				modelOperation?.nextProfileId
 					? config.id === modelOperation.nextProfileId
 					: modelOperation?.profileId
 						? config.id === modelOperation.profileId
-						: config.name === (modelOperation?.activeProfileName ?? currentApiConfigName),
+						: config.name ===
+							((currentTaskFinished ? undefined : modelOperation?.activeProfileName) ??
+								currentApiConfigName),
 			)
 			return {
 				currentConfigId: currentConfig?.id || "",
@@ -124,6 +128,7 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 			modelOperation?.profileId,
 			modelOperation?.nextProfileId,
 			modelOperation?.activeProfileName,
+			currentTaskFinished,
 		])
 
 		const [gitCommits, setGitCommits] = useState<any[]>([])
@@ -959,16 +964,22 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 			[setMode],
 		)
 
-		// Helper function to handle API config change
+		// Helper function to handle API config change.
+		// A finished task (extension `isTaskFinished`) keeps its saved profile: choosing a
+		// profile changes only the global profile, with no "Change model" dialog.
 		const handleApiConfigChange = useCallback(
 			(value: string) => {
+				if (!isStreaming && currentTaskFinished) {
+					vscode.postMessage({ type: "loadApiConfigurationById", text: value })
+					return
+				}
 				if (isStreaming || (modelOperationControls && modelOperation)) {
 					modelOperationControls?.open("switch", undefined, value)
 					return
 				}
 				vscode.postMessage({ type: "loadApiConfigurationById", text: value })
 			},
-			[isStreaming, modelOperationControls, modelOperation],
+			[isStreaming, modelOperationControls, modelOperation, currentTaskFinished],
 		)
 
 		const handleToggleLockApiConfig = useCallback(() => {
@@ -1352,7 +1363,7 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 							disabled={
 								isEditMode ||
 								chatWindow?.following === false ||
-								(modelOperationControls && modelOperation
+								(modelOperationControls && modelOperation && (isStreaming || !currentTaskFinished)
 									? modelOperationControls.busy
 									: selectApiConfigDisabled)
 							}

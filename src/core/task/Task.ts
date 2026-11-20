@@ -94,6 +94,7 @@ import { maybeRemoveImageBlocks } from "../../api/transform/image-cleaning"
 
 // shared
 import { findLastIndex } from "../../shared/array"
+import { isTaskFinished } from "../../shared/taskFinished"
 import { combineApiRequests } from "../../shared/combineApiRequests"
 import { ChatHistoryIndex } from "../webview/history/ChatHistoryIndex"
 import {
@@ -1424,6 +1425,11 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			if (this.abort || this.abandoned || this.modelOperationClosed || provider.getCurrentTask?.() !== this) {
 				return
 			}
+			// A finished task keeps the provider profile it ran with. Global profile
+			// changes (picker, Settings, delete) must not rebuild its API handler.
+			if (isTaskFinished(this)) {
+				return
+			}
 			// Delegation-inherited configuration must survive incidental global
 			// activations until an explicit task selection. Explicit changes clear
 			// `inheritedApiConfigurationLock`.
@@ -1442,7 +1448,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 					this.modelOperationClosed ||
 					provider.getCurrentTask?.() !== this ||
 					this.inheritedApiConfigurationLock ||
-					selectionEpoch !== this.inheritedApiConfigurationEpoch
+					selectionEpoch !== this.inheritedApiConfigurationEpoch ||
+					isTaskFinished(this)
 				) {
 					return
 				}

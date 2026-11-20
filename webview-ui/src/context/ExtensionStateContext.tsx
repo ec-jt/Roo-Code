@@ -222,6 +222,7 @@ export const mergeExtensionState = (prevState: ExtensionState, newState: Partial
 			nextOperation.revision < previousOperation.revision)
 	) {
 		rest.modelOperation = previousOperation
+		rest.currentTaskFinished = prevState.currentTaskFinished
 		rest.clineMessagesSeq = prevState.clineMessagesSeq
 	} else if (
 		Object.prototype.hasOwnProperty.call(newState, "currentTaskId") &&

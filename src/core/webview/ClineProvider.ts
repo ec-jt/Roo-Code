@@ -48,6 +48,7 @@ import { fileDiffs } from "./history/ChatHistoryIndex"
 import { Package } from "../../shared/package"
 import { chatMessageText } from "../../shared/chat-preview"
 import { findLast } from "../../shared/array"
+import { isTaskFinished } from "../../shared/taskFinished"
 import { newTaskContent } from "../task/subtask-links"
 import { pinTaskStateRecall } from "../../services/task-state/taskState"
 import { architectureIdsInScope } from "../../services/architecture-context"
@@ -1600,6 +1601,7 @@ export class ClineProvider
 					clineMessagesSeq: ++this.clineMessagesSeq,
 					currentTaskId: task?.taskId,
 					modelOperation: task?.modelOperationState,
+					currentTaskFinished: isTaskFinished(task),
 					currentTaskTodos: task?.todoList ?? [],
 				})
 				if (message.state.currentTaskItem?.id !== task?.taskId) message.state.currentTaskItem = undefined
@@ -2284,6 +2286,10 @@ export class ClineProvider
 	): Promise<string | undefined> {
 		this.delegationRevision++
 		const targetTask = this.getCurrentTask()
+		// A finished task keeps its saved profile: saving and activating a DIFFERENT
+		// profile changes only the global profile. Saving the task's own profile still
+		// applies the edited settings to it, as before.
+		const keepTaskProfile = isTaskFinished(targetTask) && targetTask?.taskApiConfigName !== name
 		try {
 			// TODO: Do we need to be calling `activateProfile`? It's not
 			// clear to me what the source of truth should be; in some cases
@@ -2314,7 +2320,7 @@ export class ClineProvider
 
 				// Change the provider for the current task.
 				// TODO: We should rename `buildApiHandler` for clarity (e.g. `getProviderClient`).
-				if (this.getCurrentTask() === targetTask) {
+				if (this.getCurrentTask() === targetTask && !keepTaskProfile) {
 					targetTask?.releaseInheritedApiConfigurationLock?.()
 					this.updateTaskApiHandlerIfNeeded(providerSettings, { forceRebuild: true })
 					await this.persistStickyProviderProfileToCurrentTask(name)
@@ -2395,7 +2401,17 @@ export class ClineProvider
 
 	async activateProviderProfile(
 		args: { name: string } | { id: string },
-		options?: { persistModeConfig?: boolean; persistTaskHistory?: boolean; explicitTaskSelection?: boolean },
+		options?: {
+			persistModeConfig?: boolean
+			persistTaskHistory?: boolean
+			explicitTaskSelection?: boolean
+			/**
+			 * Global profile changes from the UI (picker, Settings, delete). When the
+			 * open task is finished (see `isTaskFinished`), only the global profile
+			 * changes: the task keeps its saved `apiConfigName` and its API handler.
+			 */
+			keepFinishedTaskProfile?: boolean
+		},
 	) {
 		this.delegationRevision++
 		const targetTask = this.getCurrentTask()
@@ -2403,6 +2419,7 @@ export class ClineProvider
 
 		const persistModeConfig = options?.persistModeConfig ?? true
 		const persistTaskHistory = options?.persistTaskHistory ?? true
+		const keepTaskProfile = options?.keepFinishedTaskProfile === true && isTaskFinished(targetTask)
 
 		// See `upsertProviderProfile` for a description of what this is doing.
 		await Promise.all([
@@ -2417,8 +2434,9 @@ export class ClineProvider
 			await this.providerSettingsManager.setModeConfig(mode, id)
 		}
 
-		// Change the provider for the current task.
-		if (this.getCurrentTask() === targetTask) {
+		// Change the provider for the current task, unless it is finished and this is
+		// a global-only change.
+		if (this.getCurrentTask() === targetTask && !keepTaskProfile) {
 			if (options?.explicitTaskSelection) targetTask?.releaseInheritedApiConfigurationLock?.()
 			this.updateTaskApiHandlerIfNeeded(providerSettings, { forceRebuild: true })
 
@@ -3181,6 +3199,7 @@ export class ClineProvider
 			memoryEnabledForCurrentProject: await this.memoryController.enabled(),
 			runningTask: this.runningTaskMonitor.value,
 			modelOperation: currentTask?.modelOperationState,
+			currentTaskFinished: isTaskFinished(currentTask),
 			currentTaskItem: currentTask?.taskId
 				? (() => {
 						const item = this.taskHistoryStore.get(currentTask.taskId)

@@ -2044,7 +2044,11 @@ export const webviewMessageHandler = async (
 		case "loadApiConfiguration":
 			if (message.text) {
 				try {
-					await provider.activateProviderProfile({ name: message.text }, { explicitTaskSelection: true })
+					// A finished task keeps its saved profile; only the global profile changes.
+					await provider.activateProviderProfile(
+						{ name: message.text },
+						{ explicitTaskSelection: true, keepFinishedTaskProfile: true },
+					)
 				} catch (error) {
 					provider.log(
 						`Error load api configuration: ${JSON.stringify(error, Object.getOwnPropertyNames(error), 2)}`,
@@ -2056,7 +2060,11 @@ export const webviewMessageHandler = async (
 		case "loadApiConfigurationById":
 			if (message.text) {
 				try {
-					await provider.activateProviderProfile({ id: message.text }, { explicitTaskSelection: true })
+					// A finished task keeps its saved profile; only the global profile changes.
+					await provider.activateProviderProfile(
+						{ id: message.text },
+						{ explicitTaskSelection: true, keepFinishedTaskProfile: true },
+					)
 				} catch (error) {
 					provider.log(
 						`Error load api configuration by ID: ${JSON.stringify(error, Object.getOwnPropertyNames(error), 2)}`,
@@ -2079,9 +2087,15 @@ export const webviewMessageHandler = async (
 
 				const oldName = message.text
 
-				const newName = (await provider.providerSettingsManager.listConfig()).filter(
+				const remaining = (await provider.providerSettingsManager.listConfig()).filter(
 					(c) => c.name !== oldName,
-				)[0]?.name
+				)
+				const currentName = getGlobalState("currentApiConfigName")
+				// Keep the current global profile unless it is the one being deleted.
+				const newName =
+					currentName && currentName !== oldName && remaining.some((c) => c.name === currentName)
+						? currentName
+						: remaining[0]?.name
 
 				if (!newName) {
 					vscode.window.showErrorMessage(t("common:errors.delete_api_config"))
@@ -2090,7 +2104,13 @@ export const webviewMessageHandler = async (
 
 				try {
 					await provider.providerSettingsManager.deleteConfig(oldName)
-					await provider.activateProviderProfile({ name: newName }, { explicitTaskSelection: true })
+					// Re-activating refreshes the profile list and global settings. A finished
+					// task keeps its saved profile. An unfinished task follows the activated
+					// profile as before (its sticky profile moves when it was the deleted one).
+					await provider.activateProviderProfile(
+						{ name: newName },
+						{ explicitTaskSelection: true, keepFinishedTaskProfile: true },
+					)
 				} catch (error) {
 					provider.log(
 						`Error delete api configuration: ${JSON.stringify(error, Object.getOwnPropertyNames(error), 2)}`,
