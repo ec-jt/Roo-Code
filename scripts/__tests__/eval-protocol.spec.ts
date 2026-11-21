@@ -275,8 +275,127 @@ describe("matrix", () => {
 		expect(evaluateMatrix(basePlan(), inputs).ok).toBe(false)
 	})
 
+	it("parses group on cells and runs", () => {
+		const parsed = parsePlan(
+			`{"cells":[{"scenario":"S2","group":"opus","arm":"cordis"}],"runs":{"t-1":{"scenario":"S2","group":"opus","arm":"cordis"}}}`,
+		)
+		expect(parsed.errors).toEqual([])
+		expect(parsed.plan.cells[0]!.group).toBe("opus")
+		expect(parsed.plan.runs[0]!.group).toBe("opus")
+		const bad = parsePlan(`{"cells":[{"scenario":"S2","group":3,"arm":"cordis"}],"runs":{}}`)
+		expect(bad.errors[0]).toMatch(/group/)
+	})
+
 	it("lists settings differences by dot path", () => {
 		expect(settingsDifferences({ a: { b: 1, c: 2 } }, { a: { b: 1, c: 3 }, d: true }, ["d"])).toEqual(["a.c"])
+	})
+})
+
+function groupedPlan(): Plan {
+	const cells: Plan["cells"] = []
+	const runs: Plan["runs"] = []
+	for (const group of ["opus", "deepseek"]) {
+		for (const arm of ["cordis", "modes"]) {
+			cells.push({ scenario: "S2", group, arm, samples: 2 })
+			for (const sample of ["r1", "r2"]) {
+				runs.push({ taskId: `${group}-${arm[0]}${sample[1]}`, scenario: "S2", group, arm, sample })
+			}
+		}
+	}
+	return { build: "4.2.95", cells, runs, armSettings: { S2: ["experiments.cordisRuntimePreview"] } }
+}
+
+function groupedInputs(): Map<string, RunInput> {
+	const inputs = new Map<string, RunInput>()
+	for (const group of ["opus", "deepseek"]) {
+		const model =
+			group === "opus"
+				? { provider: "anthropic", modelId: "claude-opus-5-5" }
+				: {
+						provider: "deepseek",
+						modelId: "deepseek-chat",
+					}
+		for (const n of ["1", "2"]) {
+			const c = `${group}-c${n}`
+			const m = `${group}-m${n}`
+			inputs.set(c, { manifest: manifest(c, model), metrics: { ...metrics, cost: group === "opus" ? 4 : 1 } })
+			inputs.set(m, { manifest: modesManifest(m, model), metrics })
+		}
+	}
+	return inputs
+}
+
+describe("matrix with groups", () => {
+	it("keys cells by scenario, group and arm without duplicate-cell errors", () => {
+		const report = evaluateMatrix(groupedPlan(), groupedInputs())
+		expect(report.planProblems).toEqual([])
+		expect(report.cells).toHaveLength(4)
+		expect(report.ok).toBe(true)
+	})
+
+	it("does not report a model mismatch between groups", () => {
+		const problems = evaluateMatrix(groupedPlan(), groupedInputs())
+			.cells.flatMap((c) => c.problems)
+			.join("\n")
+		expect(problems).not.toMatch(/modelId|provider/)
+	})
+
+	it("reports a model mismatch across arms inside one group", () => {
+		const inputs = groupedInputs()
+		inputs.set("deepseek-m1", {
+			manifest: modesManifest("deepseek-m1", { provider: "deepseek", modelId: "deepseek-reasoner" }),
+			metrics,
+		})
+		inputs.set("deepseek-m2", {
+			manifest: modesManifest("deepseek-m2", { provider: "deepseek", modelId: "deepseek-reasoner" }),
+			metrics,
+		})
+		const report = evaluateMatrix(groupedPlan(), inputs)
+		expect(report.ok).toBe(false)
+		const byCell = (group: string, arm: string) =>
+			report.cells.find((c) => c.cell.group === group && c.cell.arm === arm)!.problems.join("\n")
+		expect(byCell("deepseek", "modes")).toMatch(/arm mismatch in S2\/deepseek: modelId deepseek-chat/)
+		expect(byCell("opus", "modes")).toBe("")
+		expect(byCell("opus", "cordis")).toBe("")
+	})
+
+	it("checks cells per group and names the group in problems", () => {
+		const plan = groupedPlan()
+		plan.runs = plan.runs.filter((r) => r.taskId !== "opus-m2")
+		const report = evaluateMatrix(plan, groupedInputs())
+		expect(report.cells.find((c) => c.cell.group === "opus" && c.cell.arm === "modes")!.problems).toContain(
+			"missing 1 of 2 sample(s) in S2/opus/modes",
+		)
+		expect(report.cells.find((c) => c.cell.group === "deepseek" && c.cell.arm === "modes")!.ok).toBe(true)
+	})
+
+	it("matches a run only to the cell of its own group", () => {
+		const plan = groupedPlan()
+		plan.runs.push({ taskId: "x-1", scenario: "S2", group: "gpt", arm: "cordis" })
+		const report = evaluateMatrix(plan, groupedInputs())
+		expect(report.runs.find((r) => r.run.taskId === "x-1")!.problems).toContain("no cell S2/gpt/cordis in plan")
+	})
+
+	it("reports means per group", () => {
+		const report = evaluateMatrix(groupedPlan(), groupedInputs())
+		const mean = (group: string) => report.means.find((m) => m.group === group && m.arm === "cordis")!
+		expect(mean("opus").mean.cost).toBe(4)
+		expect(mean("deepseek").mean.cost).toBe(1)
+		expect(report.means).toHaveLength(4)
+	})
+
+	it("still reports a duplicate cell inside one group", () => {
+		const plan = groupedPlan()
+		plan.cells.push({ scenario: "S2", group: "opus", arm: "cordis", samples: 1 })
+		expect(evaluateMatrix(plan, groupedInputs()).planProblems).toContain("duplicate cell in plan: S2/opus/cordis")
+	})
+
+	it("keeps the ungrouped key and messages unchanged", () => {
+		const report = evaluateMatrix(basePlan(), validInputs())
+		expect(report.means.every((m) => m.group === undefined)).toBe(true)
+		const plan = basePlan()
+		plan.cells.push({ scenario: "S2", arm: "cordis", samples: 1 })
+		expect(evaluateMatrix(plan, validInputs()).planProblems).toContain("duplicate cell in plan: S2/cordis")
 	})
 })
 
@@ -367,8 +486,50 @@ describe("blind review", () => {
 		expect(score.unknown).toEqual(["pair-9"])
 	})
 
+	it("pairs runs only within one group", () => {
+		const plan = groupedPlan()
+		const opus = pairRuns(plan, "S2", "opus")
+		expect(opus.problems).toEqual([])
+		expect(opus.pairs.map((p) => [p.sample, p.runs[0].taskId, p.runs[1].taskId])).toEqual([
+			["r1", "opus-c1", "opus-m1"],
+			["r2", "opus-c2", "opus-m2"],
+		])
+		const deepseek = pairRuns(plan, "S2", "deepseek")
+		for (const pair of deepseek.pairs) expect(pair.runs.every((r) => r.group === "deepseek")).toBe(true)
+		expect(deepseek.pairs).toHaveLength(2)
+	})
+
+	it("refuses to pair across groups when no group is chosen", () => {
+		const pairing = pairRuns(groupedPlan(), "S2")
+		expect(pairing.pairs).toEqual([])
+		expect(pairing.problems[0]).toMatch(/more than one group/)
+	})
+
+	it("records the group in the blind key", () => {
+		const pairing = pairRuns(groupedPlan(), "S2", "opus")
+		const { key } = assignBlind("S2", pairing.pairs, fixedRandom([0.2]), new Date(0), "opus")
+		expect(key.group).toBe("opus")
+		const { key: ungrouped } = assignBlind("S2", pairRuns(basePlan(), "S2").pairs, fixedRandom([0.2]))
+		expect("group" in ungrouped).toBe(false)
+	})
+
 	it("counts arm names in added diff lines", () => {
 		const diff = "+++ b/file.ts\n+// cordis profile\n-// modes\n context"
 		expect(countArmMentions(diff, ["cordis", "modes"])).toEqual({ cordis: 1, modes: 0 })
+	})
+
+	it("counts arm names as whole words only", () => {
+		const arms = ["cordis", "modes"]
+		expect(countArmMentions("+const customModes = []", arms).modes).toBe(0)
+		expect(countArmMentions("+the modes arm", arms).modes).toBe(1)
+		expect(countArmMentions("+use modes.", arms).modes).toBe(1)
+		expect(countArmMentions('+"modes"', arms).modes).toBe(1)
+		expect(countArmMentions("+Modes", arms).modes).toBe(1)
+		expect(countArmMentions("+v4.2.95-cordis-preview", arms).cordis).toBe(1)
+		expect(countArmMentions("+cordisRuntimePreview", arms).cordis).toBe(0)
+		expect(countArmMentions("+modes2", arms).modes).toBe(0)
+		// Regex characters in an arm name are matched literally.
+		expect(countArmMentions("+a.b and axb", ["a.b"])["a.b"]).toBe(1)
+		expect(countArmMentions("+axb", ["a.b"])["a.b"]).toBe(0)
 	})
 })

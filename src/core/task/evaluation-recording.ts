@@ -154,6 +154,11 @@ export class EvaluationRecorder {
 	private stop?: EvaluationRecord["stop"]
 	private stopRecorded = false
 	private stopsSuspended = false
+	/**
+	 * In memory only. True while the task waits at a `completion_result` ask. Leaving the task from
+	 * there (Start New Task, clear, another task opened, window closed) is then recorded as "completed".
+	 */
+	completionReached = false
 	private queue: Promise<void> = Promise.resolve()
 	private readonly write: (filePath: string, data: unknown) => Promise<void>
 	private readonly read: (filePath: string) => Promise<string>
@@ -309,16 +314,59 @@ export async function writeTaskEvaluationManifest(task: EvaluationTaskSource, pr
 }
 
 /**
- * Stop reason for an abort. A user cancel is "user-stopped". A close while a failed request was
+ * Stop reason for an abort. A user cancel is "user-stopped". A close while the task waits at its
+ * completion ask (or a reopened completed task) is "completed". A close while a failed request was
  * waiting for retry is "error". Any other close (another task opened, panel or host closed) is "abandoned".
  */
 export function abortStopReason(input: {
 	abortReason?: string
 	lastAsk?: string
-}): Extract<EvaluationStopReason, "user-stopped" | "error" | "abandoned"> {
+	completionReached?: boolean
+}): Extract<EvaluationStopReason, "completed" | "user-stopped" | "error" | "abandoned"> {
 	if (input.abortReason === "user_cancelled") return "user-stopped"
+	if (input.completionReached || input.lastAsk === "resume_completed_task") return "completed"
 	if (input.lastAsk === "api_req_failed") return "error"
 	return "abandoned"
+}
+
+/** The parts of a Task that a shutdown stop needs. */
+export interface EvaluationShutdownSource {
+	readonly evaluationRecorder?: EvaluationRecorder
+	readonly abortReason?: string
+	readonly clineMessages?: ReadonlyArray<{ say?: string; ask?: string }>
+}
+
+export const SHUTDOWN_FLUSH_TIMEOUT_MS = 1_500
+
+/**
+ * Record a stop for a task that is closed by extension shutdown or provider disposal, and wait for
+ * the write, at most `timeoutMs`. Best effort: never throws, never blocks shutdown for long.
+ */
+export async function recordShutdownStop(
+	task: EvaluationShutdownSource | undefined,
+	timeoutMs = SHUTDOWN_FLUSH_TIMEOUT_MS,
+): Promise<void> {
+	const recorder = task?.evaluationRecorder
+	if (!recorder) return
+	let timer: ReturnType<typeof setTimeout> | undefined
+	try {
+		const reason = abortStopReason({
+			abortReason: task.abortReason,
+			lastAsk: task.clineMessages?.at(-1)?.ask,
+			completionReached: recorder.completionReached,
+		})
+		void recorder.recordStop(reason, countApiRequests(task.clineMessages))
+		await Promise.race([
+			recorder.flush(),
+			new Promise<void>((resolve) => {
+				timer = setTimeout(resolve, timeoutMs)
+			}),
+		])
+	} catch (error) {
+		console.warn(`[evaluation-recording] shutdown stop skipped: ${errorText(error)}`)
+	} finally {
+		if (timer) clearTimeout(timer)
+	}
 }
 
 /** Number of model requests shown in the task (one `api_req_started` row each). */

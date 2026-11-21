@@ -4013,7 +4013,11 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		this.consecutiveNoAssistantMessagesCount = 0
 
 		this.recordEvaluationStop(
-			abortStopReason({ abortReason: this.abortReason, lastAsk: this.clineMessages.at(-1)?.ask }),
+			abortStopReason({
+				abortReason: this.abortReason,
+				lastAsk: this.clineMessages.at(-1)?.ask,
+				completionReached: this.evaluationRecorder?.completionReached,
+			}),
 		)
 
 		// Force final token usage update before abort event

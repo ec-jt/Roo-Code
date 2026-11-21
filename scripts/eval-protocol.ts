@@ -4,7 +4,7 @@
  *
  *   pnpm eval:protocol leak-check   --workspace <dir> --protocol <file> [--extra <strings-file>]
  *   pnpm eval:protocol matrix       --plan <plan.json> --tasks-dir <globalStorage>/tasks
- *   pnpm eval:protocol blind-export --plan <plan.json> --scenario S2 --workspaces <map.json> --out <dir>
+ *   pnpm eval:protocol blind-export --plan <plan.json> --scenario S2 [--group <g>] --workspaces <map.json> --out <dir>
  *   pnpm eval:protocol blind-score  --out <dir> --answers <answers.json>
  *
  * Constraints: reads only the task folders named in the plan and never writes task storage (C-5);
@@ -65,11 +65,15 @@ Commands:
       Checks the planned cells against each run's evaluation.json and prints
       requests, tokens, cache and cost per run and the mean per arm. Reads only
       the task folders listed in plan.runs. Exit 1 if any cell is invalid.
+      Cells and runs may set "group" (for example a model); arms are then
+      compared, and means reported, per scenario and group.
 
-  blind-export  --plan <plan.json> --scenario <id> --workspaces <map.json> --out <dir>
-                [--protocol <file>]
+  blind-export  --plan <plan.json> --scenario <id> [--group <g>] --workspaces <map.json>
+                --out <dir> [--protocol <file>]
       Writes one anonymised folder per matched pair under <out>/judge/ (A.diff,
       B.diff, judge-prompt.md), and <out>/key.json outside it. Calls no model.
+      Pairs only runs of one group; --group is required when the scenario's
+      runs are in more than one group.
 
   blind-score   --out <dir> --answers <answers.json>
       Joins the judge's choices to the arms with <out>/key.json and prints wins.
@@ -328,10 +332,17 @@ async function matrix(argv: string[]): Promise<number> {
 	}
 	const report = evaluateMatrix(parsed.plan, inputs, parsed.duplicateTaskIds)
 
+	const grouped =
+		parsed.plan.cells.some((c) => c.group !== undefined) || parsed.plan.runs.some((r) => r.group !== undefined)
+	const groupCol = (group: string | undefined) => (grouped ? [group ?? "-"] : [])
+	const runLabel = (run: { scenario: string; group?: string; arm: string }) =>
+		run.group === undefined ? `${run.scenario}/${run.arm}` : `${run.scenario}/${run.group}/${run.arm}`
+
 	console.log(`\nRuns (build ${parsed.plan.build ?? "not set"}, ${parsed.plan.runs.length} runs)\n`)
 	const header = [
 		"task",
 		"scenario",
+		...(grouped ? ["group"] : []),
 		"arm",
 		"sample",
 		"status",
@@ -347,6 +358,7 @@ async function matrix(argv: string[]): Promise<number> {
 	const rows = report.runs.map((r) => [
 		r.run.taskId.slice(0, 8),
 		r.run.scenario,
+		...groupCol(r.run.group),
 		r.run.arm,
 		r.run.sample ?? "",
 		r.status,
@@ -359,9 +371,10 @@ async function matrix(argv: string[]): Promise<number> {
 	console.log("\nCells\n")
 	console.log(
 		formatTable(
-			["scenario", "arm", "expected", "present", "scorable", "ok"],
+			["scenario", ...(grouped ? ["group"] : []), "arm", "expected", "present", "scorable", "ok"],
 			report.cells.map((c) => [
 				c.cell.scenario,
+				...groupCol(c.cell.group),
 				c.cell.arm,
 				String(c.cell.samples),
 				String(c.present),
@@ -374,20 +387,37 @@ async function matrix(argv: string[]): Promise<number> {
 	const problems = [
 		...parsed.errors.map((e) => `plan: ${e}`),
 		...report.planProblems,
-		...report.runs.flatMap((r) =>
-			r.problems.map((p) => `${r.run.taskId.slice(0, 8)} (${r.run.scenario}/${r.run.arm}): ${p}`),
-		),
+		...report.runs.flatMap((r) => r.problems.map((p) => `${r.run.taskId.slice(0, 8)} (${runLabel(r.run)}): ${p}`)),
 		...report.cells.flatMap((c) => c.problems),
 	]
 	const notes = report.runs.flatMap((r) => r.notes.map((n) => `${r.run.taskId.slice(0, 8)}: ${n}`))
 	if (notes.length > 0) console.log(`\nNotes\n${notes.map((n) => `- ${n}`).join("\n")}`)
 	if (problems.length > 0) console.log(`\nProblems\n${problems.map((p) => `- ${p}`).join("\n")}`)
 
-	console.log("\nMean per arm (valid runs only; excluded and invalid runs are left out)\n")
+	console.log(
+		`\nMean per arm${grouped ? " and group" : ""} (valid runs only; excluded and invalid runs are left out)\n`,
+	)
 	console.log(
 		formatTable(
-			["scenario", "arm", "runs", "requests", "tokens in", "tokens out", "cache read", "cache write", "cost"],
-			report.means.map((m) => [m.scenario, m.arm, String(m.runs), ...metricsCells(m.mean, 1)]),
+			[
+				"scenario",
+				...(grouped ? ["group"] : []),
+				"arm",
+				"runs",
+				"requests",
+				"tokens in",
+				"tokens out",
+				"cache read",
+				"cache write",
+				"cost",
+			],
+			report.means.map((m) => [
+				m.scenario,
+				...groupCol(m.group),
+				m.arm,
+				String(m.runs),
+				...metricsCells(m.mean, 1),
+			]),
 		),
 	)
 
@@ -468,9 +498,10 @@ const cryptoRandom = {
 }
 
 async function blindExport(argv: string[]): Promise<number> {
-	const args = parseArgs(argv, ["plan", "scenario", "workspaces", "out", "protocol"])
+	const args = parseArgs(argv, ["plan", "scenario", "group", "workspaces", "out", "protocol"])
 	const planPath = path.resolve(required(args, "plan"))
 	const scenario = required(args, "scenario")
+	const group = args.group
 	const mapPath = path.resolve(required(args, "workspaces"))
 	const outDir = path.resolve(required(args, "out"))
 	const protocolPath = path.resolve(args.protocol ?? DEFAULT_PROTOCOL)
@@ -484,7 +515,7 @@ async function blindExport(argv: string[]): Promise<number> {
 	if (!taskPrompt) throw new UsageError(`No prompt for scenario ${scenario} in section 4 of ${protocolPath}`)
 	const workspaces = parseWorkspaces(await readJson(mapPath), path.dirname(mapPath))
 
-	const pairing = pairRuns(parsed.plan, scenario)
+	const pairing = pairRuns(parsed.plan, scenario, group)
 	for (const problem of pairing.problems) console.log(problem)
 	for (const run of pairing.unpaired) console.log(`unpaired run left out: ${run.taskId.slice(0, 8)} (${run.arm})`)
 	if (pairing.pairs.length === 0) {
@@ -503,7 +534,7 @@ async function blindExport(argv: string[]): Promise<number> {
 		throw new UsageError(`${outDir} already has an export. Use a new --out folder.`)
 	}
 
-	const { assignments, key } = assignBlind(scenario, pairing.pairs, cryptoRandom)
+	const { assignments, key } = assignBlind(scenario, pairing.pairs, cryptoRandom, new Date(), group)
 	for (const assignment of assignments) {
 		const pairDir = path.join(judgeDir, assignment.pairId)
 		await fs.mkdir(pairDir, { recursive: true })
@@ -530,7 +561,7 @@ async function blindExport(argv: string[]): Promise<number> {
 	for (const assignment of assignments) template[assignment.pairId] = ""
 	await safeWriteJson(path.join(outDir, "answers.template.json"), template, { prettyPrint: true })
 
-	console.log(`Exported ${assignments.length} pair(s) for ${scenario}.`)
+	console.log(`Exported ${assignments.length} pair(s) for ${scenario}${group !== undefined ? `/${group}` : ""}.`)
 	console.log(`Judge folder (give only this to the judge): ${judgeDir}`)
 	console.log(`Key (keep away from the judge): ${keyPath}`)
 	console.log(`Answers template: ${path.join(outDir, "answers.template.json")}`)
@@ -551,7 +582,8 @@ async function blindScore(argv: string[]): Promise<number> {
 	if (!isRecord(answers)) throw new UsageError("answers must be a JSON object keyed by pair ID")
 
 	const score = scoreBlind(key, answers)
-	console.log(`Blind review ${key.scenario}: ${score.answered} of ${Object.keys(key.pairs).length} pairs answered.\n`)
+	const reviewLabel = typeof key.group === "string" ? `${key.scenario}/${key.group}` : key.scenario
+	console.log(`Blind review ${reviewLabel}: ${score.answered} of ${Object.keys(key.pairs).length} pairs answered.\n`)
 	console.log(
 		formatTable(
 			["pair", "sample", "winner arm", "winner task"],

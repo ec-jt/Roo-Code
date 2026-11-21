@@ -161,6 +161,7 @@
 		"mode_exported": "Modalità '{{mode}}' esportata con successo",
 		"mode_imported": "Modalità importata con successo",
 		"cordis_mode_locked": "Questa attività Cordis mantiene la modalità con cui è iniziata. Avvia una nuova attività per usare un'altra modalità.",
+		"mode_profile_changed": "La modalità {{mode}} usa il profilo {{profile}}. Profilo cambiato da {{previous}}.",
 		"plan_overlay_cordis_only": "L'overlay di pianificazione è disponibile nelle attività di anteprima Cordis."
 	},
 	"answers": {

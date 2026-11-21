@@ -161,6 +161,7 @@
 		"mode_exported": "Modus '{{mode}}' succesvol geëxporteerd",
 		"mode_imported": "Modus succesvol geïmporteerd",
 		"cordis_mode_locked": "Deze Cordis-taak houdt de modus waarmee hij is gestart. Start een nieuwe taak om een andere modus te gebruiken.",
+		"mode_profile_changed": "Modus {{mode}} gebruikt profiel {{profile}}. Profiel gewijzigd van {{previous}}.",
 		"plan_overlay_cordis_only": "De plan-overlay is beschikbaar in Cordis-previewtaken."
 	},
 	"answers": {

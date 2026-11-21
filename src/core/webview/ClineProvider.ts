@@ -56,6 +56,7 @@ import { canRecoverSubtaskReturn } from "../task/subtask-return"
 import { supportPrompt } from "../../shared/support-prompt"
 import { GlobalFileNames } from "../../shared/globalFileNames"
 import { Mode, defaultModeSlug, getModeBySlug } from "../../shared/modes"
+import { recordShutdownStop } from "../task/evaluation-recording"
 import { experimentDefault } from "../../shared/experiments"
 import { formatLanguage } from "../../shared/language"
 import { WebviewMessage } from "../../shared/WebviewMessage"
@@ -1006,12 +1007,22 @@ export class ClineProvider
 		}
 	}
 
+	/**
+	 * Record an evaluation stop for the current task and wait for the write, at most about 1.5 s.
+	 * Used on provider disposal and extension deactivation. Best effort, never throws.
+	 */
+	public async recordShutdownEvaluationStop(): Promise<void> {
+		await recordShutdownStop(this.getCurrentTask())
+	}
+
 	async dispose() {
 		if (this._disposed) {
 			return
 		}
 
 		this._disposed = true
+		// The stop is recorded first, so it is written even if the host exits during task disposal.
+		await this.recordShutdownEvaluationStop()
 		if (this.chatWindowTimer) clearTimeout(this.chatWindowTimer)
 		this.chatWindowDiagnostics.dispose()
 		this.chatHistoryDocument?.dispose()
@@ -2183,7 +2194,19 @@ export class ClineProvider
 				const hasActualSettings = !!fullProfile.apiProvider
 
 				if (hasActualSettings) {
+					const previousProfile = this.getGlobalState("currentApiConfigName")
 					await this.activateProviderProfile({ name: profile.name })
+					// Existing behaviour, made visible: no task is open here (Q-USE-1 covers open tasks).
+					if (previousProfile && previousProfile !== profile.name) {
+						const customModes = await this.customModesManager.getCustomModes()
+						void vscode.window.showInformationMessage(
+							t("common:info.mode_profile_changed", {
+								mode: getModeBySlug(newMode, customModes)?.name ?? newMode,
+								profile: profile.name,
+								previous: previousProfile,
+							}),
+						)
+					}
 				} else {
 					// The task will continue with the current/default configuration.
 				}

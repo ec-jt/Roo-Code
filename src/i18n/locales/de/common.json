@@ -161,6 +161,7 @@
 		"mode_exported": "Modus '{{mode}}' erfolgreich exportiert",
 		"mode_imported": "Modus erfolgreich importiert",
 		"cordis_mode_locked": "Diese Cordis-Aufgabe behält den Modus, mit dem sie gestartet wurde. Starte eine neue Aufgabe, um einen anderen Modus zu verwenden.",
+		"mode_profile_changed": "Modus {{mode}} verwendet das Profil {{profile}}. Profil gewechselt von {{previous}}.",
 		"plan_overlay_cordis_only": "Das Plan-Overlay ist in Cordis-Preview-Aufgaben verfügbar."
 	},
 	"answers": {

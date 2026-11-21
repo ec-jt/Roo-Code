@@ -334,4 +334,84 @@ describe("ClineProvider - Lock API Config Across Modes", () => {
 			expect(activateProviderProfileSpy).toHaveBeenCalledWith({ name: "architect-profile" })
 		})
 	})
+
+	describe("mode selection profile notice (D3)", () => {
+		beforeEach(async () => {
+			await provider.resolveWebviewView(mockWebviewView)
+			vi.spyOn(provider.providerSettingsManager, "getModeConfigId").mockResolvedValue("architect-profile-id")
+			vi.spyOn(provider.providerSettingsManager, "listConfig").mockResolvedValue([
+				{ name: "architect-profile", id: "architect-profile-id", apiProvider: "anthropic" },
+				{ name: "default-profile", id: "default-profile-id", apiProvider: "deepseek" },
+			])
+			vi.spyOn(provider.providerSettingsManager, "getProfile").mockResolvedValue({
+				name: "architect-profile",
+				apiProvider: "anthropic",
+			})
+			vi.spyOn(provider, "activateProviderProfile").mockResolvedValue(undefined)
+			vi.mocked(vscode.window.showInformationMessage).mockClear()
+			await provider.contextProxy.setValue("currentApiConfigName", "default-profile")
+		})
+
+		it("shows a notice when a mode selection without an open task changes the profile", async () => {
+			await provider.handleModeSwitch("architect")
+			expect(vscode.window.showInformationMessage).toHaveBeenCalledTimes(1)
+		})
+
+		it("shows no notice when the profile is unchanged", async () => {
+			await provider.contextProxy.setValue("currentApiConfigName", "architect-profile")
+			await provider.handleModeSwitch("architect")
+			expect(provider.activateProviderProfile).toHaveBeenCalledWith({ name: "architect-profile" })
+			expect(vscode.window.showInformationMessage).not.toHaveBeenCalled()
+		})
+
+		it("shows no notice and keeps the profile when a task is open (Q-USE-1)", async () => {
+			const task = {
+				taskId: "t1",
+				taskMode: "code",
+				emit: vi.fn(),
+				apiConversationHistory: [],
+				clineMessages: [],
+			}
+			vi.spyOn(provider, "getCurrentTask").mockReturnValue(task as any)
+			await provider.handleModeSwitch("architect")
+			expect(provider.activateProviderProfile).not.toHaveBeenCalled()
+			expect(vscode.window.showInformationMessage).not.toHaveBeenCalled()
+		})
+	})
+
+	describe("evaluation stop on provider dispose (D2)", () => {
+		const recorderFor = (completionReached: boolean) => ({
+			completionReached,
+			recordStop: vi.fn().mockResolvedValue(undefined),
+			flush: vi.fn().mockResolvedValue(undefined),
+		})
+
+		it.each([
+			[true, "completed"],
+			[false, "abandoned"],
+		])("completion reached %s records %s and flushes", async (completionReached, reason) => {
+			const evaluationRecorder = recorderFor(completionReached)
+			const task = {
+				taskId: "t1",
+				evaluationRecorder,
+				clineMessages: [{ say: "api_req_started" }, { ask: "completion_result" }],
+			}
+			vi.spyOn(provider, "getCurrentTask").mockReturnValue(task as any)
+			await provider.recordShutdownEvaluationStop()
+			expect(evaluationRecorder.recordStop).toHaveBeenCalledWith(reason, 1)
+			expect(evaluationRecorder.flush).toHaveBeenCalled()
+		})
+
+		it("dispose records the stop before the task is removed", async () => {
+			const evaluationRecorder = recorderFor(true)
+			vi.spyOn(provider, "getCurrentTask").mockReturnValue({
+				taskId: "t1",
+				evaluationRecorder,
+				clineMessages: [],
+			} as any)
+			await provider.dispose()
+			expect(evaluationRecorder.recordStop).toHaveBeenCalledWith("completed", 0)
+			expect(evaluationRecorder.flush).toHaveBeenCalled()
+		})
+	})
 })

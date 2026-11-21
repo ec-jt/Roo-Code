@@ -206,6 +206,8 @@ export type RunLabel = (typeof RUN_LABELS)[number]
 
 export interface PlanCell {
 	scenario: string
+	/** Optional group, for example a model ("opus", "deepseek"). Arms are compared only within one group. */
+	group?: string
 	arm: string
 	samples: number
 	provider?: string
@@ -215,6 +217,8 @@ export interface PlanCell {
 export interface PlanRun {
 	taskId: string
 	scenario: string
+	/** Must match the `group` of its cell. Omitted when the plan has no groups. */
+	group?: string
 	arm: string
 	/** Pair key for blind review, for example "r1". Runs of different arms with the same sample are paired. */
 	sample?: string
@@ -266,8 +270,13 @@ export function parsePlan(text: string): ParsedPlan {
 			continue
 		}
 		const samples = typeof value.samples === "number" && value.samples > 0 ? Math.floor(value.samples) : 1
+		if (value.group !== undefined && (typeof value.group !== "string" || value.group.length === 0)) {
+			errors.push(`plan.cells[${index}]: "group" must be a non-empty string`)
+			continue
+		}
 		cells.push({
 			scenario: value.scenario,
+			...(typeof value.group === "string" ? { group: value.group } : {}),
 			arm: value.arm,
 			samples,
 			...(typeof value.provider === "string" ? { provider: value.provider } : {}),
@@ -298,6 +307,10 @@ export function parsePlan(text: string): ParsedPlan {
 			errors.push(`run ${taskId}: needs string "scenario" and "arm"`)
 			continue
 		}
+		if (value.group !== undefined && (typeof value.group !== "string" || value.group.length === 0)) {
+			errors.push(`run ${taskId}: "group" must be a non-empty string`)
+			continue
+		}
 		let label: RunLabel | undefined
 		if (value.label !== undefined) {
 			if (typeof value.label === "string" && (RUN_LABELS as readonly string[]).includes(value.label)) {
@@ -309,6 +322,7 @@ export function parsePlan(text: string): ParsedPlan {
 		runs.push({
 			taskId,
 			scenario: value.scenario,
+			...(typeof value.group === "string" ? { group: value.group } : {}),
 			arm: value.arm,
 			...(typeof value.sample === "string" ? { sample: value.sample } : {}),
 			...(label ? { label } : {}),
@@ -448,6 +462,7 @@ export interface CellReport {
 
 export interface ArmMean {
 	scenario: string
+	group?: string
 	arm: string
 	runs: number
 	mean: RunMetrics
@@ -475,18 +490,25 @@ const SCENARIO_FIELDS: Array<[string, (m: EvaluationManifest) => string | undefi
 	["modelId", (m) => m.modelId],
 ]
 
-export function cellKey(scenario: string, arm: string): string {
-	return `${scenario}/${arm}`
+/** `scenario/arm`, or `scenario/group/arm` when a group is set. */
+export function cellKey(scenario: string, arm: string, group?: string): string {
+	return group === undefined ? `${scenario}/${arm}` : `${scenario}/${group}/${arm}`
+}
+
+/** `scenario`, or `scenario/group` when a group is set. Arms are compared within one such key. */
+export function scenarioGroupKey(scenario: string, group?: string): string {
+	return group === undefined ? scenario : `${scenario}/${group}`
 }
 
 /**
  * Checks the plan against the runs' manifests and metrics (Harness² `Ledger.assert_identity` plus
  * run-fingerprint matching).
  *
- * - Within a cell (scenario and arm), every run must have the same extension version, settings digest,
- *   provider, model and prompt hash.
- * - Across the arms of a scenario, version, provider and model must match, and settings may differ only
- *   in the keys listed in `plan.armSettings[scenario]`. The prompt hash may differ (for example `/plan`).
+ * - Within a cell (scenario, optional group, and arm), every run must have the same extension version,
+ *   settings digest, provider, model and prompt hash.
+ * - Across the arms of a scenario within one group, version, provider and model must match, and settings
+ *   may differ only in the keys listed in `plan.armSettings[scenario]`. The prompt hash may differ (for
+ *   example `/plan`). Runs in different groups (for example different models) are not compared.
  * - A run needs a manifest and a stop reason `completed`. A run labelled `protocol-limit` with another
  *   stop reason is kept but excluded from outcome scoring and means.
  */
@@ -498,7 +520,7 @@ export function evaluateMatrix(
 	const planProblems = duplicateTaskIds.map((id) => `duplicate task ID in plan: ${id}`)
 	const cellsByKey = new Map<string, CellReport>()
 	for (const cell of plan.cells) {
-		const key = cellKey(cell.scenario, cell.arm)
+		const key = cellKey(cell.scenario, cell.arm, cell.group)
 		if (cellsByKey.has(key)) planProblems.push(`duplicate cell in plan: ${key}`)
 		else cellsByKey.set(key, { cell, runs: [], present: 0, scorable: 0, problems: [], ok: true })
 	}
@@ -507,8 +529,9 @@ export function evaluateMatrix(
 	for (const run of plan.runs) {
 		const input = inputs.get(run.taskId) ?? {}
 		const report: RunReport = { run, status: "valid", problems: [], notes: [], input }
-		const cellReport = cellsByKey.get(cellKey(run.scenario, run.arm))
-		if (!cellReport) report.problems.push(`no cell ${cellKey(run.scenario, run.arm)} in plan`)
+		const runCellKey = cellKey(run.scenario, run.arm, run.group)
+		const cellReport = cellsByKey.get(runCellKey)
+		if (!cellReport) report.problems.push(`no cell ${runCellKey} in plan`)
 		if (duplicateTaskIds.includes(run.taskId)) report.problems.push("task ID listed more than once")
 		if (run.label === "invalid") report.problems.push("labelled invalid in plan")
 
@@ -546,7 +569,7 @@ export function evaluateMatrix(
 
 	// Within-cell identity.
 	for (const cellReport of cellsByKey.values()) {
-		const key = cellKey(cellReport.cell.scenario, cellReport.cell.arm)
+		const key = cellKey(cellReport.cell.scenario, cellReport.cell.arm, cellReport.cell.group)
 		const withManifest = cellReport.runs.filter((r) => r.input.manifest)
 		const reference = withManifest[0]
 		for (const other of withManifest.slice(1)) {
@@ -571,17 +594,18 @@ export function evaluateMatrix(
 		}
 	}
 
-	// Across arms of a scenario.
+	// Across arms of a scenario, within one group.
 	const scenarios = new Map<string, CellReport[]>()
 	for (const cellReport of cellsByKey.values()) {
-		const list = scenarios.get(cellReport.cell.scenario) ?? []
+		const groupKey = scenarioGroupKey(cellReport.cell.scenario, cellReport.cell.group)
+		const list = scenarios.get(groupKey) ?? []
 		list.push(cellReport)
-		scenarios.set(cellReport.cell.scenario, list)
+		scenarios.set(groupKey, list)
 	}
 	for (const [scenario, cellReports] of scenarios) {
 		const reference = cellReports.flatMap((c) => c.runs).find((r) => r.input.manifest)
 		if (!reference) continue
-		const ignore = plan.armSettings[scenario] ?? []
+		const ignore = plan.armSettings[cellReports[0]!.cell.scenario] ?? []
 		for (const cellReport of cellReports) {
 			for (const other of cellReport.runs) {
 				if (!other.input.manifest || other.run.arm === reference.run.arm) continue
@@ -617,6 +641,7 @@ export function evaluateMatrix(
 		const sum = valid.reduce((acc, r) => addMetrics(acc, r.input.metrics!), emptyMetrics())
 		means.push({
 			scenario: cellReport.cell.scenario,
+			...(cellReport.cell.group !== undefined ? { group: cellReport.cell.group } : {}),
 			arm: cellReport.cell.arm,
 			runs: valid.length,
 			mean: divideMetrics(sum, valid.length),
@@ -701,15 +726,28 @@ export interface PairingResult {
 }
 
 /**
- * Matched pairs for one scenario. Runs labelled `invalid` or `protocol-limit` are left out (not
- * scorable). Runs pair by `sample` when every run has one, otherwise by their order in the plan.
+ * Matched pairs for one scenario, within one group. Runs labelled `invalid` or `protocol-limit` are
+ * left out (not scorable). Runs pair by `sample` when every run has one, otherwise by their order in the
+ * plan. When `group` is given, only runs of that group are used. When it is not given and the scenario's
+ * runs belong to more than one group (or mix grouped and ungrouped runs), nothing is paired, so runs on
+ * different models are never compared.
  */
-export function pairRuns(plan: Plan, scenario: string): PairingResult {
+export function pairRuns(plan: Plan, scenario: string, group?: string): PairingResult {
 	const problems: string[] = []
-	const candidates = plan.runs.filter((r) => r.scenario === scenario && !r.label)
+	const label = scenarioGroupKey(scenario, group)
+	const inScenario = plan.runs.filter((r) => r.scenario === scenario && !r.label)
+	const candidates = group === undefined ? inScenario : inScenario.filter((r) => r.group === group)
+	if (group === undefined) {
+		const groups = [...new Set(inScenario.map((r) => r.group))]
+		if (groups.length > 1) {
+			const names = groups.map((g) => g ?? "(none)").join(", ")
+			problems.push(`scenario ${scenario} has runs in more than one group (${names}); choose one group`)
+			return { arms: [...new Set(candidates.map((r) => r.arm))], pairs: [], unpaired: candidates, problems }
+		}
+	}
 	const arms = [...new Set(candidates.map((r) => r.arm))]
 	if (arms.length !== 2) {
-		problems.push(`scenario ${scenario} needs exactly 2 arms with scorable runs, found ${arms.length}`)
+		problems.push(`scenario ${label} needs exactly 2 arms with scorable runs, found ${arms.length}`)
 		return { arms, pairs: [], unpaired: candidates, problems }
 	}
 	const [armA, armB] = arms as [string, string]
@@ -746,6 +784,7 @@ export interface BlindKeyEntry {
 export interface BlindKey {
 	version: 1
 	scenario: string
+	group?: string
 	createdAt: string
 	pairs: Record<string, BlindKeyEntry>
 }
@@ -773,6 +812,7 @@ export function assignBlind(
 	pairs: RunPair[],
 	random: BlindRandom,
 	now = new Date(),
+	group?: string,
 ): { assignments: BlindAssignment[]; key: BlindKey } {
 	const assignments: BlindAssignment[] = []
 	const used = new Set<string>()
@@ -789,7 +829,13 @@ export function assignBlind(
 		const j = Math.floor(random.next() * (i + 1))
 		;[assignments[i], assignments[j]] = [assignments[j]!, assignments[i]!]
 	}
-	const key: BlindKey = { version: 1, scenario, createdAt: now.toISOString(), pairs: {} }
+	const key: BlindKey = {
+		version: 1,
+		scenario,
+		...(group !== undefined ? { group } : {}),
+		createdAt: now.toISOString(),
+		pairs: {},
+	}
 	for (const a of assignments) {
 		key.pairs[a.pairId] = {
 			sample: a.sample,
@@ -898,14 +944,20 @@ export function scoreBlind(key: BlindKey, answers: Record<string, unknown>): Bli
 	return score
 }
 
-/** Counts added diff lines that mention an arm name (case-insensitive). Content is not changed. */
+/**
+ * Counts added diff lines that mention an arm name as a whole word (case-insensitive). A word boundary
+ * is any character that is not a letter or a digit, so `customModes` does not mention `modes`, while
+ * `"modes"` and `cordis-preview` (for `cordis`) do. Content is not changed.
+ */
 export function countArmMentions(diff: string, arms: string[]): Record<string, number> {
 	const counts: Record<string, number> = {}
+	const patterns = arms.map(
+		(arm) => [arm, new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(arm)}(?![\\p{L}\\p{N}])`, "iu")] as const,
+	)
 	for (const arm of arms) counts[arm] = 0
 	for (const line of diff.split(/\r?\n/)) {
 		if (!line.startsWith("+") || line.startsWith("+++")) continue
-		const lower = line.toLowerCase()
-		for (const arm of arms) if (lower.includes(arm.toLowerCase())) counts[arm] = (counts[arm] ?? 0) + 1
+		for (const [arm, pattern] of patterns) if (pattern.test(line)) counts[arm] = (counts[arm] ?? 0) + 1
 	}
 	return counts
 }

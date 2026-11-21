@@ -161,6 +161,7 @@
 		"mode_exported": "Mode '{{mode}}' exporté avec succès",
 		"mode_imported": "Mode importé avec succès",
 		"cordis_mode_locked": "Cette tâche Cordis conserve le mode avec lequel elle a démarré. Lance une nouvelle tâche pour utiliser un autre mode.",
+		"mode_profile_changed": "Le mode {{mode}} utilise le profil {{profile}}. Profil changé depuis {{previous}}.",
 		"plan_overlay_cordis_only": "La surcouche de planification est disponible dans les tâches de préversion Cordis."
 	},
 	"answers": {

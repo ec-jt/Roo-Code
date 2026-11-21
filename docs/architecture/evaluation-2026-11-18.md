@@ -469,3 +469,38 @@ These came from running the evaluation, not from the questions above:
 
 - Not exercised: a recovery error, so the single-error-row fix is covered by unit tests only.
 - New low-priority observations: deleting a profile while a finished task is open rewrote that task's `apiConfigName`; selecting a profile with a finished task open showed the "Change model" dialog.
+
+## 9. S2 rerun on 4.2.97 (2026-11-21)
+
+Operator: a separate Roo subtask using `computer_action`. Each run used a standalone snapshot of `9deda9b58` without this protocol, and every snapshot passed `pnpm eval:protocol leak-check`. Experiment `evaluationRecording` was on, architecture context was Constraints, and the prompt and scripted replies were as in section 4. The raw data is in `research/eval-2026-11-21/`, which is local and not committed.
+
+| Run           | Model           | Task       | Requests | Tokens in | Cost  | Drift handling                                   | Outcome        |
+| ------------- | --------------- | ---------- | -------- | --------- | ----- | ------------------------------------------------ | -------------- |
+| modes-opus-1  | claude-opus-5-5 | `01a1fc25` | 37       | 4.04M     | $2.02 | reported (C-5, req 13)                           | completed      |
+| modes-opus-2  | claude-opus-5-5 | `01a1fc2e` | 42       | 5.00M     | $2.27 | reported (C-5, req 13)                           | completed      |
+| cordis-opus-1 | claude-opus-5-5 | `01a1fc37` | 36       | 4.07M     | $2.04 | reported (amendment, C-5 and Q-REL-1, req 12)    | completed      |
+| cordis-opus-2 | claude-opus-5-5 | `01a1fc3e` | 38       | 4.01M     | $1.98 | reported (amendment, C-5, req 13)                | completed      |
+| modes-ds-1    | deepseek-flash  | `01a1fc47` | 60       | 9.52M     | $0.24 | reported (C-5, req 16)                           | protocol-limit |
+| modes-ds-2    | deepseek-flash  | `01a1fc50` | 63       | 9.42M     | $0.22 | reported (C-5, req 16)                           | protocol-limit |
+| cordis-ds-1   | deepseek-flash  | `01a1fc59` | 61       | 9.32M     | $0.22 | reported in plan, proposed a backfill, then none | protocol-limit |
+| cordis-ds-2   | deepseek-flash  | `01a1fc63` | 60       | 11.73M    | $0.28 | reported in plan (C-5 and Q-REL-1, req 21)       | protocol-limit |
+
+**Opus means (2 samples per arm):** Cordis used 6% fewer requests (37 vs 39.5), 11% fewer input tokens (4.04M vs 4.52M) and 6% lower cost ($2.01 vs $2.15). Under rule 1 of section 6, only the input-token difference is above 10 percent, so cost and requests count as equal.
+
+**Blind review (Opus, `blind-export` and `blind-score`):** the judge, `claude-opus-5-5` in Ask mode with only the anonymous diffs, preferred the modes run in both pairs (modes 2, Cordis 0). The reason was the same both times: the modes diffs enforce the limit in `NewTaskTool` and in `authorizeDelegation()`, while the Cordis diffs enforce it only in the tool.
+
+**DeepSeek:** all four runs reached the 60-request protocol limit. They are excluded from outcome scoring and from the blind review.
+
+**Drift:** reported in all 8 runs. No run migrated existing history items.
+
+**Defects found by this run (fixed in 4.2.98):**
+
+- D1: a task completed with Start New Task was recorded as `abandoned`.
+- D2: closing the window at the completion ask wrote no stop reason. The sidebar provider was never disposed on shutdown.
+- D3: selecting a mode switched to the mode's saved provider profile with no notice. The behaviour is kept; 4.2.98 shows a notice.
+
+Because of D1 and D2, the matrix marked every Opus run invalid. The means above were computed by hand from the same task files.
+
+**Other observations:** two DeepSeek runs wrote their own ADRs directly into `decisions/accepted/` in their snapshots, which skips user acceptance. No message was lost, no dispatch failed, and no lesson offer appeared.
+
+**Conclusion for Q2:** on 4.2.97, the Cordis profile cost about the same as the modes profile on Opus, and the blind judge preferred modes in both pairs. Rule 1 of section 6 (equal or better outcome) is not met in this sample. Two pairs are too few to change the accepted ADR. [Q-EFF-2](quality.md) records the result. A further S2 rerun on 4.2.98 or later, with valid stop reasons and at least 4 Opus pairs, should decide whether the Cordis default stays.

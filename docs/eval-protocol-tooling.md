@@ -84,12 +84,13 @@ It reports:
 
 - **Missing samples:** a cell has fewer valid or excluded runs than its `samples`.
 - **Duplicate task IDs:** in the plan. A duplicate key in a JSON object is found in the raw text.
-- **Manifest mismatch inside a cell:** `extension.version`, `settingsDigest`, `provider`, `modelId` or `promptHash` differ between runs of the same scenario and arm.
-- **Mismatch across arms:** `extension.version`, `provider` or `modelId` differ between arms of the same scenario. Settings may differ only in the keys listed in `armSettings` for that scenario. The prompt hash may differ between arms (for example the `/plan ` prefix).
+- **Duplicate cells:** two cells with the same key. The key is `scenario/arm`, or `scenario/group/arm` when the cell has a `group`.
+- **Manifest mismatch inside a cell:** `extension.version`, `settingsDigest`, `provider`, `modelId` or `promptHash` differ between runs of the same cell.
+- **Mismatch across arms:** `extension.version`, `provider` or `modelId` differ between arms of the same scenario and group. Settings may differ only in the keys listed in `armSettings` for that scenario. The prompt hash may differ between arms (for example the `/plan ` prefix). Runs in different groups are never compared.
 - **Plan mismatch:** the build is not `plan.build`, or the provider or model is not the one in the cell.
 - **Stop:** no manifest, no `stop`, or a `stop.reason` other than `completed`. A run labelled `protocol-limit` in the plan is allowed any stop reason. It counts as present, but it is excluded from means and blind review.
 
-It prints a table per run (requests, tokens in and out, cache reads and writes, cost, number of history entries), a table per cell, the problems, and the mean per arm over valid runs. Exit 1 if any cell or run is invalid.
+It prints a table per run (requests, tokens in and out, cache reads and writes, cost, number of history entries), a table per cell, the problems, and the mean per arm over valid runs. When the plan uses groups, each table has a `group` column and the means are per scenario, group and arm. Exit 1 if any cell or run is invalid.
 
 This applies the idea of Harness² `Ledger.assert_identity` (`core/ledger.py`) and run fingerprints (`core/runmark.py`).
 
@@ -133,12 +134,97 @@ Rows that fail to parse still count as requests, but add no tokens. `tokensIn` a
 - `label` is `protocol-limit` (stopped by the protocol's 60-request limit, excluded from outcome scoring) or `invalid` (always fails the cell).
 - `armSettings` lists flattened `settings` keys from `evaluation.json` that may differ between the arms of a scenario. For S1 this is `architectureContextMode`. For S3 it is `pruneToolResultsOnOverflow` and `offloadImagesOnOverflow`.
 - The `settingsDigest` covers all whitelisted settings, so it differs between arms by design. It is compared only inside a cell.
+- `group` (optional, on cells and runs) separates repeats of the same scenario and arms, for example one group per model. See below.
+
+### Groups: more than one model in one plan
+
+Set the same `group` on a cell and on each of its runs. A run matches the cell with the same scenario, group and arm. Without `group`, a plan with the same scenario and arm on two models fails with `duplicate cell`, and the cross-arm check compares runs on different models.
+
+With groups:
+
+- the cell key is `scenario/group/arm` (for example `S2/opus/cordis`); plans without groups keep `scenario/arm`;
+- arms are compared only within the same scenario and group, so a model difference between groups is not a problem, but a model difference between arms inside one group is;
+- means are reported per scenario, group and arm;
+- `blind-export` pairs runs only within one group (`--group`).
+
+```json
+{
+	"build": "4.2.97",
+	"armSettings": { "S2": ["experiments.cordisRuntimePreview"] },
+	"cells": [
+		{
+			"scenario": "S2",
+			"group": "opus",
+			"arm": "modes",
+			"samples": 2,
+			"provider": "anthropic",
+			"modelId": "claude-opus-5-5"
+		},
+		{
+			"scenario": "S2",
+			"group": "opus",
+			"arm": "cordis",
+			"samples": 2,
+			"provider": "anthropic",
+			"modelId": "claude-opus-5-5"
+		},
+		{
+			"scenario": "S2",
+			"group": "deepseek",
+			"arm": "modes",
+			"samples": 2,
+			"provider": "deepseek",
+			"modelId": "deepseek-flash"
+		},
+		{
+			"scenario": "S2",
+			"group": "deepseek",
+			"arm": "cordis",
+			"samples": 2,
+			"provider": "deepseek",
+			"modelId": "deepseek-flash"
+		}
+	],
+	"runs": {
+		"01a1fb00-0000-7000-8000-000000000001": { "scenario": "S2", "group": "opus", "arm": "modes", "sample": "r1" },
+		"01a1fb00-0000-7000-8000-000000000002": { "scenario": "S2", "group": "opus", "arm": "cordis", "sample": "r1" },
+		"01a1fb00-0000-7000-8000-000000000003": { "scenario": "S2", "group": "opus", "arm": "modes", "sample": "r2" },
+		"01a1fb00-0000-7000-8000-000000000004": { "scenario": "S2", "group": "opus", "arm": "cordis", "sample": "r2" },
+		"01a1fb00-0000-7000-8000-000000000005": {
+			"scenario": "S2",
+			"group": "deepseek",
+			"arm": "modes",
+			"sample": "r1"
+		},
+		"01a1fb00-0000-7000-8000-000000000006": {
+			"scenario": "S2",
+			"group": "deepseek",
+			"arm": "cordis",
+			"sample": "r1"
+		},
+		"01a1fb00-0000-7000-8000-000000000007": {
+			"scenario": "S2",
+			"group": "deepseek",
+			"arm": "modes",
+			"sample": "r2"
+		},
+		"01a1fb00-0000-7000-8000-000000000008": {
+			"scenario": "S2",
+			"group": "deepseek",
+			"arm": "cordis",
+			"sample": "r2"
+		}
+	}
+}
+```
 
 ## 3. `blind-export`: prepare blind review
 
 ```bash
-pnpm eval:protocol blind-export --plan plan.json --scenario S2 --workspaces workspaces.json --out ../eval-blind-S2
+pnpm eval:protocol blind-export --plan plan.json --scenario S2 [--group opus] --workspaces workspaces.json --out ../eval-blind-S2-opus
 ```
+
+When the plan uses groups, export one group at a time with `--group`. If the scenario's runs are in more than one group and `--group` is not given, the command pairs nothing and reports the groups. The key records the group.
 
 `workspaces.json` maps each task ID to its workspace and base commit. Relative paths resolve from the map file's folder.
 
@@ -154,7 +240,7 @@ pnpm eval:protocol blind-export --plan plan.json --scenario S2 --workspaces work
 
 How the export works:
 
-1. Runs pair by `sample`. If a run has no `sample`, runs pair by their order in the plan. Runs with a `label` are left out. The scenario needs exactly two arms.
+1. Runs pair by `sample`, within one group. If a run has no `sample`, runs pair by their order in the plan. Runs with a `label` are left out. The scenario (in that group) needs exactly two arms.
 2. Each pair gets a random ID (`pair-<8 hex>`). A random draw decides which run is `A` and which is `B`, and the pair order is shuffled.
 3. For each run, the command writes the diff against the base commit: `git diff <base>` for tracked changes, plus a new-file diff for each untracked, non-ignored file. The workspace is only read.
 4. The output is laid out as follows:
@@ -171,7 +257,7 @@ The judge prompt contains the scenario's task prompt from section 4 of the proto
 
 The command does not call any model API and does not read API keys. To judge, open only `<out>/judge/<pair-id>/` as the workspace of a separate Roo task, with a model that took no part in the runs, and paste `judge-prompt.md`. Copy each reply into `answers.json` under its pair ID.
 
-If an added diff line contains an arm name (for example a comment that mentions "cordis"), the command prints a warning for that pair and side, but does not print the arm. Review that diff before you judge. The diff content is never changed.
+If an added diff line contains an arm name as a whole word (for example a comment that mentions "cordis"), the command prints a warning for that pair and side, but does not print the arm. Review that diff before you judge. The diff content is never changed. The match is case-insensitive, and a word boundary is any character that is not a letter or a digit: `customModes` does not match the arm `modes`, but `"modes"`, `modes.` and `cordis-preview` (for `cordis`) do.
 
 This applies the idea of Harness² `core/selection.py` (anonymous candidates, separate judge, written reason).
 
@@ -200,8 +286,8 @@ The tests cover the pure functions in `scripts/eval-protocol/lib.ts`:
 - extracting scripted strings and scenario prompts;
 - leak matching and patch line tracking;
 - plan parsing;
-- matrix checks;
+- matrix checks, with and without groups;
 - `ui_messages.json` totals;
-- run pairing, anonymisation, parsing the choice block, and scoring.
+- run pairing (per group), anonymisation, arm-name matching, parsing the choice block, and scoring.
 
 The CLI file itself (IO and git calls) was checked by hand, not by unit tests.

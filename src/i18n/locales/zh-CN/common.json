@@ -166,6 +166,7 @@
 		"mode_exported": "模式 '{{mode}}' 已成功导出",
 		"mode_imported": "模式已成功导入",
 		"cordis_mode_locked": "此 Cordis 任务会保持开始时的模式。要使用其他模式，请新建任务。",
+		"mode_profile_changed": "模式 {{mode}} 使用配置文件 {{profile}}。配置文件已从 {{previous}} 切换。",
 		"plan_overlay_cordis_only": "计划叠加层仅在 Cordis 预览任务中可用。"
 	},
 	"answers": {

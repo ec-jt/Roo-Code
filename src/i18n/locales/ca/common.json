@@ -165,6 +165,7 @@
 		"mode_exported": "Mode '{{mode}}' exportat correctament",
 		"mode_imported": "Mode importat correctament",
 		"cordis_mode_locked": "Aquesta tasca Cordis manté el mode amb què va començar. Inicia una tasca nova per fer servir un altre mode.",
+		"mode_profile_changed": "El mode {{mode}} fa servir el perfil {{profile}}. Perfil canviat des de {{previous}}.",
 		"plan_overlay_cordis_only": "La capa de planificació està disponible a les tasques de previsualització de Cordis."
 	},
 	"answers": {

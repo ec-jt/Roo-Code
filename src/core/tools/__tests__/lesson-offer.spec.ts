@@ -204,6 +204,46 @@ describe("attempt_completion with the lesson offer", () => {
 		expect(task.recordEvaluationStop).not.toHaveBeenCalled()
 	})
 
+	it("D1: marks the completion ask while waiting, so a later clear records completed", async () => {
+		mocks.hasTaskState.mockResolvedValue(false)
+		const evaluationRecorder = { completionReached: false }
+		let seenDuringAsk: boolean | undefined
+		const task = makeTask({
+			evaluationRecorder,
+			ask: vi.fn(async () => {
+				seenDuringAsk = evaluationRecorder.completionReached
+				return { response: "yesButtonClicked", text: "", images: [] }
+			}),
+		})
+		await attemptCompletionTool.execute({ result: "Done" }, task, callbacks())
+		expect(seenDuringAsk).toBe(true)
+		expect(evaluationRecorder.completionReached).toBe(true)
+		const { abortStopReason } = await import("../../task/evaluation-recording")
+		expect(
+			abortStopReason({
+				completionReached: evaluationRecorder.completionReached,
+				lastAsk: "completion_result",
+			}),
+		).toBe("completed")
+	})
+
+	it("D1: feedback at the completion ask resets the mark, so a later abort records abandoned", async () => {
+		mocks.hasTaskState.mockResolvedValue(false)
+		const evaluationRecorder = { completionReached: false }
+		const task = makeTask({
+			evaluationRecorder,
+			ask: vi.fn().mockResolvedValue({ response: "messageResponse", text: "Fix the test", images: [] }),
+		})
+		await attemptCompletionTool.execute({ result: "Done" }, task, callbacks())
+		expect(evaluationRecorder.completionReached).toBe(false)
+		expect(task.recordEvaluationStop).not.toHaveBeenCalled()
+		const { abortStopReason } = await import("../../task/evaluation-recording")
+		expect(abortStopReason({ completionReached: evaluationRecorder.completionReached })).toBe("abandoned")
+		expect(
+			abortStopReason({ completionReached: evaluationRecorder.completionReached, abortReason: "user_cancelled" }),
+		).toBe("user-stopped")
+	})
+
 	it("completes as before when reading state throws", async () => {
 		const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
 		mocks.read.mockRejectedValue(new Error("bad ledger"))

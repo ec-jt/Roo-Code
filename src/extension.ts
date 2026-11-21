@@ -303,6 +303,14 @@ export async function activate(context: vscode.ExtensionContext) {
 export async function deactivate() {
 	outputChannel.appendLine(`${Package.name} extension deactivated`)
 
+	// The sidebar provider is not disposed on shutdown, so its open task would get no
+	// evaluation stop. Record and flush one per provider (bounded, best effort).
+	try {
+		await Promise.all(ClineProvider.getActiveInstances().map((p) => p.recordShutdownEvaluationStop()))
+	} catch {
+		// Best effort only.
+	}
+
 	await McpServerManager.cleanup(extensionContext)
 	TerminalRegistry.cleanup()
 }

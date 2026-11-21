@@ -10,6 +10,7 @@ import {
 	countApiRequests,
 	EVALUATION_FILE_NAME,
 	EvaluationRecorder,
+	recordShutdownStop,
 	writeTaskEvaluationManifest,
 } from "../evaluation-recording"
 
@@ -260,7 +261,49 @@ describe("evaluation-recording", () => {
 		expect(abortStopReason({ abortReason: "user_cancelled" })).toBe("user-stopped")
 		expect(abortStopReason({ lastAsk: "api_req_failed" })).toBe("error")
 		expect(abortStopReason({})).toBe("abandoned")
+		// D1: leaving from the completion ask is a completion; a user cancel in a later request is not.
+		expect(abortStopReason({ completionReached: true, lastAsk: "completion_result" })).toBe("completed")
+		expect(abortStopReason({ lastAsk: "resume_completed_task" })).toBe("completed")
+		expect(abortStopReason({ completionReached: false, lastAsk: "completion_result" })).toBe("abandoned")
+		expect(abortStopReason({ completionReached: true, abortReason: "user_cancelled" })).toBe("user-stopped")
 		expect(countApiRequests([{ say: "api_req_started" }, { say: "text" }, { say: "api_req_started" }])).toBe(2)
 		expect(countApiRequests(undefined)).toBe(0)
+	})
+
+	describe("recordShutdownStop (D2)", () => {
+		it("writes completed after a completion ask and flushes before returning", async () => {
+			const recorder = new EvaluationRecorder({ taskId: "t1", kind: "new", getTaskDirectory: async () => dir })
+			await recorder.writeManifest(manifestInput)
+			recorder.completionReached = true
+			await recordShutdownStop({
+				evaluationRecorder: recorder,
+				clineMessages: [{ say: "api_req_started" }, { ask: "completion_result" }],
+			})
+			expect((await readRecord()).stop).toMatchObject({ reason: "completed", apiRequests: 1 })
+		})
+
+		it("writes abandoned when no completion ask was reached", async () => {
+			const recorder = new EvaluationRecorder({ taskId: "t1", kind: "new", getTaskDirectory: async () => dir })
+			await recorder.writeManifest(manifestInput)
+			await recordShutdownStop({ evaluationRecorder: recorder, clineMessages: [{ ask: "followup" }] })
+			expect((await readRecord()).stop.reason).toBe("abandoned")
+		})
+
+		it("does not wait past the timeout for a slow write", async () => {
+			const recorder = new EvaluationRecorder({
+				taskId: "t1",
+				kind: "new",
+				getTaskDirectory: async () => dir,
+				write: () => new Promise(() => {}),
+			})
+			const started = Date.now()
+			await recordShutdownStop({ evaluationRecorder: recorder, clineMessages: [] }, 50)
+			expect(Date.now() - started).toBeLessThan(1000)
+		})
+
+		it("does nothing without a task or recorder", async () => {
+			await expect(recordShutdownStop(undefined)).resolves.toBeUndefined()
+			await expect(recordShutdownStop({ clineMessages: [] })).resolves.toBeUndefined()
+		})
 	})
 })

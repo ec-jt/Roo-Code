@@ -161,6 +161,7 @@
 		"mode_exported": "モード「{{mode}}」が正常にエクスポートされました",
 		"mode_imported": "モードが正常にインポートされました",
 		"cordis_mode_locked": "この Cordis タスクは開始時のモードを維持します。別のモードを使うには新しいタスクを開始してください。",
+		"mode_profile_changed": "モード {{mode}} はプロファイル {{profile}} を使用します。プロファイルを {{previous}} から変更しました。",
 		"plan_overlay_cordis_only": "プランオーバーレイは Cordis プレビュータスクで利用できます。"
 	},
 	"answers": {

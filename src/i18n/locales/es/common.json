@@ -161,6 +161,7 @@
 		"mode_exported": "Modo '{{mode}}' exportado correctamente",
 		"mode_imported": "Modo importado correctamente",
 		"cordis_mode_locked": "Esta tarea Cordis mantiene el modo con el que empezó. Inicia una tarea nueva para usar otro modo.",
+		"mode_profile_changed": "El modo {{mode}} usa el perfil {{profile}}. Perfil cambiado desde {{previous}}.",
 		"plan_overlay_cordis_only": "La capa de planificación está disponible en las tareas de vista previa de Cordis."
 	},
 	"answers": {

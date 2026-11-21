@@ -165,6 +165,7 @@
 		"mode_exported": "Modo '{{mode}}' exportado com sucesso",
 		"mode_imported": "Modo importado com sucesso",
 		"cordis_mode_locked": "Esta tarefa Cordis mantém o modo com que começou. Inicie uma nova tarefa para usar outro modo.",
+		"mode_profile_changed": "O modo {{mode}} usa o perfil {{profile}}. Perfil alterado de {{previous}}.",
 		"plan_overlay_cordis_only": "A sobreposição de planejamento está disponível em tarefas de prévia do Cordis."
 	},
 	"answers": {

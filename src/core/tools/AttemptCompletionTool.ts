@@ -146,6 +146,8 @@ export class AttemptCompletionTool extends BaseTool<"attempt_completion"> {
 				}
 			}
 
+			// Leaving the task from this ask is recorded as "completed" (evaluation recording).
+			if (task.evaluationRecorder) task.evaluationRecorder.completionReached = true
 			const { response, text, images } = await task.ask("completion_result", "", false)
 
 			if (response === "yesButtonClicked") {
@@ -153,7 +155,8 @@ export class AttemptCompletionTool extends BaseTool<"attempt_completion"> {
 				return
 			}
 
-			// User provided feedback - push tool result to continue the conversation
+			// User provided feedback - the task continues, so a later close is no longer a completion.
+			if (task.evaluationRecorder) task.evaluationRecorder.completionReached = false
 			await task.say("user_feedback", text ?? "", images)
 
 			const feedbackText = `<user_message>\n${text}\n</user_message>`

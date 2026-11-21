@@ -161,6 +161,7 @@
 		"mode_exported": "Mode '{{mode}}' berhasil diekspor",
 		"mode_imported": "Mode berhasil diimpor",
 		"cordis_mode_locked": "Tugas Cordis ini tetap memakai mode awalnya. Mulai tugas baru untuk memakai mode lain.",
+		"mode_profile_changed": "Mode {{mode}} memakai profil {{profile}}. Profil diubah dari {{previous}}.",
 		"plan_overlay_cordis_only": "Overlay rencana tersedia di tugas pratinjau Cordis."
 	},
 	"answers": {
