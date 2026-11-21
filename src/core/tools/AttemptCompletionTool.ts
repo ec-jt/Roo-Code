@@ -11,6 +11,7 @@ import { t } from "../../i18n"
 
 import { BaseTool, ToolCallbacks } from "./BaseTool"
 import { summarizeIsolatedWorkspace } from "./subtask-workspace"
+import { takeLessonOffer } from "./lesson-offer"
 
 interface AttemptCompletionParams {
 	result: string
@@ -82,6 +83,13 @@ export class AttemptCompletionTool extends BaseTool<"attempt_completion"> {
 			}
 
 			task.consecutiveMistakeCount = 0
+
+			// One-time lesson offer. The task does not complete and records no evaluation stop on this turn.
+			const lessonOffer = await takeLessonOffer(task)
+			if (lessonOffer) {
+				pushToolResult(lessonOffer)
+				return
+			}
 
 			const gate = await taskCompletionGate(task)
 			if (gate?.continue) {
