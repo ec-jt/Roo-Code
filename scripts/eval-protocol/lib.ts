@@ -99,7 +99,7 @@ export function parseExtraStrings(text: string): string[] {
 // ---------------------------------------------------------------------------
 
 export interface Needle {
-	kind: "protocol-file-name" | "scripted-string" | "extra-string"
+	kind: "protocol-file-name" | "scripted-string" | "extra-string" | "forbidden-line" | "forbidden-file-name"
 	text: string
 }
 
@@ -151,6 +151,69 @@ export function scanPath(relativePath: string, needles: Needle[]): LeakHit[] {
 
 /** Directories never walked by the leak check. */
 export const LEAK_SKIP_DIRECTORIES = new Set(["node_modules", ".git"])
+
+/**
+ * Minimum trimmed length of a line from a `--forbid` file before it counts as distinctive. Short lines
+ * such as `assert.equal(r.status, 200)` are common in any test suite and would give false hits.
+ */
+export const FORBID_MIN_LINE_LENGTH = 32
+
+/** Lines that are common in any Node project, so they never count as distinctive. Compared after trimming. */
+const COMMON_LINES = new Set([
+	'import assert from "node:assert/strict"',
+	'import { test } from "node:test"',
+	'import { describe, it } from "node:test"',
+	"import assert from 'node:assert/strict'",
+	"import { test } from 'node:test'",
+	'"type": "module",',
+	'"private": true,',
+	'"start": "node server.mjs",',
+	"} catch (error) {",
+])
+
+/** File names that are too generic to count as a `--forbid` file-name hit. */
+export const FORBID_GENERIC_FILE_NAMES = new Set([
+	"package.json",
+	"package-lock.json",
+	"README.md",
+	".gitignore",
+	"tsconfig.json",
+	"index.js",
+	"index.mjs",
+	"index.ts",
+	"server.js",
+	"server.mjs",
+	"server.ts",
+	"lib.mjs",
+	"lib.js",
+	"lib.ts",
+	"lib.test.mjs",
+])
+
+/**
+ * Distinctive lines of a forbidden file: trimmed lines of at least `FORBID_MIN_LINE_LENGTH` characters
+ * that contain a letter, are not import statements, and are not in the common-lines list. Duplicates are
+ * removed; order is stable.
+ */
+export function distinctiveLines(text: string, minLength = FORBID_MIN_LINE_LENGTH): string[] {
+	const result: string[] = []
+	const seen = new Set<string>()
+	for (const raw of text.split(/\r?\n/)) {
+		const line = raw.trim()
+		if (line.length < minLength || !/\p{L}/u.test(line)) continue
+		if (/^import\s/.test(line) || COMMON_LINES.has(line) || seen.has(line)) continue
+		seen.add(line)
+		result.push(line)
+	}
+	return result
+}
+
+/** A path hit when the file's base name equals a forbidden file name (generic names are ignored). */
+export function scanForbiddenName(relativePath: string, names: ReadonlySet<string>): LeakHit[] {
+	const base = relativePath.split("/").pop() ?? relativePath
+	if (!names.has(base) || FORBID_GENERIC_FILE_NAMES.has(base)) return []
+	return [{ source: relativePath, line: 0, needle: { kind: "forbidden-file-name", text: base } }]
+}
 
 /** True when a buffer looks binary (contains a NUL byte in its first 8000 bytes). */
 export function looksBinary(buffer: Uint8Array): boolean {
@@ -224,6 +287,8 @@ export interface PlanRun {
 	sample?: string
 	/** `protocol-limit`: stopped by the protocol's request limit, excluded from outcome scoring. `invalid`: excluded. */
 	label?: RunLabel
+	/** Path of the run's grades.json written by `grade`, relative to the plan file. */
+	grades?: string
 }
 
 export interface Plan {
@@ -232,6 +297,8 @@ export interface Plan {
 	runs: PlanRun[]
 	/** Per scenario, the flattened settings keys that differ by arm (for example `experiments.cordisRuntimePreview`). */
 	armSettings: Record<string, string[]>
+	/** Phases of a multi-phase scenario (for example ["P1", "P2", "P3", "P4"]). When set, every run needs grades. */
+	phases?: string[]
 }
 
 export interface ParsedPlan {
@@ -319,6 +386,9 @@ export function parsePlan(text: string): ParsedPlan {
 				errors.push(`run ${taskId}: label must be one of ${RUN_LABELS.join(", ")}`)
 			}
 		}
+		if (value.grades !== undefined && (typeof value.grades !== "string" || value.grades.length === 0)) {
+			errors.push(`run ${taskId}: "grades" must be a non-empty path string`)
+		}
 		runs.push({
 			taskId,
 			scenario: value.scenario,
@@ -326,6 +396,7 @@ export function parsePlan(text: string): ParsedPlan {
 			arm: value.arm,
 			...(typeof value.sample === "string" ? { sample: value.sample } : {}),
 			...(label ? { label } : {}),
+			...(typeof value.grades === "string" && value.grades.length > 0 ? { grades: value.grades } : {}),
 		})
 	}
 
@@ -345,7 +416,24 @@ export function parsePlan(text: string): ParsedPlan {
 		}
 	}
 
-	return { plan: { ...(build ? { build } : {}), cells, runs, armSettings }, errors, duplicateTaskIds }
+	let phases: string[] | undefined
+	if (obj.phases !== undefined) {
+		if (
+			Array.isArray(obj.phases) &&
+			obj.phases.length > 0 &&
+			obj.phases.every((p) => typeof p === "string" && PHASE_PATTERN.test(p))
+		) {
+			phases = [...(obj.phases as string[])].sort((a, b) => phaseIndex(a) - phaseIndex(b))
+		} else {
+			errors.push('plan.phases must be a non-empty array of phase names such as "P1"')
+		}
+	}
+
+	return {
+		plan: { ...(build ? { build } : {}), cells, runs, armSettings, ...(phases ? { phases } : {}) },
+		errors,
+		duplicateTaskIds,
+	}
 }
 
 /** The subset of evaluation.json that the matrix reads (shape from src/core/task/evaluation-recording.ts). */
@@ -437,6 +525,9 @@ export interface RunInput {
 	metricsError?: string
 	/** Number of entries in api_conversation_history.json. Counts only (Q-SEC-2). */
 	historyMessages?: number
+	/** Summary of the run's grades.json (multi-phase scenarios). */
+	grades?: GradeSummary
+	gradesError?: string
 }
 
 export type RunStatus = "valid" | "excluded" | "invalid"
@@ -460,12 +551,28 @@ export interface CellReport {
 	ok: boolean
 }
 
+export interface ArmGradeMean {
+	/** Valid runs with grades. */
+	runs: number
+	/** Mean hidden tests passed in the last graded phase (the cumulative suite). */
+	finalPassed: number
+	/** Mean number of hidden tests in the last graded phase. */
+	finalTotal: number
+	/** Mean number of regressed tests. */
+	regressions: number
+	/** Mean of finalPassed minus regressions (protocol rank metric). */
+	score: number
+	/** Runs whose own `npm test` passed in the last graded phase. */
+	ownTestsPassing: number
+}
+
 export interface ArmMean {
 	scenario: string
 	group?: string
 	arm: string
 	runs: number
 	mean: RunMetrics
+	grades?: ArmGradeMean
 }
 
 export interface MatrixReport {
@@ -560,6 +667,14 @@ export function evaluateMatrix(
 			}
 		}
 		if (input.metricsError) report.problems.push(input.metricsError)
+		if (input.gradesError) report.problems.push(input.gradesError)
+		if (plan.phases) {
+			if (!run.grades && !input.grades && !input.gradesError) {
+				report.problems.push('plan has phases but the run has no "grades" path')
+			} else if (input.grades && input.grades.missingPhases.length > 0) {
+				report.notes.push(`not graded: ${input.grades.missingPhases.join(", ")}`)
+			}
+		}
 
 		if (report.problems.length > 0) report.status = "invalid"
 		else if (run.label === "protocol-limit") report.status = "excluded"
@@ -639,12 +754,27 @@ export function evaluateMatrix(
 		const valid = cellReport.runs.filter((r) => r.status === "valid" && r.input.metrics)
 		if (valid.length === 0) continue
 		const sum = valid.reduce((acc, r) => addMetrics(acc, r.input.metrics!), emptyMetrics())
+		const graded = valid.filter((r) => r.input.grades?.final)
+		let grades: ArmGradeMean | undefined
+		if (graded.length > 0) {
+			const n = graded.length
+			const total = (get: (g: GradeSummary) => number) => graded.reduce((acc, r) => acc + get(r.input.grades!), 0)
+			grades = {
+				runs: n,
+				finalPassed: total((g) => g.final!.passed) / n,
+				finalTotal: total((g) => g.final!.total) / n,
+				regressions: total((g) => g.regressions) / n,
+				score: total((g) => g.score) / n,
+				ownTestsPassing: graded.filter((r) => r.input.grades!.ownTestsPass === true).length,
+			}
+		}
 		means.push({
 			scenario: cellReport.cell.scenario,
 			...(cellReport.cell.group !== undefined ? { group: cellReport.cell.group } : {}),
 			arm: cellReport.cell.arm,
 			runs: valid.length,
 			mean: divideMetrics(sum, valid.length),
+			...(grades ? { grades } : {}),
 		})
 	}
 
@@ -732,10 +862,12 @@ export interface PairingResult {
  * runs belong to more than one group (or mix grouped and ungrouped runs), nothing is paired, so runs on
  * different models are never compared.
  */
-export function pairRuns(plan: Plan, scenario: string, group?: string): PairingResult {
+export function pairRuns(plan: Plan, scenario: string, group?: string, onlyArms?: string[]): PairingResult {
 	const problems: string[] = []
 	const label = scenarioGroupKey(scenario, group)
-	const inScenario = plan.runs.filter((r) => r.scenario === scenario && !r.label)
+	const inScenario = plan.runs.filter(
+		(r) => r.scenario === scenario && !r.label && (onlyArms === undefined || onlyArms.includes(r.arm)),
+	)
 	const candidates = group === undefined ? inScenario : inScenario.filter((r) => r.group === group)
 	if (group === undefined) {
 		const groups = [...new Set(inScenario.map((r) => r.group))]
@@ -849,8 +981,26 @@ export function assignBlind(
 export const JUDGE_CHOICES = ["A", "B"] as const
 export type JudgeChoice = (typeof JUDGE_CHOICES)[number]
 
-/** Judge prompt for one pair. Contains the task prompt and candidate file names only, no arm names. */
-export function buildJudgePrompt(pairId: string, taskPrompt: string): string {
+/**
+ * Judge prompt for one pair. Contains the task prompt, the follow-up messages (if any) and candidate file
+ * names only, no arm names. Follow-ups are listed in the order they were sent, without their file names.
+ */
+export function buildJudgePrompt(pairId: string, taskPrompt: string, followups: string[] = []): string {
+	const quote = (text: string) =>
+		text
+			.trimEnd()
+			.split(/\r?\n/)
+			.map((line) => (line ? `> ${line}` : ">"))
+	const followupLines =
+		followups.length === 0
+			? []
+			: [
+					"## Messages the user sent during the task",
+					"",
+					"Both candidates received these messages, in this order, after the task above. Each message was sent only after the candidate reported the previous step as complete, except where a message arrived while a step was in progress.",
+					"",
+					...followups.flatMap((text, index) => [`### Message ${index + 1}`, "", ...quote(text), ""]),
+				]
 	return [
 		`# Blind review ${pairId}`,
 		"",
@@ -858,8 +1008,9 @@ export function buildJudgePrompt(pairId: string, taskPrompt: string): string {
 		"",
 		"## Task given to both candidates",
 		"",
-		...taskPrompt.split(/\r?\n/).map((line) => `> ${line}`),
+		...quote(taskPrompt),
 		"",
+		...followupLines,
 		"## Candidates",
 		"",
 		"- Candidate A: `A.diff` in this folder",
@@ -960,6 +1111,248 @@ export function countArmMentions(diff: string, arms: string[]): Record<string, n
 		for (const [arm, pattern] of patterns) if (pattern.test(line)) counts[arm] = (counts[arm] ?? 0) + 1
 	}
 	return counts
+}
+
+// ---------------------------------------------------------------------------
+// Phase grading (multi-phase scenarios such as L1)
+// ---------------------------------------------------------------------------
+
+export const PHASE_PATTERN = /^P([1-9]\d*)$/
+
+/** 1 for "P1". NaN for anything that is not a phase name. */
+export function phaseIndex(phase: string): number {
+	const match = PHASE_PATTERN.exec(phase)
+	return match ? Number(match[1]) : Number.NaN
+}
+
+export type AmountMode = "decimal" | "cents"
+
+export interface FileResult {
+	passed: number
+	failed: number
+}
+
+export interface GradeEntry {
+	phase: string
+	amountMode: AmountMode
+	gradedAt: string
+	testsPassed: number
+	testsFailed: number
+	perFile: Record<string, FileResult>
+	ownTestsPass: boolean
+	/** Test IDs that passed in an earlier phase of the same grades file and fail now. */
+	regressions: string[]
+	/** Test ID (`<file> > <test name>`) to outcome. Skipped tests are left out. */
+	results: Record<string, "pass" | "fail">
+	serverStarted: boolean
+	/** Files in the workspace that changed while grading (git status), excluding node_modules. */
+	workspaceChanges?: string[]
+	notes?: string[]
+}
+
+export interface GradesFile {
+	version: 1
+	entries: GradeEntry[]
+}
+
+/** Parses grades.json. A missing or empty text gives an empty file. */
+export function parseGrades(text: string | undefined): { grades: GradesFile; errors: string[] } {
+	const empty: GradesFile = { version: 1, entries: [] }
+	if (text === undefined || text.trim() === "") return { grades: empty, errors: [] }
+	let raw: unknown
+	try {
+		raw = JSON.parse(text)
+	} catch (error) {
+		return {
+			grades: empty,
+			errors: [`grades file is not valid JSON: ${error instanceof Error ? error.message : String(error)}`],
+		}
+	}
+	if (!isRecord(raw) || raw.version !== 1 || !Array.isArray(raw.entries)) {
+		return { grades: empty, errors: ["grades file is not a version 1 grades file"] }
+	}
+	const errors: string[] = []
+	const entries: GradeEntry[] = []
+	for (const [index, value] of raw.entries.entries()) {
+		if (
+			!isRecord(value) ||
+			typeof value.phase !== "string" ||
+			!PHASE_PATTERN.test(value.phase) ||
+			typeof value.testsPassed !== "number" ||
+			typeof value.testsFailed !== "number" ||
+			!isRecord(value.results)
+		) {
+			errors.push(`grades.entries[${index}] needs "phase", "testsPassed", "testsFailed" and "results"`)
+			continue
+		}
+		const results: Record<string, "pass" | "fail"> = {}
+		for (const [id, outcome] of Object.entries(value.results)) {
+			if (outcome === "pass" || outcome === "fail") results[id] = outcome
+		}
+		const perFile: Record<string, FileResult> = {}
+		if (isRecord(value.perFile)) {
+			for (const [file, r] of Object.entries(value.perFile)) {
+				if (isRecord(r)) perFile[file] = { passed: numberOr0(r.passed), failed: numberOr0(r.failed) }
+			}
+		}
+		entries.push({
+			phase: value.phase,
+			amountMode: value.amountMode === "cents" ? "cents" : "decimal",
+			gradedAt: typeof value.gradedAt === "string" ? value.gradedAt : "",
+			testsPassed: value.testsPassed,
+			testsFailed: value.testsFailed,
+			perFile,
+			ownTestsPass: value.ownTestsPass === true,
+			regressions: Array.isArray(value.regressions)
+				? value.regressions.filter((r): r is string => typeof r === "string")
+				: [],
+			results,
+			serverStarted: value.serverStarted !== false,
+			...(Array.isArray(value.workspaceChanges)
+				? { workspaceChanges: value.workspaceChanges.filter((r): r is string => typeof r === "string") }
+				: {}),
+			...(Array.isArray(value.notes)
+				? { notes: value.notes.filter((r): r is string => typeof r === "string") }
+				: {}),
+		})
+	}
+	entries.sort((a, b) => phaseIndex(a.phase) - phaseIndex(b.phase))
+	return { grades: { version: 1, entries }, errors }
+}
+
+/**
+ * Tests that passed in any recorded phase before `phase` and do not pass now. A test that did not run
+ * now counts as not passing. Sorted.
+ */
+export function computeRegressions(
+	previous: readonly GradeEntry[],
+	phase: string,
+	results: Readonly<Record<string, "pass" | "fail">>,
+): string[] {
+	const current = phaseIndex(phase)
+	const passedBefore = new Set<string>()
+	for (const entry of previous) {
+		if (!(phaseIndex(entry.phase) < current)) continue
+		for (const [id, outcome] of Object.entries(entry.results)) if (outcome === "pass") passedBefore.add(id)
+	}
+	return [...passedBefore].filter((id) => results[id] !== "pass").sort()
+}
+
+/** Adds or replaces the entry for its phase; entries stay sorted by phase. */
+export function upsertGradeEntry(grades: GradesFile, entry: GradeEntry): GradesFile {
+	const entries = grades.entries.filter((e) => e.phase !== entry.phase)
+	entries.push(entry)
+	entries.sort((a, b) => phaseIndex(a.phase) - phaseIndex(b.phase))
+	return { version: 1, entries }
+}
+
+export interface GradeSummary {
+	perPhase: Array<{ phase: string; passed: number; total: number; regressions: number; ownTestsPass: boolean }>
+	/** The last graded phase. Its suite includes every earlier phase's tests. */
+	final?: { phase: string; passed: number; total: number }
+	/** Distinct test IDs that regressed in any phase (a regression fixed later still counts). */
+	regressions: number
+	/** final.passed minus regressions: the protocol's rank metric. */
+	score: number
+	/** Own `npm test` result of the last graded phase. */
+	ownTestsPass?: boolean
+	/** Planned phases without an entry. */
+	missingPhases: string[]
+}
+
+export function summariseGrades(grades: GradesFile, phases: readonly string[] = []): GradeSummary {
+	const perPhase = grades.entries.map((e) => ({
+		phase: e.phase,
+		passed: e.testsPassed,
+		total: e.testsPassed + e.testsFailed,
+		regressions: e.regressions.length,
+		ownTestsPass: e.ownTestsPass,
+	}))
+	const last = grades.entries[grades.entries.length - 1]
+	const regressed = new Set(grades.entries.flatMap((e) => e.regressions))
+	const final = last
+		? { phase: last.phase, passed: last.testsPassed, total: last.testsPassed + last.testsFailed }
+		: undefined
+	return {
+		perPhase,
+		...(final ? { final } : {}),
+		regressions: regressed.size,
+		score: (final?.passed ?? 0) - regressed.size,
+		...(last ? { ownTestsPass: last.ownTestsPass } : {}),
+		missingPhases: phases.filter((p) => !grades.entries.some((e) => e.phase === p)),
+	}
+}
+
+export interface TapTest {
+	name: string
+	ok: boolean
+	skipped: boolean
+}
+
+/**
+ * Top-level test results from TAP written by `node --test --test-reporter=tap <file>`. Handles both
+ * layouts: tests at the top level (Node 22 and later), and tests nested under one top-level entry named
+ * after the file (Node 20). Subtests deeper than that are ignored. `# SKIP` and `# TODO` are skipped.
+ */
+export function parseTap(text: string, fileName?: string): TapTest[] {
+	const pattern = /^( *)(not ok|ok) \d+(?: - (.*?))?(?: # (SKIP|TODO)\b.*)?$/i
+	const byIndent = new Map<number, TapTest[]>()
+	for (const line of text.split(/\r?\n/)) {
+		const match = pattern.exec(line)
+		if (!match) continue
+		const indent = match[1]!.length
+		const name = (match[3] ?? "").replace(/\\#/g, "#").replace(/\\\\/g, "\\")
+		const list = byIndent.get(indent) ?? []
+		list.push({ name, ok: match[2]!.toLowerCase() === "ok", skipped: match[4] !== undefined })
+		byIndent.set(indent, list)
+	}
+	const top = byIndent.get(0) ?? []
+	const isFileEntry = (t: TapTest) =>
+		fileName !== undefined &&
+		(t.name === fileName || t.name.endsWith(`/${fileName}`) || t.name.endsWith(`\\${fileName}`))
+	if (top.length === 1 && isFileEntry(top[0]!)) {
+		const nested = byIndent.get(4)
+		if (nested && nested.length > 0) return nested
+	}
+	return top
+}
+
+/** Results keyed by test ID `<file> > <name>`, with per-file counts. Duplicate names get a ` #2` suffix. */
+export function collectResults(files: Array<{ file: string; tests: TapTest[] }>): {
+	results: Record<string, "pass" | "fail">
+	perFile: Record<string, FileResult>
+	passed: number
+	failed: number
+} {
+	const results: Record<string, "pass" | "fail"> = {}
+	const perFile: Record<string, FileResult> = {}
+	let passed = 0
+	let failed = 0
+	for (const { file, tests } of files) {
+		const counts: FileResult = { passed: 0, failed: 0 }
+		for (const test of tests) {
+			if (test.skipped) continue
+			let id = `${file} > ${test.name}`
+			for (let n = 2; id in results; n++) id = `${file} > ${test.name} #${n}`
+			results[id] = test.ok ? "pass" : "fail"
+			if (test.ok) counts.passed++
+			else counts.failed++
+		}
+		perFile[file] = counts
+		passed += counts.passed
+		failed += counts.failed
+	}
+	return { results, perFile, passed, failed }
+}
+
+/** Hidden test files for a phase and every earlier phase, in phase order (`P1.test.mjs` and so on). */
+export function selectPhaseTestFiles(fileNames: readonly string[], phase: string): string[] {
+	const limit = phaseIndex(phase)
+	return fileNames
+		.map((name) => ({ name, match: /^P([1-9]\d*)\.test\.mjs$/.exec(name) }))
+		.filter((f) => f.match && Number(f.match[1]) <= limit)
+		.sort((a, b) => Number(a.match![1]) - Number(b.match![1]))
+		.map((f) => f.name)
 }
 
 // ---------------------------------------------------------------------------

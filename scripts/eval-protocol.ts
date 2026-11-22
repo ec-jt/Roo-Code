@@ -2,18 +2,21 @@
  * Evaluation protocol tooling (developer only, not shipped in the VSIX).
  * ADR-2026-11-20-feature-gating-evaluation-and-lessons, R-6. Usage: docs/eval-protocol-tooling.md.
  *
- *   pnpm eval:protocol leak-check   --workspace <dir> --protocol <file> [--extra <strings-file>]
+ *   pnpm eval:protocol leak-check   --workspace <dir> --protocol <file> [--extra <strings-file>] [--forbid <dir>]...
  *   pnpm eval:protocol matrix       --plan <plan.json> --tasks-dir <globalStorage>/tasks
  *   pnpm eval:protocol blind-export --plan <plan.json> --scenario S2 [--group <g>] --workspaces <map.json> --out <dir>
  *   pnpm eval:protocol blind-score  --out <dir> --answers <answers.json>
+ *   pnpm eval:protocol grade        --workspace <dir> --phase P1 --tests <hidden-tests> --out <grades.json>
  *
  * Constraints: reads only the task folders named in the plan and never writes task storage (C-5);
  * prints counts only from api_conversation_history.json and no environment values (Q-SEC-2);
- * calls no model API and reads no API key.
+ * calls no model API and reads no API key. `grade` runs the workspace's own npm scripts, so use it
+ * only on workspaces you would run anyway.
  */
-import { spawn } from "child_process"
+import { type ChildProcess, spawn } from "child_process"
 import * as crypto from "crypto"
 import * as fs from "fs/promises"
+import * as net from "net"
 import * as os from "os"
 import * as path from "path"
 import * as readline from "readline"
@@ -21,17 +24,24 @@ import * as readline from "readline"
 import { safeWriteJson } from "../src/utils/safeWriteJson"
 
 import {
+	type AmountMode,
 	type BlindKey,
+	type GradeEntry,
 	type LeakHit,
 	type Needle,
 	type RunInput,
+	type TapTest,
 	LEAK_SKIP_DIRECTORIES,
+	PHASE_PATTERN,
 	PatchCursor,
 	SAFE_TASK_ID,
 	assignBlind,
 	buildJudgePrompt,
 	buildNeedles,
+	collectResults,
+	computeRegressions,
 	countArmMentions,
+	distinctiveLines,
 	evaluateMatrix,
 	extractScenarioPrompt,
 	extractScriptedStrings,
@@ -43,11 +53,18 @@ import {
 	metricsCells,
 	pairRuns,
 	parseExtraStrings,
+	parseGrades,
 	parsePlan,
+	parseTap,
+	phaseIndex,
+	scanForbiddenName,
 	scanPath,
 	scanText,
 	scoreBlind,
+	selectPhaseTestFiles,
+	summariseGrades,
 	summariseUiMessages,
+	upsertGradeEntry,
 } from "./eval-protocol/lib"
 
 const DEFAULT_PROTOCOL = "docs/architecture/evaluation-2026-11-18.md"
@@ -55,47 +72,70 @@ const DEFAULT_PROTOCOL = "docs/architecture/evaluation-2026-11-18.md"
 const USAGE = `Usage: pnpm eval:protocol <command> [options]
 
 Commands:
-  leak-check    --workspace <dir> --protocol <file> [--extra <strings-file>]
+  leak-check    --workspace <dir> --protocol <file> [--extra <strings-file>] [--forbid <dir>]...
                 [--max-file-bytes <n>] [--max-commits <n>] [--max-print <n>]
       Fails (exit 1) if the workspace contains the protocol file name or a scripted
       string (section 4 blockquotes and italic quotes, plus extra lines) in any file,
       in "git diff HEAD", or in "git log -p --all". Skips node_modules and .git.
+      --forbid (repeatable) also fails on any distinctive line of any file under that
+      folder, and on a file whose name matches a file in it.
 
   matrix        --plan <plan.json> --tasks-dir <globalStorage>/tasks
       Checks the planned cells against each run's evaluation.json and prints
       requests, tokens, cache and cost per run and the mean per arm. Reads only
       the task folders listed in plan.runs. Exit 1 if any cell is invalid.
       Cells and runs may set "group" (for example a model); arms are then
-      compared, and means reported, per scenario and group.
+      compared, and means reported, per scenario and group. Runs may set
+      "grades" (a grades.json from "grade"); the plan may set "phases".
 
-  blind-export  --plan <plan.json> --scenario <id> [--group <g>] --workspaces <map.json>
-                --out <dir> [--protocol <file>]
+  blind-export  --plan <plan.json> --scenario <id> [--group <g>] [--arms <a,b>] --workspaces <map.json>
+                --out <dir> [--protocol <file> | --prompt-file <file>] [--followups <file>]...
       Writes one anonymised folder per matched pair under <out>/judge/ (A.diff,
       B.diff, judge-prompt.md), and <out>/key.json outside it. Calls no model.
       Pairs only runs of one group; --group is required when the scenario's
-      runs are in more than one group.
+      runs are in more than one group. --arms picks two arms when there are more.
+      --followups (repeatable, in the order sent) lists later user messages.
 
   blind-score   --out <dir> --answers <answers.json>
       Joins the judge's choices to the arms with <out>/key.json and prints wins.
+
+  grade         --workspace <dir> --phase <P1..Pn> --tests <hidden-tests-dir> --out <grades.json>
+                [--amount-mode decimal|cents] [--start-timeout <s>] [--test-timeout <s>]
+                [--own-test-timeout <s>]
+      Copies the hidden tests of this and earlier phases to a temporary folder, starts
+      "npm start" in the workspace on a free PORT, runs the tests with BASE_URL, runs
+      the workspace's "npm test", stops the server, and adds the phase to grades.json
+      with regressions against earlier phases. Exit 1 if a test fails.
 
 Default --protocol: ${DEFAULT_PROTOCOL}`
 
 type Args = Record<string, string>
 
-function parseArgs(argv: string[], allowed: string[]): Args {
+/** Separator for repeated option values inside one Args entry. */
+const MULTI_SEPARATOR = "\u0000"
+
+function parseArgs(argv: string[], allowed: string[], repeatable: string[] = []): Args {
 	const args: Args = {}
 	for (let i = 0; i < argv.length; i++) {
 		const arg = argv[i]!
 		if (arg === "--") continue
 		if (!arg.startsWith("--")) throw new UsageError(`Unexpected argument: ${arg}`)
 		const name = arg.slice(2)
-		if (!allowed.includes(name)) throw new UsageError(`Unknown option: ${arg}`)
+		if (!allowed.includes(name) && !repeatable.includes(name)) throw new UsageError(`Unknown option: ${arg}`)
 		const value = argv[i + 1]
 		if (value === undefined || value.startsWith("--")) throw new UsageError(`Option ${arg} needs a value`)
-		args[name] = value
+		if (repeatable.includes(name) && args[name] !== undefined) args[name] += MULTI_SEPARATOR + value
+		else if (args[name] !== undefined) throw new UsageError(`Option ${arg} given more than once`)
+		else args[name] = value
 		i++
 	}
 	return args
+}
+
+/** All values of a repeatable option, in the order given. */
+function many(args: Args, name: string): string[] {
+	const value = args[name]
+	return value === undefined ? [] : value.split(MULTI_SEPARATOR)
 }
 
 function required(args: Args, name: string): string {
@@ -173,8 +213,48 @@ async function gitText(
 // leak-check
 // ---------------------------------------------------------------------------
 
+/** Every regular file under a folder (no symlinks followed), skipping node_modules and .git. */
+async function listFilesRecursive(root: string): Promise<string[]> {
+	const result: string[] = []
+	const walk = async (dir: string) => {
+		const entries = await fs.readdir(dir, { withFileTypes: true })
+		entries.sort((a, b) => (a.name < b.name ? -1 : 1))
+		for (const entry of entries) {
+			if (LEAK_SKIP_DIRECTORIES.has(entry.name)) continue
+			const full = path.join(dir, entry.name)
+			if (entry.isDirectory()) await walk(full)
+			else if (entry.isFile()) result.push(full)
+		}
+	}
+	await walk(root)
+	return result
+}
+
+/** Distinctive lines and file names of the --forbid folders. */
+async function loadForbidden(dirs: string[], workspace: string): Promise<{ lines: string[]; names: Set<string> }> {
+	const lines: string[] = []
+	const names = new Set<string>()
+	for (const dir of dirs) {
+		const root = path.resolve(dir)
+		const rel = path.relative(root, workspace)
+		if (rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel))) {
+			throw new UsageError(`--forbid ${dir} contains the workspace; choose a folder outside it`)
+		}
+		for (const file of await listFilesRecursive(root)) {
+			names.add(path.basename(file))
+			const buffer = await fs.readFile(file)
+			if (!looksBinary(buffer)) lines.push(...distinctiveLines(buffer.toString("utf8")))
+		}
+	}
+	return { lines: [...new Set(lines)], names }
+}
+
 async function leakCheck(argv: string[]): Promise<number> {
-	const args = parseArgs(argv, ["workspace", "protocol", "extra", "max-file-bytes", "max-commits", "max-print"])
+	const args = parseArgs(
+		argv,
+		["workspace", "protocol", "extra", "max-file-bytes", "max-commits", "max-print"],
+		["forbid"],
+	)
 	const workspace = path.resolve(required(args, "workspace"))
 	const protocolPath = path.resolve(required(args, "protocol"))
 	const maxFileBytes = optionalInt(args, "max-file-bytes", 5 * 1024 * 1024)
@@ -185,8 +265,17 @@ async function leakCheck(argv: string[]): Promise<number> {
 	const scripted = extractScriptedStrings(protocolText)
 	const extra = args.extra ? parseExtraStrings(await fs.readFile(path.resolve(args.extra), "utf8")) : []
 	const needles = buildNeedles(path.basename(protocolPath), scripted, extra)
+	const forbidDirs = many(args, "forbid")
+	const forbidden = await loadForbidden(forbidDirs, workspace)
+	const known = new Set(needles.map((n) => n.text))
+	for (const line of forbidden.lines) {
+		if (!known.has(line)) needles.push({ kind: "forbidden-line", text: line })
+	}
 	console.log(
-		`Leak check of ${workspace}: protocol file name, ${scripted.length} scripted strings, ${extra.length} extra strings.`,
+		`Leak check of ${workspace}: protocol file name, ${scripted.length} scripted strings, ${extra.length} extra strings` +
+			(forbidDirs.length > 0
+				? `, ${forbidden.lines.length} forbidden lines and ${forbidden.names.size} forbidden file names from ${forbidDirs.length} folder(s).`
+				: "."),
 	)
 
 	const hits: LeakHit[] = []
@@ -213,6 +302,7 @@ async function leakCheck(argv: string[]): Promise<number> {
 			const full = path.join(dir, entry.name)
 			const relative = path.relative(workspace, full).split(path.sep).join("/")
 			add(scanPath(relative, needles))
+			if (entry.isFile()) add(scanForbiddenName(relative, forbidden.names))
 			if (entry.isDirectory()) {
 				await walk(full)
 			} else if (entry.isFile()) {
@@ -319,6 +409,23 @@ function isMissing(error: unknown): boolean {
 	return isRecord(error) && error.code === "ENOENT"
 }
 
+/** Reads a run's grades.json (path relative to the plan file) into the run input. */
+async function addGrades(input: RunInput, planDir: string, gradesPath: string, phases: string[]): Promise<void> {
+	let text: string
+	try {
+		text = await fs.readFile(path.resolve(planDir, gradesPath), "utf8")
+	} catch (error) {
+		input.gradesError = isMissing(error) ? `no grades file at ${gradesPath}` : `cannot read ${gradesPath}`
+		return
+	}
+	const parsed = parseGrades(text)
+	if (parsed.errors.length > 0) {
+		input.gradesError = `${gradesPath}: ${parsed.errors[0]}`
+		return
+	}
+	input.grades = summariseGrades(parsed.grades, phases)
+}
+
 async function matrix(argv: string[]): Promise<number> {
 	const args = parseArgs(argv, ["plan", "tasks-dir"])
 	const planPath = path.resolve(required(args, "plan"))
@@ -328,9 +435,14 @@ async function matrix(argv: string[]): Promise<number> {
 
 	const inputs = new Map<string, RunInput>()
 	for (const run of parsed.plan.runs) {
-		if (!inputs.has(run.taskId)) inputs.set(run.taskId, await readRunInput(tasksDir, run.taskId))
+		if (!inputs.has(run.taskId)) {
+			const input = await readRunInput(tasksDir, run.taskId)
+			if (run.grades) await addGrades(input, path.dirname(planPath), run.grades, parsed.plan.phases ?? [])
+			inputs.set(run.taskId, input)
+		}
 	}
 	const report = evaluateMatrix(parsed.plan, inputs, parsed.duplicateTaskIds)
+	const withGrades = parsed.plan.phases !== undefined || parsed.plan.runs.some((r) => r.grades !== undefined)
 
 	const grouped =
 		parsed.plan.cells.some((c) => c.group !== undefined) || parsed.plan.runs.some((r) => r.group !== undefined)
@@ -393,6 +505,76 @@ async function matrix(argv: string[]): Promise<number> {
 	const notes = report.runs.flatMap((r) => r.notes.map((n) => `${r.run.taskId.slice(0, 8)}: ${n}`))
 	if (notes.length > 0) console.log(`\nNotes\n${notes.map((n) => `- ${n}`).join("\n")}`)
 	if (problems.length > 0) console.log(`\nProblems\n${problems.map((p) => `- ${p}`).join("\n")}`)
+
+	if (withGrades) {
+		const phases =
+			parsed.plan.phases ??
+			[...new Set(report.runs.flatMap((r) => r.input.grades?.perPhase.map((p) => p.phase) ?? []))].sort(
+				(a, b) => phaseIndex(a) - phaseIndex(b),
+			)
+		console.log("\nHidden tests per run (passed/total per phase; the last phase runs every earlier suite)\n")
+		console.log(
+			formatTable(
+				[
+					"task",
+					...(grouped ? ["group"] : []),
+					"arm",
+					"sample",
+					...phases,
+					"final",
+					"regressions",
+					"score",
+					"own tests",
+				],
+				report.runs.map((r) => {
+					const g = r.input.grades
+					return [
+						r.run.taskId.slice(0, 8),
+						...groupCol(r.run.group),
+						r.run.arm,
+						r.run.sample ?? "",
+						...phases.map((phase) => {
+							const p = g?.perPhase.find((x) => x.phase === phase)
+							return p ? `${p.passed}/${p.total}` : "-"
+						}),
+						g?.final ? `${g.final.passed}/${g.final.total}` : "-",
+						g ? String(g.regressions) : "-",
+						g?.final ? String(g.score) : "-",
+						g?.ownTestsPass === undefined ? "-" : g.ownTestsPass ? "pass" : "FAIL",
+					]
+				}),
+			),
+		)
+		console.log(
+			`\nHidden tests per arm${grouped ? " and group" : ""} (mean over valid graded runs; score = passed in the last phase minus regressions)\n`,
+		)
+		console.log(
+			formatTable(
+				[
+					"scenario",
+					...(grouped ? ["group"] : []),
+					"arm",
+					"graded",
+					"passed",
+					"total",
+					"regressions",
+					"score",
+					"own tests pass",
+				],
+				report.means.map((m) => [
+					m.scenario,
+					...groupCol(m.group),
+					m.arm,
+					String(m.grades?.runs ?? 0),
+					m.grades ? m.grades.finalPassed.toFixed(1) : "-",
+					m.grades ? m.grades.finalTotal.toFixed(1) : "-",
+					m.grades ? m.grades.regressions.toFixed(1) : "-",
+					m.grades ? m.grades.score.toFixed(1) : "-",
+					m.grades ? `${m.grades.ownTestsPassing}/${m.grades.runs}` : "-",
+				]),
+			),
+		)
+	}
 
 	console.log(
 		`\nMean per arm${grouped ? " and group" : ""} (valid runs only; excluded and invalid runs are left out)\n`,
@@ -498,24 +680,44 @@ const cryptoRandom = {
 }
 
 async function blindExport(argv: string[]): Promise<number> {
-	const args = parseArgs(argv, ["plan", "scenario", "group", "workspaces", "out", "protocol"])
+	const args = parseArgs(
+		argv,
+		["plan", "scenario", "group", "workspaces", "out", "protocol", "prompt-file", "arms"],
+		["followups"],
+	)
 	const planPath = path.resolve(required(args, "plan"))
 	const scenario = required(args, "scenario")
 	const group = args.group
 	const mapPath = path.resolve(required(args, "workspaces"))
 	const outDir = path.resolve(required(args, "out"))
+	if (args.protocol && args["prompt-file"]) throw new UsageError("Use --protocol or --prompt-file, not both")
 	const protocolPath = path.resolve(args.protocol ?? DEFAULT_PROTOCOL)
+	const onlyArms = args.arms
+		? args.arms
+				.split(",")
+				.map((a) => a.trim())
+				.filter(Boolean)
+		: undefined
+	if (onlyArms && onlyArms.length !== 2) throw new UsageError("--arms needs exactly two arm names, comma-separated")
 
 	const parsed = parsePlan(await fs.readFile(planPath, "utf8"))
 	if (parsed.errors.length > 0) {
 		for (const error of parsed.errors) console.log(`plan: ${error}`)
 		return 1
 	}
-	const taskPrompt = extractScenarioPrompt(await fs.readFile(protocolPath, "utf8"), scenario)
+	const taskPrompt = args["prompt-file"]
+		? (await fs.readFile(path.resolve(args["prompt-file"]), "utf8")).trim()
+		: extractScenarioPrompt(await fs.readFile(protocolPath, "utf8"), scenario)
 	if (!taskPrompt) throw new UsageError(`No prompt for scenario ${scenario} in section 4 of ${protocolPath}`)
+	const followups: string[] = []
+	for (const file of many(args, "followups")) {
+		const text = (await fs.readFile(path.resolve(file), "utf8")).trim()
+		if (!text) throw new UsageError(`--followups ${file} is empty`)
+		followups.push(text)
+	}
 	const workspaces = parseWorkspaces(await readJson(mapPath), path.dirname(mapPath))
 
-	const pairing = pairRuns(parsed.plan, scenario, group)
+	const pairing = pairRuns(parsed.plan, scenario, group, onlyArms)
 	for (const problem of pairing.problems) console.log(problem)
 	for (const run of pairing.unpaired) console.log(`unpaired run left out: ${run.taskId.slice(0, 8)} (${run.arm})`)
 	if (pairing.pairs.length === 0) {
@@ -552,7 +754,7 @@ async function blindExport(argv: string[]): Promise<number> {
 		}
 		await fs.writeFile(
 			path.join(pairDir, "judge-prompt.md"),
-			buildJudgePrompt(assignment.pairId, taskPrompt),
+			buildJudgePrompt(assignment.pairId, taskPrompt, followups),
 			"utf8",
 		)
 	}
@@ -604,12 +806,353 @@ async function blindScore(argv: string[]): Promise<number> {
 }
 
 // ---------------------------------------------------------------------------
+// grade
+// ---------------------------------------------------------------------------
+
+/** Seed data file for the server under test, relative to the hidden tests folder. */
+const SEED_FIXTURE = path.join("fixtures", "seed-expenses.json")
+const OUTPUT_LIMIT = 200_000
+
+interface RunResult {
+	code: number | null
+	signal: NodeJS.Signals | null
+	timedOut: boolean
+	output: string
+}
+
+/** True when `child` is inside `parent` (or equal to it). */
+function isInside(parent: string, child: string): boolean {
+	const rel = path.relative(parent, child)
+	return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel))
+}
+
+/** Sends a signal to the child's process group (POSIX), falling back to the child itself. */
+function killGroup(child: ChildProcess, signal: NodeJS.Signals): void {
+	if (child.pid === undefined) return
+	try {
+		process.kill(-child.pid, signal)
+	} catch {
+		try {
+			child.kill(signal)
+		} catch {
+			// Already gone.
+		}
+	}
+}
+
+/** Runs a command in its own process group with a timeout; output is kept up to OUTPUT_LIMIT characters. */
+function runBounded(
+	command: string,
+	args: string[],
+	options: { cwd: string; env: NodeJS.ProcessEnv; timeoutMs: number },
+): Promise<RunResult> {
+	return new Promise((resolve) => {
+		const child = spawn(command, args, {
+			cwd: options.cwd,
+			env: options.env,
+			detached: true,
+			stdio: ["ignore", "pipe", "pipe"],
+		})
+		let output = ""
+		const collect = (chunk: Buffer) => {
+			if (output.length < OUTPUT_LIMIT) output += chunk.toString("utf8")
+		}
+		child.stdout?.on("data", collect)
+		child.stderr?.on("data", collect)
+		let timedOut = false
+		const timer = setTimeout(() => {
+			timedOut = true
+			killGroup(child, "SIGTERM")
+			setTimeout(() => killGroup(child, "SIGKILL"), 3000).unref()
+		}, options.timeoutMs)
+		child.on("error", (error) => {
+			clearTimeout(timer)
+			resolve({ code: null, signal: null, timedOut, output: `${output}\n${error.message}` })
+		})
+		child.on("close", (code, signal) => {
+			clearTimeout(timer)
+			// Kill any descendants left in the group (for example a server started by the tests).
+			killGroup(child, "SIGKILL")
+			resolve({ code, signal, timedOut, output })
+		})
+	})
+}
+
+function freePort(): Promise<number> {
+	return new Promise((resolve, reject) => {
+		const server = net.createServer()
+		server.unref()
+		server.on("error", reject)
+		server.listen(0, "127.0.0.1", () => {
+			const address = server.address()
+			const port = typeof address === "object" && address ? address.port : 0
+			server.close(() => (port ? resolve(port) : reject(new Error("no free port"))))
+		})
+	})
+}
+
+function portAnswers(port: number): Promise<boolean> {
+	return new Promise((resolve) => {
+		const socket = net.connect({ host: "127.0.0.1", port })
+		const done = (ok: boolean) => {
+			socket.destroy()
+			resolve(ok)
+		}
+		socket.setTimeout(1000, () => done(false))
+		socket.once("connect", () => done(true))
+		socket.once("error", () => done(false))
+	})
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+/**
+ * `git status --porcelain` lines of the workspace, excluding node_modules. Undefined when the workspace is
+ * not the top level of its own git work tree (for example a folder inside another repository).
+ */
+async function workspaceStatus(workspace: string): Promise<Set<string> | undefined> {
+	const top = await gitText(workspace, ["rev-parse", "--show-toplevel"]).catch(() => undefined)
+	if (!top || top.code !== 0) return undefined
+	const realTop = await fs.realpath(top.text.trim()).catch(() => top.text.trim())
+	const realWorkspace = await fs.realpath(workspace).catch(() => workspace)
+	if (realTop !== realWorkspace) return undefined
+	const result = await gitText(workspace, ["status", "--porcelain", "--untracked-files=all"]).catch(() => undefined)
+	if (!result || result.code !== 0) return undefined
+	return new Set(
+		result.text
+			.split("\n")
+			.filter(
+				(line) =>
+					line.length > 0 &&
+					!/(^|\/)node_modules\//.test(line.slice(3)) &&
+					!line.slice(3).startsWith("node_modules"),
+			),
+	)
+}
+
+/** Environment for workspace processes: the parent environment without npm's own config overrides. */
+function childEnv(extra: Record<string, string>): NodeJS.ProcessEnv {
+	const env: NodeJS.ProcessEnv = {}
+	for (const [key, value] of Object.entries(process.env)) {
+		if (key.startsWith("npm_") || key === "INIT_CWD" || key === "PORT" || key === "BASE_URL") continue
+		env[key] = value
+	}
+	return { ...env, ...extra }
+}
+
+function tail(text: string, lines: number): string {
+	return text.trimEnd().split(/\r?\n/).slice(-lines).join("\n")
+}
+
+async function grade(argv: string[]): Promise<number> {
+	const args = parseArgs(argv, [
+		"workspace",
+		"phase",
+		"tests",
+		"out",
+		"amount-mode",
+		"start-timeout",
+		"test-timeout",
+		"own-test-timeout",
+	])
+	const workspace = path.resolve(required(args, "workspace"))
+	const phase = required(args, "phase")
+	if (!PHASE_PATTERN.test(phase)) throw new UsageError(`--phase must look like P1, got ${phase}`)
+	const testsDir = path.resolve(required(args, "tests"))
+	const outPath = path.resolve(required(args, "out"))
+	const amountArg = args["amount-mode"]
+	if (amountArg !== undefined && amountArg !== "decimal" && amountArg !== "cents") {
+		throw new UsageError("--amount-mode must be decimal or cents")
+	}
+	// L1: amounts are decimal until P4 changes them to cents.
+	const amountMode: AmountMode =
+		(amountArg as AmountMode | undefined) ?? (phaseIndex(phase) >= 4 ? "cents" : "decimal")
+	const startTimeoutMs = optionalInt(args, "start-timeout", 30) * 1000
+	const testTimeoutMs = optionalInt(args, "test-timeout", 120) * 1000
+	const ownTestTimeoutMs = optionalInt(args, "own-test-timeout", 300) * 1000
+
+	if (!(await exists(path.join(workspace, "package.json")))) throw new UsageError(`${workspace} has no package.json`)
+	if (isInside(workspace, testsDir))
+		throw new UsageError("--tests is inside the workspace; the hidden tests must stay outside it")
+	if (isInside(workspace, outPath))
+		throw new UsageError("--out is inside the workspace; grade must not write to the workspace")
+
+	const testFiles = selectPhaseTestFiles(await fs.readdir(testsDir), phase)
+	if (!testFiles.some((f) => f === `${phase}.test.mjs`)) throw new UsageError(`${testsDir} has no ${phase}.test.mjs`)
+
+	const existing = parseGrades((await exists(outPath)) ? await fs.readFile(outPath, "utf8") : undefined)
+	if (existing.errors.length > 0) throw new UsageError(`${outPath}: ${existing.errors.join("; ")}`)
+
+	// 1. Copy the hidden tests and the seed data to a temporary folder outside the workspace.
+	const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "eval-grade-"))
+	if (isInside(workspace, tmp)) throw new Error("temporary folder is inside the workspace")
+	const notes: string[] = []
+	let server: ChildProcess | undefined
+	try {
+		const tmpTests = path.join(tmp, "tests")
+		await fs.mkdir(tmpTests)
+		for (const file of testFiles) await fs.copyFile(path.join(testsDir, file), path.join(tmpTests, file))
+		const dataFile = path.join(tmp, "data", "expenses.json")
+		await fs.mkdir(path.dirname(dataFile))
+		if (await exists(path.join(testsDir, SEED_FIXTURE))) {
+			await fs.copyFile(path.join(testsDir, SEED_FIXTURE), dataFile)
+		} else {
+			notes.push(`no ${SEED_FIXTURE} in the tests folder: the server starts without seed data`)
+		}
+		console.log(`Grading ${phase} (${amountMode}) of ${workspace} with ${testFiles.join(", ")}.`)
+
+		const statusBefore = await workspaceStatus(workspace)
+
+		// 2. npm install when node_modules is missing.
+		if (!(await exists(path.join(workspace, "node_modules")))) {
+			console.log("node_modules missing: running npm install.")
+			const install = await runBounded("npm", ["install", "--no-audit", "--no-fund"], {
+				cwd: workspace,
+				env: childEnv({}),
+				timeoutMs: 300_000,
+			})
+			if (install.code !== 0) {
+				notes.push(
+					`npm install failed (exit ${install.code ?? install.signal}${install.timedOut ? ", timed out" : ""})`,
+				)
+				console.log(tail(install.output, 20))
+			}
+		}
+
+		// 3. npm start on a free port; wait until the port answers.
+		const port = await freePort()
+		const baseUrl = `http://127.0.0.1:${port}`
+		let serverOutput = ""
+		let serverExited = false
+		server = spawn("npm", ["start"], {
+			cwd: workspace,
+			env: childEnv({ PORT: String(port), DATA_FILE: dataFile }),
+			detached: true,
+			stdio: ["ignore", "pipe", "pipe"],
+		})
+		const collect = (chunk: Buffer) => {
+			if (serverOutput.length < OUTPUT_LIMIT) serverOutput += chunk.toString("utf8")
+		}
+		server.stdout?.on("data", collect)
+		server.stderr?.on("data", collect)
+		server.on("exit", () => {
+			serverExited = true
+		})
+		server.on("error", (error) => {
+			serverExited = true
+			serverOutput += `\n${error.message}`
+		})
+		const started = Date.now()
+		let serverStarted = false
+		while (Date.now() - started < startTimeoutMs && !serverExited) {
+			if (await portAnswers(port)) {
+				serverStarted = true
+				break
+			}
+			await sleep(250)
+		}
+		if (serverStarted) {
+			console.log(`Server answered on port ${port} after ${((Date.now() - started) / 1000).toFixed(1)} s.`)
+		} else {
+			const why = serverExited
+				? "npm start exited"
+				: `port ${port} did not answer within ${startTimeoutMs / 1000} s`
+			notes.push(`server not started: ${why}`)
+			console.log(`Server not started: ${why}. Last output:\n${tail(serverOutput, 20)}`)
+		}
+
+		// 4. Hidden tests, one file at a time, with BASE_URL set.
+		const files: Array<{ file: string; tests: TapTest[] }> = []
+		for (const file of testFiles) {
+			const result = await runBounded(process.execPath, ["--test", "--test-reporter=tap", file], {
+				cwd: tmpTests,
+				env: childEnv({ BASE_URL: baseUrl, AMOUNT_MODE: amountMode }),
+				timeoutMs: testTimeoutMs,
+			})
+			const tests = parseTap(result.output, file)
+			if (result.timedOut) notes.push(`${file}: timed out after ${testTimeoutMs / 1000} s`)
+			if (tests.length === 0) notes.push(`${file}: no test results (exit ${result.code ?? result.signal})`)
+			files.push({ file, tests })
+		}
+
+		// 5. Stop the server and its process group before the project's own tests.
+		killGroup(server, "SIGTERM")
+		for (let i = 0; i < 20 && !serverExited; i++) await sleep(250)
+		killGroup(server, "SIGKILL")
+		server = undefined
+
+		// 6. The project's own npm test.
+		const own = await runBounded("npm", ["test"], {
+			cwd: workspace,
+			env: childEnv({ CI: "1" }),
+			timeoutMs: ownTestTimeoutMs,
+		})
+		const ownTestsPass = own.code === 0 && !own.timedOut
+		if (own.timedOut) notes.push(`npm test timed out after ${ownTestTimeoutMs / 1000} s`)
+
+		const statusAfter = await workspaceStatus(workspace)
+		const workspaceChanges =
+			statusBefore && statusAfter ? [...statusAfter].filter((line) => !statusBefore.has(line)).sort() : undefined
+		if (workspaceChanges && workspaceChanges.length > 0) {
+			notes.push(
+				`workspace changed while grading (by npm install, the server or npm test): ${workspaceChanges.length} path(s)`,
+			)
+		}
+
+		// 7. Record the phase.
+		const collected = collectResults(files)
+		const regressions = computeRegressions(existing.grades.entries, phase, collected.results)
+		const entry: GradeEntry = {
+			phase,
+			amountMode,
+			gradedAt: new Date().toISOString(),
+			testsPassed: collected.passed,
+			testsFailed: collected.failed,
+			perFile: collected.perFile,
+			ownTestsPass,
+			regressions,
+			results: collected.results,
+			serverStarted,
+			...(workspaceChanges ? { workspaceChanges } : {}),
+			...(notes.length > 0 ? { notes } : {}),
+		}
+		const replaced = existing.grades.entries.some((e) => e.phase === phase)
+		await safeWriteJson(outPath, upsertGradeEntry(existing.grades, entry), { prettyPrint: true })
+
+		console.log("")
+		console.log(
+			formatTable(
+				["file", "passed", "failed"],
+				Object.entries(collected.perFile).map(([file, r]) => [file, String(r.passed), String(r.failed)]),
+			),
+		)
+		const failedIds = Object.entries(collected.results)
+			.filter(([, outcome]) => outcome === "fail")
+			.map(([id]) => id)
+		if (failedIds.length > 0) console.log(`\nFailed:\n${failedIds.map((id) => `- ${id}`).join("\n")}`)
+		if (regressions.length > 0) console.log(`\nRegressions:\n${regressions.map((id) => `- ${id}`).join("\n")}`)
+		if (!ownTestsPass)
+			console.log(`\nnpm test failed (exit ${own.code ?? own.signal}). Last output:\n${tail(own.output, 15)}`)
+		for (const note of notes) console.log(`note: ${note}`)
+		console.log(
+			`\n${phase}: ${collected.passed} passed, ${collected.failed} failed, ${regressions.length} regressions, own tests ${ownTestsPass ? "pass" : "FAIL"}.`,
+		)
+		console.log(`${replaced ? "Replaced" : "Added"} ${phase} in ${outPath}.`)
+		return collected.failed === 0 && ownTestsPass && serverStarted ? 0 : 1
+	} finally {
+		if (server) killGroup(server, "SIGKILL")
+		await fs.rm(tmp, { recursive: true, force: true })
+	}
+}
+
+// ---------------------------------------------------------------------------
 
 const COMMANDS: Record<string, (argv: string[]) => Promise<number>> = {
 	"leak-check": leakCheck,
 	matrix,
 	"blind-export": blindExport,
 	"blind-score": blindScore,
+	grade,
 }
 
 async function main(): Promise<number> {

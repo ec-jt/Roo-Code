@@ -3,24 +3,35 @@
 import {
 	type BlindRandom,
 	type EvaluationManifest,
+	type GradeEntry,
 	type Plan,
 	type RunInput,
 	PatchCursor,
 	assignBlind,
 	buildJudgePrompt,
 	buildNeedles,
+	collectResults,
+	computeRegressions,
 	countArmMentions,
+	distinctiveLines,
 	evaluateMatrix,
 	extractScenarioPrompt,
 	extractScriptedStrings,
+	matchLine,
 	pairRuns,
+	parseGrades,
 	parseJudgeChoice,
 	parsePlan,
+	parseTap,
+	scanForbiddenName,
 	scanPath,
 	scanText,
 	scoreBlind,
+	selectPhaseTestFiles,
 	settingsDifferences,
+	summariseGrades,
 	summariseUiMessages,
+	upsertGradeEntry,
 } from "../eval-protocol/lib"
 
 const PROTOCOL = `# Evaluation
@@ -513,6 +524,53 @@ describe("blind review", () => {
 		expect("group" in ungrouped).toBe(false)
 	})
 
+	it("lists follow-up messages after the task prompt, in order, without file names", () => {
+		const prompt = buildJudgePrompt("pair-1", "Phase 1: create the API.", [
+			"Phase 2: add a web UI.",
+			"Also convert every stored expense file in place to the new format on startup.",
+			"Phase 4: store amounts as integer cents.\n\n- Accept `amountCents`.",
+		])
+		const task = prompt.indexOf("## Task given to both candidates")
+		const heading = prompt.indexOf("## Messages the user sent during the task")
+		const candidates = prompt.indexOf("## Candidates")
+		expect(task).toBeGreaterThan(-1)
+		expect(heading).toBeGreaterThan(task)
+		expect(candidates).toBeGreaterThan(heading)
+		const m1 = prompt.indexOf("### Message 1")
+		const m2 = prompt.indexOf("### Message 2")
+		const m3 = prompt.indexOf("### Message 3")
+		expect(m1).toBeGreaterThan(heading)
+		expect(m2).toBeGreaterThan(m1)
+		expect(m3).toBeGreaterThan(m2)
+		expect(prompt).toContain("> Also convert every stored expense file in place to the new format on startup.")
+		// Blank lines inside a message stay inside the quote.
+		expect(prompt).toContain("> Phase 4: store amounts as integer cents.\n>\n> - Accept `amountCents`.")
+		expect(prompt).not.toMatch(/drift\.md|P[1-4]\.md/)
+	})
+
+	it("omits the follow-up section when there are none", () => {
+		expect(buildJudgePrompt("pair-1", "Task.")).not.toContain("Messages the user sent")
+		expect(buildJudgePrompt("pair-1", "Task.", [])).not.toContain("Messages the user sent")
+	})
+
+	it("pairs only the chosen arms when a scenario has more than two", () => {
+		const plan: Plan = {
+			cells: ["modes", "cordis", "hybrid"].map((arm) => ({ scenario: "L1", group: "opus", arm, samples: 1 })),
+			runs: ["modes", "cordis", "hybrid"].map((arm) => ({
+				taskId: `t-${arm}`,
+				scenario: "L1",
+				group: "opus",
+				arm,
+				sample: "r1",
+			})),
+			armSettings: {},
+		}
+		expect(pairRuns(plan, "L1", "opus").problems[0]).toMatch(/exactly 2 arms/)
+		const chosen = pairRuns(plan, "L1", "opus", ["hybrid", "modes"])
+		expect(chosen.problems).toEqual([])
+		expect(chosen.pairs.map((p) => p.runs.map((r) => r.arm))).toEqual([["modes", "hybrid"]])
+	})
+
 	it("counts arm names in added diff lines", () => {
 		const diff = "+++ b/file.ts\n+// cordis profile\n-// modes\n context"
 		expect(countArmMentions(diff, ["cordis", "modes"])).toEqual({ cordis: 1, modes: 0 })
@@ -531,5 +589,311 @@ describe("blind review", () => {
 		// Regex characters in an arm name are matched literally.
 		expect(countArmMentions("+a.b and axb", ["a.b"])["a.b"]).toBe(1)
 		expect(countArmMentions("+axb", ["a.b"])["a.b"]).toBe(0)
+	})
+})
+
+describe("leak scanning with --forbid", () => {
+	const hiddenTest = [
+		'import { test } from "node:test"',
+		'import assert from "node:assert/strict"',
+		"",
+		'test("partial import stores valid rows and reports invalid rows with their line numbers", async () => {',
+		"\tassert.equal(r.status, 200)",
+		"\tassertOk(await importCsv(csv), 2, [3, 5, 6])",
+		"})",
+	].join("\n")
+
+	it("keeps distinctive lines and drops short, import and common lines", () => {
+		const lines = distinctiveLines(hiddenTest)
+		expect(lines).toContain(
+			'test("partial import stores valid rows and reports invalid rows with their line numbers", async () => {',
+		)
+		expect(lines).toContain("assertOk(await importCsv(csv), 2, [3, 5, 6])")
+		expect(lines).not.toContain('import { test } from "node:test"')
+		expect(lines).not.toContain("assert.equal(r.status, 200)")
+		expect(lines).not.toContain("})")
+	})
+
+	it("finds a copied hidden-test line in a workspace file, whatever its indentation", () => {
+		const needles = distinctiveLines(hiddenTest).map((text) => ({ kind: "forbidden-line" as const, text }))
+		const workspaceFile = "// my tests\n    assertOk(await importCsv(csv), 2, [3, 5, 6])\n"
+		const hits = scanText("test/import.test.ts", workspaceFile, needles)
+		expect(hits).toHaveLength(1)
+		expect(hits[0]).toMatchObject({ source: "test/import.test.ts", line: 2, needle: { kind: "forbidden-line" } })
+		expect(scanText("src/server.ts", "assert.equal(r.status, 200)\n", needles)).toEqual([])
+		expect(matchLine("unrelated line of code that is long enough", needles)).toEqual([])
+	})
+
+	it("flags a workspace file named like a forbidden file, but not generic names", () => {
+		const names = new Set(["P3.test.mjs", "drift.md", "package.json", "seed-expenses.json"])
+		expect(scanForbiddenName("test/P3.test.mjs", names)).toEqual([
+			{ source: "test/P3.test.mjs", line: 0, needle: { kind: "forbidden-file-name", text: "P3.test.mjs" } },
+		])
+		expect(scanForbiddenName("notes/drift.md", names)).toHaveLength(1)
+		expect(scanForbiddenName("package.json", names)).toEqual([])
+		expect(scanForbiddenName("test/P3.test.ts", names)).toEqual([])
+	})
+})
+
+function gradeEntry(
+	phase: string,
+	results: Record<string, "pass" | "fail">,
+	extra: Partial<GradeEntry> = {},
+): GradeEntry {
+	const passed = Object.values(results).filter((r) => r === "pass").length
+	return {
+		phase,
+		amountMode: "decimal",
+		gradedAt: "2026-11-22T00:00:00.000Z",
+		testsPassed: passed,
+		testsFailed: Object.keys(results).length - passed,
+		perFile: {},
+		ownTestsPass: true,
+		regressions: [],
+		results,
+		serverStarted: true,
+		...extra,
+	}
+}
+
+describe("grading", () => {
+	it("parses grades.json, sorts entries by phase and rejects bad files", () => {
+		const text = JSON.stringify({
+			version: 1,
+			entries: [
+				gradeEntry("P2", { "P1.test.mjs > a": "pass" }),
+				gradeEntry("P1", { "P1.test.mjs > a": "pass", "P1.test.mjs > b": "skip" as "pass" }),
+				{ phase: "X9" },
+			],
+		})
+		const parsed = parseGrades(text)
+		expect(parsed.grades.entries.map((e) => e.phase)).toEqual(["P1", "P2"])
+		expect(parsed.grades.entries[0]!.results).toEqual({ "P1.test.mjs > a": "pass" })
+		expect(parsed.errors).toHaveLength(1)
+		expect(parseGrades(undefined).grades.entries).toEqual([])
+		expect(parseGrades("{").errors[0]).toMatch(/not valid JSON/)
+		expect(parseGrades('{"version":2,"entries":[]}').errors[0]).toMatch(/version 1/)
+	})
+
+	it("computes regressions against earlier phases only", () => {
+		const p1 = gradeEntry("P1", { "P1 > crud": "pass", "P1 > order": "pass", "P1 > 404": "fail" })
+		const p2 = gradeEntry("P2", { "P1 > crud": "pass", "P1 > order": "pass", "P2 > form": "pass" })
+		const p4 = gradeEntry("P4", { "P1 > crud": "fail" })
+		// Failing now; passed in P1. A test missing from the current run counts as not passing.
+		expect(
+			computeRegressions([p1, p2], "P3", { "P1 > crud": "fail", "P2 > form": "pass", "P1 > 404": "fail" }),
+		).toEqual(["P1 > crud", "P1 > order"])
+		// A test that never passed is not a regression.
+		expect(
+			computeRegressions([p1], "P2", { "P1 > crud": "pass", "P1 > order": "pass", "P1 > 404": "fail" }),
+		).toEqual([])
+		// Re-grading an earlier phase ignores later entries.
+		expect(computeRegressions([p1, p2, p4], "P2", { "P1 > crud": "pass", "P1 > order": "pass" })).toEqual([])
+	})
+
+	it("replaces the entry for a re-graded phase and keeps phase order", () => {
+		let grades = parseGrades(undefined).grades
+		grades = upsertGradeEntry(grades, gradeEntry("P2", {}))
+		grades = upsertGradeEntry(grades, gradeEntry("P1", { a: "fail" }))
+		grades = upsertGradeEntry(grades, gradeEntry("P1", { a: "pass" }))
+		expect(grades.entries.map((e) => [e.phase, e.testsPassed])).toEqual([
+			["P1", 1],
+			["P2", 0],
+		])
+	})
+
+	it("summarises grades: final suite, distinct regressions, score and missing phases", () => {
+		const grades = parseGrades(
+			JSON.stringify({
+				version: 1,
+				entries: [
+					gradeEntry("P1", { a: "pass", b: "pass" }),
+					gradeEntry("P2", { a: "fail", b: "pass", c: "pass" }, { regressions: ["a"] }),
+					gradeEntry(
+						"P3",
+						{ a: "fail", b: "fail", c: "pass", d: "pass" },
+						{ regressions: ["a", "b"], ownTestsPass: false },
+					),
+				],
+			}),
+		).grades
+		const summary = summariseGrades(grades, ["P1", "P2", "P3", "P4"])
+		expect(summary.final).toEqual({ phase: "P3", passed: 2, total: 4 })
+		expect(summary.regressions).toBe(2)
+		expect(summary.score).toBe(0)
+		expect(summary.ownTestsPass).toBe(false)
+		expect(summary.missingPhases).toEqual(["P4"])
+		expect(summary.perPhase.map((p) => `${p.phase}:${p.passed}/${p.total}`)).toEqual(["P1:2/2", "P2:2/3", "P3:2/4"])
+	})
+
+	it("parses TAP from Node 22+ (top level) and Node 20 (nested under the file)", () => {
+		const node22 = [
+			"TAP version 13",
+			"# Subtest: creates an expense",
+			"ok 1 - creates an expense",
+			"  ---",
+			"  duration_ms: 3",
+			"  ...",
+			"not ok 2 - rejects \\# bad input",
+			"ok 3 - later # SKIP not ready",
+			"1..3",
+		].join("\n")
+		expect(parseTap(node22, "P1.test.mjs")).toEqual([
+			{ name: "creates an expense", ok: true, skipped: false },
+			{ name: "rejects # bad input", ok: false, skipped: false },
+			{ name: "later", ok: true, skipped: true },
+		])
+		const node20 = [
+			"TAP version 13",
+			"# Subtest: /tmp/x/P1.test.mjs",
+			"    ok 1 - creates an expense",
+			"    not ok 2 - lists",
+			"    1..2",
+			"not ok 1 - /tmp/x/P1.test.mjs",
+			"1..1",
+		].join("\n")
+		expect(parseTap(node20, "P1.test.mjs").map((t) => [t.name, t.ok])).toEqual([
+			["creates an expense", true],
+			["lists", false],
+		])
+	})
+
+	it("collects results by file, skips skipped tests and de-duplicates names", () => {
+		const collected = collectResults([
+			{
+				file: "P1.test.mjs",
+				tests: [
+					{ name: "a", ok: true, skipped: false },
+					{ name: "a", ok: false, skipped: false },
+					{ name: "s", ok: true, skipped: true },
+				],
+			},
+			{ file: "P2.test.mjs", tests: [{ name: "form", ok: true, skipped: false }] },
+		])
+		expect(collected.results).toEqual({
+			"P1.test.mjs > a": "pass",
+			"P1.test.mjs > a #2": "fail",
+			"P2.test.mjs > form": "pass",
+		})
+		expect(collected.perFile["P1.test.mjs"]).toEqual({ passed: 1, failed: 1 })
+		expect([collected.passed, collected.failed]).toEqual([2, 1])
+	})
+
+	it("selects the hidden test files of a phase and earlier phases", () => {
+		const files = [
+			"P3.test.mjs",
+			"fixtures",
+			"P1.test.mjs",
+			"P10.test.mjs",
+			"P2.test.mjs",
+			"P4.test.mjs",
+			"notes.md",
+		]
+		expect(selectPhaseTestFiles(files, "P3")).toEqual(["P1.test.mjs", "P2.test.mjs", "P3.test.mjs"])
+		expect(selectPhaseTestFiles(files, "P1")).toEqual(["P1.test.mjs"])
+	})
+})
+
+describe("matrix with grades", () => {
+	function gradedPlan(): Plan {
+		const parsed = parsePlan(
+			JSON.stringify({
+				build: "4.2.95",
+				phases: ["P4", "P1", "P2", "P3"],
+				cells: [
+					{ scenario: "L1", group: "opus", arm: "hybrid", samples: 2 },
+					{ scenario: "L1", group: "opus", arm: "modes", samples: 1 },
+				],
+				runs: {
+					"t-h1": { scenario: "L1", group: "opus", arm: "hybrid", sample: "r1", grades: "grades/h1.json" },
+					"t-h2": { scenario: "L1", group: "opus", arm: "hybrid", sample: "r2", grades: "grades/h2.json" },
+					"t-m1": { scenario: "L1", group: "opus", arm: "modes", sample: "r1" },
+				},
+			}),
+		)
+		expect(parsed.errors).toEqual([])
+		return parsed.plan
+	}
+
+	function gradedInputs(): Map<string, RunInput> {
+		const summary = (passed: number, regressions: number, own: boolean) =>
+			summariseGrades(
+				parseGrades(
+					JSON.stringify({
+						version: 1,
+						entries: [
+							gradeEntry("P1", { a: "pass" }),
+							gradeEntry(
+								"P4",
+								Object.fromEntries(
+									Array.from(
+										{ length: 10 },
+										(_, i) => [`t${i}`, i < passed ? "pass" : "fail"] as const,
+									),
+								),
+								{
+									regressions: Array.from({ length: regressions }, (_, i) => `r${i}`),
+									ownTestsPass: own,
+								},
+							),
+						],
+					}),
+				).grades,
+				["P1", "P2", "P3", "P4"],
+			)
+		const inputs = new Map<string, RunInput>()
+		inputs.set("t-h1", { manifest: manifest("t-h1"), metrics, grades: summary(8, 1, true) })
+		inputs.set("t-h2", { manifest: manifest("t-h2"), metrics, grades: summary(6, 3, false) })
+		inputs.set("t-m1", { manifest: manifest("t-m1"), metrics })
+		return inputs
+	}
+
+	it("parses phases in phase order and the grades path on runs", () => {
+		const plan = gradedPlan()
+		expect(plan.phases).toEqual(["P1", "P2", "P3", "P4"])
+		expect(plan.runs.find((r) => r.taskId === "t-h1")!.grades).toBe("grades/h1.json")
+		expect(parsePlan('{"phases":["first"],"cells":[],"runs":{}}').errors[0]).toMatch(/phases/)
+		expect(parsePlan('{"cells":[],"runs":{"t":{"scenario":"L1","arm":"a","grades":5}}}').errors[0]).toMatch(
+			/grades/,
+		)
+	})
+
+	it("reports hidden tests, regressions, score and own tests per arm and group", () => {
+		const report = evaluateMatrix(gradedPlan(), gradedInputs())
+		const hybrid = report.means.find((m) => m.arm === "hybrid")!
+		expect(hybrid.group).toBe("opus")
+		expect(hybrid.grades).toEqual({
+			runs: 2,
+			finalPassed: 7,
+			finalTotal: 10,
+			regressions: 2,
+			score: 5,
+			ownTestsPassing: 1,
+		})
+		// Cost metrics are still reported next to the grades.
+		expect(hybrid.mean.cost).toBe(1)
+	})
+
+	it("makes a run without grades invalid when the plan has phases", () => {
+		const report = evaluateMatrix(gradedPlan(), gradedInputs())
+		const modesRun = report.runs.find((r) => r.run.taskId === "t-m1")!
+		expect(modesRun.problems).toContain('plan has phases but the run has no "grades" path')
+		expect(report.means.find((m) => m.arm === "modes")).toBeUndefined()
+		expect(report.ok).toBe(false)
+	})
+
+	it("notes phases that were not graded and reports unreadable grades as a problem", () => {
+		const inputs = gradedInputs()
+		const report = evaluateMatrix(gradedPlan(), inputs)
+		expect(report.runs.find((r) => r.run.taskId === "t-h1")!.notes).toContain("not graded: P2, P3")
+		inputs.set("t-h2", { manifest: manifest("t-h2"), metrics, gradesError: "no grades file at grades/h2.json" })
+		const broken = evaluateMatrix(gradedPlan(), inputs)
+		expect(broken.runs.find((r) => r.run.taskId === "t-h2")!.problems).toContain("no grades file at grades/h2.json")
+	})
+
+	it("leaves plans without phases or grades unchanged", () => {
+		const report = evaluateMatrix(basePlan(), validInputs())
+		expect(report.ok).toBe(true)
+		expect(report.means.every((m) => m.grades === undefined)).toBe(true)
 	})
 })
