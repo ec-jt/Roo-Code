@@ -7,7 +7,7 @@ import {
 	providerSettingsEntrySchema,
 	providerSettingsSchema,
 } from "./provider-settings.js"
-import { historyItemSchema } from "./history.js"
+import { historyItemSchema, taskProfiles } from "./history.js"
 import { codebaseIndexModelsSchema, codebaseIndexConfigSchema } from "./codebase-index.js"
 import { experimentsSchema } from "./experiment.js"
 import { modeConfigSchema } from "./mode.js"
@@ -166,6 +166,11 @@ export const globalSettingsSchema = z.object({
 	architectureBootstrap: z.boolean().optional(),
 	/** Cordis runtime: what to do when the model replies with text only and no tool call. Default "retryThenPause". */
 	cordisTextOnlyTurnPolicy: z.enum(["retryThenPause", "alwaysPause"]).optional(),
+	/**
+	 * Profile for new top-level tasks. When absent, `experiments.cordisRuntimePreview` decides:
+	 * `false` means "modes", `true` or absent means "cordis". That key is never rewritten (C-5).
+	 */
+	taskProfile: z.enum(taskProfiles).optional(),
 	/** @deprecated Retained for settings import compatibility; no proactive percentage trigger. */
 	autoCondenseContextPercent: z.number().optional(),
 

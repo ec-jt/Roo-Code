@@ -1,5 +1,9 @@
 import { z } from "zod"
 
+/** Task profiles. "hybrid" keeps modes and adds plan review (ADR-2026-11-22-hybrid-task-profile). */
+export const taskProfiles = ["modes", "cordis", "hybrid"] as const
+export type TaskProfile = (typeof taskProfiles)[number]
+
 /**
  * HistoryItem
  */
@@ -20,8 +24,8 @@ export const historyItemSchema = z.object({
 	workspace: z.string().optional(),
 	mode: z.string().optional(),
 	/** Task profile fixed at creation. Missing means "modes". */
-	profile: z.enum(["modes", "cordis"]).optional(),
-	/** Plan overlay of a Cordis task. Missing means off. */
+	profile: z.enum(taskProfiles).optional(),
+	/** Plan overlay of a Cordis or hybrid task. Missing means off. */
 	planOverlay: z.boolean().optional(),
 	apiConfigName: z.string().optional(), // Provider profile name for sticky profile feature
 	status: z.enum(["active", "completed", "delegated"]).optional(),
@@ -44,6 +48,3 @@ export const historyItemSchema = z.object({
 })
 
 export type HistoryItem = z.infer<typeof historyItemSchema>
-
-export const taskProfiles = ["modes", "cordis"] as const
-export type TaskProfile = (typeof taskProfiles)[number]

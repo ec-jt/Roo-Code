@@ -1,6 +1,6 @@
 import { pinTaskStateRecall, assertTaskStateDispatch, taskStateTransaction } from "../../services/task-state/taskState"
 import { appendTaskStateRecall, withoutTaskStateRecall } from "../../services/task-state/history"
-import { applyProfileToToolInputs, resolveTaskProfile } from "./cordis-profile"
+import { applyProfileToToolInputs, effectiveProfileSetting, hasPlanReview, resolveTaskProfile } from "./cordis-profile"
 import { resetRepeatCalls, type RepeatChain } from "./repeat-call"
 import { extensionForMediaType } from "../context-management/offload-images"
 import {
@@ -93,7 +93,7 @@ import {
 // api
 import { ApiHandler, ApiHandlerCreateMessageMetadata, buildApiHandler } from "../../api"
 import { selectPreviewRuntime } from "../../api/preview-runtime"
-import { EXPERIMENT_IDS, experiments as Experiments, isCordisRuntimePreviewEnabled } from "../../shared/experiments"
+import { EXPERIMENT_IDS, experiments as Experiments } from "../../shared/experiments"
 import {
 	abortStopReason,
 	countApiRequests,
@@ -335,11 +335,11 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 	readonly rootTask: Task | undefined = undefined
 	readonly parentTask: Task | undefined = undefined
-	/** Fixed at creation: "cordis" when cordisRuntimePreview was on, inherited by children, restored on resume. */
+	/** Fixed at creation from the taskProfile setting (or the legacy flag), inherited by children, restored on resume. */
 	readonly profile: TaskProfile
 	/** Consecutive identical tool calls (repeat-call reminder). Reset on a new user message. */
 	repeatChain?: RepeatChain
-	/** Plan overlay (Cordis only). Restored on resume; changed by /plan and an approved exit_plan. */
+	/** Plan overlay (Cordis and hybrid). Restored on resume; changed by /plan and an approved exit_plan. */
 	planOverlay: boolean
 	readonly taskNumber: number
 	readonly workspacePath: string
@@ -1147,11 +1147,24 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		planOverlay,
 	}: TaskOptions) {
 		super()
+		const profileExperiments = provider.contextProxy?.getValue
+			? provider.contextProxy.getValue("experiments")
+			: experimentsConfig
+		const profileSetting = provider.contextProxy?.getValue
+			? provider.contextProxy.getValue("taskProfile")
+			: undefined
+		this.profile = resolveTaskProfile({
+			stored: historyItem ? (historyItem.profile ?? "modes") : undefined,
+			parent: parentTask?.profile,
+			setting: profileSetting,
+			experiments: profileExperiments,
+		})
 		this.modelDispatchRuntime =
 			modelDispatchRuntime ??
 			selectPreviewRuntime(
 				apiConfiguration.apiProvider,
-				provider.contextProxy?.getValue ? provider.contextProxy.getValue("experiments") : experimentsConfig,
+				this.profile,
+				effectiveProfileSetting(profileSetting, profileExperiments),
 			)
 		this.toolInvocationPolicy = toolInvocationPolicy
 		this.approvalPort = approvalPort
@@ -1181,15 +1194,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				rootTask?.taskId ??
 				(parentTask?.parentTaskId ? undefined : parentTask?.taskId))
 		this.parentTaskId = historyItem ? historyItem.parentTaskId : parentTask?.taskId
-		this.profile = resolveTaskProfile({
-			stored: historyItem ? (historyItem.profile ?? "modes") : undefined,
-			parent: parentTask?.profile,
-			experiments: provider.contextProxy?.getValue
-				? provider.contextProxy.getValue("experiments")
-				: experimentsConfig,
-		})
 		this.planOverlay =
-			this.profile === "cordis" && (historyItem ? historyItem.planOverlay === true : planOverlay === true)
+			hasPlanReview(this.profile) && (historyItem ? historyItem.planOverlay === true : planOverlay === true)
 		this.childTaskId = undefined
 
 		this.metadata = {
@@ -1343,7 +1349,10 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 		if (this.modelDispatchRuntime) {
 			this.unsubscribePreviewSettings = provider.contextProxy?.onExperimentsChanged?.((settings) => {
-				if (isCordisRuntimePreviewEnabled(settings)) return
+				// Kill switch: an experiments write that leaves the effective profile setting at "modes".
+				// A set taskProfile wins over the legacy flag, so toggling another experiment cannot stop a task.
+				const setting = provider.contextProxy?.getValue?.("taskProfile")
+				if (effectiveProfileSetting(setting, settings) !== "modes") return
 				// Keep the runtime/policy attached. Never downgrade a restricted task to legacy dispatch.
 				// This latch is intentionally not cleared on enable; only a fresh task can resume.
 				this.previewDispatchDisabled = true

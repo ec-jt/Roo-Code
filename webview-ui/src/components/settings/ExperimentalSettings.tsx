@@ -1,6 +1,6 @@
 import { HTMLAttributes } from "react"
 
-import type { Experiments, ImageGenerationProvider } from "@roo-code/types"
+import { taskProfiles, type Experiments, type ImageGenerationProvider, type TaskProfile } from "@roo-code/types"
 
 import { EXPERIMENT_IDS, experimentConfigsMap, experimentDefault } from "@roo/experiments"
 
@@ -21,7 +21,8 @@ type ExperimentalSettingsProps = HTMLAttributes<HTMLDivElement> & {
 	experiments: Experiments
 	setExperimentEnabled: SetExperimentEnabled
 	cordisTextOnlyTurnPolicy?: "retryThenPause" | "alwaysPause"
-	setCachedStateField?: SetCachedStateField<"cordisTextOnlyTurnPolicy">
+	taskProfile?: TaskProfile
+	setCachedStateField?: SetCachedStateField<"cordisTextOnlyTurnPolicy" | "taskProfile">
 	apiConfiguration?: any
 	setApiConfigurationField?: any
 	imageGenerationProvider?: ImageGenerationProvider
@@ -53,6 +54,7 @@ export const ExperimentalSettings = ({
 	experiments,
 	setExperimentEnabled,
 	cordisTextOnlyTurnPolicy,
+	taskProfile,
 	setCachedStateField,
 	apiConfiguration,
 	setApiConfigurationField,
@@ -83,6 +85,17 @@ export const ExperimentalSettings = ({
 	...props
 }: ExperimentalSettingsProps) => {
 	const { t } = useAppTranslation()
+
+	// Effective profile for new tasks: taskProfile when set, else the legacy cordisRuntimePreview flag
+	// (false means modes; true or absent means cordis). The legacy key is only read, never written (C-5).
+	const legacyCordis =
+		experiments[EXPERIMENT_IDS.CORDIS_RUNTIME_PREVIEW] ?? experimentDefault[EXPERIMENT_IDS.CORDIS_RUNTIME_PREVIEW]
+	const effectiveTaskProfile: TaskProfile =
+		taskProfile && (taskProfiles as readonly string[]).includes(taskProfile)
+			? taskProfile
+			: legacyCordis
+				? "cordis"
+				: "modes"
 
 	return (
 		<div className={cn("flex flex-col gap-2", className)} {...props}>
@@ -189,9 +202,40 @@ export const ExperimentalSettings = ({
 							</SearchableSetting>
 						)
 						if (config[0] === "CORDIS_RUNTIME_PREVIEW" && setCachedStateField) {
+							// The on/off toggle (`feature`) is replaced by the task profile select. Selecting
+							// an option writes `taskProfile`; `cordisRuntimePreview` stays as stored.
 							return (
 								<div key={config[0]} className="flex flex-col gap-1">
-									{feature}
+									<SearchableSetting
+										settingId="experimental-task-profile"
+										section="experimental"
+										label={t("settings:experimental.taskProfile.label")}>
+										<span className="font-medium">
+											{t("settings:experimental.taskProfile.label")}
+										</span>
+										<Select
+											value={effectiveTaskProfile}
+											onValueChange={(value) =>
+												setCachedStateField("taskProfile", value as TaskProfile)
+											}>
+											<SelectTrigger className="w-full mt-1" data-testid="task-profile-select">
+												<SelectValue />
+											</SelectTrigger>
+											<SelectContent>
+												{taskProfiles.map((value) => (
+													<SelectItem key={value} value={value}>
+														{t(`settings:experimental.taskProfile.${value}`)}
+													</SelectItem>
+												))}
+											</SelectContent>
+										</Select>
+										<p className="text-sm text-vscode-descriptionForeground mt-1">
+											{t(`settings:experimental.taskProfile.${effectiveTaskProfile}Description`)}
+										</p>
+										<p className="text-sm text-vscode-descriptionForeground mt-1">
+											{t("settings:experimental.taskProfile.description")}
+										</p>
+									</SearchableSetting>
 									<SearchableSetting
 										settingId="experimental-cordis-text-only-turn-policy"
 										section="experimental"

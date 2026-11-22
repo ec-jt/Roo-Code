@@ -504,3 +504,34 @@ Because of D1 and D2, the matrix marked every Opus run invalid. The means above 
 **Other observations:** two DeepSeek runs wrote their own ADRs directly into `decisions/accepted/` in their snapshots, which skips user acceptance. No message was lost, no dispatch failed, and no lesson offer appeared.
 
 **Conclusion for Q2:** on 4.2.97, the Cordis profile cost about the same as the modes profile on Opus, and the blind judge preferred modes in both pairs. Rule 1 of section 6 (equal or better outcome) is not met in this sample. Two pairs are too few to change the accepted ADR. [Q-EFF-2](quality.md) records the result. A further S2 rerun on 4.2.98 or later, with valid stop reasons and at least 4 Opus pairs, should decide whether the Cordis default stays.
+
+## 10. S2 rerun on 4.2.98 (2026-11-21 to 2026-11-22)
+
+Four Opus pairs (`claude-opus-5-5`), with the same conditions as section 9. Every snapshot passed `leak-check`. The plan uses `group: "opus"`. `pnpm eval:protocol matrix` reports **Matrix valid**: all 8 runs have `stop.reason = completed`. The raw data is in `research/eval-2026-11-21b/`, which is local and not committed. A first modes-r1 attempt (`01a1fe4d`) was discarded after outside interference and is not in the plan.
+
+| Sample | Modes task | Requests | Cost  | Cordis task | Requests | Cost  | Blind winner |
+| ------ | ---------- | -------- | ----- | ----------- | -------- | ----- | ------------ |
+| r1     | `01a2005f` | 34       | $1.84 | `01a20088`  | 33       | $1.73 | Cordis       |
+| r2     | `01a20069` | 40       | $2.19 | `01a20090`  | 33       | $1.56 | modes        |
+| r3     | `01a20074` | 29       | $1.58 | `01a20099`  | 37       | $1.84 | modes        |
+| r4     | `01a2007c` | 53       | $2.56 | `01a200a2`  | 39       | $2.24 | modes        |
+
+**Means from the matrix:** Cordis used 9% fewer requests (35.5 vs 39.0), 18% fewer input tokens (3.58M vs 4.38M) and cost 10% less ($1.84 vs $2.04). Cordis was cheaper in 3 of 4 pairs.
+
+**Blind review:** modes 3, Cordis 1. The judges' reasons:
+
+- r1 (Cordis won): a clearer unlimited value, and enforcement in both `new_task` and `authorizeDelegation`.
+- r2 (modes won): a second check before the child opens; the Cordis diff had an English-only error message.
+- r3 and r4 (modes won): a simpler design and full locale coverage. In both, the judge also counted against Cordis the ADR it wrote to record the user's override.
+
+**Judge bias (tooling limit):** the judge prompt contains only the task prompt. It does not contain the scripted drift message or the override. So a correct record of the override looks invented to the judge, and only Cordis runs wrote such records. r3 and r4 may be biased against Cordis. `blind-export` should include the scripted follow-ups in the judge prompt.
+
+**Drift:** reported in all 8 runs. No run migrated existing history items.
+
+**Live verification of 4.2.98 fixes:**
+
+- D1 (Start New Task records `completed`): passed in 4 of 4 runs.
+- D2 (window close records `completed`): passed in 4 of 4 runs, within about 1 s.
+- D3 (mode profile notice): shown both times the profile changed; not shown when it did not.
+
+**Conclusion for Q2:** on Opus, Cordis is cheaper by about 10% in cost and 18% in input tokens. Its outcome under blind review was worse in 3 of 4 pairs, but 2 of those 3 verdicts may be biased by the judge prompt. Under rule 1 of section 6, the "equal or better outcome" condition is not shown. The decision on the Cordis default is for the user.

@@ -834,6 +834,16 @@
 			"alwaysPause": "Pausa sempre",
 			"description": "Reintentar un cop envia un recordatori per fer servir una eina o attempt_completion. S'aplica després que la tasca hagi fet servir una eina."
 		},
+		"taskProfile": {
+			"label": "Perfil de tasca per a tasques noves",
+			"modes": "Modes",
+			"cordis": "Cordis",
+			"hybrid": "Híbrid (modes amb revisió del pla)",
+			"modesDescription": "S'apliquen els rols dels modes i els límits d'eines per mode, i switch_mode està disponible. Sense /plan ni revisió del pla.",
+			"cordisDescription": "/plan ofereix una revisió del pla per aprovar, i la deriva es presenta com a esmena del pla. S'apliquen tots els grups d'eines, switch_mode està desactivat i el mode queda bloquejat després de la primera sol·licitud.",
+			"hybridDescription": "Es mantenen els rols dels modes, els límits d'eines per mode i switch_mode. S'afegeixen /plan, la revisió del pla i les esmenes per deriva. En aprovar un pla, la tasca canvia a Code (o al mode indicat) amb el mateix model.",
+			"description": "S'aplica a les tasques noves. Les tasques existents mantenen el seu perfil. Les tasques Cordis i híbrides a Anthropic també fan servir l'admissió de sol·licituds de previsualització. Desa per aplicar."
+		},
 		"CORDIS_RUNTIME_PREVIEW": {
 			"name": "Versió preliminar del runtime de Cordis",
 			"description": "Activat per defecte. Les tasques noves de tots els proveïdors fan servir el perfil Cordis: /plan dona una revisió del pla per aprovar, la desviació detectada durant una tasca es planteja com una esmena del pla i s'aplica un conjunt fix d'eines (tots els grups d'eines, sense switch_mode, mode bloquejat després de la primera sol·licitud). Les tasques existents mantenen el seu perfil. Només les tasques d'Anthropic fan servir també l'admissió de sol·licituds de la versió preliminar; els altres proveïdors segueixen el flux normal. Desactiva-ho per fer servir els modes a les tasques noves. Desa per aplicar els canvis: desactivar-ho atura l'enviament de noves sol·licituds de la versió preliminar i cancel·la les sol·licituds actives als models d'aquesta versió, però no pot desfer els efectes que ja s'han produït."

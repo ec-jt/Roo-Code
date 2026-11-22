@@ -116,10 +116,12 @@ describe("Task opt-in model dispatch", () => {
 		"restores child lineage and automatically returns with Cordis enabled=%s",
 		async (enabled) => {
 			await provider.contextProxy.setValue("experiments", { cordisRuntimePreview: enabled })
+			// The runtime follows the stored task profile (ADR-2026-11-22-hybrid-task-profile, rule 5).
 			const historyItem = {
 				id: "restored-child",
 				parentTaskId: "parent",
 				rootTaskId: "parent",
+				...(enabled ? { profile: "cordis" as const } : {}),
 				status: "active",
 				task: "Child",
 				ts: 1,

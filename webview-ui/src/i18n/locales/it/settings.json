@@ -834,6 +834,16 @@
 			"alwaysPause": "Metti sempre in pausa",
 			"description": "Riprova una volta invia un promemoria per usare uno strumento o attempt_completion. Si applica dopo che l'attività ha usato uno strumento."
 		},
+		"taskProfile": {
+			"label": "Profilo attività per le nuove attività",
+			"modes": "Modalità",
+			"cordis": "Cordis",
+			"hybrid": "Ibrido (modalità con revisione del piano)",
+			"modesDescription": "Si applicano i ruoli delle modalità e i limiti degli strumenti per modalità, e switch_mode è disponibile. Nessun /plan e nessuna revisione del piano.",
+			"cordisDescription": "/plan offre una revisione del piano da approvare, e la deriva viene presentata come modifica del piano. Si applicano tutti i gruppi di strumenti, switch_mode è disattivato e la modalità viene bloccata dopo la prima richiesta.",
+			"hybridDescription": "Restano i ruoli delle modalità, i limiti degli strumenti per modalità e switch_mode. Si aggiungono /plan, la revisione del piano e le modifiche per deriva. Approvando un piano, l'attività passa a Code (o alla modalità indicata) con lo stesso modello.",
+			"description": "Si applica alle nuove attività. Le attività esistenti mantengono il loro profilo. Le attività Cordis e ibride su Anthropic usano anche l'ammissione delle richieste in anteprima. Salva per applicare."
+		},
 		"CORDIS_RUNTIME_PREVIEW": {
 			"name": "Anteprima del runtime Cordis",
 			"description": "Attivo per impostazione predefinita. Le nuove attività usano il profilo Cordis con ogni provider: /plan fornisce una revisione del piano da approvare, una deviazione rilevata durante un'attività viene proposta come modifica del piano e si applica un set fisso di strumenti (tutti i gruppi di strumenti, niente switch_mode, modalità bloccata dopo la prima richiesta). Le attività esistenti mantengono il loro profilo. Solo le attività Anthropic usano anche l'ammissione delle richieste dell'anteprima; gli altri provider seguono il flusso normale. Disattivalo per usare le modalità nelle nuove attività. Salva per applicare: la disattivazione interrompe l'invio di nuove richieste dell'anteprima e annulla le richieste attive ai modelli dell'anteprima, ma non può annullare gli effetti già prodotti."

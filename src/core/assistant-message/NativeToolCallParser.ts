@@ -601,6 +601,7 @@ export class NativeToolCallParser {
 				if (partialArgs.plan !== undefined) {
 					nativeArgs = {
 						plan: partialArgs.plan,
+						mode: partialArgs.mode,
 					}
 				}
 				break
@@ -1092,6 +1093,7 @@ export class NativeToolCallParser {
 					if (args.plan !== undefined) {
 						nativeArgs = {
 							plan: args.plan,
+							mode: args.mode,
 						} as NativeArgsFor<ToolName>
 					}
 					break

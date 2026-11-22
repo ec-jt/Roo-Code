@@ -834,6 +834,16 @@
 			"alwaysPause": "Pausar siempre",
 			"description": "Reintentar una vez envía un recordatorio para usar una herramienta o attempt_completion. Se aplica después de que la tarea haya usado una herramienta."
 		},
+		"taskProfile": {
+			"label": "Perfil de tarea para tareas nuevas",
+			"modes": "Modos",
+			"cordis": "Cordis",
+			"hybrid": "Híbrido (modos con revisión del plan)",
+			"modesDescription": "Se aplican los roles de los modos y los límites de herramientas por modo, y switch_mode está disponible. Sin /plan ni revisión del plan.",
+			"cordisDescription": "/plan ofrece una revisión del plan para aprobar, y la desviación se presenta como enmienda del plan. Se aplican todos los grupos de herramientas, switch_mode está desactivado y el modo se bloquea tras la primera solicitud.",
+			"hybridDescription": "Se mantienen los roles de los modos, los límites de herramientas por modo y switch_mode. Se añaden /plan, la revisión del plan y las enmiendas por desviación. Al aprobar un plan, la tarea cambia a Code (o al modo indicado) con el mismo modelo.",
+			"description": "Se aplica a las tareas nuevas. Las tareas existentes conservan su perfil. Las tareas Cordis e híbridas en Anthropic también usan la admisión de solicitudes de vista previa. Guarda para aplicar."
+		},
 		"CORDIS_RUNTIME_PREVIEW": {
 			"name": "Versión preliminar del runtime de Cordis",
 			"description": "Activado por defecto. Las tareas nuevas de todos los proveedores usan el perfil Cordis: /plan ofrece una revisión del plan para aprobar, la desviación detectada durante una tarea se plantea como una enmienda del plan y se aplica un conjunto fijo de herramientas (todos los grupos de herramientas, sin switch_mode, modo bloqueado tras la primera solicitud). Las tareas existentes conservan su perfil. Solo las tareas de Anthropic usan además la admisión de solicitudes de la versión preliminar; los demás proveedores siguen el flujo normal. Desactívalo para usar los modos en las tareas nuevas. Guarda para aplicar los cambios: desactivarlo detiene el envío de nuevas solicitudes de la versión preliminar y cancela las solicitudes activas a los modelos de esta versión, pero no puede deshacer los efectos que ya se han producido."

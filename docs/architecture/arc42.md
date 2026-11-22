@@ -28,7 +28,7 @@ Top quality goals in priority order. Tags follow the [Q42 quality model](https:/
 | Priority | Quality goal | Goals                                                                                                        |
 | -------- | ------------ | ------------------------------------------------------------------------------------------------------------ |
 | 1        | #reliable    | Task history survives upgrades and rollbacks; recovery is bounded and reversible (Q-REL-1, Q-REL-2, Q-REL-3) |
-| 2        | #secure      | Repository content is lower-trust data; secrets are not exposed (Q-SEC-1, Q-SEC-2)                           |
+| 2        | #secure      | Repository content is lower-trust data; secrets are not exposed (Q-SEC-1, Q-SEC-2, Q-SEC-3)                  |
 | 3        | #efficient   | Context cost stays predictable; prompt-cache reuse is kept (Q-EFF-1)                                         |
 | 4        | #usable      | Mode changes keep the model (Q-USE-1)                                                                        |
 | 5        | #efficient   | Cordis profile costs no more than the modes profile (Q-EFF-2)                                                |

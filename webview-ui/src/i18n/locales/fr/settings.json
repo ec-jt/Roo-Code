@@ -834,6 +834,16 @@
 			"alwaysPause": "Toujours mettre en pause",
 			"description": "Réessayer une fois envoie un rappel d'utiliser un outil ou attempt_completion. S'applique une fois que la tâche a utilisé un outil."
 		},
+		"taskProfile": {
+			"label": "Profil de tâche pour les nouvelles tâches",
+			"modes": "Modes",
+			"cordis": "Cordis",
+			"hybrid": "Hybride (modes avec revue du plan)",
+			"modesDescription": "Les rôles des modes et les limites d'outils par mode s'appliquent, et switch_mode est disponible. Pas de /plan ni de revue du plan.",
+			"cordisDescription": "/plan propose une revue du plan à approuver, et une dérive est présentée comme un amendement du plan. Tous les groupes d'outils s'appliquent, switch_mode est désactivé et le mode est verrouillé après la première requête.",
+			"hybridDescription": "Les rôles des modes, les limites d'outils par mode et switch_mode sont conservés. /plan, la revue du plan et les amendements en cas de dérive sont ajoutés. L'approbation d'un plan fait passer la tâche en Code (ou au mode indiqué) avec le même modèle.",
+			"description": "S'applique aux nouvelles tâches. Les tâches existantes gardent leur profil. Les tâches Cordis et hybrides sur Anthropic utilisent aussi l'admission des requêtes en aperçu. Enregistrez pour appliquer."
+		},
 		"CORDIS_RUNTIME_PREVIEW": {
 			"name": "Aperçu du runtime Cordis",
 			"description": "Activé par défaut. Les nouvelles tâches utilisent le profil Cordis avec tous les fournisseurs : /plan propose une revue du plan à approuver, une dérive détectée pendant une tâche est signalée sous forme d'amendement du plan, et un ensemble fixe d'outils s'applique (tous les groupes d'outils, pas de switch_mode, mode verrouillé après la première requête). Les tâches existantes gardent leur profil. Seules les tâches Anthropic utilisent aussi l'admission des requêtes de l'aperçu ; les autres fournisseurs suivent le fonctionnement normal. Désactive-le pour utiliser les modes dans les nouvelles tâches. Enregistre pour appliquer : la désactivation arrête l'envoi de nouvelles requêtes via l'aperçu et annule les requêtes actives aux modèles via celui-ci, mais ne peut pas annuler les effets déjà produits."

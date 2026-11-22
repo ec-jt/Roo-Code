@@ -834,6 +834,16 @@
 			"alwaysPause": "始终暂停",
 			"description": "重试一次会发送提醒，要求使用工具或 attempt_completion。仅在任务已使用过工具后生效。"
 		},
+		"taskProfile": {
+			"label": "新任务的任务配置",
+			"modes": "模式",
+			"cordis": "Cordis",
+			"hybrid": "混合（带计划审核的模式）",
+			"modesDescription": "应用模式角色和按模式的工具限制，可使用 switch_mode。没有 /plan，也没有计划审核。",
+			"cordisDescription": "/plan 提供计划审核供批准，偏差以计划修订的形式提出。应用所有工具组，switch_mode 关闭，首次请求后模式锁定。",
+			"hybridDescription": "保留模式角色、按模式的工具限制和 switch_mode。增加 /plan、计划审核和偏差修订。批准计划后，任务使用同一模型切换到 Code（或指定的模式）。",
+			"description": "适用于新任务。现有任务保留其配置。Anthropic 上的 Cordis 和混合任务还会使用预览请求准入。保存以应用。"
+		},
 		"CORDIS_RUNTIME_PREVIEW": {
 			"name": "Cordis 运行时预览",
 			"description": "默认开启。所有提供商上的新任务都使用 Cordis 配置：/plan 会生成待你批准的计划审阅，任务中发现的偏离会以计划修订的形式提出，并使用固定的工具集（所有工具组，无 switch_mode，首次请求后锁定模式）。现有任务保留原有配置。只有 Anthropic 任务还会使用预览的请求准入；其他提供商仍走常规流程。关闭后新任务将使用模式。保存后生效：禁用会停止发送新的预览请求，并取消预览中正在进行的模型请求，但无法撤销已产生的影响。"

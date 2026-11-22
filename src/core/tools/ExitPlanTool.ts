@@ -1,18 +1,44 @@
 import { Task } from "../task/Task"
 import { formatResponse } from "../prompts/responses"
 import type { ToolUse } from "../../shared/tools"
+import { getModeBySlug } from "../../shared/modes"
+import { HYBRID_DEFAULT_TARGET_MODE } from "../task/cordis-profile"
 
 import { BaseTool, ToolCallbacks } from "./BaseTool"
 
 interface ExitPlanParams {
 	plan: string
+	mode?: string | null
 }
 
 export const PLAN_APPROVED_RESULT = "Plan approved. Continue with implementation."
 
 /**
- * Submits a plan for user review (Cordis tasks only; the modes profile disables this tool).
- * Approve turns the plan overlay off. Keep planning leaves it unchanged and returns the feedback.
+ * In a hybrid task, switches to the target mode after an approved plan, through the in-task
+ * mode-switch path (`handleModeSwitch`), so the model and provider profile stay the same (Q-USE-1).
+ * Returns a sentence for the tool result, or undefined when no switch happened.
+ */
+async function switchToTargetMode(task: Task, requested: string | null | undefined): Promise<string | undefined> {
+	const provider = task.providerRef.deref()
+	if (!provider) return undefined
+	const state = await provider.getState()
+	const customModes = state?.customModes
+	const slug = requested?.trim() || HYBRID_DEFAULT_TARGET_MODE
+	const target = getModeBySlug(slug, customModes) ?? getModeBySlug(HYBRID_DEFAULT_TARGET_MODE, customModes)
+	if (!target) return undefined
+	const current = await task.getTaskMode()
+	if (current === target.slug) return undefined
+	await provider.handleModeSwitch(target.slug)
+	const reason = "plan approved"
+	await task.say("tool", JSON.stringify({ tool: "switchMode", mode: target.slug, reason }))
+	const fallback = requested?.trim() && requested.trim() !== target.slug ? ` (unknown mode "${requested}")` : ""
+	return `Switched from ${getModeBySlug(current, customModes)?.name ?? current} mode to ${target.name} mode${fallback}.`
+}
+
+/**
+ * Submits a plan for user review (Cordis and hybrid tasks; the modes profile disables this tool).
+ * Approve turns the plan overlay off and, in a hybrid task, switches once to the target mode
+ * (`mode` parameter, default code). Keep planning leaves both unchanged and returns the feedback.
  * The `plan_review` ask is never auto-approved.
  */
 export class ExitPlanTool extends BaseTool<"exit_plan"> {
@@ -41,6 +67,8 @@ export class ExitPlanTool extends BaseTool<"exit_plan"> {
 				} else {
 					task.planOverlay = false
 				}
+				const switched = task.profile === "hybrid" ? await switchToTargetMode(task, params.mode) : undefined
+				const approved = switched ? `${PLAN_APPROVED_RESULT} ${switched}` : PLAN_APPROVED_RESULT
 				if (text || images?.length) {
 					// Same contract as approval-with-feedback for other tools: the tool result carries
 					// status JSON only; the user's text follows as a separate <user_message> block.
@@ -48,12 +76,12 @@ export class ExitPlanTool extends BaseTool<"exit_plan"> {
 					pushToolResult(
 						JSON.stringify({
 							status: "approved",
-							message: `${PLAN_APPROVED_RESULT} The user sent a message with the approval. It follows this tool result.`,
+							message: `${approved} The user sent a message with the approval. It follows this tool result.`,
 						}),
 					)
 					task.pushUserFeedbackToUserContent(text, images)
 				} else {
-					pushToolResult(PLAN_APPROVED_RESULT)
+					pushToolResult(approved)
 				}
 				return
 			}

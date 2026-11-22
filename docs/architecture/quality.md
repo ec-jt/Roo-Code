@@ -107,3 +107,16 @@ Scenario: The same planned feature request (evaluation scenario S2) runs with th
 Evidence: five Opus samples on 4.2.78 to 4.2.84 (Cordis 26% lower total cost, but more expensive in r5). The samples mixed builds and were scored by the operator, not blind ([R-6](risks.md)).
 
 Evidence (2026-11-21, 4.2.97, two Opus pairs, blind review): Cordis cost 6% less and used 11% fewer input tokens, which is within the 10 percent equality band for cost. The blind judge preferred the modes diffs in both pairs. This goal is not met with an equal outcome in that sample. See section 9 of the [evaluation](evaluation-2026-11-18.md). A rerun with at least 4 Opus pairs on 4.2.98 or later is needed before a decision.
+
+Evidence (2026-11-22, 4.2.98, four Opus pairs, matrix valid): Cordis cost 10% less, used 9% fewer requests and 18% fewer input tokens, and was cheaper in 3 of 4 pairs. The cost part of this goal is met. Blind review preferred modes in 3 of 4 pairs; two of those verdicts may be biased because the judge prompt omits the scripted override. See section 10 of the [evaluation](evaluation-2026-11-18.md).
+
+### Q-SEC-3: Parallel subtasks never gain approvals
+
+Status: accepted
+Accepted-by: user
+Last-verified: 2026-11-22
+Paths: src/core/task/parallel/\*\*, src/core/tools/NewTasksTool.ts
+
+Quality property: #secure
+
+Scenario: A parallel subtask runs without a chat view and reaches a tool, question or mode switch that a normal task would need the user to approve. The tool does not run. The child receives a refusal and reports what needs approval in its result. Tools that the existing auto-approval settings approve run as in a normal task. Related: [ADR-2026-11-22-parallel-subtasks](decisions/accepted/ADR-2026-11-22-parallel-subtasks.md).

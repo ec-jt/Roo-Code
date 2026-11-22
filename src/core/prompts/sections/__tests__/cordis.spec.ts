@@ -23,5 +23,27 @@ describe("getCordisSection", () => {
 	it("is stable for the same task state", () => {
 		expect(getCordisSection("cordis", true)).toBe(getCordisSection("cordis", true))
 		expect(getCordisSection("cordis", false)).toBe(getCordisSection("cordis", false))
+		expect(getCordisSection("hybrid", true)).toBe(getCordisSection("hybrid", true))
+	})
+
+	it("hybrid has the exit_plan-in-Architect and drift sections without mode locking", () => {
+		const off = getCordisSection("hybrid", false)
+		expect(off).toContain("HYBRID TASK")
+		expect(off).toContain("Architect mode")
+		expect(off).toContain("finish planning by calling exit_plan")
+		expect(off).toContain("call exit_plan with an amendment")
+		expect(off).toContain("After approval")
+		expect(off).not.toContain("mode is fixed")
+		expect(off).not.toContain("do not ask to switch modes")
+		expect(off).not.toContain("CORDIS TASK")
+		expect(off).not.toContain("PLAN OVERLAY")
+	})
+
+	it("hybrid includes the plan overlay when /plan is on", () => {
+		const off = getCordisSection("hybrid", false)
+		const on = getCordisSection("hybrid", true)
+		expect(on.startsWith(off)).toBe(true)
+		expect(on).toContain("PLAN OVERLAY (ON)")
+		expect(on).not.toContain("mode is fixed")
 	})
 })

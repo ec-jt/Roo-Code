@@ -834,6 +834,16 @@
 			"alwaysPause": "Luôn tạm dừng",
 			"description": "Thử lại một lần sẽ gửi lời nhắc dùng công cụ hoặc attempt_completion. Áp dụng sau khi tác vụ đã dùng công cụ."
 		},
+		"taskProfile": {
+			"label": "Hồ sơ tác vụ cho tác vụ mới",
+			"modes": "Chế độ",
+			"cordis": "Cordis",
+			"hybrid": "Kết hợp (chế độ có xem xét kế hoạch)",
+			"modesDescription": "Áp dụng vai trò chế độ và giới hạn công cụ theo từng chế độ, có switch_mode. Không có /plan và không xem xét kế hoạch.",
+			"cordisDescription": "/plan đưa ra bản xem xét kế hoạch để phê duyệt, và sai lệch được nêu thành sửa đổi kế hoạch. Áp dụng mọi nhóm công cụ, switch_mode tắt và chế độ bị khóa sau yêu cầu đầu tiên.",
+			"hybridDescription": "Giữ vai trò chế độ, giới hạn công cụ theo chế độ và switch_mode. Thêm /plan, xem xét kế hoạch và sửa đổi khi có sai lệch. Khi phê duyệt kế hoạch, tác vụ chuyển sang Code (hoặc chế độ được nêu) với cùng mô hình.",
+			"description": "Áp dụng cho tác vụ mới. Tác vụ hiện có giữ hồ sơ của chúng. Tác vụ Cordis và kết hợp trên Anthropic cũng dùng cơ chế chấp nhận yêu cầu bản xem trước. Lưu để áp dụng."
+		},
 		"CORDIS_RUNTIME_PREVIEW": {
 			"name": "Bản xem trước runtime Cordis",
 			"description": "Bật theo mặc định. Tác vụ mới trên mọi nhà cung cấp dùng hồ sơ Cordis: /plan đưa ra bản xem xét kế hoạch để phê duyệt, sai lệch phát hiện trong tác vụ được nêu thành bản sửa đổi kế hoạch, và áp dụng một bộ công cụ cố định (tất cả nhóm công cụ, không có switch_mode, chế độ bị khóa sau yêu cầu đầu tiên). Tác vụ hiện có giữ nguyên hồ sơ. Chỉ tác vụ Anthropic dùng thêm cơ chế tiếp nhận yêu cầu của bản xem trước; các nhà cung cấp khác dùng luồng thông thường. Tắt để dùng chế độ cho tác vụ mới. Lưu để áp dụng: việc tắt sẽ ngừng gửi yêu cầu mới qua bản xem trước và hủy các yêu cầu mô hình đang hoạt động qua bản xem trước, nhưng không thể hoàn tác những tác động đã xảy ra."

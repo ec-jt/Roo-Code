@@ -844,6 +844,16 @@
 			"alwaysPause": "一律暫停",
 			"description": "重試一次會傳送提醒，要求使用工具或 attempt_completion。僅在工作已使用過工具後生效。"
 		},
+		"taskProfile": {
+			"label": "新任務的任務設定檔",
+			"modes": "模式",
+			"cordis": "Cordis",
+			"hybrid": "混合（含計畫審查的模式）",
+			"modesDescription": "套用模式角色與各模式的工具限制，可使用 switch_mode。沒有 /plan，也沒有計畫審查。",
+			"cordisDescription": "/plan 提供計畫審查以供核准，偏差會以計畫修訂的形式提出。套用所有工具群組，switch_mode 關閉，首次請求後模式鎖定。",
+			"hybridDescription": "保留模式角色、各模式的工具限制與 switch_mode。新增 /plan、計畫審查與偏差修訂。核准計畫後，任務會以相同模型切換到 Code（或指定的模式）。",
+			"description": "適用於新任務。現有任務保留其設定檔。Anthropic 上的 Cordis 與混合任務也會使用預覽請求准入。儲存以套用。"
+		},
 		"CORDIS_RUNTIME_PREVIEW": {
 			"name": "Cordis 執行階段預覽",
 			"description": "預設開啟。所有供應商上的新工作都使用 Cordis 設定：/plan 會產生待你核准的計畫審閱，工作中發現的偏離會以計畫修訂的形式提出，並使用固定的工具組（所有工具群組，無 switch_mode，第一次請求後鎖定模式）。現有工作保留原有設定。只有 Anthropic 工作還會使用預覽的請求准入；其他供應商仍使用一般流程。關閉後新工作將使用模式。儲存後套用：停用會停止傳送新的預覽請求，並取消預覽中進行中的模型請求，但無法復原已產生的影響。"

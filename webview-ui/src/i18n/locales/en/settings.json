@@ -983,6 +983,16 @@
 			"alwaysPause": "Always pause",
 			"description": "Retry once sends a reminder to use a tool or attempt_completion. It applies after the task has used a tool."
 		},
+		"taskProfile": {
+			"label": "Task profile for new tasks",
+			"modes": "Modes",
+			"cordis": "Cordis",
+			"hybrid": "Hybrid (modes with plan review)",
+			"modesDescription": "Mode roles and per-mode tool limits apply, and switch_mode is available. No /plan and no plan review.",
+			"cordisDescription": "/plan gives a plan review to approve, and drift is raised as a plan amendment. All tool groups apply, switch_mode is off, and the mode is locked after the first request.",
+			"hybridDescription": "Mode roles, per-mode tool limits and switch_mode stay. /plan, plan review and drift amendments are added. Approving a plan switches the task to Code (or the named mode) with the same model.",
+			"description": "Applies to new tasks. Existing tasks keep their profile. Cordis and hybrid tasks on Anthropic also use the preview request admission. Save to apply."
+		},
 		"CORDIS_RUNTIME_PREVIEW": {
 			"name": "Cordis runtime preview",
 			"description": "On by default. New tasks on every provider use the Cordis profile: /plan gives a plan review to approve, drift found during a task is raised as a plan amendment, and a fixed tool preset applies (all tool groups, no switch_mode, mode locked after the first request). Existing tasks keep their profile. Only Anthropic tasks also use the preview request admission; other providers use the normal request path. Turn off to use modes for new tasks. Save to apply: disabling stops new preview dispatch and cancels active preview model requests, but cannot undo effects already performed."

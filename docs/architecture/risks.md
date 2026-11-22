@@ -58,6 +58,8 @@ The `cordisRuntimePreview` dispatch path covers only Anthropic. Other providers 
 
 Note (2026-11-19): the accepted [ADR-2026-11-19-keep-cordis-profile-widen-experiment](decisions/accepted/ADR-2026-11-19-keep-cordis-profile-widen-experiment.md) turns the Cordis profile on by default for all providers. This risk then covers only the dispatch runtime: on other providers a Cordis task has no dispatch admission, and a reply without a tool call takes the normal reminder path. All evaluation samples used Anthropic.
 
+Note (2026-11-22): the runtime (`selectPreviewRuntime()` in `src/api/preview-runtime.ts`) is currently an admission hook that grants every request. It is the planned place for concurrency limits and a shared budget for parallel subtasks. [ADR-2026-11-22-parallel-subtasks](decisions/accepted/ADR-2026-11-22-parallel-subtasks.md) proposes using it on every provider for parallel children.
+
 ### R-6: Evaluation results can be invalid or biased
 
 Status: accepted
@@ -90,3 +92,21 @@ Paths: src/core/tools/NewTaskTool.ts, src/core/webview/worktree/\*\*
 - evaluation runs need a separate snapshot made by hand.
 
 Worktree support exists in `src/core/webview/worktree/`, but only as user actions. Mitigation: let the parent choose `shared` or `isolated` for each subtask from the requirements (user, 2026-11-20). See [ADR-2026-11-20-isolated-subtask-workspace](decisions/accepted/ADR-2026-11-20-isolated-subtask-workspace.md).
+
+### R-8: Parallel subtasks multiply cost
+
+Status: accepted
+Accepted-by: user
+Last-verified: 2026-11-22
+Paths: src/core/task/parallel/\*\*, src/api/dispatch-admission.ts
+
+Several children running at the same time can spend several times the cost of one task in the same wall-clock time, and the sum of their requests can hit provider rate limits. Mitigation: a shared token budget per batch and a concurrency limit, both enforced by the dispatch runtime, and the experiment `parallelSubtasks` off by default. See [ADR-2026-11-22-parallel-subtasks](decisions/accepted/ADR-2026-11-22-parallel-subtasks.md).
+
+### R-9: Parallel child branches can conflict
+
+Status: accepted
+Accepted-by: user
+Last-verified: 2026-11-22
+Paths: src/core/task/parallel/\*\*, src/core/tools/subtask-workspace.ts
+
+Each parallel child works on its own `roo/subtask/<id>` branch from the same base. Two children can change the same files, so merging both branches can conflict. Mitigation: the parent receives each child's diff stat. Merging is done by the parent or the user, and conflicts are reported, never resolved automatically.

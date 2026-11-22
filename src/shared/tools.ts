@@ -156,7 +156,7 @@ export type NativeToolArgs = {
 	skill: { skill: string; args?: string }
 	search_files: { path: string; regex: string; file_pattern?: string | null }
 	switch_mode: { mode_slug: string; reason: string }
-	exit_plan: { plan: string }
+	exit_plan: { plan: string; mode?: string | null }
 	update_todo_list: { todos: string }
 	use_mcp_tool: { server_name: string; tool_name: string; arguments?: Record<string, unknown> }
 	write_to_file: { path: string; content: string }
@@ -291,7 +291,7 @@ export interface SwitchModeToolUse extends ToolUse<"switch_mode"> {
 
 export interface ExitPlanToolUse extends ToolUse<"exit_plan"> {
 	name: "exit_plan"
-	params: Partial<Pick<Record<ToolParamName, string>, "plan">>
+	params: Partial<Pick<Record<ToolParamName, string>, "plan" | "mode">>
 }
 
 export interface NewTaskToolUse extends ToolUse<"new_task"> {

@@ -834,6 +834,16 @@
 			"alwaysPause": "Selalu jeda",
 			"description": "Coba ulang sekali mengirim pengingat untuk menggunakan tool atau attempt_completion. Berlaku setelah tugas menggunakan tool."
 		},
+		"taskProfile": {
+			"label": "Profil tugas untuk tugas baru",
+			"modes": "Mode",
+			"cordis": "Cordis",
+			"hybrid": "Hibrida (mode dengan tinjauan rencana)",
+			"modesDescription": "Peran mode dan batas alat per mode berlaku, dan switch_mode tersedia. Tanpa /plan dan tanpa tinjauan rencana.",
+			"cordisDescription": "/plan memberikan tinjauan rencana untuk disetujui, dan penyimpangan diajukan sebagai amandemen rencana. Semua grup alat berlaku, switch_mode nonaktif, dan mode dikunci setelah permintaan pertama.",
+			"hybridDescription": "Peran mode, batas alat per mode, dan switch_mode tetap ada. /plan, tinjauan rencana, dan amandemen penyimpangan ditambahkan. Menyetujui rencana akan mengalihkan tugas ke Code (atau mode yang disebutkan) dengan model yang sama.",
+			"description": "Berlaku untuk tugas baru. Tugas yang ada mempertahankan profilnya. Tugas Cordis dan hibrida di Anthropic juga memakai penerimaan permintaan pratinjau. Simpan untuk menerapkan."
+		},
 		"CORDIS_RUNTIME_PREVIEW": {
 			"name": "Pratinjau runtime Cordis",
 			"description": "Aktif secara default. Tugas baru di semua penyedia memakai profil Cordis: /plan memberikan tinjauan rencana untuk disetujui, penyimpangan yang ditemukan selama tugas diajukan sebagai amandemen rencana, dan berlaku set alat tetap (semua grup alat, tanpa switch_mode, mode terkunci setelah permintaan pertama). Tugas yang sudah ada tetap memakai profilnya. Hanya tugas Anthropic yang juga memakai penerimaan permintaan pratinjau; penyedia lain memakai alur normal. Matikan untuk memakai mode pada tugas baru. Simpan untuk menerapkan: menonaktifkan menghentikan pengiriman permintaan pratinjau baru dan membatalkan permintaan model pratinjau yang aktif, tetapi tidak dapat membatalkan efek yang sudah terjadi."

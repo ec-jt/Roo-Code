@@ -23,9 +23,9 @@ export type TaskMetadataOptions = {
 	globalStoragePath: string
 	workspace: string
 	mode?: string
-	/** Task profile fixed at creation (persisted only for cordis). */
-	profile?: "modes" | "cordis"
-	/** Plan overlay (persisted only when on for a cordis task). */
+	/** Task profile fixed at creation (persisted only for cordis and hybrid; missing means modes). */
+	profile?: "modes" | "cordis" | "hybrid"
+	/** Plan overlay (persisted only when on for a cordis or hybrid task). */
 	planOverlay?: boolean
 	/** Provider profile name for the task (sticky profile feature) */
 	apiConfigName?: string
@@ -120,9 +120,11 @@ export async function taskMetadata({
 		size: taskDirSize,
 		workspace,
 		mode,
-		...(profile === "cordis" ? { profile } : {}),
-		// For cordis tasks an explicit undefined clears a stored overlay when the store merges items.
-		...(profile === "cordis" ? { planOverlay: planOverlay === true ? true : undefined } : {}),
+		...(profile === "cordis" || profile === "hybrid" ? { profile } : {}),
+		// For cordis and hybrid tasks an explicit undefined clears a stored overlay when the store merges items.
+		...(profile === "cordis" || profile === "hybrid"
+			? { planOverlay: planOverlay === true ? true : undefined }
+			: {}),
 		...(typeof apiConfigName === "string" && apiConfigName.length > 0 ? { apiConfigName } : {}),
 		...(initialStatus && { status: initialStatus }),
 	}

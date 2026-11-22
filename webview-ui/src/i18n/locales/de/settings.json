@@ -834,6 +834,16 @@
 			"alwaysPause": "Immer pausieren",
 			"description": "Einmal wiederholen sendet eine Erinnerung, ein Tool oder attempt_completion zu verwenden. Gilt, nachdem die Aufgabe ein Tool verwendet hat."
 		},
+		"taskProfile": {
+			"label": "Aufgabenprofil für neue Aufgaben",
+			"modes": "Modi",
+			"cordis": "Cordis",
+			"hybrid": "Hybrid (Modi mit Planprüfung)",
+			"modesDescription": "Modusrollen und Werkzeuggrenzen pro Modus gelten, und switch_mode ist verfügbar. Kein /plan und keine Planprüfung.",
+			"cordisDescription": "/plan bietet eine Planprüfung zur Freigabe, und Abweichungen werden als Planänderung vorgelegt. Alle Werkzeuggruppen gelten, switch_mode ist aus, und der Modus ist nach der ersten Anfrage gesperrt.",
+			"hybridDescription": "Modusrollen, Werkzeuggrenzen pro Modus und switch_mode bleiben. /plan, Planprüfung und Planänderungen bei Abweichungen kommen hinzu. Nach Freigabe eines Plans wechselt die Aufgabe zu Code (oder zum genannten Modus) mit demselben Modell.",
+			"description": "Gilt für neue Aufgaben. Bestehende Aufgaben behalten ihr Profil. Cordis- und Hybrid-Aufgaben mit Anthropic nutzen zusätzlich die Vorschau-Anfragezulassung. Zum Übernehmen speichern."
+		},
 		"CORDIS_RUNTIME_PREVIEW": {
 			"name": "Cordis-Runtime-Vorschau",
 			"description": "Standardmäßig aktiviert. Neue Aufgaben nutzen bei jedem Anbieter das Cordis-Profil: /plan liefert eine Planprüfung zur Freigabe, eine während der Aufgabe erkannte Abweichung wird als Planänderung vorgeschlagen, und es gilt ein festes Tool-Set (alle Tool-Gruppen, kein switch_mode, Modus nach der ersten Anfrage gesperrt). Bestehende Aufgaben behalten ihr Profil. Nur Anthropic-Aufgaben nutzen zusätzlich die Vorschau-Zulassung von Anfragen; andere Anbieter nutzen den normalen Ablauf. Deaktiviere es, um für neue Aufgaben Modi zu nutzen. Speichere, um die Änderung anzuwenden: Das Deaktivieren stoppt den Versand neuer Vorschau-Anfragen und bricht aktive Modellanfragen der Vorschau ab, kann aber bereits eingetretene Auswirkungen nicht rückgängig machen."

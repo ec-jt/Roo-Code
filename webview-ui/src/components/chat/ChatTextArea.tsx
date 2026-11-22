@@ -1349,14 +1349,15 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 							customModes={customModes}
 							customModePrompts={customModePrompts}
 						/>
-						{currentTaskItem?.profile === "cordis" && currentTaskItem.planOverlay === true && (
-							<span
-								data-testid="plan-overlay-badge"
-								title={t("chat:planOverlay.tooltip")}
-								className="shrink-0 rounded px-1.5 py-0.5 text-xs bg-vscode-badge-background text-vscode-badge-foreground">
-								{t("chat:planOverlay.badge")}
-							</span>
-						)}
+						{(currentTaskItem?.profile === "cordis" || currentTaskItem?.profile === "hybrid") &&
+							currentTaskItem.planOverlay === true && (
+								<span
+									data-testid="plan-overlay-badge"
+									title={t("chat:planOverlay.tooltip")}
+									className="shrink-0 rounded px-1.5 py-0.5 text-xs bg-vscode-badge-background text-vscode-badge-foreground">
+									{t("chat:planOverlay.badge")}
+								</span>
+							)}
 						<ApiConfigSelector
 							value={currentConfigId}
 							displayName={displayName}

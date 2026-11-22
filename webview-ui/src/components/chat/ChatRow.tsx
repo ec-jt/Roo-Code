@@ -1524,6 +1524,32 @@ export const ChatRowContent = ({
 								</div>
 							)
 						}
+						case "switchMode":
+							// Mode switch after an approved plan in a hybrid task. Shown like a switch_mode result.
+							return (
+								<div style={headerStyle}>
+									<PocketKnife className="w-4 shrink-0" aria-label="Switch mode icon" />
+									<span style={{ fontWeight: "bold" }}>
+										{sayTool.reason ? (
+											<Trans
+												i18nKey="chat:modes.didSwitchWithReason"
+												components={{
+													code: <code className="font-medium">{sayTool.mode}</code>,
+												}}
+												values={{ mode: sayTool.mode, reason: sayTool.reason }}
+											/>
+										) : (
+											<Trans
+												i18nKey="chat:modes.didSwitch"
+												components={{
+													code: <code className="font-medium">{sayTool.mode}</code>,
+												}}
+												values={{ mode: sayTool.mode }}
+											/>
+										)}
+									</span>
+								</div>
+							)
 						default:
 							return null
 					}

@@ -47,7 +47,8 @@ import { MessageEnhancer } from "./messageEnhancer"
 
 import { CodeIndexManager } from "../../services/code-index/manager"
 import { checkExistKey } from "../../shared/checkExistApiConfig"
-import { experimentDefault, isCordisRuntimePreviewEnabled } from "../../shared/experiments"
+import { experimentDefault } from "../../shared/experiments"
+import { effectiveProfileSetting } from "../task/cordis-profile"
 import { Terminal } from "../../integrations/terminal/Terminal"
 import { openFile } from "../../integrations/misc/open-file"
 import { openImage, saveImage } from "../../integrations/misc/image-handler"
@@ -691,7 +692,7 @@ export const webviewMessageHandler = async (
 			}
 			break
 		case "setPlanOverlay": {
-			// "/plan", "/plan <text>" and "/plan off" from the chat input. Cordis tasks only.
+			// "/plan", "/plan <text>" and "/plan off" from the chat input. Cordis and hybrid tasks only.
 			const on = message.planOverlayOn === true
 			const text = message.text?.trim() || undefined
 			const task = provider.getCurrentTask()
@@ -714,8 +715,8 @@ export const webviewMessageHandler = async (
 				}
 				break
 			}
-			const { experiments } = await provider.getState()
-			if (!isCordisRuntimePreviewEnabled(experiments)) {
+			const { experiments, taskProfile } = await provider.getState()
+			if (effectiveProfileSetting(taskProfile, experiments) === "modes") {
 				void vscode.window.showInformationMessage(t("common:info.plan_overlay_cordis_only"))
 				break
 			}

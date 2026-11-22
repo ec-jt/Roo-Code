@@ -834,6 +834,16 @@
 			"alwaysPause": "Sempre pausar",
 			"description": "Tentar novamente uma vez envia um lembrete para usar uma ferramenta ou attempt_completion. Vale depois que a tarefa usou uma ferramenta."
 		},
+		"taskProfile": {
+			"label": "Perfil de tarefa para novas tarefas",
+			"modes": "Modos",
+			"cordis": "Cordis",
+			"hybrid": "Híbrido (modos com revisão do plano)",
+			"modesDescription": "Os papéis dos modos e os limites de ferramentas por modo se aplicam, e switch_mode está disponível. Sem /plan e sem revisão do plano.",
+			"cordisDescription": "/plan oferece uma revisão do plano para aprovar, e o desvio é apresentado como emenda do plano. Todos os grupos de ferramentas se aplicam, switch_mode fica desativado e o modo é bloqueado após a primeira solicitação.",
+			"hybridDescription": "Os papéis dos modos, os limites de ferramentas por modo e switch_mode permanecem. /plan, a revisão do plano e as emendas por desvio são adicionados. Ao aprovar um plano, a tarefa muda para Code (ou para o modo indicado) com o mesmo modelo.",
+			"description": "Aplica-se a novas tarefas. Tarefas existentes mantêm seu perfil. Tarefas Cordis e híbridas na Anthropic também usam a admissão de solicitações de prévia. Salve para aplicar."
+		},
 		"CORDIS_RUNTIME_PREVIEW": {
 			"name": "Prévia do runtime Cordis",
 			"description": "Ativado por padrão. Novas tarefas em todos os provedores usam o perfil Cordis: /plan gera uma revisão do plano para aprovar, um desvio encontrado durante a tarefa é apresentado como emenda ao plano e vale um conjunto fixo de ferramentas (todos os grupos de ferramentas, sem switch_mode, modo bloqueado após a primeira solicitação). Tarefas existentes mantêm o perfil. Só as tarefas Anthropic usam também a admissão de solicitações da prévia; os outros provedores usam o fluxo normal. Desative para usar modos em novas tarefas. Salve para aplicar: desativar interrompe o envio de novas solicitações pela prévia e cancela as solicitações ativas aos modelos feitas por ela, mas não pode desfazer os efeitos já produzidos."

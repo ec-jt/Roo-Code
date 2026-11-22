@@ -2230,11 +2230,11 @@ export class ClineProvider
 	}
 
 	/**
-	 * Sets the plan overlay of a Cordis task, persists it to task history and posts state.
-	 * Returns false (and changes nothing) for tasks that are not Cordis tasks.
+	 * Sets the plan overlay of a Cordis or hybrid task, persists it to task history and posts state.
+	 * Returns false (and changes nothing) for modes tasks.
 	 */
 	public async setTaskPlanOverlay(task: Task, on: boolean): Promise<boolean> {
-		if (task.profile !== "cordis") return false
+		if (task.profile !== "cordis" && task.profile !== "hybrid") return false
 		if (task.planOverlay !== on) {
 			task.planOverlay = on
 			const taskHistoryItem =
@@ -3111,6 +3111,7 @@ export class ClineProvider
 			architectureDecisionApproval,
 			architectureBootstrap,
 			cordisTextOnlyTurnPolicy,
+			taskProfile,
 			autoCondenseContextPercent,
 			soundEnabled,
 			ttsEnabled,
@@ -3225,6 +3226,7 @@ export class ClineProvider
 			architectureDecisionApproval: architectureDecisionApproval ?? "user",
 			architectureBootstrap: architectureBootstrap ?? true,
 			cordisTextOnlyTurnPolicy: cordisTextOnlyTurnPolicy ?? "retryThenPause",
+			taskProfile,
 			autoCondenseContextPercent: autoCondenseContextPercent ?? 100,
 			uriScheme: vscode.env.uriScheme,
 			currentTaskId: currentTask?.taskId,
@@ -3421,6 +3423,7 @@ export class ClineProvider
 			architectureDecisionApproval: stateValues.architectureDecisionApproval ?? "user",
 			architectureBootstrap: stateValues.architectureBootstrap ?? true,
 			cordisTextOnlyTurnPolicy: stateValues.cordisTextOnlyTurnPolicy ?? "retryThenPause",
+			taskProfile: stateValues.taskProfile,
 			autoCondenseContextPercent: stateValues.autoCondenseContextPercent ?? 100,
 			taskHistory: this.taskHistoryStore.getAll(),
 			allowedCommands: stateValues.allowedCommands,

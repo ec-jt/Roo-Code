@@ -4,6 +4,8 @@ const EXIT_PLAN_DESCRIPTION = `Submit a plan for user review. Use it to finish p
 
 const PLAN_PARAMETER_DESCRIPTION = `The full plan in Markdown, starting with a heading. For a drift amendment, include the drift, the proposed record change, and the updated plan.`
 
+const MODE_PARAMETER_DESCRIPTION = `Slug of the mode that implements the plan after approval (e.g., code, debug). Used only when the task can switch modes; it then switches to this mode on approval. Use null for the default (code).`
+
 export default {
 	type: "function",
 	function: {
@@ -17,8 +19,12 @@ export default {
 					type: "string",
 					description: PLAN_PARAMETER_DESCRIPTION,
 				},
+				mode: {
+					type: ["string", "null"],
+					description: MODE_PARAMETER_DESCRIPTION,
+				},
 			},
-			required: ["plan"],
+			required: ["plan", "mode"],
 			additionalProperties: false,
 		},
 	},

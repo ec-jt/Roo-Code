@@ -185,6 +185,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 		architectureDecisionApproval,
 		architectureBootstrap,
 		cordisTextOnlyTurnPolicy,
+		taskProfile,
 		autoCondenseContextPercent,
 		browserToolEnabled,
 		browserViewportSize,
@@ -508,6 +509,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 					architectureDecisionApproval: architectureDecisionApproval ?? "user",
 					architectureBootstrap: architectureBootstrap ?? true,
 					cordisTextOnlyTurnPolicy: cordisTextOnlyTurnPolicy ?? "retryThenPause",
+					taskProfile,
 					autoCondenseContextPercent,
 					browserToolEnabled: browserToolEnabled ?? true,
 					soundEnabled: soundEnabled ?? true,
@@ -1099,6 +1101,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 								setExperimentEnabled={setExperimentEnabled}
 								experiments={experiments}
 								cordisTextOnlyTurnPolicy={cordisTextOnlyTurnPolicy}
+								taskProfile={taskProfile}
 								setCachedStateField={setCachedStateField}
 								apiConfiguration={apiConfiguration}
 								setApiConfigurationField={setApiConfigurationField}

@@ -834,6 +834,16 @@
 			"alwaysPause": "Altijd pauzeren",
 			"description": "Eén keer opnieuw proberen stuurt een herinnering om een tool of attempt_completion te gebruiken. Geldt nadat de taak een tool heeft gebruikt."
 		},
+		"taskProfile": {
+			"label": "Taakprofiel voor nieuwe taken",
+			"modes": "Modi",
+			"cordis": "Cordis",
+			"hybrid": "Hybride (modi met planbeoordeling)",
+			"modesDescription": "Modusrollen en toollimieten per modus zijn van toepassing, en switch_mode is beschikbaar. Geen /plan en geen planbeoordeling.",
+			"cordisDescription": "/plan geeft een planbeoordeling om goed te keuren, en afwijkingen worden voorgelegd als planwijziging. Alle toolgroepen zijn van toepassing, switch_mode staat uit en de modus wordt na het eerste verzoek vergrendeld.",
+			"hybridDescription": "Modusrollen, toollimieten per modus en switch_mode blijven. /plan, planbeoordeling en planwijzigingen bij afwijkingen worden toegevoegd. Na goedkeuring van een plan schakelt de taak naar Code (of de genoemde modus) met hetzelfde model.",
+			"description": "Geldt voor nieuwe taken. Bestaande taken behouden hun profiel. Cordis- en hybride taken op Anthropic gebruiken ook de preview-toelating van verzoeken. Sla op om toe te passen."
+		},
 		"CORDIS_RUNTIME_PREVIEW": {
 			"name": "Cordis-runtimepreview",
 			"description": "Standaard aan. Nieuwe taken gebruiken bij elke provider het Cordis-profiel: /plan geeft een planbeoordeling om goed te keuren, afwijkingen tijdens een taak worden als planwijziging voorgesteld, en er geldt een vaste set tools (alle toolgroepen, geen switch_mode, modus vergrendeld na het eerste verzoek). Bestaande taken houden hun profiel. Alleen Anthropic-taken gebruiken ook de verzoektoelating van de preview; andere providers volgen de normale route. Zet het uit om modi te gebruiken voor nieuwe taken. Sla op om toe te passen: uitschakelen stopt het versturen van nieuwe previewverzoeken en annuleert actieve previewmodelverzoeken, maar kan reeds opgetreden effecten niet ongedaan maken."

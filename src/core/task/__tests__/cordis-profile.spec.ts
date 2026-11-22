@@ -1,4 +1,10 @@
-import { applyProfileToToolInputs, CORDIS_GROUPS, resolveTaskProfile } from "../cordis-profile"
+import {
+	applyProfileToToolInputs,
+	CORDIS_GROUPS,
+	effectiveProfileSetting,
+	hasPlanReview,
+	resolveTaskProfile,
+} from "../cordis-profile"
 import { validateToolUse } from "../../tools/validateToolUse"
 import { getModeBySlug } from "../../../shared/modes"
 
@@ -37,6 +43,46 @@ describe("resolveTaskProfile", () => {
 		expect(resolveTaskProfile({ parent: "modes", experiments: {} })).toBe("modes")
 		expect(resolveTaskProfile({ parent: "modes" })).toBe("modes")
 	})
+
+	it("resolves hybrid from stored, parent and setting", () => {
+		expect(resolveTaskProfile({ stored: "hybrid", parent: "cordis", setting: "modes" })).toBe("hybrid")
+		expect(resolveTaskProfile({ parent: "hybrid", setting: "cordis" })).toBe("hybrid")
+		expect(resolveTaskProfile({ setting: "hybrid", experiments: { cordisRuntimePreview: false } })).toBe("hybrid")
+	})
+
+	it("prefers a valid taskProfile setting over the legacy flag", () => {
+		expect(resolveTaskProfile({ setting: "modes", experiments: { cordisRuntimePreview: true } })).toBe("modes")
+		expect(resolveTaskProfile({ setting: "cordis", experiments: { cordisRuntimePreview: false } })).toBe("cordis")
+	})
+
+	it("falls back to the legacy flag when the setting is absent or invalid", () => {
+		expect(resolveTaskProfile({ setting: undefined, experiments: { cordisRuntimePreview: false } })).toBe("modes")
+		expect(resolveTaskProfile({ setting: "bogus", experiments: { cordisRuntimePreview: false } })).toBe("modes")
+		expect(resolveTaskProfile({ setting: "bogus", experiments: {} })).toBe("cordis")
+	})
+
+	it("gives modes for an unknown stored value", () => {
+		expect(resolveTaskProfile({ stored: "future-profile", parent: "cordis", setting: "hybrid" })).toBe("modes")
+		expect(resolveTaskProfile({ stored: null, setting: "cordis" })).toBe("modes")
+	})
+})
+
+describe("effectiveProfileSetting and hasPlanReview", () => {
+	it("maps the legacy flag and never needs to rewrite it", () => {
+		const experiments = { cordisRuntimePreview: false }
+		expect(effectiveProfileSetting(undefined, experiments)).toBe("modes")
+		expect(experiments).toEqual({ cordisRuntimePreview: false })
+		expect(effectiveProfileSetting(undefined, { cordisRuntimePreview: true })).toBe("cordis")
+		expect(effectiveProfileSetting(undefined, undefined)).toBe("cordis")
+		expect(effectiveProfileSetting("hybrid", { cordisRuntimePreview: false })).toBe("hybrid")
+	})
+
+	it("is true for cordis and hybrid only", () => {
+		expect(hasPlanReview("cordis")).toBe(true)
+		expect(hasPlanReview("hybrid")).toBe(true)
+		expect(hasPlanReview("modes")).toBe(false)
+		expect(hasPlanReview(undefined)).toBe(false)
+	})
 })
 
 describe("applyProfileToToolInputs", () => {
@@ -60,6 +106,17 @@ describe("applyProfileToToolInputs", () => {
 		expect(mode?.groups).toEqual([...CORDIS_GROUPS])
 		expect(mode?.roleDefinition).toBe(getModeBySlug("architect")?.roleDefinition)
 		expect(result.disabledTools).toEqual(expect.arrayContaining(["browser_action", "switch_mode"]))
+	})
+
+	it("keeps mode groups, switch_mode and exit_plan for the hybrid profile", () => {
+		const customModes: any[] = []
+		const disabledTools = ["browser_action"]
+		const result = applyProfileToToolInputs("hybrid", "architect", customModes, disabledTools)
+		expect(result.customModes).toBe(customModes)
+		expect(getModeBySlug("architect", result.customModes)?.groups).toEqual(getModeBySlug("architect")?.groups)
+		expect(result.disabledTools).toEqual(["browser_action"])
+		expect(result.disabledTools).not.toContain("switch_mode")
+		expect(result.disabledTools).not.toContain("exit_plan")
 	})
 
 	it("replaces an existing custom mode with the same slug", () => {
@@ -114,6 +171,46 @@ describe("Cordis profile execution-time validation", () => {
 				mode_slug: "ask",
 			}),
 		).toThrow()
+	})
+
+	it("keeps per-mode limits, switch_mode and exit_plan in every mode under the hybrid profile", () => {
+		const architect = applyProfileToToolInputs("hybrid", "architect", [], [])
+		expect(() =>
+			validateToolUse(
+				"execute_command",
+				"architect",
+				architect.customModes,
+				requirements(architect.disabledTools),
+				{
+					command: "ls",
+				},
+			),
+		).toThrow()
+		expect(() =>
+			validateToolUse(
+				"write_to_file",
+				"architect",
+				architect.customModes,
+				requirements(architect.disabledTools),
+				{
+					path: "src/a.ts",
+					content: "x",
+				},
+			),
+		).toThrow()
+		for (const mode of ["code", "architect", "ask", "debug", "orchestrator"]) {
+			const hybrid = applyProfileToToolInputs("hybrid", mode, [], [])
+			expect(() =>
+				validateToolUse("switch_mode", mode, hybrid.customModes, requirements(hybrid.disabledTools), {
+					mode_slug: "code",
+				}),
+			).not.toThrow()
+			expect(() =>
+				validateToolUse("exit_plan", mode, hybrid.customModes, requirements(hybrid.disabledTools), {
+					plan: "# Plan",
+				}),
+			).not.toThrow()
+		}
 	})
 
 	it("rejects exit_plan under the modes profile and admits it under the cordis profile", () => {

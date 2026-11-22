@@ -1,6 +1,4 @@
-import type { Experiments } from "@roo-code/types"
-
-import { isCordisRuntimePreviewEnabled } from "../shared/experiments"
+import type { TaskProfile } from "@roo-code/types"
 
 import type { ModelDispatchRuntime } from "./dispatch-admission"
 
@@ -11,10 +9,17 @@ const previewRuntime: ModelDispatchRuntime = {
 	},
 }
 
+/**
+ * Returns the preview dispatch runtime for a task. Only `cordis` and `hybrid` tasks get it
+ * (ADR-2026-11-22-hybrid-task-profile, rule 5), and only on Anthropic (R-5).
+ * `currentSetting` is the effective profile setting now (taskProfile, or the legacy flag). When it
+ * is `modes`, no task gets the runtime: this keeps the existing kill switch for resumed tasks.
+ */
 export function selectPreviewRuntime(
 	provider: string | undefined,
-	experiments: Experiments | undefined,
+	profile: TaskProfile | undefined,
+	currentSetting?: TaskProfile,
 ): ModelDispatchRuntime | undefined {
-	// The dispatch runtime stays Anthropic-only (R-5); the Cordis profile itself is provider-independent.
-	return provider === "anthropic" && isCordisRuntimePreviewEnabled(experiments) ? previewRuntime : undefined
+	if (provider !== "anthropic" || currentSetting === "modes") return undefined
+	return profile === "cordis" || profile === "hybrid" ? previewRuntime : undefined
 }

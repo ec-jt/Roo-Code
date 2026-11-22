@@ -45,7 +45,7 @@ export class ContextProxy {
 	private _isInitialized = false
 	private readonly experimentsListeners = new Set<(experiments: Experiments | undefined) => void>()
 
-	/** Synchronous notification fences dispatch before a settings write yields. */
+	/** Synchronous notification fences dispatch before a settings write yields. Fired for `experiments` and `taskProfile`. */
 	public onExperimentsChanged(listener: (experiments: Experiments | undefined) => void): () => void {
 		this.experimentsListeners.add(listener)
 		return () => this.experimentsListeners.delete(listener)
@@ -346,7 +346,8 @@ export class ContextProxy {
 		}
 
 		this.stateCache[key] = value
-		if (key === "experiments") this.notifyExperimentsChanged()
+		// taskProfile replaces the cordisRuntimePreview toggle, so it also fences preview dispatch.
+		if (key === "experiments" || key === "taskProfile") this.notifyExperimentsChanged()
 		return this.originalContext.globalState.update(key, value)
 	}
 

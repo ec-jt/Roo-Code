@@ -834,6 +834,16 @@
 			"alwaysPause": "Zawsze wstrzymuj",
 			"description": "Ponów raz wysyła przypomnienie, aby użyć narzędzia lub attempt_completion. Działa po tym, jak zadanie użyło narzędzia."
 		},
+		"taskProfile": {
+			"label": "Profil zadania dla nowych zadań",
+			"modes": "Tryby",
+			"cordis": "Cordis",
+			"hybrid": "Hybrydowy (tryby z przeglądem planu)",
+			"modesDescription": "Obowiązują role trybów i limity narzędzi dla trybu, a switch_mode jest dostępny. Bez /plan i bez przeglądu planu.",
+			"cordisDescription": "/plan daje przegląd planu do zatwierdzenia, a odchylenie jest zgłaszane jako poprawka planu. Obowiązują wszystkie grupy narzędzi, switch_mode jest wyłączony, a tryb jest blokowany po pierwszym żądaniu.",
+			"hybridDescription": "Role trybów, limity narzędzi dla trybu i switch_mode pozostają. Dochodzą /plan, przegląd planu i poprawki przy odchyleniach. Zatwierdzenie planu przełącza zadanie na Code (lub wskazany tryb) z tym samym modelem.",
+			"description": "Dotyczy nowych zadań. Istniejące zadania zachowują swój profil. Zadania Cordis i hybrydowe w Anthropic używają też podglądowego dopuszczania żądań. Zapisz, aby zastosować."
+		},
 		"CORDIS_RUNTIME_PREVIEW": {
 			"name": "Wersja zapoznawcza runtime Cordis",
 			"description": "Domyślnie włączone. Nowe zadania u każdego dostawcy używają profilu Cordis: /plan daje przegląd planu do zatwierdzenia, odstępstwo wykryte w trakcie zadania jest zgłaszane jako poprawka planu, a obowiązuje stały zestaw narzędzi (wszystkie grupy narzędzi, bez switch_mode, tryb zablokowany po pierwszym żądaniu). Istniejące zadania zachowują swój profil. Tylko zadania Anthropic korzystają też z przyjmowania żądań w wersji zapoznawczej; pozostali dostawcy używają zwykłej ścieżki. Wyłącz, aby w nowych zadaniach używać trybów. Zapisz, aby zastosować zmiany: wyłączenie zatrzymuje wysyłanie nowych żądań przez wersję zapoznawczą i anuluje jej aktywne żądania do modeli, ale nie może cofnąć skutków już wykonanych działań."

@@ -834,6 +834,16 @@
 			"alwaysPause": "Her zaman duraklat",
 			"description": "Bir kez yeniden dene, bir araç veya attempt_completion kullanman için hatırlatma gönderir. Görev bir araç kullandıktan sonra geçerlidir."
 		},
+		"taskProfile": {
+			"label": "Yeni görevler için görev profili",
+			"modes": "Modlar",
+			"cordis": "Cordis",
+			"hybrid": "Hibrit (plan incelemeli modlar)",
+			"modesDescription": "Mod rolleri ve mod başına araç sınırları uygulanır, switch_mode kullanılabilir. /plan ve plan incelemesi yoktur.",
+			"cordisDescription": "/plan onay için bir plan incelemesi sunar ve sapma bir plan değişikliği olarak sunulur. Tüm araç grupları uygulanır, switch_mode kapalıdır ve mod ilk istekten sonra kilitlenir.",
+			"hybridDescription": "Mod rolleri, mod başına araç sınırları ve switch_mode korunur. /plan, plan incelemesi ve sapma değişiklikleri eklenir. Bir plan onaylandığında görev aynı modelle Code moduna (veya belirtilen moda) geçer.",
+			"description": "Yeni görevlere uygulanır. Mevcut görevler profillerini korur. Anthropic üzerindeki Cordis ve hibrit görevler önizleme istek kabulünü de kullanır. Uygulamak için kaydedin."
+		},
 		"CORDIS_RUNTIME_PREVIEW": {
 			"name": "Cordis çalışma zamanı önizlemesi",
 			"description": "Varsayılan olarak açık. Yeni görevler her sağlayıcıda Cordis profilini kullanır: /plan onaylaman için bir plan incelemesi sunar, görev sırasında bulunan sapma plan değişikliği olarak önerilir ve sabit bir araç seti uygulanır (tüm araç grupları, switch_mode yok, mod ilk istekten sonra kilitlenir). Mevcut görevler profillerini korur. Önizleme istek kabulünü de yalnızca Anthropic görevleri kullanır; diğer sağlayıcılar normal akışı kullanır. Yeni görevlerde modları kullanmak için kapat. Uygulamak için kaydet: devre dışı bırakmak yeni önizleme isteklerinin gönderimini durdurur ve etkin önizleme model isteklerini iptal eder, ancak zaten oluşmuş etkileri geri alamaz."
