@@ -227,6 +227,7 @@ import {
 import { normalizeSnapshotMessages, assertContextFits } from "./model-operation/normalization"
 import { getStorageBasePath } from "../../utils/storage"
 import { ProfileValidator } from "../../shared/ProfileValidator"
+import { findDelegationToolIndex, delegationTruncationMessage } from "./delegation-tools"
 
 const MAX_EXPONENTIAL_BACKOFF_SECONDS = 600 // 10 minutes
 const DEFAULT_USAGE_COLLECTION_TIMEOUT_MS = 5000 // 5 seconds
@@ -5462,20 +5463,17 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 						}
 					}
 
-					// Enforce new_task isolation: if new_task is called alongside other tools,
-					// truncate any tools that come after it and inject error tool_results.
-					// This prevents orphaned tools when delegation disposes the parent task.
-					const newTaskIndex = assistantContent.findIndex(
-						(block) => block.type === "tool_use" && block.name === "new_task",
-					)
+					// Enforce delegation isolation (new_task and new_tasks): if a delegation tool is
+					// called alongside other tools, truncate any tools that come after it and inject
+					// error tool_results. This prevents orphaned tools when delegation disposes the parent task.
+					const newTaskIndex = findDelegationToolIndex(assistantContent)
 
 					if (newTaskIndex !== -1 && newTaskIndex < assistantContent.length - 1) {
+						const delegationToolName = (assistantContent[newTaskIndex] as Anthropic.ToolUseBlockParam).name
 						const truncatedTools = assistantContent.slice(newTaskIndex + 1)
 						assistantContent.length = newTaskIndex + 1
 
-						const executionNewTaskIndex = this.assistantMessageContent.findIndex(
-							(block) => block.type === "tool_use" && block.name === "new_task",
-						)
+						const executionNewTaskIndex = findDelegationToolIndex(this.assistantMessageContent)
 						if (executionNewTaskIndex !== -1) {
 							this.assistantMessageContent.length = executionNewTaskIndex + 1
 						}
@@ -5485,8 +5483,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 								this.pushToolResultToUserContent({
 									type: "tool_result",
 									tool_use_id: (tool as Anthropic.ToolUseBlockParam).id,
-									content:
-										"This tool was not executed because new_task was called in the same message turn. The new_task tool must be the last tool in a message.",
+									content: delegationTruncationMessage(delegationToolName),
 									is_error: true,
 								})
 							}

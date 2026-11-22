@@ -86,5 +86,5 @@ The pieces needed already exist:
     - Checkpoints are off, because each child's worktree branch records its work.
     - Tools that require the child to be the current task (task state, browser control) fail safely in children.
 - **Open** shows a child's plain-text transcript in the read-only chat history document.
-- **Known gap:** unlike `new_task`, `new_tasks` is not yet forced to be the only tool call in its turn. The rule is stated only in the tool description.
+- **Delegation must be last in its turn (4.2.101):** `new_tasks` follows the same rule as `new_task`. Tool calls after the first delegation tool in a turn are truncated, and each gets an error tool result. Tool calls before it still run. The shared helper is `src/core/task/delegation-tools.ts`.
 - **Budget:** the shared budget is checked before each request, so one request that is already running can go over it.
