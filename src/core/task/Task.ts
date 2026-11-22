@@ -872,6 +872,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				instanceId: this.instanceId,
 				toolCallId: block.id!,
 				identity,
+				args: block.type === "tool_use" ? block.nativeArgs : undefined,
 			})
 			if (
 				this.abort ||

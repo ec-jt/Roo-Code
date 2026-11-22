@@ -13,6 +13,8 @@ export interface ToolInvocation {
 	readonly instanceId: string
 	readonly toolCallId: string
 	readonly identity: ToolIdentity
+	/** Parsed arguments of the call (built-in tools), for policies that inspect targets. Read-only. */
+	readonly args?: unknown
 }
 
 export type InvocationDecision = { allow: true } | { allow: false; reason: string }

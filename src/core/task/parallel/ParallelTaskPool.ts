@@ -13,6 +13,9 @@
  * B3 (`new_tasks`) calls `startBatch` and then awaits `waitForBatch`. Nothing is merged.
  */
 
+import { execFile } from "child_process"
+import { promisify } from "util"
+
 import { v7 as uuidv7 } from "uuid"
 
 import {
@@ -35,6 +38,7 @@ import { BatchAdmissionRuntime } from "./BatchAdmissionRuntime"
 import { createHeadlessProvider } from "./headless-provider"
 import {
 	decideNonInteractiveAsk,
+	OUTSIDE_WORKTREE_REFUSAL,
 	parallelChildToolPolicy,
 	type NonInteractiveTaskHooks,
 	type RefusedApproval,
@@ -42,6 +46,29 @@ import {
 
 export const MIN_PARALLEL_CHILDREN = 1
 export const MAX_PARALLEL_CHILDREN = 4
+
+const execFileAsync = promisify(execFile)
+
+/**
+ * Model-facing preamble of each child's first message (D-1). The parent's brief often names the
+ * parent's absolute path; the child must use the matching path in its own worktree instead.
+ */
+export function parallelChildBrief(workspace: Pick<IsolatedSubtaskWorkspace, "worktreePath" | "branch">): string {
+	return `Your workspace is the git worktree ${workspace.worktreePath} on branch ${workspace.branch}. Resolve every relative path against it. Do not read or write files in other checkouts of this repository. Ignore any absolute path to another checkout given below; use the matching path inside your worktree instead.`
+}
+
+/** `git status --porcelain` lines of the parent tree, or undefined when git fails. Never throws. */
+async function parentTreeStatus(repoRoot: string): Promise<string[] | undefined> {
+	try {
+		const { stdout } = await execFileAsync("git", ["status", "--porcelain", "--untracked-files=all"], {
+			cwd: repoRoot,
+			maxBuffer: 4 * 1024 * 1024,
+		})
+		return stdout.split("\n").filter((line) => line.trim())
+	} catch {
+		return undefined
+	}
+}
 
 export interface ParallelChildSpec {
 	mode: string
@@ -82,6 +109,12 @@ export interface ParallelBatchResult {
 	usedTokens: number
 	budgetExhausted: boolean
 	children: ParallelChildResult[]
+	/**
+	 * Parent tree check: `git status --porcelain` lines that appeared or disappeared in the parent's
+	 * repository between batch start and batch end. Empty when unchanged; undefined when git failed.
+	 * A file that was already modified at start and changed again is not detected.
+	 */
+	parentTreeChanges?: string[]
 }
 
 interface ChildState {
@@ -109,6 +142,9 @@ interface BatchState {
 	runtime: BatchAdmissionRuntime
 	children: ChildState[]
 	done: Promise<ParallelBatchResult>
+	/** Parent repository root and its `git status --porcelain` at batch start (undefined when git failed). */
+	repoRoot: string
+	parentStatusBefore?: string[]
 }
 
 /** Grace period for a stopped child's loop to unwind before the batch result is built. */
@@ -270,6 +306,8 @@ export class ParallelTaskPool {
 
 		// Isolation fails with an error and never falls back to the shared workspace (rule 7).
 		const plan = await planIsolatedWorkspace(parent.cwd)
+		// Taken before the worktrees exist; they are created next to the repository, not inside it.
+		const parentStatusBefore = await parentTreeStatus(plan.repoRoot)
 		const prepared: Array<{
 			spec: ParallelChildSpec
 			taskId: string
@@ -302,6 +340,8 @@ export class ParallelTaskPool {
 			parent,
 			runtime,
 			children: states,
+			repoRoot: plan.repoRoot,
+			parentStatusBefore,
 			done: Promise.all(states.map((child) => child.done)).then(async () => {
 				parent.off(RooCodeEventName.TaskAborted, onParentAborted)
 				return this.buildResult(batch)
@@ -411,7 +451,7 @@ export class ParallelTaskPool {
 			provider: headless,
 			apiConfiguration,
 			taskId: item.taskId,
-			task: item.spec.message,
+			task: `${parallelChildBrief(item.workspace)}\n\n${item.spec.message}`,
 			parentTask: parent,
 			rootTask: parent.rootTask ?? parent,
 			initialTaskContext: { mode: item.spec.mode, apiConfigName: parent.taskApiConfigName },
@@ -422,7 +462,11 @@ export class ParallelTaskPool {
 			enableCheckpoints: false,
 			consecutiveMistakeLimit: apiConfiguration.consecutiveMistakeLimit,
 			modelDispatchRuntime: runtime,
-			toolInvocationPolicy: parallelChildToolPolicy((refused) => child.refused.push(refused)),
+			// Refuses delegation tools and every change outside the worktree before any approval (D-1).
+			toolInvocationPolicy: parallelChildToolPolicy((refused) => child.refused.push(refused), {
+				worktreePath: item.workspace.worktreePath,
+				cwd: item.cwd,
+			}),
 			nonInteractive: hooks,
 			startTask: false,
 		})
@@ -503,6 +547,15 @@ export class ParallelTaskPool {
 				}),
 			),
 		)
+		const before = batch.parentStatusBefore
+		const after = before ? await parentTreeStatus(batch.repoRoot) : undefined
+		const parentTreeChanges =
+			before && after
+				? [
+						...after.filter((line) => !before.includes(line)),
+						...before.filter((line) => !after.includes(line)).map((line) => `(no longer listed) ${line}`),
+					]
+				: undefined
 		return {
 			batchId: batch.id,
 			parentTaskId: batch.parent.taskId,
@@ -511,8 +564,13 @@ export class ParallelTaskPool {
 			usedTokens: batch.runtime.usedTokens,
 			budgetExhausted: batch.runtime.budgetExhausted,
 			children,
+			parentTreeChanges,
 		}
 	}
+}
+
+function formatRefused(refused: RefusedApproval): string {
+	return `- ${refused.type === OUTSIDE_WORKTREE_REFUSAL ? "outside worktree" : refused.type}${refused.tool ? ` ${refused.tool}` : ""}${refused.detail ? `: ${refused.detail}` : ""}`
 }
 
 /** One model-facing tool result for the parent (rule 5). Nothing is merged. */
@@ -526,14 +584,26 @@ export function formatParallelBatchResult(result: ParallelBatchResult): string {
 			lines.push("This child stopped because the shared token budget of the batch was exhausted.")
 		lines.push(`Result: ${child.summary || "(no result text)"}`)
 		lines.push(child.workspaceSummary)
-		if (child.refusedApprovals.length) {
+		const outside = child.refusedApprovals.filter((r) => r.type === OUTSIDE_WORKTREE_REFUSAL)
+		const asks = child.refusedApprovals.filter((r) => r.type !== OUTSIDE_WORKTREE_REFUSAL)
+		if (asks.length) {
 			lines.push("Refused approvals (the child could not ask the user):")
-			for (const refused of child.refusedApprovals)
-				lines.push(
-					`- ${refused.type}${refused.tool ? ` ${refused.tool}` : ""}${refused.detail ? `: ${refused.detail}` : ""}`,
-				)
+			for (const refused of asks) lines.push(formatRefused(refused))
+		}
+		if (outside.length) {
+			lines.push("Refused changes outside the child's worktree (not applied):")
+			for (const refused of outside) lines.push(formatRefused(refused))
 		}
 		if (child.error) lines.push(`Error: ${child.error}`)
 	})
+	if (result.parentTreeChanges === undefined) {
+		lines.push("", "Parent working tree check: git status of the parent repository could not be compared.")
+	} else if (result.parentTreeChanges.length) {
+		lines.push(
+			"",
+			"WARNING: the parent working tree changed during the batch (git status --porcelain differences). A child or another process may have written outside its worktree. Review these files:",
+			...result.parentTreeChanges.map((line) => `- ${line}`),
+		)
+	}
 	return lines.join("\n")
 }

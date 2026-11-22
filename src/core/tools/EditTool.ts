@@ -4,8 +4,7 @@ import path from "path"
 import { type ClineSayTool, DEFAULT_WRITE_DELAY_MS } from "@roo-code/types"
 
 import { getReadablePath } from "../../utils/path"
-import { isPathOutsideWorkspace } from "../../utils/pathUtils"
-import { getTaskWorkspaceRoots } from "./subtask-workspace"
+import { isPathOutsideTaskWorkspace } from "./subtask-workspace"
 import { Task } from "../task/Task"
 import { formatResponse } from "../prompts/responses"
 import { RecordSource } from "../context-tracking/FileContextTrackerTypes"
@@ -175,7 +174,7 @@ export class EditTool extends BaseTool<"edit"> {
 
 			const sanitizedDiff = sanitizeUnifiedDiff(diff)
 			const diffStats = computeDiffStats(sanitizedDiff) || undefined
-			const isOutsideWorkspace = isPathOutsideWorkspace(absolutePath, getTaskWorkspaceRoots(task))
+			const isOutsideWorkspace = isPathOutsideTaskWorkspace(task, absolutePath)
 
 			const sharedMessageProps: ClineSayTool = {
 				tool: "appliedDiff",
@@ -254,7 +253,7 @@ export class EditTool extends BaseTool<"edit"> {
 
 		// relPath is guaranteed non-null after hasPathStabilized
 		const absolutePath = path.resolve(task.cwd, relPath!)
-		const isOutsideWorkspace = isPathOutsideWorkspace(absolutePath, getTaskWorkspaceRoots(task))
+		const isOutsideWorkspace = isPathOutsideTaskWorkspace(task, absolutePath)
 
 		const sharedMessageProps: ClineSayTool = {
 			tool: "appliedDiff",

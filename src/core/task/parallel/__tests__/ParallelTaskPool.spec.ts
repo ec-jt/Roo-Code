@@ -13,8 +13,8 @@ import { Task } from "../../Task"
 import { buildApiHandler } from "../../../../api"
 import { OpenAiHandler } from "../../../../api/providers/openai"
 import { BatchAdmissionRuntime } from "../BatchAdmissionRuntime"
-import { PARALLEL_REFUSAL_MESSAGE } from "../non-interactive"
-import { ParallelTaskPool, formatParallelBatchResult } from "../ParallelTaskPool"
+import { OUTSIDE_WORKTREE_REFUSAL, PARALLEL_REFUSAL_MESSAGE } from "../non-interactive"
+import { ParallelTaskPool, formatParallelBatchResult, parallelChildBrief } from "../ParallelTaskPool"
 
 const paths = vi.hoisted(() => ({ storage: "" }))
 const openAiCreate = vi.hoisted(() => vi.fn())
@@ -129,6 +129,11 @@ const SCRIPTS: Record<string, Step[]> = {
 		{ name: "switch_mode", args: { mode_slug: "architect", reason: "plan" } },
 	],
 	plain: [],
+	// D-1: the parent's checkout is the sibling folder "repo" of every worktree.
+	escape: [{ name: "write_to_file", args: { path: "../repo/x.txt", content: "x\n" } }],
+	inside: [{ name: "write_to_file", args: { path: "src/y.txt", content: "y\n" } }],
+	symlink: [{ name: "write_to_file", args: { path: "link/z.txt", content: "z\n" } }],
+	command: [{ name: "execute_command", args: { command: "echo hi", cwd: "../repo" } }],
 }
 
 /** Fake handler: one scripted tool call per request, then attempt_completion. Records request intervals. */
@@ -404,6 +409,137 @@ describe("ParallelTaskPool", () => {
 			expect(provider.getState).toHaveBeenCalled()
 			expect(child.taskMode).toBe("code")
 		}, 30_000)
+
+		describe("D-1: children only change files inside their worktree", () => {
+			beforeEach(() => {
+				// Auto-approval allows every write and outside-workspace write, as in the live check.
+				state.autoApprovalEnabled = true
+				state.alwaysAllowWrite = true
+				state.alwaysAllowWriteOutsideWorkspace = true
+				state.alwaysAllowExecute = true
+				state.allowedCommands = ["*"]
+			})
+
+			it("refuses ../<repo>/x.txt, leaves the parent tree unchanged and reports the refusal", async () => {
+				const pool = new ParallelTaskPool(provider)
+				const batchId = await pool.startBatch({
+					parent,
+					children: [{ mode: "code", message: "[script:escape] go" }],
+				})
+				const [child] = pool.getChildTasks(batchId)
+				const result = await pool.waitForBatch(batchId)
+				const [only] = result.children
+				expect(fs.existsSync(path.join(repo, "x.txt"))).toBe(false)
+				expect(fs.existsSync(path.join(only.workspace.worktreePath, "x.txt"))).toBe(false)
+				expect(git(repo, "status", "--porcelain").trim()).toBe("")
+				expect(only.refusedApprovals).toEqual([
+					{ type: OUTSIDE_WORKTREE_REFUSAL, tool: "write_to_file", detail: "../repo/x.txt" },
+				])
+				const text = formatParallelBatchResult(result)
+				expect(text).toContain("Refused changes outside the child's worktree (not applied):")
+				expect(text).toContain("- outside worktree write_to_file: ../repo/x.txt")
+				expect(result.parentTreeChanges).toEqual([])
+				expect(text).not.toContain("WARNING: the parent working tree changed")
+				expect(JSON.stringify(child.apiConversationHistory)).toContain(
+					`Parallel subtasks may only change files inside their worktree ${only.workspace.worktreePath}. ../repo/x.txt is outside it.`,
+				)
+			}, 30_000)
+
+			it("refuses an absolute path into the parent repository", async () => {
+				const target = path.join(repo, "abs.txt")
+				SCRIPTS.absolute = [{ name: "write_to_file", args: { path: target, content: "a\n" } }]
+				const pool = new ParallelTaskPool(provider)
+				const batchId = await pool.startBatch({
+					parent,
+					children: [{ mode: "code", message: "[script:absolute] go" }],
+				})
+				const [only] = (await pool.waitForBatch(batchId)).children
+				expect(fs.existsSync(target)).toBe(false)
+				expect(only.refusedApprovals).toEqual([
+					{ type: OUTSIDE_WORKTREE_REFUSAL, tool: "write_to_file", detail: target },
+				])
+			}, 30_000)
+
+			it("writes a relative path inside the worktree", async () => {
+				const pool = new ParallelTaskPool(provider)
+				const batchId = await pool.startBatch({
+					parent,
+					children: [{ mode: "code", message: "[script:inside] go" }],
+				})
+				const [only] = (await pool.waitForBatch(batchId)).children
+				expect(fs.readFileSync(path.join(only.workspace.worktreePath, "src", "y.txt"), "utf8")).toBe("y\n")
+				expect(fs.existsSync(path.join(repo, "src", "y.txt"))).toBe(false)
+				expect(only.refusedApprovals).toEqual([])
+			}, 30_000)
+
+			it("refuses a write through a symbolic link in the worktree that points outside it", async () => {
+				// Committed relative link: in every worktree it points to <root>/outside.
+				const outside = path.join(root, "outside")
+				fs.mkdirSync(outside)
+				fs.symlinkSync("../outside", path.join(repo, "link"))
+				git(repo, "add", "link")
+				git(repo, "commit", "-q", "-m", "link")
+				const pool = new ParallelTaskPool(provider)
+				const batchId = await pool.startBatch({
+					parent,
+					children: [{ mode: "code", message: "[script:symlink] go" }],
+				})
+				const [only] = (await pool.waitForBatch(batchId)).children
+				expect(fs.lstatSync(path.join(only.workspace.worktreePath, "link")).isSymbolicLink()).toBe(true)
+				expect(fs.existsSync(path.join(outside, "z.txt"))).toBe(false)
+				expect(only.refusedApprovals).toEqual([
+					{ type: OUTSIDE_WORKTREE_REFUSAL, tool: "write_to_file", detail: "link/z.txt" },
+				])
+			}, 30_000)
+
+			it("refuses a command whose cwd is outside the worktree", async () => {
+				const pool = new ParallelTaskPool(provider)
+				const batchId = await pool.startBatch({
+					parent,
+					children: [{ mode: "code", message: "[script:command] go" }],
+				})
+				const [child] = pool.getChildTasks(batchId)
+				const [only] = (await pool.waitForBatch(batchId)).children
+				expect(only.refusedApprovals).toEqual([
+					{ type: OUTSIDE_WORKTREE_REFUSAL, tool: "execute_command", detail: "../repo" },
+				])
+				expect(JSON.stringify(child.apiConversationHistory)).toContain(
+					"Parallel subtasks may only run commands inside their worktree",
+				)
+			}, 30_000)
+
+			it("prepends the worktree brief to the child's first message", async () => {
+				const pool = new ParallelTaskPool(provider)
+				const batchId = await pool.startBatch({
+					parent,
+					children: [{ mode: "code", message: "[script:plain] go" }],
+				})
+				const [child] = pool.getChildTasks(batchId)
+				const [only] = (await pool.waitForBatch(batchId)).children
+				const first = JSON.stringify(child.apiConversationHistory[0])
+				expect(first).toContain(
+					`Your workspace is the git worktree ${only.workspace.worktreePath} on branch ${only.workspace.branch}.`,
+				)
+				expect(first).toContain("Ignore any absolute path to another checkout given below")
+				expect(parallelChildBrief(only.workspace)).toContain("Resolve every relative path against it.")
+			}, 30_000)
+
+			it("warns when the parent tree changes during the batch", async () => {
+				vi.mocked(buildApiHandler).mockImplementation(() => fakeHandler(requests, { delayMs: 200 }) as any)
+				const pool = new ParallelTaskPool(provider)
+				const batchId = await pool.startBatch({
+					parent,
+					children: [{ mode: "code", message: "[script:plain] go" }],
+				})
+				// Simulates a write that bypassed the tools (for example another process).
+				fs.writeFileSync(path.join(repo, "stray.txt"), "stray\n")
+				const result = await pool.waitForBatch(batchId)
+				expect(result.parentTreeChanges).toEqual(["?? stray.txt"])
+				const text = formatParallelBatchResult(result)
+				expect(text).toContain("WARNING: the parent working tree changed during the batch")
+				expect(text).toContain("- ?? stray.txt")
+			}, 30_000)
+		})
 
 		it("refuses to start a nested batch from a child", async () => {
 			const pool = new ParallelTaskPool(provider)

@@ -11,8 +11,7 @@ import { Task } from "../task/Task"
 import { formatResponse } from "../prompts/responses"
 import { fileExistsAtPath } from "../../utils/fs"
 import { getReadablePath } from "../../utils/path"
-import { isPathOutsideWorkspace } from "../../utils/pathUtils"
-import { getTaskWorkspaceRoots } from "./subtask-workspace"
+import { isPathOutsideTaskWorkspace } from "./subtask-workspace"
 import { EXPERIMENT_IDS, experiments } from "../../shared/experiments"
 import { OpenRouterHandler } from "../../api/providers/openrouter"
 import { generateImageWithImagesApi } from "../../api/providers/utils/image-generation"
@@ -198,7 +197,7 @@ export class GenerateImageTool extends BaseTool<"generate_image"> {
 		}
 
 		const fullPath = path.resolve(task.cwd, relPath)
-		const isOutsideWorkspace = isPathOutsideWorkspace(fullPath, getTaskWorkspaceRoots(task))
+		const isOutsideWorkspace = isPathOutsideTaskWorkspace(task, fullPath)
 
 		const sharedMessageProps = {
 			tool: "generateImage" as const,

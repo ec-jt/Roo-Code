@@ -6,8 +6,7 @@ import { Task } from "../task/Task"
 import { formatResponse } from "../prompts/responses"
 import { extractTextFromFile } from "../../integrations/misc/extract-text"
 import { getReadablePath } from "../../utils/path"
-import { isPathOutsideWorkspace } from "../../utils/pathUtils"
-import { getTaskWorkspaceRoots } from "./subtask-workspace"
+import { isPathOutsideTaskWorkspace } from "./subtask-workspace"
 import { validateWebUrl } from "../../services/browser/validateWebUrl"
 import type { ToolUse } from "../../shared/tools"
 import { BaseTool, ToolCallbacks } from "./BaseTool"
@@ -48,9 +47,7 @@ export class MarkdownifyTool extends BaseTool<"markdownify"> {
 			path: relPath ? getReadablePath(task.cwd, relPath) : undefined,
 			url,
 			content: url || relPath || "",
-			isOutsideWorkspace: absolutePath
-				? isPathOutsideWorkspace(absolutePath, getTaskWorkspaceRoots(task))
-				: false,
+			isOutsideWorkspace: absolutePath ? isPathOutsideTaskWorkspace(task, absolutePath) : false,
 		} satisfies ClineSayTool)
 		const didApprove = await askApproval("tool", approval)
 		if (!didApprove) {
@@ -82,9 +79,7 @@ export class MarkdownifyTool extends BaseTool<"markdownify"> {
 			path: relPath ? getReadablePath(task.cwd, relPath) : undefined,
 			url: block.params.url ?? undefined,
 			content: "",
-			isOutsideWorkspace: absolutePath
-				? isPathOutsideWorkspace(absolutePath, getTaskWorkspaceRoots(task))
-				: false,
+			isOutsideWorkspace: absolutePath ? isPathOutsideTaskWorkspace(task, absolutePath) : false,
 		} satisfies ClineSayTool)
 		await task.ask("tool", partialMessage, block.partial).catch(() => {})
 	}

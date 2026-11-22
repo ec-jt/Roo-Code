@@ -6,8 +6,7 @@ import { Task } from "../task/Task"
 import { formatResponse } from "../prompts/responses"
 import { fileExistsAtPath } from "../../utils/fs"
 import { getReadablePath } from "../../utils/path"
-import { isPathOutsideWorkspace } from "../../utils/pathUtils"
-import { getTaskWorkspaceRoots } from "./subtask-workspace"
+import { isPathOutsideTaskWorkspace } from "./subtask-workspace"
 import { EXPERIMENT_IDS, experiments } from "../../shared/experiments"
 import { BaseTool, ToolCallbacks } from "./BaseTool"
 import type { ToolUse } from "../../shared/tools"
@@ -137,7 +136,7 @@ export class GenerateVideoTool extends BaseTool<"generate_video"> {
 		}
 
 		const fullPath = path.resolve(task.cwd, relPath)
-		const isOutsideWorkspace = isPathOutsideWorkspace(fullPath, getTaskWorkspaceRoots(task))
+		const isOutsideWorkspace = isPathOutsideTaskWorkspace(task, fullPath)
 		const sharedMessageProps = {
 			tool: "generateVideo" as const,
 			path: getReadablePath(task.cwd, relPath),

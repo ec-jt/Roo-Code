@@ -657,6 +657,35 @@ describe("SettingsView - API Configuration", () => {
 	})
 })
 
+describe("SettingsView - All Actions auto-approval (D-2)", () => {
+	beforeEach(() => vi.clearAllMocks())
+
+	it("saves alwaysAllowAll: false after All Actions is turned off", async () => {
+		const { rerender } = render(<ExtensionStateContextProvider>{null}</ExtensionStateContextProvider>)
+		act(() => {
+			window.dispatchEvent(
+				new MessageEvent("message", { data: { type: "state", state: { alwaysAllowAll: true } } }),
+			)
+		})
+		rerender(
+			<ExtensionStateContextProvider>
+				<SettingsView onDone={vi.fn()} targetSection="autoApprove" />
+			</ExtensionStateContextProvider>,
+		)
+		// Saving without a change keeps the stored value.
+		fireEvent.click(screen.getByTestId("save-button"))
+		vi.mocked(vscode.postMessage).mockClear()
+		fireEvent.click(within(screen.getByTestId("settings-content")).getByTestId("always-allow-all-toggle"))
+		fireEvent.click(screen.getByTestId("save-button"))
+		expect(vscode.postMessage).toHaveBeenCalledWith(
+			expect.objectContaining({
+				type: "updateSettings",
+				updatedSettings: expect.objectContaining({ alwaysAllowAll: false }),
+			}),
+		)
+	})
+})
+
 describe("SettingsView - Allowed Commands", () => {
 	beforeEach(() => {
 		vi.clearAllMocks()

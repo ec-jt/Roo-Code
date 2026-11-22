@@ -20,6 +20,9 @@ import type OpenAI from "openai"
 import type { HistoryItem } from "@roo-code/types"
 import { worktreeService } from "@roo-code/core"
 
+import { isPathOutsideWorkspace } from "../../utils/pathUtils"
+import { isPathInsideRealRoot } from "../../utils/containedPath"
+
 const execFileAsync = promisify(execFile)
 
 export type SubtaskWorkspaceMode = "shared" | "isolated"
@@ -231,6 +234,26 @@ export function getTaskWorkspaceRoots(
 	const workspace = task?.subtaskWorkspace
 	if (workspace?.mode !== "isolated" || !workspace.worktreePath) return []
 	return [workspace.worktreePath]
+}
+
+type WorkspaceBoundTask =
+	| {
+			subtaskWorkspace?: Pick<IsolatedSubtaskWorkspace, "mode" | "worktreePath">
+			nonInteractive?: unknown
+	  }
+	| undefined
+
+/**
+ * Workspace boundary of a task's file tools.
+ * - Parallel child (non-interactive, isolated): ONLY its worktree is inside. The editor folders,
+ *   which include the parent's checkout, are outside. Symbolic links and `..` are resolved.
+ * - Every other task: unchanged (`isPathOutsideWorkspace` with getTaskWorkspaceRoots).
+ */
+export function isPathOutsideTaskWorkspace(task: WorkspaceBoundTask, filePath: string): boolean {
+	const workspace = task?.subtaskWorkspace
+	if (task?.nonInteractive && workspace?.mode === "isolated" && workspace.worktreePath)
+		return !isPathInsideRealRoot(filePath, workspace.worktreePath)
+	return isPathOutsideWorkspace(filePath, getTaskWorkspaceRoots(task))
 }
 
 /** Missing worktree of an isolated history item, or undefined when it can be resumed. */

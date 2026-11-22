@@ -88,3 +88,18 @@ The pieces needed already exist:
 - **Open** shows a child's plain-text transcript in the read-only chat history document.
 - **Delegation must be last in its turn (4.2.101):** `new_tasks` follows the same rule as `new_task`. Tool calls after the first delegation tool in a turn are truncated, and each gets an error tool result. Tool calls before it still run. The shared helper is `src/core/task/delegation-tools.ts`.
 - **Budget:** the shared budget is checked before each request, so one request that is already running can go over it.
+
+### Implementation notes (4.2.102, 2026-11-22)
+
+- **D-1 (live check of 4.2.101):** a parallel child wrote into the parent's working tree. The parent's brief contained the parent's absolute path, and the child resolved its write against it. Evidence: task `01a20368-0254`, `research/parallel-check-2026-11-22/run-log.md`.
+- **Fix:** worktree confinement in `parallelChildToolPolicy()` and `checkParallelChildConfinement()` (`src/core/task/parallel/non-interactive.ts`).
+    - The check runs before validation and before any approval. It only refuses ([Q-SEC-3](../../quality.md)).
+    - It covers every file-changing built-in tool: `write_to_file`, `apply_diff`, `edit`, `search_and_replace`, `search_replace`, `edit_file`, all `apply_patch` targets including move destinations, and the image and video output paths. It also covers the `cwd` of `execute_command`.
+    - Paths are resolved to real paths, so symlinks and `..` cannot escape the worktree.
+    - For a parallel child, only its worktree counts as inside the workspace (`isPathOutsideTaskWorkspace()`).
+    - Each child's first message names its worktree and branch.
+    - The combined result lists any refused out-of-worktree changes.
+    - The combined result warns if the parent tree's `git status` changed during the batch.
+- **Remaining limits:**
+    - A command can still write outside the worktree through its own arguments (for example a shell redirect). The parent-tree check reports this after the fact but does not prevent it. Preventing it needs a command sandbox, which is a separate decision.
+    - MCP and custom tools are not confined. They still go through normal approval.

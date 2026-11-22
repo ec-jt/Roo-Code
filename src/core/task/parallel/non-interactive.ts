@@ -14,10 +14,13 @@
  * (`new_task`, `new_tasks`, `switch_mode`), even when auto-approval would allow them.
  */
 
+import * as path from "path"
+
 import type { ClineAsk } from "@roo-code/types"
 
 import type { ClineAskResponse } from "../../../shared/WebviewMessage"
 import type { ToolInvocationPolicy } from "../../tool-execution/invocation-policy"
+import { isPathInsideRealRoot } from "../../../utils/containedPath"
 
 /** Model-facing text. Needs no locale (C-7). */
 export const PARALLEL_REFUSAL_MESSAGE =
@@ -113,17 +116,123 @@ export function decideNonInteractiveAsk(type: ClineAsk, text: string | undefined
 	return { response: "noButtonClicked", text: PARALLEL_REFUSAL_MESSAGE, refused: describeAsk(type, text) }
 }
 
+/** Refusal type recorded for a change outside the child's worktree. */
+export const OUTSIDE_WORKTREE_REFUSAL = "outside-worktree"
+
+/** The worktree a parallel child is confined to, and the folder its relative paths resolve against. */
+export interface ParallelChildConfinement {
+	/** Root of the child's git worktree. */
+	worktreePath: string
+	/** The child's cwd (the worktree root, or the matching sub-folder). */
+	cwd: string
+}
+
+/** Built-in tools that change files, with the arguments that name the target. */
+const PATH_ARGUMENT_TOOLS: Readonly<Record<string, readonly string[]>> = {
+	write_to_file: ["path"],
+	apply_diff: ["path"],
+	edit: ["file_path"],
+	search_and_replace: ["file_path"],
+	search_replace: ["file_path"],
+	edit_file: ["file_path"],
+	// Output files of the media tools. Their input image is only read.
+	generate_image: ["path"],
+	generate_video: ["path"],
+}
+
+/** Every target of an apply_patch body: added, deleted and updated files, and move destinations. */
+const PATCH_TARGET = /^\*\*\* (?:Add File|Delete File|Update File|Move to): (.+)$/gm
+
+/** Tools covered by the write confinement (for documentation and tests). */
+export const PARALLEL_CHILD_CONFINED_TOOLS: readonly string[] = [
+	...Object.keys(PATH_ARGUMENT_TOOLS),
+	"apply_patch",
+	"execute_command",
+]
+
+function stringArg(args: Record<string, unknown>, key: string): string | undefined {
+	const value = args[key]
+	return typeof value === "string" && value.trim() ? value.trim() : undefined
+}
+
+/** Model-facing refusal text for a path outside the worktree. Needs no locale (C-7). */
+export function outsideWorktreeMessage(worktreePath: string, target: string, command = false): string {
+	return command
+		? `Parallel subtasks may only run commands inside their worktree ${worktreePath}. The working directory ${target} is outside it.`
+		: `Parallel subtasks may only change files inside their worktree ${worktreePath}. ${target} is outside it.`
+}
+
+export interface ConfinementViolation {
+	/** The target as the model gave it. */
+	target: string
+	/** Model-facing refusal text. */
+	message: string
+}
+
 /**
- * Capability policy for a parallel child. Denies the tools in PARALLEL_CHILD_DENIED_TOOLS and allows
- * everything else, which still goes through the ordinary validation and approval paths.
+ * Write confinement for a parallel child (ADR-2026-11-22-parallel-subtasks decision 1).
+ * Returns the first target of a file-changing tool, or the cwd of a command, whose real path is not
+ * inside the worktree. Symbolic links and `..` are resolved (see resolveRealPath). Other tools, and
+ * calls without a target, return undefined: their own validation handles missing arguments.
+ * Pure apart from file-system reads. Never throws.
  */
-export function parallelChildToolPolicy(onDenied: (refused: RefusedApproval) => void): ToolInvocationPolicy {
+export function checkParallelChildConfinement(
+	toolName: string,
+	args: unknown,
+	confinement: ParallelChildConfinement,
+): ConfinementViolation | undefined {
+	if (!args || typeof args !== "object") return undefined
+	const record = args as Record<string, unknown>
+	const inside = (target: string) =>
+		isPathInsideRealRoot(path.resolve(confinement.cwd, target), confinement.worktreePath)
+
+	if (toolName === "execute_command") {
+		const cwd = stringArg(record, "cwd")
+		if (cwd && !inside(cwd))
+			return { target: cwd, message: outsideWorktreeMessage(confinement.worktreePath, cwd, true) }
+		return undefined
+	}
+
+	const targets: string[] = []
+	if (toolName === "apply_patch") {
+		const patch = stringArg(record, "patch")
+		if (patch) for (const match of patch.matchAll(PATCH_TARGET)) targets.push(match[1].trim())
+	} else {
+		for (const key of PATH_ARGUMENT_TOOLS[toolName] ?? []) {
+			const value = stringArg(record, key)
+			if (value) targets.push(value)
+		}
+	}
+	for (const target of targets) {
+		if (target && !inside(target))
+			return { target, message: outsideWorktreeMessage(confinement.worktreePath, target) }
+	}
+	return undefined
+}
+
+/**
+ * Capability policy for a parallel child. Denies the tools in PARALLEL_CHILD_DENIED_TOOLS, and, when a
+ * confinement is given, every file change or command outside the child's worktree. It runs before any
+ * approval check and only ever refuses (Q-SEC-3). Everything else still goes through the ordinary
+ * validation and approval paths.
+ */
+export function parallelChildToolPolicy(
+	onDenied: (refused: RefusedApproval) => void,
+	confinement?: ParallelChildConfinement,
+): ToolInvocationPolicy {
 	return {
-		evaluate: ({ identity }) => {
+		evaluate: ({ identity, args }) => {
 			const name = identity.kind === "mcp" ? undefined : identity.name
 			if (name && PARALLEL_CHILD_DENIED_TOOLS.includes(name)) {
 				onDenied({ type: "capability", tool: name })
 				return { allow: false, reason: PARALLEL_REFUSAL_MESSAGE }
+			}
+			if (confinement && identity.kind === "builtin") {
+				const violation = checkParallelChildConfinement(identity.name, args, confinement)
+				if (violation) {
+					onDenied({ type: OUTSIDE_WORKTREE_REFUSAL, tool: identity.name, detail: oneLine(violation.target) })
+					return { allow: false, reason: violation.message }
+				}
 			}
 			return { allow: true }
 		},

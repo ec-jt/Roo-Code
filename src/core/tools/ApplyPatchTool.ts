@@ -4,8 +4,7 @@ import path from "path"
 import { type ClineSayTool, DEFAULT_WRITE_DELAY_MS } from "@roo-code/types"
 
 import { getReadablePath } from "../../utils/path"
-import { isPathOutsideWorkspace } from "../../utils/pathUtils"
-import { getTaskWorkspaceRoots } from "./subtask-workspace"
+import { isPathOutsideTaskWorkspace } from "./subtask-workspace"
 import { Task } from "../task/Task"
 import { formatResponse } from "../prompts/responses"
 import { RecordSource } from "../context-tracking/FileContextTrackerTypes"
@@ -161,7 +160,7 @@ export class ApplyPatchTool extends BaseTool<"apply_patch"> {
 		}
 
 		const newContent = change.newContent || ""
-		const isOutsideWorkspace = isPathOutsideWorkspace(absolutePath, getTaskWorkspaceRoots(task))
+		const isOutsideWorkspace = isPathOutsideTaskWorkspace(task, absolutePath)
 
 		// Initialize diff view for new file
 		task.diffViewProvider.editType = "create"
@@ -251,7 +250,7 @@ export class ApplyPatchTool extends BaseTool<"apply_patch"> {
 			return
 		}
 
-		const isOutsideWorkspace = isPathOutsideWorkspace(absolutePath, getTaskWorkspaceRoots(task))
+		const isOutsideWorkspace = isPathOutsideTaskWorkspace(task, absolutePath)
 
 		const sharedMessageProps: ClineSayTool = {
 			tool: "appliedDiff",
@@ -311,7 +310,7 @@ export class ApplyPatchTool extends BaseTool<"apply_patch"> {
 
 		const originalContent = change.originalContent || ""
 		const newContent = change.newContent || ""
-		const isOutsideWorkspace = isPathOutsideWorkspace(absolutePath, getTaskWorkspaceRoots(task))
+		const isOutsideWorkspace = isPathOutsideTaskWorkspace(task, absolutePath)
 
 		// Initialize diff view
 		task.diffViewProvider.editType = "modify"
@@ -397,7 +396,7 @@ export class ApplyPatchTool extends BaseTool<"apply_patch"> {
 			}
 
 			// Check if destination path is outside workspace
-			const isMoveOutsideWorkspace = isPathOutsideWorkspace(moveAbsolutePath, getTaskWorkspaceRoots(task))
+			const isMoveOutsideWorkspace = isPathOutsideTaskWorkspace(task, moveAbsolutePath)
 			if (isMoveOutsideWorkspace) {
 				task.consecutiveMistakeCount++
 				task.recordToolError("apply_patch")
@@ -470,7 +469,7 @@ export class ApplyPatchTool extends BaseTool<"apply_patch"> {
 			tool: "appliedDiff",
 			path: displayPath || path.basename(task.cwd) || "workspace",
 			diff: patchPreview || "Parsing patch...",
-			isOutsideWorkspace: isPathOutsideWorkspace(absolutePath, getTaskWorkspaceRoots(task)),
+			isOutsideWorkspace: isPathOutsideTaskWorkspace(task, absolutePath),
 		}
 
 		await task.ask("tool", JSON.stringify(sharedMessageProps), block.partial).catch(() => {})
