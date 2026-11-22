@@ -93,6 +93,7 @@ export const toolParamNames = [
 	"files",
 	"line_ranges",
 	"plan", // exit_plan parameter
+	"tasks", // new_tasks parameter
 	// computer_action parameters
 	"end_coordinate",
 	"key",
@@ -143,6 +144,7 @@ export type NativeToolArgs = {
 	apply_patch: { patch: string }
 	list_files: { path: string; recursive?: boolean }
 	new_task: { mode: string; message: string; todos?: string; reason?: string; workspace?: string | null }
+	new_tasks: { tasks: Array<{ mode: string; message: string }> }
 	ask_followup_question: {
 		question: string
 		follow_up: Array<{ text: string; mode?: string }>
@@ -299,6 +301,11 @@ export interface NewTaskToolUse extends ToolUse<"new_task"> {
 	params: Partial<Pick<Record<ToolParamName, string>, "mode" | "message" | "todos" | "reason">>
 }
 
+export interface NewTasksToolUse extends ToolUse<"new_tasks"> {
+	name: "new_tasks"
+	params: Partial<Pick<Record<ToolParamName, string>, "tasks">>
+}
+
 export interface RunSlashCommandToolUse extends ToolUse<"run_slash_command"> {
 	name: "run_slash_command"
 	params: Partial<Pick<Record<ToolParamName, string>, "command" | "args">>
@@ -359,6 +366,7 @@ export const TOOL_DISPLAY_NAMES: Record<ToolName, string> = {
 	switch_mode: "switch modes",
 	exit_plan: "submit plan for review",
 	new_task: "create new task",
+	new_tasks: "start parallel subtasks",
 	codebase_search: "codebase search",
 	update_todo_list: "update todo list",
 	run_slash_command: "run slash command",
@@ -404,7 +412,7 @@ export const TOOL_GROUPS: Record<ToolGroup, ToolGroupConfig> = {
 		tools: ["use_mcp_tool", "access_mcp_resource"],
 	},
 	modes: {
-		tools: ["switch_mode", "new_task"],
+		tools: ["switch_mode", "new_task", "new_tasks"],
 		alwaysAvailable: true,
 	},
 }
@@ -418,6 +426,7 @@ export const ALWAYS_AVAILABLE_TOOLS: ToolName[] = [
 	"switch_mode",
 	"exit_plan",
 	"new_task",
+	"new_tasks",
 	"update_todo_list",
 	"run_slash_command",
 	"skill",

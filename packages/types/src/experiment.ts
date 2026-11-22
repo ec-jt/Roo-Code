@@ -13,6 +13,7 @@ export const experimentIds = [
 	"customTools",
 	"cordisRuntimePreview",
 	"evaluationRecording",
+	"parallelSubtasks",
 ] as const
 
 export const experimentIdsSchema = z.enum(experimentIds)
@@ -30,6 +31,7 @@ export const experimentsSchema = z.object({
 	customTools: z.boolean().optional(),
 	cordisRuntimePreview: z.boolean().optional(),
 	evaluationRecording: z.boolean().optional(),
+	parallelSubtasks: z.boolean().optional(),
 })
 
 export type Experiments = z.infer<typeof experimentsSchema>

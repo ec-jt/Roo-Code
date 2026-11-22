@@ -285,6 +285,25 @@
 		"didSwitch": "Roo is overgeschakeld naar {{mode}} modus",
 		"didSwitchWithReason": "Roo is overgeschakeld naar {{mode}} modus omdat: {{reason}}"
 	},
+	"parallelSubtasks": {
+		"wantsToStart": "Roo wil {{count}} subtaken parallel starten",
+		"isolatedWorkspaces": "Elke subtaak werkt in een eigen git-worktree en branch. Subtaken kunnen je niets vragen en er wordt niets automatisch samengevoegd.",
+		"limits": "Parallelle verzoeken: {{concurrency}} · Tokenbudget: {{budget}}",
+		"approve": "Subtaken starten",
+		"title": "Parallelle subtaken",
+		"stopAll": "Alles stoppen",
+		"stop": "Stoppen",
+		"open": "Openen",
+		"budget": "Tokens: {{used}} van {{budget}} · Parallelle verzoeken: {{concurrency}}",
+		"details": "Verzoeken: {{requests}} · Kosten: ${{cost}} · Branch: {{branch}}",
+		"status": {
+			"running": "Bezig",
+			"completed": "Voltooid",
+			"stopped": "Gestopt",
+			"budget-denied": "Budget op",
+			"failed": "Mislukt"
+		}
+	},
 	"subtasks": {
 		"isolatedWorkspace": "Geïsoleerde werkruimte: een nieuwe git-worktree op een eigen branch. Niet-gecommitte wijzigingen zijn niet inbegrepen en er wordt niets automatisch samengevoegd.",
 		"wantsToCreate": "Roo wil een nieuwe subtaak aanmaken in {{mode}} modus",

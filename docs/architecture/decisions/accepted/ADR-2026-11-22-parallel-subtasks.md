@@ -75,3 +75,16 @@ The pieces needed already exist:
 - **R-8 (new):** cost grows with parallel children. Mitigated by the shared budget and the concurrency limit.
 - **R-9 (new):** child branches can conflict when merged. The parent or the user merges, and conflicts are reported, never resolved automatically.
 - **Rate limits:** provider rate limits apply to the sum of all children. The concurrency limit is the first guard.
+
+### Implementation notes (4.2.100, 2026-11-22)
+
+- **Gate:** `isParallelSubtasksToolOffered()` in `src/core/task/cordis-profile.ts`. The tool is offered only when the experiment is on, the task is not a parallel child, and the task is in Orchestrator mode or uses the `cordis` or `hybrid` profile.
+- **Approval:** `newTasks` uses the same auto-approval rule as `newTask` (`alwaysAllowSubtasks`). In addition, a task that already has a parent cannot start a batch.
+- **Children:**
+    - They run headless.
+    - The non-interactive hook in `Task.askAndWait` only refuses. The capability policy refuses `new_task`, `new_tasks` and `switch_mode`.
+    - Checkpoints are off, because each child's worktree branch records its work.
+    - Tools that require the child to be the current task (task state, browser control) fail safely in children.
+- **Open** shows a child's plain-text transcript in the read-only chat history document.
+- **Known gap:** unlike `new_task`, `new_tasks` is not yet forced to be the only tool call in its turn. The rule is stated only in the tool description.
+- **Budget:** the shared budget is checked before each request, so one request that is already running can go over it.

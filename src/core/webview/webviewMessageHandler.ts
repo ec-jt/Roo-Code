@@ -219,6 +219,7 @@ export const webviewMessageHandler = async (
 			"cancelAutoApproval",
 			"killBrowserSession",
 			"commandActivityControl",
+			"parallelBatchControl",
 			"loadApiConfiguration",
 			"loadApiConfigurationById",
 		].includes(message.type)
@@ -550,6 +551,9 @@ export const webviewMessageHandler = async (
 			break
 		case "commandActivityControl":
 			await provider.handleCommandActivityControl(message.commandActivityControl)
+			break
+		case "parallelBatchControl":
+			await provider.handleParallelBatchControl(message.parallelBatchControl)
 			break
 		case "backgroundTask":
 		case "foregroundTask":

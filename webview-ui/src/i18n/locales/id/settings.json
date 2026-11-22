@@ -852,6 +852,17 @@
 			"name": "Perekaman evaluasi",
 			"description": "Nonaktif secara default. Setiap tugas baru menulis file evaluation.json di folder tugasnya sendiri: manifes eksekusi (versi ekstensi, penyedia, model, mode, digest pengaturan yang memengaruhi perilaku, hash pesan pertama) dan alasan tugas berhenti. Tidak ada teks prompt, kunci API, atau URL yang disimpan, hanya hash. Tugas yang sudah ada dan yang dilanjutkan tidak diubah."
 		},
+		"PARALLEL_SUBTASKS": {
+			"name": "Subtugas paralel",
+			"description": "Nonaktif secara default. Menyediakan alat new_tasks di mode Orchestrator dan di tugas Cordis serta hybrid. Alat ini memulai 2 sampai 4 subtugas sekaligus, masing-masing di git worktree dan branch sendiri. Kamu menyetujui batch sekali saja. Subtugas tidak bisa bertanya apa pun kepadamu: alat yang memerlukan persetujuan ditolak dan dilaporkan. Mereka berbagi satu anggaran token dan batas permintaan paralel. Tidak ada yang digabungkan secara otomatis."
+		},
+		"parallelSubtasks": {
+			"concurrencyLabel": "Permintaan paralel per batch",
+			"concurrencyDescription": "Paling banyak sejumlah ini permintaan model berjalan bersamaan dalam satu batch (1 sampai 4).",
+			"tokenBudgetLabel": "Anggaran token per batch",
+			"tokenBudgetDescription": "Token input dan output untuk semua subtugas dalam satu batch. Saat habis, subtugas yang tersisa berhenti dengan budget-denied.",
+			"tokenBudgetMinimum": "Masukkan bilangan bulat minimal {{min}}."
+		},
 		"DIFF_STRATEGY_UNIFIED": {
 			"name": "Gunakan strategi unified diff eksperimental",
 			"description": "Aktifkan strategi unified diff eksperimental. Strategi ini mungkin mengurangi jumlah retry yang disebabkan oleh error model tetapi dapat menyebabkan perilaku yang tidak terduga atau edit yang salah. Hanya aktifkan jika kamu memahami risikonya dan bersedia meninjau semua perubahan dengan hati-hati."

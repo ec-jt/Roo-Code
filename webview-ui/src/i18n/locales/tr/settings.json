@@ -852,6 +852,17 @@
 			"name": "Değerlendirme kaydı",
 			"description": "Varsayılan olarak kapalı. Her yeni görev kendi görev klasörüne bir evaluation.json dosyası yazar: bir çalıştırma manifestosu (eklenti sürümü, sağlayıcı, model, mod, davranışı etkileyen ayarların özeti, ilk mesajın hash'i) ve görevin durma nedeni. İstem metni, API anahtarları veya URL'ler saklanmaz, yalnızca hash'ler saklanır. Mevcut ve devam ettirilen görevler değiştirilmez."
 		},
+		"PARALLEL_SUBTASKS": {
+			"name": "Paralel alt görevler",
+			"description": "Varsayılan olarak kapalı. Orchestrator modunda ve Cordis ile hibrit görevlerde new_tasks aracını sunar. 2 ile 4 alt görevi aynı anda başlatır; her biri kendi git worktree ve dalında çalışır. Toplu işi bir kez onaylarsın. Alt görevler sana bir şey soramaz: onay gerektiren bir araç reddedilir ve raporlanır. Tek bir token bütçesini ve paralel istek sınırını paylaşırlar. Hiçbir şey otomatik olarak birleştirilmez."
+		},
+		"parallelSubtasks": {
+			"concurrencyLabel": "Toplu iş başına paralel istek",
+			"concurrencyDescription": "Bir toplu işte en fazla bu kadar model isteği aynı anda çalışır (1 ile 4 arası).",
+			"tokenBudgetLabel": "Toplu iş başına token bütçesi",
+			"tokenBudgetDescription": "Bir toplu işteki tüm alt görevler için giriş ve çıkış token'ları. Bittiğinde kalan alt görevler budget-denied ile durur.",
+			"tokenBudgetMinimum": "En az {{min}} olan bir tam sayı gir."
+		},
 		"DIFF_STRATEGY_UNIFIED": {
 			"name": "Deneysel birleştirilmiş diff stratejisini kullan",
 			"description": "Deneysel birleştirilmiş diff stratejisini etkinleştir. Bu strateji, model hatalarından kaynaklanan yeniden deneme sayısını azaltabilir, ancak beklenmeyen davranışlara veya hatalı düzenlemelere neden olabilir. Yalnızca riskleri anlıyorsanız ve tüm değişiklikleri dikkatlice incelemeye istekliyseniz etkinleştirin."

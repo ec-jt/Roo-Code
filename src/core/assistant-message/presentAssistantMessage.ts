@@ -41,6 +41,7 @@ import { switchModeTool } from "../tools/SwitchModeTool"
 import { exitPlanTool } from "../tools/ExitPlanTool"
 import { attemptCompletionTool, AttemptCompletionCallbacks } from "../tools/AttemptCompletionTool"
 import { newTaskTool } from "../tools/NewTaskTool"
+import { newTasksTool } from "../tools/NewTasksTool"
 import { updateTodoListTool } from "../tools/UpdateTodoListTool"
 import { runSlashCommandTool } from "../tools/RunSlashCommandTool"
 import { skillTool } from "../tools/SkillTool"
@@ -445,6 +446,10 @@ export async function presentAssistantMessage(cline: Task) {
 								const modeName = getModeBySlug(mode, customModes)?.name ?? mode
 								return `[${block.name} in ${modeName} mode: '${message}']`
 							}
+							case "new_tasks": {
+								const count = Array.isArray(block.nativeArgs?.tasks) ? block.nativeArgs.tasks.length : 0
+								return `[${block.name}: ${count} parallel subtasks]`
+							}
 							case "run_slash_command":
 								return `[${block.name} for '${block.params.command}'${block.params.args ? ` with args: ${block.params.args}` : ""}]`
 							case "skill":
@@ -669,6 +674,7 @@ export async function presentAssistantMessage(cline: Task) {
 								mode ?? defaultModeSlug,
 								customModes,
 								disabledTools,
+								{ experiments: stateExperiments, nonInteractive: !!cline.nonInteractive },
 							)
 							const toolRequirements =
 								profileInputs.disabledTools?.reduce(
@@ -945,6 +951,17 @@ export async function presentAssistantMessage(cline: Task) {
 						case "new_task":
 							await checkpointSaveAndMark(cline)
 							await newTaskTool.handle(cline, block as ToolUse<"new_task">, {
+								askApproval,
+								handleError,
+								pushToolResult,
+								toolCallId: block.id,
+							})
+							break
+						case "new_tasks":
+							// Same checkpoint as new_task. Children work in their own worktrees, so the parent
+							// tree is not changed by the batch.
+							await checkpointSaveAndMark(cline)
+							await newTasksTool.handle(cline, block as ToolUse<"new_tasks">, {
 								askApproval,
 								handleError,
 								pushToolResult,

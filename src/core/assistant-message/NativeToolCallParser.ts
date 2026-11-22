@@ -686,6 +686,12 @@ export class NativeToolCallParser {
 				}
 				break
 
+			case "new_tasks":
+				if (Array.isArray(partialArgs.tasks)) {
+					nativeArgs = { tasks: partialArgs.tasks }
+				}
+				break
+
 			case "new_task":
 				if (partialArgs.mode !== undefined || partialArgs.message !== undefined) {
 					nativeArgs = {
@@ -1259,6 +1265,12 @@ export class NativeToolCallParser {
 							path: args.path,
 							recursive: this.coerceOptionalBoolean(args.recursive),
 						} as NativeArgsFor<ToolName>
+					}
+					break
+
+				case "new_tasks":
+					if (Array.isArray(args.tasks)) {
+						nativeArgs = { tasks: args.tasks } as NativeArgsFor<ToolName>
 					}
 					break
 

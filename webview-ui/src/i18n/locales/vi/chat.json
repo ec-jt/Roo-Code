@@ -291,6 +291,25 @@
 		"didSwitch": "Roo đã chuyển sang chế độ <code>{{mode}}</code>",
 		"didSwitchWithReason": "Roo đã chuyển sang chế độ <code>{{mode}}</code> vì: {{reason}}"
 	},
+	"parallelSubtasks": {
+		"wantsToStart": "Roo muốn bắt đầu {{count}} tác vụ con song song",
+		"isolatedWorkspaces": "Mỗi tác vụ con làm việc trong git worktree và nhánh riêng. Tác vụ con không thể hỏi bạn điều gì và không có gì được hợp nhất tự động.",
+		"limits": "Yêu cầu song song: {{concurrency}} · Ngân sách token: {{budget}}",
+		"approve": "Bắt đầu tác vụ con",
+		"title": "Tác vụ con song song",
+		"stopAll": "Dừng tất cả",
+		"stop": "Dừng",
+		"open": "Mở",
+		"budget": "Token: {{used}} / {{budget}} · Yêu cầu song song: {{concurrency}}",
+		"details": "Yêu cầu: {{requests}} · Chi phí: ${{cost}} · Nhánh: {{branch}}",
+		"status": {
+			"running": "Đang chạy",
+			"completed": "Đã hoàn thành",
+			"stopped": "Đã dừng",
+			"budget-denied": "Hết ngân sách",
+			"failed": "Thất bại"
+		}
+	},
 	"subtasks": {
 		"isolatedWorkspace": "Không gian làm việc tách biệt: một git worktree mới trên nhánh riêng. Các thay đổi chưa commit không được bao gồm và không có gì được hợp nhất tự động.",
 		"wantsToCreate": "Roo muốn tạo một nhiệm vụ phụ mới trong chế độ <code>{{mode}}</code>",

@@ -290,6 +290,25 @@
 		"didSwitch": "Roo가 <code>{{mode}}</code> 모드로 전환했습니다",
 		"didSwitchWithReason": "Roo가 다음 이유로 <code>{{mode}}</code> 모드로 전환했습니다: {{reason}}"
 	},
+	"parallelSubtasks": {
+		"wantsToStart": "Roo가 하위 작업 {{count}}개를 병렬로 시작하려고 합니다",
+		"isolatedWorkspaces": "각 하위 작업은 자체 git worktree와 브랜치에서 작업합니다. 하위 작업은 사용자에게 질문할 수 없으며, 자동으로 병합되는 것은 없습니다.",
+		"limits": "병렬 요청: {{concurrency}} · token 예산: {{budget}}",
+		"approve": "하위 작업 시작",
+		"title": "병렬 하위 작업",
+		"stopAll": "모두 중지",
+		"stop": "중지",
+		"open": "열기",
+		"budget": "Token: {{budget}} 중 {{used}} · 병렬 요청: {{concurrency}}",
+		"details": "요청: {{requests}} · 비용: ${{cost}} · 브랜치: {{branch}}",
+		"status": {
+			"running": "실행 중",
+			"completed": "완료됨",
+			"stopped": "중지됨",
+			"budget-denied": "예산 소진",
+			"failed": "실패"
+		}
+	},
 	"subtasks": {
 		"isolatedWorkspace": "격리된 작업 공간: 자체 브랜치의 새 git worktree. 커밋되지 않은 변경 사항은 포함되지 않으며 자동으로 병합되지 않습니다.",
 		"wantsToCreate": "Roo가 <code>{{mode}}</code> 모드에서 새 하위 작업을 만들고 싶어합니다",

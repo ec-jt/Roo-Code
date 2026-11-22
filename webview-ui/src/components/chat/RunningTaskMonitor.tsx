@@ -5,14 +5,15 @@ import { useExtensionState } from "@/context/ExtensionStateContext"
 import { vscode } from "@/utils/vscode"
 import { Button } from "@/components/ui"
 import { CommandActivityList } from "./CommandActivityList"
+import { ParallelBatchSection } from "./ParallelBatchSection"
 import { ChevronDown, ChevronRight } from "lucide-react"
 
 export function RunningTaskMonitor({ visible = true }: { visible?: boolean }) {
-	const { runningTask, commandActivities = [] } = useExtensionState()
+	const { runningTask, commandActivities = [], parallelBatch } = useExtensionState()
 	const { t } = useTranslation()
 	const [expanded, setExpanded] = useState(false)
 	const activeCount = commandActivities.filter((a) => a.status === "running" || a.status === "stopping").length
-	if (!runningTask && commandActivities.length === 0) return null
+	if (!runningTask && commandActivities.length === 0 && !parallelBatch) return null
 	return (
 		<section
 			aria-label={t("chat:backgroundActivity.title")}
@@ -40,6 +41,7 @@ export function RunningTaskMonitor({ visible = true }: { visible?: boolean }) {
 			{expanded && (
 				<div className="max-h-[35vh] overflow-y-auto">
 					{runningTask && <RunningTaskCard task={runningTask} visible={visible} />}
+					{parallelBatch && <ParallelBatchSection batch={parallelBatch} />}
 					<CommandActivityList activities={commandActivities} visible={visible} embedded />
 				</div>
 			)}

@@ -852,6 +852,17 @@
 			"name": "Rejestrowanie ewaluacji",
 			"description": "Domyślnie wyłączone. Każde nowe zadanie zapisuje plik evaluation.json we własnym folderze zadania: manifest uruchomienia (wersja rozszerzenia, dostawca, model, tryb, skrót ustawień wpływających na zachowanie, hash pierwszej wiadomości) oraz powód zatrzymania zadania. Nie są zapisywane treść promptu, klucze API ani adresy URL, tylko hashe. Istniejące i wznowione zadania nie są zmieniane."
 		},
+		"PARALLEL_SUBTASKS": {
+			"name": "Równoległe podzadania",
+			"description": "Domyślnie wyłączone. Udostępnia narzędzie new_tasks w trybie Orchestrator oraz w zadaniach Cordis i hybrydowych. Uruchamia od 2 do 4 podzadań jednocześnie, każde we własnym git worktree i gałęzi. Zatwierdzasz partię tylko raz. Podzadania nie mogą cię o nic pytać: narzędzie wymagające zatwierdzenia jest odrzucane i zgłaszane. Dzielą jeden budżet tokenów i limit równoległych żądań. Nic nie jest scalane automatycznie."
+		},
+		"parallelSubtasks": {
+			"concurrencyLabel": "Równoległe żądania na partię",
+			"concurrencyDescription": "Najwyżej tyle żądań do modelu działa jednocześnie w jednej partii (od 1 do 4).",
+			"tokenBudgetLabel": "Budżet tokenów na partię",
+			"tokenBudgetDescription": "Tokeny wejściowe i wyjściowe dla wszystkich podzadań partii. Po jego wyczerpaniu pozostałe podzadania zatrzymują się z budget-denied.",
+			"tokenBudgetMinimum": "Wpisz liczbę całkowitą wynoszącą co najmniej {{min}}."
+		},
 		"DIFF_STRATEGY_UNIFIED": {
 			"name": "Użyj eksperymentalnej ujednoliconej strategii diff",
 			"description": "Włącz eksperymentalną ujednoliconą strategię diff. Ta strategia może zmniejszyć liczbę ponownych prób spowodowanych błędami modelu, ale może powodować nieoczekiwane zachowanie lub nieprawidłowe edycje. Włącz tylko jeśli rozumiesz ryzyko i jesteś gotów dokładnie przeglądać wszystkie zmiany."

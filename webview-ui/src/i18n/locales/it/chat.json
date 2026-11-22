@@ -290,6 +290,25 @@
 		"didSwitch": "Roo è passato alla modalità <code>{{mode}}</code>",
 		"didSwitchWithReason": "Roo è passato alla modalità <code>{{mode}}</code> perché: {{reason}}"
 	},
+	"parallelSubtasks": {
+		"wantsToStart": "Roo vuole avviare {{count}} sottoattività in parallelo",
+		"isolatedWorkspaces": "Ogni sottoattività lavora nel proprio git worktree e branch. Le sottoattività non possono chiederti nulla e nulla viene unito automaticamente.",
+		"limits": "Richieste in parallelo: {{concurrency}} · Budget di token: {{budget}}",
+		"approve": "Avvia sottoattività",
+		"title": "Sottoattività in parallelo",
+		"stopAll": "Ferma tutte",
+		"stop": "Ferma",
+		"open": "Apri",
+		"budget": "Token: {{used}} su {{budget}} · Richieste in parallelo: {{concurrency}}",
+		"details": "Richieste: {{requests}} · Costo: ${{cost}} · Branch: {{branch}}",
+		"status": {
+			"running": "In esecuzione",
+			"completed": "Completata",
+			"stopped": "Fermata",
+			"budget-denied": "Budget esaurito",
+			"failed": "Non riuscita"
+		}
+	},
 	"subtasks": {
 		"isolatedWorkspace": "Spazio di lavoro isolato: un nuovo worktree git sul proprio branch. Le modifiche non committate non sono incluse e nulla viene unito automaticamente.",
 		"wantsToCreate": "Roo vuole creare una nuova sottoattività in modalità <code>{{mode}}</code>",

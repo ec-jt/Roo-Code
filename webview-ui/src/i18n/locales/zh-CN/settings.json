@@ -852,6 +852,17 @@
 			"name": "评估记录",
 			"description": "默认关闭。每个新任务会在自己的任务文件夹中写入一个 evaluation.json 文件：运行清单（扩展版本、提供商、模型、模式、影响行为的设置摘要、第一条消息的哈希）以及任务停止的原因。不保存任何提示文本、API 密钥或 URL，只保存哈希。现有任务和恢复的任务不会被修改。"
 		},
+		"PARALLEL_SUBTASKS": {
+			"name": "并行子任务",
+			"description": "默认关闭。在 Orchestrator 模式以及 Cordis 和混合任务中提供 new_tasks 工具。它会同时启动 2 到 4 个子任务，每个子任务都在自己的 git worktree 和分支中运行。你只需批准一次整个批次。子任务不能向你提问：需要批准的工具会被拒绝并报告。它们共享一个 token 预算和并行请求上限。不会自动合并任何内容。"
+		},
+		"parallelSubtasks": {
+			"concurrencyLabel": "每批次并行请求数",
+			"concurrencyDescription": "一个批次中同时运行的模型请求的最大数量（1 到 4）。",
+			"tokenBudgetLabel": "每批次 token 预算",
+			"tokenBudgetDescription": "一个批次中所有子任务的输入和输出 token 总数。用完后，其余子任务以 budget-denied 停止。",
+			"tokenBudgetMinimum": "请输入不小于 {{min}} 的整数。"
+		},
 		"DIFF_STRATEGY_UNIFIED": {
 			"name": "启用diff更新工具",
 			"description": "可减少因模型错误导致的重复尝试，但可能引发意外操作。启用前请确保理解风险并会仔细检查所有修改。"

@@ -47,6 +47,7 @@ export const toolNames = [
 	"switch_mode",
 	"exit_plan",
 	"new_task",
+	"new_tasks",
 	"codebase_search",
 	"update_todo_list",
 	"run_slash_command",

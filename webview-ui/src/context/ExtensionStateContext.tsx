@@ -414,6 +414,9 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 				case "runningTaskUpdated":
 					setState((prevState) => ({ ...prevState, runningTask: message.runningTask }))
 					break
+				case "parallelBatchUpdated":
+					setState((prevState) => ({ ...prevState, parallelBatch: message.parallelBatch ?? null }))
+					break
 				case "state": {
 					const newState = message.state ?? {}
 					const accepted = mergeExtensionState(transportState.current, newState)

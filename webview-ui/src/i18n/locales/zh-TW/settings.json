@@ -862,6 +862,17 @@
 			"name": "評估記錄",
 			"description": "預設關閉。每個新工作會在自己的工作資料夾中寫入一個 evaluation.json 檔案：執行清單（擴充功能版本、供應商、模型、模式、影響行為的設定摘要、第一則訊息的雜湊）以及工作停止的原因。不會儲存任何提示文字、API 金鑰或 URL，只儲存雜湊。現有工作和恢復的工作不會被修改。"
 		},
+		"PARALLEL_SUBTASKS": {
+			"name": "平行子任務",
+			"description": "預設關閉。在 Orchestrator 模式以及 Cordis 和混合任務中提供 new_tasks 工具。它會同時啟動 2 到 4 個子任務，每個子任務都在自己的 git worktree 和分支中執行。你只需核准一次整個批次。子任務無法向你提問：需要核准的工具會被拒絕並回報。它們共用一個 token 預算和平行請求上限。不會自動合併任何內容。"
+		},
+		"parallelSubtasks": {
+			"concurrencyLabel": "每批次平行請求數",
+			"concurrencyDescription": "一個批次中同時執行的模型請求上限（1 到 4）。",
+			"tokenBudgetLabel": "每批次 token 預算",
+			"tokenBudgetDescription": "一個批次中所有子任務的輸入與輸出 token 總數。用完後，其餘子任務會以 budget-denied 停止。",
+			"tokenBudgetMinimum": "請輸入不小於 {{min}} 的整數。"
+		},
 		"DIFF_STRATEGY_UNIFIED": {
 			"name": "使用實驗性統一差異比對策略",
 			"description": "啟用實驗性的統一差異比對策略。此策略可能減少因模型錯誤而導致的重試次數，但也可能導致意外行為或錯誤的編輯。請務必了解風險，並願意仔細檢查所有變更後再啟用。"

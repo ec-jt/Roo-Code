@@ -290,6 +290,25 @@
 		"didSwitch": "Roo <code>{{mode}}</code> मोड में स्विच कर गया",
 		"didSwitchWithReason": "Roo <code>{{mode}}</code> मोड में स्विच कर गया क्योंकि: {{reason}}"
 	},
+	"parallelSubtasks": {
+		"wantsToStart": "Roo {{count}} उप-कार्य समानांतर में शुरू करना चाहता है",
+		"isolatedWorkspaces": "हर उप-कार्य अपने git worktree और branch में काम करता है। उप-कार्य तुमसे कुछ नहीं पूछ सकते, और कुछ भी अपने आप merge नहीं होता।",
+		"limits": "समानांतर अनुरोध: {{concurrency}} · token बजट: {{budget}}",
+		"approve": "उप-कार्य शुरू करो",
+		"title": "समानांतर उप-कार्य",
+		"stopAll": "सभी रोको",
+		"stop": "रोको",
+		"open": "खोलो",
+		"budget": "Tokens: {{budget}} में से {{used}} · समानांतर अनुरोध: {{concurrency}}",
+		"details": "अनुरोध: {{requests}} · लागत: ${{cost}} · Branch: {{branch}}",
+		"status": {
+			"running": "चल रहा है",
+			"completed": "पूरा हुआ",
+			"stopped": "रोका गया",
+			"budget-denied": "बजट खत्म",
+			"failed": "विफल"
+		}
+	},
 	"subtasks": {
 		"isolatedWorkspace": "अलग वर्कस्पेस: अपनी शाखा पर एक नया git worktree। बिना कमिट किए बदलाव शामिल नहीं हैं, और कुछ भी अपने आप मर्ज नहीं होता।",
 		"wantsToCreate": "Roo <code>{{mode}}</code> मोड में एक नया उपकार्य बनाना चाहता है",

@@ -290,6 +290,25 @@
 		"didSwitch": "Roo przełączył się na tryb <code>{{mode}}</code>",
 		"didSwitchWithReason": "Roo przełączył się na tryb <code>{{mode}}</code> ponieważ: {{reason}}"
 	},
+	"parallelSubtasks": {
+		"wantsToStart": "Roo chce uruchomić równolegle {{count}} podzadania",
+		"isolatedWorkspaces": "Każde podzadanie działa we własnym git worktree i gałęzi. Podzadania nie mogą cię o nic pytać i nic nie jest scalane automatycznie.",
+		"limits": "Równoległe żądania: {{concurrency}} · Budżet tokenów: {{budget}}",
+		"approve": "Uruchom podzadania",
+		"title": "Równoległe podzadania",
+		"stopAll": "Zatrzymaj wszystkie",
+		"stop": "Zatrzymaj",
+		"open": "Otwórz",
+		"budget": "Tokeny: {{used}} z {{budget}} · Równoległe żądania: {{concurrency}}",
+		"details": "Żądania: {{requests}} · Koszt: ${{cost}} · Gałąź: {{branch}}",
+		"status": {
+			"running": "Działa",
+			"completed": "Ukończone",
+			"stopped": "Zatrzymane",
+			"budget-denied": "Budżet wyczerpany",
+			"failed": "Błąd"
+		}
+	},
 	"subtasks": {
 		"isolatedWorkspace": "Izolowany obszar roboczy: nowy worktree git na własnej gałęzi. Niezatwierdzone zmiany nie są uwzględnione i nic nie jest scalane automatycznie.",
 		"wantsToCreate": "Roo chce utworzyć nowe podzadanie w trybie <code>{{mode}}</code>",

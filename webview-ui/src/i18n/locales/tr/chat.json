@@ -291,6 +291,25 @@
 		"didSwitch": "Roo <code>{{mode}}</code> moduna geçti",
 		"didSwitchWithReason": "Roo <code>{{mode}}</code> moduna geçti çünkü: {{reason}}"
 	},
+	"parallelSubtasks": {
+		"wantsToStart": "Roo {{count}} alt görevi paralel olarak başlatmak istiyor",
+		"isolatedWorkspaces": "Her alt görev kendi git worktree ve dalında çalışır. Alt görevler sana bir şey soramaz ve hiçbir şey otomatik olarak birleştirilmez.",
+		"limits": "Paralel istekler: {{concurrency}} · Token bütçesi: {{budget}}",
+		"approve": "Alt görevleri başlat",
+		"title": "Paralel alt görevler",
+		"stopAll": "Tümünü durdur",
+		"stop": "Durdur",
+		"open": "Aç",
+		"budget": "Token: {{used}} / {{budget}} · Paralel istekler: {{concurrency}}",
+		"details": "İstekler: {{requests}} · Maliyet: ${{cost}} · Dal: {{branch}}",
+		"status": {
+			"running": "Çalışıyor",
+			"completed": "Tamamlandı",
+			"stopped": "Durduruldu",
+			"budget-denied": "Bütçe bitti",
+			"failed": "Başarısız"
+		}
+	},
 	"subtasks": {
 		"isolatedWorkspace": "Yalıtılmış çalışma alanı: kendi dalında yeni bir git worktree. Commit edilmemiş değişiklikler dahil edilmez ve hiçbir şey otomatik olarak birleştirilmez.",
 		"wantsToCreate": "Roo <code>{{mode}}</code> modunda yeni bir alt görev oluşturmak istiyor",

@@ -54,6 +54,7 @@ describe("experiments", () => {
 				customTools: false,
 				cordisRuntimePreview: false,
 				evaluationRecording: false,
+				parallelSubtasks: false,
 			}
 			expect(Experiments.isEnabled(experiments, EXPERIMENT_IDS.PREVENT_FOCUS_DISRUPTION)).toBe(false)
 		})
@@ -66,6 +67,7 @@ describe("experiments", () => {
 				customTools: false,
 				cordisRuntimePreview: false,
 				evaluationRecording: false,
+				parallelSubtasks: false,
 			}
 			expect(Experiments.isEnabled(experiments, EXPERIMENT_IDS.PREVENT_FOCUS_DISRUPTION)).toBe(true)
 		})
@@ -78,6 +80,7 @@ describe("experiments", () => {
 				customTools: false,
 				cordisRuntimePreview: false,
 				evaluationRecording: false,
+				parallelSubtasks: false,
 			}
 			expect(Experiments.isEnabled(experiments, EXPERIMENT_IDS.PREVENT_FOCUS_DISRUPTION)).toBe(false)
 		})

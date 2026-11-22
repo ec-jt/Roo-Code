@@ -852,6 +852,17 @@
 			"name": "Registre d'avaluació",
 			"description": "Desactivat per defecte. Cada tasca nova escriu un fitxer evaluation.json a la seva pròpia carpeta: un manifest de l'execució (versió de l'extensió, proveïdor, model, mode, un resum de la configuració que afecta el comportament, un hash del primer missatge) i el motiu pel qual la tasca s'ha aturat. No es desa cap text del prompt, clau d'API ni URL, només hashes. Les tasques existents i les reprèses no es modifiquen."
 		},
+		"PARALLEL_SUBTASKS": {
+			"name": "Subtasques en paral·lel",
+			"description": "Desactivat per defecte. Ofereix l'eina new_tasks al mode Orchestrator i a les tasques Cordis i híbrides. Inicia de 2 a 4 subtasques alhora, cadascuna al seu propi git worktree i branca. Aproves el lot una sola vegada. Les subtasques no et poden preguntar res: una eina que necessita aprovació es rebutja i s'informa. Comparteixen un pressupost de tokens i un límit de sol·licituds en paral·lel. No es fusiona res automàticament."
+		},
+		"parallelSubtasks": {
+			"concurrencyLabel": "Sol·licituds en paral·lel per lot",
+			"concurrencyDescription": "Com a màxim aquest nombre de sol·licituds al model s'executen alhora en un lot (d'1 a 4).",
+			"tokenBudgetLabel": "Pressupost de tokens per lot",
+			"tokenBudgetDescription": "Tokens d'entrada i sortida per a totes les subtasques d'un lot. Quan s'esgota, les subtasques restants s'aturen amb budget-denied.",
+			"tokenBudgetMinimum": "Introdueix un nombre enter d'almenys {{min}}."
+		},
 		"DIFF_STRATEGY_UNIFIED": {
 			"name": "Utilitzar estratègia diff unificada experimental",
 			"description": "Activar l'estratègia diff unificada experimental. Aquesta estratègia podria reduir el nombre de reintents causats per errors del model, però pot causar comportaments inesperats o edicions incorrectes. Activeu-la només si enteneu els riscos i esteu disposats a revisar acuradament tots els canvis."

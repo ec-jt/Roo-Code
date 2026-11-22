@@ -19,7 +19,15 @@ import { safeWriteJson } from "../../utils/safeWriteJson"
 
 export const EVALUATION_FILE_NAME = "evaluation.json"
 
-export const evaluationStopReasons = ["completed", "user-stopped", "error", "mistake-limit", "abandoned"] as const
+/** "budget-denied" (additive): a parallel child stopped by its batch's shared token budget. */
+export const evaluationStopReasons = [
+	"completed",
+	"user-stopped",
+	"error",
+	"mistake-limit",
+	"abandoned",
+	"budget-denied",
+] as const
 export type EvaluationStopReason = (typeof evaluationStopReasons)[number]
 
 /** Plain, non-secret settings that affect behaviour. Any other key is dropped. */

@@ -290,6 +290,25 @@
 		"didSwitch": "Rooは<code>{{mode}}</code>モードに切り替えました",
 		"didSwitchWithReason": "Rooは次の理由で<code>{{mode}}</code>モードに切り替えました: {{reason}}"
 	},
+	"parallelSubtasks": {
+		"wantsToStart": "Roo は {{count}} 個のサブタスクを並列で開始しようとしています",
+		"isolatedWorkspaces": "各サブタスクは専用の git worktree とブランチで作業します。サブタスクはあなたに質問できず、自動ではマージされません。",
+		"limits": "並列リクエスト: {{concurrency}} · token 予算: {{budget}}",
+		"approve": "サブタスクを開始",
+		"title": "並列サブタスク",
+		"stopAll": "すべて停止",
+		"stop": "停止",
+		"open": "開く",
+		"budget": "Token: {{used}} / {{budget}} · 並列リクエスト: {{concurrency}}",
+		"details": "リクエスト: {{requests}} · コスト: ${{cost}} · ブランチ: {{branch}}",
+		"status": {
+			"running": "実行中",
+			"completed": "完了",
+			"stopped": "停止済み",
+			"budget-denied": "予算切れ",
+			"failed": "失敗"
+		}
+	},
 	"subtasks": {
 		"isolatedWorkspace": "分離されたワークスペース: 専用ブランチ上の新しい git worktree。コミットされていない変更は含まれず、自動的にマージされることはありません。",
 		"wantsToCreate": "Rooは<code>{{mode}}</code>モードで新しいサブタスクを作成したい",

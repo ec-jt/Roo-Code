@@ -291,6 +291,25 @@
 		"didSwitch": "已切换至{{mode}}模式",
 		"didSwitchWithReason": "已切换至{{mode}}模式（原因：{{reason}}）"
 	},
+	"parallelSubtasks": {
+		"wantsToStart": "Roo 想要并行启动 {{count}} 个子任务",
+		"isolatedWorkspaces": "每个子任务都在自己的 git worktree 和分支中工作。子任务不能向你提问，也不会自动合并任何内容。",
+		"limits": "并行请求：{{concurrency}} · token 预算：{{budget}}",
+		"approve": "启动子任务",
+		"title": "并行子任务",
+		"stopAll": "全部停止",
+		"stop": "停止",
+		"open": "打开",
+		"budget": "Token：{{used}} / {{budget}} · 并行请求：{{concurrency}}",
+		"details": "请求：{{requests}} · 费用：${{cost}} · 分支：{{branch}}",
+		"status": {
+			"running": "运行中",
+			"completed": "已完成",
+			"stopped": "已停止",
+			"budget-denied": "预算用尽",
+			"failed": "失败"
+		}
+	},
 	"subtasks": {
 		"isolatedWorkspace": "隔离工作区：在独立分支上的新 git worktree。不包含未提交的更改，也不会自动合并任何内容。",
 		"wantsToCreate": "Roo想在<code>{{mode}}</code>模式下创建新子任务",

@@ -290,6 +290,25 @@
 		"didSwitch": "Roo ha canviat a mode <code>{{mode}}</code>",
 		"didSwitchWithReason": "Roo ha canviat a mode <code>{{mode}}</code> perquè: {{reason}}"
 	},
+	"parallelSubtasks": {
+		"wantsToStart": "Roo vol iniciar {{count}} subtasques en paral·lel",
+		"isolatedWorkspaces": "Cada subtasca treballa al seu propi git worktree i branca. Les subtasques no et poden preguntar res i no es fusiona res automàticament.",
+		"limits": "Sol·licituds en paral·lel: {{concurrency}} · Pressupost de tokens: {{budget}}",
+		"approve": "Inicia les subtasques",
+		"title": "Subtasques en paral·lel",
+		"stopAll": "Atura-les totes",
+		"stop": "Atura",
+		"open": "Obre",
+		"budget": "Tokens: {{used}} de {{budget}} · Sol·licituds en paral·lel: {{concurrency}}",
+		"details": "Sol·licituds: {{requests}} · Cost: ${{cost}} · Branca: {{branch}}",
+		"status": {
+			"running": "En execució",
+			"completed": "Completada",
+			"stopped": "Aturada",
+			"budget-denied": "Pressupost esgotat",
+			"failed": "Error"
+		}
+	},
 	"subtasks": {
 		"isolatedWorkspace": "Espai de treball aïllat: un worktree de git nou a la seva pròpia branca. Els canvis no confirmats no s'inclouen i no es fusiona res automàticament.",
 		"wantsToCreate": "Roo vol crear una nova subtasca en mode <code>{{mode}}</code>",

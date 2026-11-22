@@ -852,6 +852,17 @@
 			"name": "Registrazione della valutazione",
 			"description": "Disattivato per impostazione predefinita. Ogni nuova attività scrive un file evaluation.json nella propria cartella: un manifesto di esecuzione (versione dell'estensione, provider, modello, modalità, un digest delle impostazioni che influiscono sul comportamento, un hash del primo messaggio) e il motivo per cui l'attività si è fermata. Non vengono salvati testo del prompt, chiavi API o URL, solo hash. Le attività esistenti e riprese non vengono modificate."
 		},
+		"PARALLEL_SUBTASKS": {
+			"name": "Sottoattività in parallelo",
+			"description": "Disattivato per impostazione predefinita. Offre lo strumento new_tasks in modalità Orchestrator e nelle attività Cordis e ibride. Avvia da 2 a 4 sottoattività contemporaneamente, ognuna nel proprio git worktree e branch. Approvi il batch una sola volta. Le sottoattività non possono chiederti nulla: uno strumento che richiede approvazione viene rifiutato e segnalato. Condividono un budget di token e un limite di richieste in parallelo. Nulla viene unito automaticamente."
+		},
+		"parallelSubtasks": {
+			"concurrencyLabel": "Richieste in parallelo per batch",
+			"concurrencyDescription": "Al massimo questo numero di richieste al modello viene eseguito contemporaneamente in un batch (da 1 a 4).",
+			"tokenBudgetLabel": "Budget di token per batch",
+			"tokenBudgetDescription": "Token di input e output per tutte le sottoattività di un batch. Quando è esaurito, le sottoattività rimanenti si fermano con budget-denied.",
+			"tokenBudgetMinimum": "Inserisci un numero intero di almeno {{min}}."
+		},
 		"DIFF_STRATEGY_UNIFIED": {
 			"name": "Usa strategia diff unificata sperimentale",
 			"description": "Abilita la strategia diff unificata sperimentale. Questa strategia potrebbe ridurre il numero di tentativi causati da errori del modello, ma può causare comportamenti imprevisti o modifiche errate. Abilitala solo se comprendi i rischi e sei disposto a rivedere attentamente tutte le modifiche."

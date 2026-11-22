@@ -852,6 +852,17 @@
 			"name": "Evaluatieregistratie",
 			"description": "Standaard uit. Elke nieuwe taak schrijft een bestand evaluation.json in de eigen taakmap: een uitvoeringsmanifest (extensieversie, provider, model, modus, een digest van de instellingen die het gedrag beïnvloeden, een hash van het eerste bericht) en de reden waarom de taak stopte. Er wordt geen prompttekst, API-sleutel of URL opgeslagen, alleen hashes. Bestaande en hervatte taken worden niet gewijzigd."
 		},
+		"PARALLEL_SUBTASKS": {
+			"name": "Parallelle subtaken",
+			"description": "Standaard uit. Biedt de tool new_tasks aan in de Orchestrator-modus en in Cordis- en hybride taken. Hij start 2 tot 4 subtaken tegelijk, elk in een eigen git-worktree en branch. Je keurt de batch één keer goed. Subtaken kunnen je niets vragen: een tool die goedkeuring nodig heeft, wordt geweigerd en gemeld. Ze delen één tokenbudget en een limiet voor parallelle verzoeken. Er wordt niets automatisch samengevoegd."
+		},
+		"parallelSubtasks": {
+			"concurrencyLabel": "Parallelle verzoeken per batch",
+			"concurrencyDescription": "Hooguit dit aantal modelverzoeken loopt tegelijk in één batch (1 tot 4).",
+			"tokenBudgetLabel": "Tokenbudget per batch",
+			"tokenBudgetDescription": "Invoer- plus uitvoertokens voor alle subtaken van een batch. Als het op is, stoppen de resterende subtaken met budget-denied.",
+			"tokenBudgetMinimum": "Voer een geheel getal van minstens {{min}} in."
+		},
 		"DIFF_STRATEGY_UNIFIED": {
 			"name": "Experimentele unified diff-strategie gebruiken",
 			"description": "Schakel de experimentele unified diff-strategie in. Deze strategie kan het aantal herhalingen door model fouten verminderen, maar kan onverwacht gedrag of onjuiste bewerkingen veroorzaken. Alleen inschakelen als je de risico's begrijpt en wijzigingen zorgvuldig wilt controleren."

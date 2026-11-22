@@ -290,6 +290,25 @@
 		"didSwitch": "Roo hat zum <code>{{mode}}</code>-Modus gewechselt",
 		"didSwitchWithReason": "Roo hat zum <code>{{mode}}</code>-Modus gewechselt, weil: {{reason}}"
 	},
+	"parallelSubtasks": {
+		"wantsToStart": "Roo möchte {{count}} Teilaufgaben parallel starten",
+		"isolatedWorkspaces": "Jede Teilaufgabe arbeitet in einem eigenen Git-Worktree und Branch. Teilaufgaben können dich nichts fragen, und nichts wird automatisch zusammengeführt.",
+		"limits": "Parallele Anfragen: {{concurrency}} · Token-Budget: {{budget}}",
+		"approve": "Teilaufgaben starten",
+		"title": "Parallele Teilaufgaben",
+		"stopAll": "Alle stoppen",
+		"stop": "Stoppen",
+		"open": "Öffnen",
+		"budget": "Tokens: {{used}} von {{budget}} · Parallele Anfragen: {{concurrency}}",
+		"details": "Anfragen: {{requests}} · Kosten: ${{cost}} · Branch: {{branch}}",
+		"status": {
+			"running": "Läuft",
+			"completed": "Abgeschlossen",
+			"stopped": "Gestoppt",
+			"budget-denied": "Budget aufgebraucht",
+			"failed": "Fehlgeschlagen"
+		}
+	},
 	"subtasks": {
 		"isolatedWorkspace": "Isolierter Arbeitsbereich: ein neuer Git-Worktree auf einem eigenen Branch. Nicht committete Änderungen sind nicht enthalten, und nichts wird automatisch zusammengeführt.",
 		"wantsToCreate": "Roo möchte eine neue Teilaufgabe im <code>{{mode}}</code>-Modus erstellen",

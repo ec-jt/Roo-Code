@@ -171,6 +171,10 @@ export const globalSettingsSchema = z.object({
 	 * `false` means "modes", `true` or absent means "cordis". That key is never rewritten (C-5).
 	 */
 	taskProfile: z.enum(taskProfiles).optional(),
+	/** Parallel subtasks: requests in flight per batch, 1 to 4 (default 2). Read when a batch starts. */
+	parallelSubtasksConcurrency: z.number().optional(),
+	/** Parallel subtasks: shared input plus output token budget per batch (default 2,000,000). */
+	parallelSubtasksTokenBudget: z.number().optional(),
 	/** @deprecated Retained for settings import compatibility; no proactive percentage trigger. */
 	autoCondenseContextPercent: z.number().optional(),
 

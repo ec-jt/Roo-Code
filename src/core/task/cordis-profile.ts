@@ -15,6 +15,36 @@ export const CORDIS_ONLY_TOOLS = ["exit_plan"] as const
 /** Mode a hybrid task switches to when a plan is approved and the plan names no mode. */
 export const HYBRID_DEFAULT_TARGET_MODE = "code"
 
+/** The parallel subtasks tool (ADR-2026-11-22-parallel-subtasks). */
+export const PARALLEL_SUBTASKS_TOOL = "new_tasks"
+
+/** Mode that is offered `new_tasks` in every profile. */
+export const PARALLEL_SUBTASKS_MODE = "orchestrator"
+
+/**
+ * True only when every condition holds (ADR-2026-11-22-parallel-subtasks rule 1):
+ * - the `parallelSubtasks` experiment is on (default off);
+ * - the task is not non-interactive (a parallel child never gets the tool);
+ * - the mode is `orchestrator`, or the task profile is `cordis` or `hybrid`.
+ */
+export function isParallelSubtasksToolOffered(options: {
+	experiments?: Record<string, boolean | undefined> | null
+	nonInteractive?: boolean
+	mode: string | undefined
+	profile: TaskProfile | undefined
+}): boolean {
+	if (options.experiments?.parallelSubtasks !== true) return false
+	if (options.nonInteractive) return false
+	return options.mode === PARALLEL_SUBTASKS_MODE || hasPlanReview(options.profile)
+}
+
+export interface ProfileToolInputOptions {
+	/** Experiment flags of the task's provider state. Missing means every experiment is off. */
+	experiments?: Record<string, boolean | undefined> | null
+	/** True for a parallel child (Task.nonInteractive). */
+	nonInteractive?: boolean
+}
+
 export function isTaskProfile(value: unknown): value is TaskProfile {
 	return typeof value === "string" && (taskProfiles as readonly string[]).includes(value)
 }
@@ -64,18 +94,36 @@ export function resolveTaskProfile(options: {
  * - `hybrid`: custom modes and disabled tools are returned unchanged, so per-mode tool limits,
  *   switch_mode and exit_plan (always available) all stay.
  * - `modes`: the custom modes are returned unchanged and the Cordis-only tools (exit_plan) are disabled.
+ * In every profile, `new_tasks` is disabled unless isParallelSubtasksToolOffered() holds. Without
+ * `options`, the experiment counts as off, so the tool is disabled.
  */
 export function applyProfileToToolInputs(
 	profile: TaskProfile | undefined,
 	modeSlug: string,
 	customModes: ModeConfig[] | undefined,
 	disabledTools: string[] | undefined,
+	options: ProfileToolInputOptions = {},
 ): { customModes: ModeConfig[] | undefined; disabledTools: string[] | undefined } {
+	const offered = isParallelSubtasksToolOffered({
+		experiments: options.experiments,
+		nonInteractive: options.nonInteractive,
+		mode: modeSlug,
+		profile,
+	})
+	const parallelDisabled: string[] = offered ? [] : [PARALLEL_SUBTASKS_TOOL]
 	if (profile === "hybrid") {
-		return { customModes, disabledTools }
+		return {
+			customModes,
+			disabledTools: parallelDisabled.length
+				? [...new Set([...(disabledTools ?? []), ...parallelDisabled])]
+				: disabledTools,
+		}
 	}
 	if (profile !== "cordis") {
-		return { customModes, disabledTools: [...new Set([...(disabledTools ?? []), ...CORDIS_ONLY_TOOLS])] }
+		return {
+			customModes,
+			disabledTools: [...new Set([...(disabledTools ?? []), ...CORDIS_ONLY_TOOLS, ...parallelDisabled])],
+		}
 	}
 	const base = getModeBySlug(modeSlug, customModes)
 	const override: ModeConfig = {
@@ -85,6 +133,6 @@ export function applyProfileToToolInputs(
 	}
 	return {
 		customModes: [override, ...(customModes ?? []).filter((mode) => mode.slug !== modeSlug)],
-		disabledTools: [...new Set([...(disabledTools ?? []), ...CORDIS_DISABLED_TOOLS])],
+		disabledTools: [...new Set([...(disabledTools ?? []), ...CORDIS_DISABLED_TOOLS, ...parallelDisabled])],
 	}
 }

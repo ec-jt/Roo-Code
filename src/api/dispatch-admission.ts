@@ -74,7 +74,8 @@ export interface ModelDispatchDescriptor {
 	readonly operationId: string
 	readonly dispatchId: string
 	readonly purpose: "chat" | "condensation"
-	readonly provider: "anthropic"
+	/** Provider name. "anthropic" for the preview runtime; any provider for a parallel batch runtime. */
+	readonly provider: string
 	readonly model: string
 	readonly maxOutputTokens: number
 }
@@ -93,6 +94,13 @@ export type DispatchAdmission =
 
 export interface ModelDispatchRuntime {
 	admit(descriptor: Readonly<ModelDispatchDescriptor>, signal: AbortSignal): Promise<DispatchAdmission>
+	/**
+	 * Providers this runtime mediates. Missing means "anthropic" (the preview runtime, R-5).
+	 * "any" mediates every provider handler (parallel subtasks, ADR-2026-11-22-parallel-subtasks rule 4).
+	 */
+	readonly providerScope?: "anthropic" | "any"
+	/** Optional observer for reported token usage of admitted requests. Never throws into dispatch. */
+	recordUsage?(usage: { inputTokens: number; outputTokens: number }): void
 }
 
 export interface ModelDispatchContext {
@@ -101,6 +109,8 @@ export interface ModelDispatchContext {
 	readonly purpose: ModelDispatchDescriptor["purpose"]
 	readonly signal: AbortSignal
 	readonly isCurrent: () => boolean
+	/** Provider name for the descriptor. Missing means "anthropic". */
+	readonly provider?: string
 }
 
 export function checkDispatch(context: ModelDispatchContext): void {
@@ -136,7 +146,7 @@ export async function admitDispatch(
 		operationId: context.operationId,
 		dispatchId: randomUUID(),
 		purpose: context.purpose,
-		provider: "anthropic" as const,
+		provider: context.provider ?? "anthropic",
 		model,
 		maxOutputTokens,
 	})

@@ -7,6 +7,7 @@ export const EXPERIMENT_IDS = {
 	CUSTOM_TOOLS: "customTools",
 	CORDIS_RUNTIME_PREVIEW: "cordisRuntimePreview",
 	EVALUATION_RECORDING: "evaluationRecording",
+	PARALLEL_SUBTASKS: "parallelSubtasks",
 } as const satisfies Record<string, ExperimentId>
 
 type _AssertExperimentIds = AssertEqual<Equals<ExperimentId, Values<typeof EXPERIMENT_IDS>>>
@@ -26,6 +27,8 @@ export const experimentConfigsMap: Record<ExperimentKey, ExperimentConfig> = {
 	CORDIS_RUNTIME_PREVIEW: { enabled: true },
 	// Off by default (ADR-2026-11-20-feature-gating-evaluation-and-lessons). Writes evaluation.json for new tasks.
 	EVALUATION_RECORDING: { enabled: false },
+	// Off by default (ADR-2026-11-22-parallel-subtasks). Offers the new_tasks tool.
+	PARALLEL_SUBTASKS: { enabled: false },
 }
 
 export const experimentDefault = Object.fromEntries(

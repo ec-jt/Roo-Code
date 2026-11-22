@@ -852,6 +852,17 @@
 			"name": "평가 기록",
 			"description": "기본값은 꺼짐입니다. 새 작업마다 자체 작업 폴더에 evaluation.json 파일을 씁니다. 실행 매니페스트(확장 버전, 공급자, 모델, 모드, 동작에 영향을 주는 설정의 다이제스트, 첫 메시지의 해시)와 작업이 중지된 이유가 들어갑니다. 프롬프트 텍스트, API 키, URL은 저장하지 않고 해시만 저장합니다. 기존 작업과 재개한 작업은 변경되지 않습니다."
 		},
+		"PARALLEL_SUBTASKS": {
+			"name": "병렬 하위 작업",
+			"description": "기본값은 꺼짐입니다. Orchestrator 모드와 Cordis 및 하이브리드 작업에서 new_tasks 도구를 제공합니다. 2~4개의 하위 작업을 동시에 시작하며, 각 작업은 자체 git worktree와 브랜치에서 실행됩니다. 배치는 한 번만 승인합니다. 하위 작업은 사용자에게 질문할 수 없습니다. 승인이 필요한 도구는 거부되고 보고됩니다. 하위 작업은 하나의 token 예산과 병렬 요청 한도를 공유합니다. 자동으로 병합되는 것은 없습니다."
+		},
+		"parallelSubtasks": {
+			"concurrencyLabel": "배치당 병렬 요청 수",
+			"concurrencyDescription": "한 배치에서 동시에 실행되는 모델 요청의 최대 수입니다(1~4).",
+			"tokenBudgetLabel": "배치당 token 예산",
+			"tokenBudgetDescription": "한 배치의 모든 하위 작업에 대한 입력 및 출력 token입니다. 모두 사용하면 남은 하위 작업은 budget-denied로 중지됩니다.",
+			"tokenBudgetMinimum": "{{min}} 이상의 정수를 입력하세요."
+		},
 		"DIFF_STRATEGY_UNIFIED": {
 			"name": "실험적 통합 diff 전략 사용",
 			"description": "실험적 통합 diff 전략을 활성화합니다. 이 전략은 모델 오류로 인한 재시도 횟수를 줄일 수 있지만 예기치 않은 동작이나 잘못된 편집을 일으킬 수 있습니다. 위험을 이해하고 모든 변경 사항을 신중하게 검토할 의향이 있는 경우에만 활성화하십시오."

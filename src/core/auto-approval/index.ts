@@ -244,7 +244,8 @@ export async function checkAutoApproval({
 			return state.alwaysAllowModeSwitch === true ? { decision: "approve" } : { decision: "ask" }
 		}
 
-		if (["newTask", "finishTask"].includes(tool?.tool)) {
+		// newTasks (parallel subtasks) uses exactly the new_task rule; it never gets a wider path (Q-SEC-3).
+		if (["newTask", "newTasks", "finishTask"].includes(tool?.tool)) {
 			return state.alwaysAllowSubtasks === true ? { decision: "approve" } : { decision: "ask" }
 		}
 

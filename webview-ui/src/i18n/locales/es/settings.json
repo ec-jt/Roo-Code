@@ -852,6 +852,17 @@
 			"name": "Registro de evaluación",
 			"description": "Desactivado por defecto. Cada tarea nueva escribe un archivo evaluation.json en su propia carpeta: un manifiesto de la ejecución (versión de la extensión, proveedor, modelo, modo, un resumen de la configuración que afecta al comportamiento, un hash del primer mensaje) y el motivo por el que se detuvo la tarea. No se guarda texto del prompt, claves de API ni URL, solo hashes. Las tareas existentes y reanudadas no se modifican."
 		},
+		"PARALLEL_SUBTASKS": {
+			"name": "Subtareas en paralelo",
+			"description": "Desactivado por defecto. Ofrece la herramienta new_tasks en el modo Orchestrator y en las tareas Cordis e híbridas. Inicia de 2 a 4 subtareas a la vez, cada una en su propio git worktree y rama. Apruebas el lote una sola vez. Las subtareas no pueden preguntarte nada: una herramienta que necesita aprobación se rechaza y se informa. Comparten un presupuesto de tokens y un límite de solicitudes en paralelo. No se fusiona nada automáticamente."
+		},
+		"parallelSubtasks": {
+			"concurrencyLabel": "Solicitudes en paralelo por lote",
+			"concurrencyDescription": "Como máximo este número de solicitudes al modelo se ejecutan a la vez en un lote (de 1 a 4).",
+			"tokenBudgetLabel": "Presupuesto de tokens por lote",
+			"tokenBudgetDescription": "Tokens de entrada y salida para todas las subtareas de un lote. Cuando se agota, las subtareas restantes se detienen con budget-denied.",
+			"tokenBudgetMinimum": "Introduce un número entero de al menos {{min}}."
+		},
 		"DIFF_STRATEGY_UNIFIED": {
 			"name": "Usar estrategia de diff unificada experimental",
 			"description": "Habilitar la estrategia de diff unificada experimental. Esta estrategia podría reducir el número de reintentos causados por errores del modelo, pero puede causar comportamientos inesperados o ediciones incorrectas. Habilítela solo si comprende los riesgos y está dispuesto a revisar cuidadosamente todos los cambios."

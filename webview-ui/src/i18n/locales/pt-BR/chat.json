@@ -290,6 +290,25 @@
 		"didSwitch": "Roo mudou para o modo <code>{{mode}}</code>",
 		"didSwitchWithReason": "Roo mudou para o modo <code>{{mode}}</code> porque: {{reason}}"
 	},
+	"parallelSubtasks": {
+		"wantsToStart": "Roo quer iniciar {{count}} subtarefas em paralelo",
+		"isolatedWorkspaces": "Cada subtarefa trabalha no próprio git worktree e branch. As subtarefas não podem te perguntar nada e nada é mesclado automaticamente.",
+		"limits": "Requisições em paralelo: {{concurrency}} · Orçamento de tokens: {{budget}}",
+		"approve": "Iniciar subtarefas",
+		"title": "Subtarefas em paralelo",
+		"stopAll": "Parar todas",
+		"stop": "Parar",
+		"open": "Abrir",
+		"budget": "Tokens: {{used}} de {{budget}} · Requisições em paralelo: {{concurrency}}",
+		"details": "Requisições: {{requests}} · Custo: ${{cost}} · Branch: {{branch}}",
+		"status": {
+			"running": "Em execução",
+			"completed": "Concluída",
+			"stopped": "Parada",
+			"budget-denied": "Orçamento esgotado",
+			"failed": "Falhou"
+		}
+	},
 	"subtasks": {
 		"isolatedWorkspace": "Espaço de trabalho isolado: um novo worktree git em seu próprio branch. Alterações não commitadas não são incluídas e nada é mesclado automaticamente.",
 		"wantsToCreate": "Roo quer criar uma nova subtarefa no modo <code>{{mode}}</code>",

@@ -9,6 +9,7 @@ import { cn } from "@src/lib/utils"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@src/components/ui"
 
 import { SetCachedStateField, SetExperimentEnabled } from "./types"
+import { ParallelSubtasksSettings } from "./ParallelSubtasksSettings"
 import { SectionHeader } from "./SectionHeader"
 import { Section } from "./Section"
 import { SearchableSetting } from "./SearchableSetting"
@@ -22,7 +23,11 @@ type ExperimentalSettingsProps = HTMLAttributes<HTMLDivElement> & {
 	setExperimentEnabled: SetExperimentEnabled
 	cordisTextOnlyTurnPolicy?: "retryThenPause" | "alwaysPause"
 	taskProfile?: TaskProfile
-	setCachedStateField?: SetCachedStateField<"cordisTextOnlyTurnPolicy" | "taskProfile">
+	parallelSubtasksConcurrency?: number
+	parallelSubtasksTokenBudget?: number
+	setCachedStateField?: SetCachedStateField<
+		"cordisTextOnlyTurnPolicy" | "taskProfile" | "parallelSubtasksConcurrency" | "parallelSubtasksTokenBudget"
+	>
 	apiConfiguration?: any
 	setApiConfigurationField?: any
 	imageGenerationProvider?: ImageGenerationProvider
@@ -55,6 +60,8 @@ export const ExperimentalSettings = ({
 	setExperimentEnabled,
 	cordisTextOnlyTurnPolicy,
 	taskProfile,
+	parallelSubtasksConcurrency,
+	parallelSubtasksTokenBudget,
 	setCachedStateField,
 	apiConfiguration,
 	setApiConfigurationField,
@@ -201,6 +208,21 @@ export const ExperimentalSettings = ({
 								/>
 							</SearchableSetting>
 						)
+						if (config[0] === "PARALLEL_SUBTASKS" && setCachedStateField) {
+							// The toggle, then the batch limits. The limits are shown only when the experiment is on.
+							return (
+								<div key={config[0]} className="flex flex-col gap-1">
+									{feature}
+									{experiments[EXPERIMENT_IDS.PARALLEL_SUBTASKS] === true && (
+										<ParallelSubtasksSettings
+											concurrency={parallelSubtasksConcurrency}
+											tokenBudget={parallelSubtasksTokenBudget}
+											setCachedStateField={setCachedStateField}
+										/>
+									)}
+								</div>
+							)
+						}
 						if (config[0] === "CORDIS_RUNTIME_PREVIEW" && setCachedStateField) {
 							// The on/off toggle (`feature`) is replaced by the task profile select. Selecting
 							// an option writes `taskProfile`; `cordisRuntimePreview` stays as stored.

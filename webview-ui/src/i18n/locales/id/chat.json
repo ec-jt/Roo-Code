@@ -352,6 +352,25 @@
 		"didSwitch": "Roo beralih ke mode {{mode}}",
 		"didSwitchWithReason": "Roo beralih ke mode {{mode}} karena: {{reason}}"
 	},
+	"parallelSubtasks": {
+		"wantsToStart": "Roo ingin memulai {{count}} subtugas secara paralel",
+		"isolatedWorkspaces": "Setiap subtugas bekerja di git worktree dan branch sendiri. Subtugas tidak bisa bertanya apa pun kepadamu, dan tidak ada yang digabungkan otomatis.",
+		"limits": "Permintaan paralel: {{concurrency}} · Anggaran token: {{budget}}",
+		"approve": "Mulai subtugas",
+		"title": "Subtugas paralel",
+		"stopAll": "Hentikan semua",
+		"stop": "Hentikan",
+		"open": "Buka",
+		"budget": "Token: {{used}} dari {{budget}} · Permintaan paralel: {{concurrency}}",
+		"details": "Permintaan: {{requests}} · Biaya: ${{cost}} · Branch: {{branch}}",
+		"status": {
+			"running": "Berjalan",
+			"completed": "Selesai",
+			"stopped": "Dihentikan",
+			"budget-denied": "Anggaran habis",
+			"failed": "Gagal"
+		}
+	},
 	"subtasks": {
 		"isolatedWorkspace": "Workspace terisolasi: worktree git baru di branch sendiri. Perubahan yang belum di-commit tidak disertakan, dan tidak ada yang digabung otomatis.",
 		"wantsToCreate": "Roo ingin membuat subtugas baru dalam mode {{mode}}",

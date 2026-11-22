@@ -61,6 +61,33 @@ export interface CommandActivityInfo {
 	outputTail: string
 }
 
+/** Status of one parallel child (ADR-2026-11-22-parallel-subtasks rule 6). */
+export type ParallelChildStatus = "running" | "completed" | "stopped" | "budget-denied" | "failed"
+
+export interface ParallelChildInfo {
+	taskId: string
+	mode: string
+	status: ParallelChildStatus
+	/** Model requests started by the child. */
+	requests: number
+	/** Total cost reported for the child, in USD. */
+	cost: number
+	/** Git branch of the child's worktree. */
+	branch: string
+}
+
+/** Children of one parallel batch, for the Background activity panel. */
+export interface ParallelBatchInfo {
+	batchId: string
+	parentTaskId: string
+	concurrency: number
+	tokenBudget: number
+	usedTokens: number
+	/** False once every child has stopped. */
+	running: boolean
+	children: ParallelChildInfo[]
+}
+
 export interface MemoryTopic {
 	id: string
 	name: string
@@ -214,6 +241,7 @@ export interface ExtensionMessage {
 		| "state"
 		| "runningTaskUpdated"
 		| "commandActivitiesUpdated"
+		| "parallelBatchUpdated"
 		| "taskStateResponse"
 		| "browserControlResponse"
 		| "memoryBrowser"
@@ -329,6 +357,8 @@ export interface ExtensionMessage {
 	state?: Partial<ExtensionState>
 	runningTask?: RunningTaskInfo
 	commandActivities?: CommandActivityInfo[]
+	/** For parallelBatchUpdated: the current task's batch, or null when it has none. */
+	parallelBatch?: ParallelBatchInfo | null
 	taskStateResponse?: TaskStateNativeResponse
 	browserControlResponse?: BrowserSessionResponse
 	memoryBrowser?: MemoryBrowserState
@@ -491,6 +521,8 @@ export type ExtensionState = Pick<
 	| "alwaysAllowModeSwitch"
 	| "alwaysAllowSubtasks"
 	| "alwaysAllowNestedSubtasks"
+	| "parallelSubtasksConcurrency"
+	| "parallelSubtasksTokenBudget"
 	| "alwaysAllowFollowupQuestions"
 	| "alwaysAllowExecute"
 	| "followupAutoApproveTimeoutMs"
@@ -559,6 +591,8 @@ export type ExtensionState = Pick<
 	memoryEnabledForCurrentProject?: boolean
 	runningTask?: RunningTaskInfo
 	commandActivities?: CommandActivityInfo[]
+	/** The current task's parallel batch (running or last finished), if any. */
+	parallelBatch?: ParallelBatchInfo | null
 	modelOperation?: ModelOperationState
 	/**
 	 * True when the open task is finished (see `isTaskFinished` in
@@ -684,6 +718,7 @@ export interface WebviewMessage {
 		| "foregroundTask"
 		| "cancelBackgroundTask"
 		| "commandActivityControl"
+		| "parallelBatchControl"
 		| "taskStateRequest"
 		| "browserControlRequest"
 		| "memoryBrowserRequest"
@@ -873,6 +908,8 @@ export interface WebviewMessage {
 	assistantMessageEdit?: AssistantMessageEdit
 	chatFileChangesOpen?: { taskId: string; instanceId: string; path: string }
 	commandActivityControl?: { id: string; action: "stop" | "show" }
+	/** Stop one child, stop every child, or open one child's messages read-only. */
+	parallelBatchControl?: { batchId: string; taskId?: string; action: "stop" | "stopAll" | "open" }
 	taskStateRequest?: TaskStateNativeRequest
 	browserControlRequest?: BrowserSessionRequest
 	memoryBrowserRequest?: MemoryBrowserRequest
@@ -1073,6 +1110,7 @@ export interface ClineSayTool {
 		| "searchFiles"
 		| "switchMode"
 		| "newTask"
+		| "newTasks"
 		| "finishTask"
 		| "generateImage"
 		| "imageGenerated"
@@ -1111,6 +1149,12 @@ export interface ClineSayTool {
 	reason?: string
 	/** For newTask: workspace of the subtask. Missing means shared. */
 	workspace?: "shared" | "isolated"
+	/** For newTasks: the children of the parallel batch. */
+	tasks?: Array<{ mode: string; message: string }>
+	/** For newTasks: requests in flight per batch. */
+	concurrency?: number
+	/** For newTasks: shared input plus output token budget. */
+	tokenBudget?: number
 	isOutsideWorkspace?: boolean
 	isProtected?: boolean
 	additionalFileCount?: number // Number of additional files in the same read_file request

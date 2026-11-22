@@ -852,6 +852,17 @@
 			"name": "Auswertungsaufzeichnung",
 			"description": "Standardmäßig deaktiviert. Jede neue Aufgabe schreibt eine Datei evaluation.json in ihren eigenen Aufgabenordner: ein Ausführungsmanifest (Erweiterungsversion, Anbieter, Modell, Modus, ein Digest der verhaltensrelevanten Einstellungen, ein Hash der ersten Nachricht) und den Grund, warum die Aufgabe beendet wurde. Es werden kein Prompt-Text, keine API-Schlüssel und keine URLs gespeichert, nur Hashes. Bestehende und fortgesetzte Aufgaben werden nicht verändert."
 		},
+		"PARALLEL_SUBTASKS": {
+			"name": "Parallele Teilaufgaben",
+			"description": "Standardmäßig deaktiviert. Bietet das Tool new_tasks im Orchestrator-Modus sowie in Cordis- und Hybrid-Aufgaben an. Es startet 2 bis 4 Teilaufgaben gleichzeitig, jede in einem eigenen Git-Worktree und Branch. Du genehmigst den Stapel einmal. Teilaufgaben können dich nichts fragen: Ein Tool, das eine Genehmigung braucht, wird abgelehnt und gemeldet. Sie teilen sich ein Token-Budget und ein Limit für parallele Anfragen. Nichts wird automatisch zusammengeführt."
+		},
+		"parallelSubtasks": {
+			"concurrencyLabel": "Parallele Anfragen pro Stapel",
+			"concurrencyDescription": "Höchstens so viele Modellanfragen laufen in einem Stapel gleichzeitig (1 bis 4).",
+			"tokenBudgetLabel": "Token-Budget pro Stapel",
+			"tokenBudgetDescription": "Eingabe- plus Ausgabe-Tokens für alle Teilaufgaben eines Stapels. Ist es aufgebraucht, stoppen die übrigen Teilaufgaben mit budget-denied.",
+			"tokenBudgetMinimum": "Gib eine ganze Zahl von mindestens {{min}} ein."
+		},
 		"DIFF_STRATEGY_UNIFIED": {
 			"name": "Experimentelle einheitliche Diff-Strategie verwenden",
 			"description": "Aktiviere die experimentelle einheitliche Diff-Strategie. Diese Strategie könnte die Anzahl der durch Modellfehler verursachten Wiederholungsversuche reduzieren, kann aber zu unerwartetem Verhalten oder falschen Bearbeitungen führen. Aktiviere sie nur, wenn du die Risiken verstehst und bereit bist, alle Änderungen sorgfältig zu überprüfen."

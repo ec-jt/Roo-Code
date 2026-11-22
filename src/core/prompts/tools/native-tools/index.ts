@@ -25,6 +25,7 @@ import managedEnvironment from "./managed_environment"
 import memory from "./memory"
 import taskState from "./task_state"
 import newTask from "./new_task"
+import newTasks from "./new_tasks"
 import readCommandOutput from "./read_command_output"
 import { createReadFileTool, type ReadFileToolOptions } from "./read_file"
 import runSlashCommand from "./run_slash_command"
@@ -87,6 +88,7 @@ export function getNativeTools(options: NativeToolsOptions = {}): OpenAI.Chat.Ch
 		memory,
 		taskState,
 		newTask,
+		newTasks,
 		readCommandOutput,
 		createReadFileTool(readFileOptions),
 		runSlashCommand,

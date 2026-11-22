@@ -91,7 +91,8 @@ describe("applyProfileToToolInputs", () => {
 		const disabledTools = ["browser_action"]
 		const result = applyProfileToToolInputs("modes", "architect", customModes, disabledTools)
 		expect(result.customModes).toBe(customModes)
-		expect(result.disabledTools).toEqual(["browser_action", "exit_plan"])
+		// new_tasks is disabled too: without options the parallelSubtasks experiment counts as off.
+		expect(result.disabledTools).toEqual(["browser_action", "exit_plan", "new_tasks"])
 		expect(disabledTools).toEqual(["browser_action"])
 	})
 
@@ -114,7 +115,12 @@ describe("applyProfileToToolInputs", () => {
 		const result = applyProfileToToolInputs("hybrid", "architect", customModes, disabledTools)
 		expect(result.customModes).toBe(customModes)
 		expect(getModeBySlug("architect", result.customModes)?.groups).toEqual(getModeBySlug("architect")?.groups)
-		expect(result.disabledTools).toEqual(["browser_action"])
+		expect(result.disabledTools).toEqual(["browser_action", "new_tasks"])
+		expect(
+			applyProfileToToolInputs("hybrid", "architect", customModes, disabledTools, {
+				experiments: { parallelSubtasks: true },
+			}).disabledTools,
+		).toBe(disabledTools)
 		expect(result.disabledTools).not.toContain("switch_mode")
 		expect(result.disabledTools).not.toContain("exit_plan")
 	})

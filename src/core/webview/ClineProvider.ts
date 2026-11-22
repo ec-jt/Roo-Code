@@ -27,6 +27,7 @@ import {
 	type ToolUsage,
 	type ExtensionMessage,
 	type ExtensionState,
+	type ParallelBatchInfo,
 	type ChatMessageEditData,
 	type MarketplaceInstalledMetadata,
 	RooCodeEventName,
@@ -124,6 +125,11 @@ import { RunningTaskMonitor } from "./RunningTaskMonitor"
 import { MemoryController } from "./MemoryController"
 import { CommandActivity } from "../../integrations/terminal/CommandActivity"
 import { scopedCommandActivities } from "../../integrations/terminal/activityScope"
+import { ParallelTaskPool } from "../task/parallel/ParallelTaskPool"
+import { formatParallelChildTranscript } from "../task/parallel/child-transcript"
+
+/** Background activity: at most about one parallelBatchUpdated post per second. */
+const PARALLEL_BATCH_POST_INTERVAL_MS = 1_000
 
 /**
  * https://github.com/microsoft/vscode-webview-ui-toolkit-samples/blob/main/default/weather-webview/src/providers/WeatherViewProvider.ts
@@ -166,6 +172,7 @@ export class ClineProvider
 	private webviewDisposables: vscode.Disposable[] = []
 	private view?: vscode.WebviewView | vscode.WebviewPanel
 	private clineStack: Task[] = []
+	private _parallelTaskPool?: ParallelTaskPool
 	private codeIndexStatusSubscription?: vscode.Disposable
 	private codeIndexManager?: CodeIndexManager
 	private _workspaceTracker?: WorkspaceTracker // workSpaceTracker read-only for access outside this class
@@ -787,7 +794,8 @@ export class ClineProvider
 			experiments: state.experiments,
 			apiConfiguration: profile,
 			browserToolEnabled: state.browserToolEnabled ?? true,
-			disabledTools: state.disabledTools,
+			// A model-operation branch cannot delegate, so it is never offered parallel subtasks.
+			disabledTools: [...(state.disabledTools ?? []), "new_tasks"],
 			modelInfo: model.info,
 			includeAllToolsWithRestrictions: profile.apiProvider === "gemini",
 		})
@@ -1012,7 +1020,73 @@ export class ClineProvider
 	 * Used on provider disposal and extension deactivation. Best effort, never throws.
 	 */
 	public async recordShutdownEvaluationStop(): Promise<void> {
-		await recordShutdownStop(this.getCurrentTask())
+		await Promise.all([recordShutdownStop(this.getCurrentTask()), this._parallelTaskPool?.recordShutdownStops()])
+	}
+
+	/**
+	 * Parallel subtasks (ADR-2026-11-22-parallel-subtasks). Children run outside `clineStack`, so
+	 * `getCurrentTask()` and every single-stack path are unaffected. Created on first use.
+	 */
+	public get parallelTaskPool(): ParallelTaskPool {
+		if (!this._parallelTaskPool) {
+			this._parallelTaskPool = new ParallelTaskPool(this)
+			this._parallelTaskPool.onDidChange(() => this.scheduleParallelBatchPost())
+		}
+		return this._parallelTaskPool
+	}
+
+	private parallelBatchTimer?: ReturnType<typeof setTimeout>
+	private lastParallelBatchPost = 0
+
+	/** The current task's parallel batch for the Background activity panel. Never creates the pool. */
+	public getParallelBatchInfo(): ParallelBatchInfo | null {
+		return this._parallelTaskPool?.getBatchInfoForParent(this.getCurrentTask()?.taskId) ?? null
+	}
+
+	/** Posts `parallelBatchUpdated` at most about once per second (trailing update guaranteed). */
+	private scheduleParallelBatchPost(): void {
+		if (this._disposed || this.parallelBatchTimer) return
+		const wait = Math.max(0, PARALLEL_BATCH_POST_INTERVAL_MS - (Date.now() - this.lastParallelBatchPost))
+		this.parallelBatchTimer = setTimeout(() => {
+			this.parallelBatchTimer = undefined
+			this.lastParallelBatchPost = Date.now()
+			void this.postMessageToWebview({ type: "parallelBatchUpdated", parallelBatch: this.getParallelBatchInfo() })
+		}, wait)
+	}
+
+	/**
+	 * Background activity controls for parallel children. Only children of the current task's batch can
+	 * be controlled. Stop and Stop all go through the pool; Open shows a child's messages read-only.
+	 */
+	public async handleParallelBatchControl(control?: {
+		batchId: string
+		taskId?: string
+		action: "stop" | "stopAll" | "open"
+	}): Promise<void> {
+		const pool = this._parallelTaskPool
+		if (!pool || !control || typeof control.batchId !== "string") return
+		const batch = pool.getBatchInfo(control.batchId)
+		if (!batch || batch.parentTaskId !== this.getCurrentTask()?.taskId) return
+		if (control.action === "stopAll") {
+			await pool.stopBatch(control.batchId)
+		} else if (control.action === "stop" && typeof control.taskId === "string") {
+			await pool.stopChild(control.batchId, control.taskId)
+		} else if (control.action === "open" && typeof control.taskId === "string") {
+			const child = pool.getChildTask(control.batchId, control.taskId)
+			if (!child) return
+			const content = formatParallelChildTranscript(child.clineMessages ?? [])
+			if (content.length > CHAT_EDITOR_BYTES || Buffer.byteLength(content) > CHAT_EDITOR_BYTES) {
+				void vscode.window.showWarningMessage(
+					"This subtask transcript is too large to open. Open the subtask from History instead.",
+				)
+				return
+			}
+			const parent = this.getCurrentTask()
+			this.chatHistoryDocument ??= new ChatHistoryDocument()
+			await this.chatHistoryDocument.open(content, () => this.getCurrentTask() === parent)
+			return
+		}
+		this.scheduleParallelBatchPost()
 	}
 
 	async dispose() {
@@ -1029,8 +1103,13 @@ export class ClineProvider
 		this._memoryController?.dispose()
 		this.commandActivitySubscription?.()
 		this.commandActivitySubscription = undefined
+		if (this.parallelBatchTimer) clearTimeout(this.parallelBatchTimer)
+		this.parallelBatchTimer = undefined
 		this.runningTaskMonitor.clear()
 		this.log("Disposing ClineProvider...")
+
+		// Stop every parallel batch before the parent tasks are removed from the stack.
+		await this._parallelTaskPool?.dispose().catch((error) => this.log(`[dispose] parallel pool: ${error}`))
 
 		// Clear all tasks from the stack.
 		while (this.clineStack.length > 0) {
@@ -1631,6 +1710,7 @@ export class ClineProvider
 			this.runningTaskMonitor.syncApproval()
 			message.state.runningTask = this.runningTaskMonitor.value
 			message.state.commandActivities = this.getCommandActivities()
+			message.state.parallelBatch = this.getParallelBatchInfo()
 		}
 
 		try {
@@ -3112,6 +3192,8 @@ export class ClineProvider
 			architectureBootstrap,
 			cordisTextOnlyTurnPolicy,
 			taskProfile,
+			parallelSubtasksConcurrency,
+			parallelSubtasksTokenBudget,
 			autoCondenseContextPercent,
 			soundEnabled,
 			ttsEnabled,
@@ -3227,6 +3309,9 @@ export class ClineProvider
 			architectureBootstrap: architectureBootstrap ?? true,
 			cordisTextOnlyTurnPolicy: cordisTextOnlyTurnPolicy ?? "retryThenPause",
 			taskProfile,
+			parallelSubtasksConcurrency,
+			parallelSubtasksTokenBudget,
+			parallelBatch: this.getParallelBatchInfo(),
 			autoCondenseContextPercent: autoCondenseContextPercent ?? 100,
 			uriScheme: vscode.env.uriScheme,
 			currentTaskId: currentTask?.taskId,
@@ -3424,6 +3509,8 @@ export class ClineProvider
 			architectureBootstrap: stateValues.architectureBootstrap ?? true,
 			cordisTextOnlyTurnPolicy: stateValues.cordisTextOnlyTurnPolicy ?? "retryThenPause",
 			taskProfile: stateValues.taskProfile,
+			parallelSubtasksConcurrency: stateValues.parallelSubtasksConcurrency,
+			parallelSubtasksTokenBudget: stateValues.parallelSubtasksTokenBudget,
 			autoCondenseContextPercent: stateValues.autoCondenseContextPercent ?? 100,
 			taskHistory: this.taskHistoryStore.getAll(),
 			allowedCommands: stateValues.allowedCommands,

@@ -852,6 +852,17 @@
 			"name": "Ghi lại đánh giá",
 			"description": "Tắt theo mặc định. Mỗi tác vụ mới ghi một tệp evaluation.json vào thư mục tác vụ của chính nó: một manifest lần chạy (phiên bản tiện ích, nhà cung cấp, mô hình, chế độ, bản tóm tắt các cài đặt ảnh hưởng đến hành vi, mã băm của tin nhắn đầu tiên) và lý do tác vụ dừng. Không lưu văn bản prompt, khóa API hay URL, chỉ lưu mã băm. Các tác vụ hiện có và tác vụ được tiếp tục không bị thay đổi."
 		},
+		"PARALLEL_SUBTASKS": {
+			"name": "Tác vụ con song song",
+			"description": "Tắt theo mặc định. Cung cấp công cụ new_tasks trong chế độ Orchestrator và trong các tác vụ Cordis và hybrid. Công cụ này bắt đầu 2 đến 4 tác vụ con cùng lúc, mỗi tác vụ trong git worktree và nhánh riêng. Bạn phê duyệt cả lô một lần. Tác vụ con không thể hỏi bạn điều gì: công cụ cần phê duyệt sẽ bị từ chối và được báo cáo. Chúng dùng chung một ngân sách token và một giới hạn yêu cầu song song. Không có gì được hợp nhất tự động."
+		},
+		"parallelSubtasks": {
+			"concurrencyLabel": "Yêu cầu song song mỗi lô",
+			"concurrencyDescription": "Tối đa số yêu cầu mô hình này chạy cùng lúc trong một lô (1 đến 4).",
+			"tokenBudgetLabel": "Ngân sách token mỗi lô",
+			"tokenBudgetDescription": "Token đầu vào và đầu ra cho tất cả tác vụ con của một lô. Khi hết, các tác vụ con còn lại dừng với budget-denied.",
+			"tokenBudgetMinimum": "Nhập một số nguyên ít nhất là {{min}}."
+		},
 		"DIFF_STRATEGY_UNIFIED": {
 			"name": "Sử dụng chiến lược diff thống nhất thử nghiệm",
 			"description": "Bật chiến lược diff thống nhất thử nghiệm. Chiến lược này có thể giảm số lần thử lại do lỗi mô hình nhưng có thể gây ra hành vi không mong muốn hoặc chỉnh sửa không chính xác. Chỉ bật nếu bạn hiểu rõ các rủi ro và sẵn sàng xem xét cẩn thận tất cả các thay đổi."

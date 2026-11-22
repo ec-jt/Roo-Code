@@ -23,6 +23,7 @@ import { v7 as uuidv7 } from "uuid"
 import EventEmitter from "events"
 
 import { AskIgnoredError } from "./AskIgnoredError"
+import type { NonInteractiveTaskHooks } from "./parallel/non-interactive"
 import {
 	type IsolatedSubtaskWorkspace,
 	subtaskWorkspaceFromHistory,
@@ -284,6 +285,8 @@ export interface TaskOptions extends CreateTaskOptions {
 	approvalPort?: TaskApprovalPort
 	/** Opt-in, instance-local streaming model admission. Not persisted or inherited. */
 	modelDispatchRuntime?: ModelDispatchRuntime
+	/** Parallel child: asks are answered by these hooks, never by the user (ADR-2026-11-22-parallel-subtasks). */
+	nonInteractive?: NonInteractiveTaskHooks
 	apiConfiguration: ProviderSettings
 	/** Explicit identity for delegated tasks, independent of global UI defaults. */
 	initialTaskContext?: { mode: string; apiConfigName: string | undefined }
@@ -309,6 +312,8 @@ export interface TaskOptions extends CreateTaskOptions {
 
 export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	private readonly modelDispatchRuntime?: ModelDispatchRuntime
+	/** Set only for a parallel child. Not persisted or inherited. */
+	readonly nonInteractive?: NonInteractiveTaskHooks
 	private previewDispatchDisabled = false
 	private unsubscribePreviewSettings?: () => void
 	private modelDispatchAbortController?: AbortController
@@ -682,7 +687,11 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			throw new Error("Task is closed or saving a history edit. Reopen it before changing models.")
 		if (this.modelOperationProfileId || this.modelOperationPreparing || this.modelOperationPrepared)
 			throw new Error("This replay branch has a pinned profile. Use a new branch to change its model.")
-		if (this.modelDispatchRuntime && settings.apiProvider !== "anthropic")
+		if (
+			this.modelDispatchRuntime &&
+			this.modelDispatchRuntime.providerScope !== "any" &&
+			settings.apiProvider !== "anthropic"
+		)
 			throw new Error(
 				"The active mediated runtime supports Anthropic only. Reopen the task with the desired provider.",
 			)
@@ -1125,6 +1134,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		toolInvocationPolicy = compatibilityToolPolicy,
 		approvalPort,
 		modelDispatchRuntime,
+		nonInteractive,
 		apiConfiguration,
 		initialTaskContext,
 		enableCheckpoints = true,
@@ -1166,6 +1176,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				this.profile,
 				effectiveProfileSetting(profileSetting, profileExperiments),
 			)
+		this.nonInteractive = nonInteractive
 		this.toolInvocationPolicy = toolInvocationPolicy
 		this.approvalPort = approvalPort
 
@@ -1253,7 +1264,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			this.broadcastBrowserSessionUpdate()
 
 			// When a browser session becomes active, automatically open/reveal the Browser Session tab
-			if (isActive) {
+			// (never for a headless parallel child).
+			if (isActive && !this.nonInteractive) {
 				try {
 					// Lazy-load to avoid circular imports at module load time
 					const { BrowserSessionPanelManager } = require("../webview/BrowserSessionPanelManager")
@@ -1347,7 +1359,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			this.taskApiConfigReady = this.initializeTaskApiConfigName(provider)
 		}
 
-		if (this.modelDispatchRuntime) {
+		// The profile kill switch belongs to the preview runtime only, not to a parallel batch runtime.
+		if (this.modelDispatchRuntime && this.modelDispatchRuntime.providerScope !== "any") {
 			this.unsubscribePreviewSettings = provider.contextProxy?.onExperimentsChanged?.((settings) => {
 				// Kill switch: an experiments write that leaves the effective profile setting at "modes".
 				// A set taskProfile wins over the legacy flag, so toggling another experiment cannot stop a task.
@@ -2659,8 +2672,15 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		) {
 			stopTaskContinuation(this, approval.decision === "deny" ? "denied" : "awaiting-approval")
 		}
+		// Parallel child (Q-SEC-3): whatever auto-approval does not approve is answered here, never by the user.
+		const nonInteractiveAnswer =
+			this.nonInteractive && approval.decision !== "approve"
+				? this.nonInteractive.answerAsk(type, text)
+				: undefined
 		if (approval.decision === "approve") {
 			this.approveAsk()
+		} else if (nonInteractiveAnswer) {
+			this.handleWebviewAskResponse(nonInteractiveAnswer.response, nonInteractiveAnswer.text)
 		} else if (approval.decision === "deny") {
 			this.denyAsk()
 		} else if (approval.decision === "timeout") {
@@ -3142,7 +3162,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				provider,
 				cwd: this.cwd,
 				mode: state.mode,
-				...this.profileToolInputs(state.mode, state.customModes, state.disabledTools),
+				...this.profileToolInputs(state.mode, state.customModes, state.disabledTools, state.experiments),
 				experiments: state.experiments,
 				apiConfiguration: state.apiConfiguration,
 				browserToolEnabled: state.browserToolEnabled ?? true,
@@ -3345,6 +3365,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		const revision = this.modelOperationRevision
 		return mediateModelHandler(this.api, {
 			runtime: this.modelDispatchRuntime,
+			provider: this.apiConfiguration.apiProvider,
 			operationId: purpose === "chat" ? this.modelOperationRequestId! : crypto.randomUUID(),
 			purpose,
 			signal,
@@ -3387,7 +3408,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				provider,
 				cwd: this.cwd,
 				mode,
-				...this.profileToolInputs(mode, state?.customModes, state?.disabledTools),
+				...this.profileToolInputs(mode, state?.customModes, state?.disabledTools, state?.experiments),
 				experiments: state?.experiments,
 				apiConfiguration,
 				browserToolEnabled: state?.browserToolEnabled ?? true,
@@ -3672,6 +3693,14 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		if (task || images) {
 			this.startTask(task ?? undefined, images ?? undefined)
 		}
+	}
+
+	/** Like `start()`, but resolves when the task loop ends. Used by the parallel task pool. */
+	public startAndWait(): Promise<void> {
+		if (this._started) return Promise.resolve()
+		this._started = true
+		const { task, images } = this.metadata
+		return task || images ? this.startTask(task ?? undefined, images ?? undefined) : Promise.resolve()
 	}
 
 	private async startTask(task?: string, images?: string[]): Promise<void> {
@@ -5515,7 +5544,9 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 					if (!didToolUse) {
 						if (this.modelOperationPrepared) return true
-						if (this.modelDispatchRuntime) {
+						// The text-only pause belongs to the interactive preview runtime. A parallel child
+						// (batch runtime, any provider) cannot be resumed by the user: it uses the ordinary path.
+						if (this.modelDispatchRuntime && this.modelDispatchRuntime.providerScope !== "any") {
 							// Cordis text-only turn policy. "retryThenPause" (default) sends one
 							// noToolsUsed reminder after the task has used a tool, then pauses on
 							// the second text-only reply in a row. A chat-style first turn and
@@ -5724,8 +5755,12 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		mode: string | undefined,
 		customModes: ModeConfig[] | undefined,
 		disabledTools: string[] | undefined,
+		experiments?: Record<string, boolean | undefined>,
 	): { customModes: ModeConfig[] | undefined; disabledTools: string[] | undefined } {
-		return applyProfileToToolInputs(this.profile, mode ?? defaultModeSlug, customModes, disabledTools)
+		return applyProfileToToolInputs(this.profile, mode ?? defaultModeSlug, customModes, disabledTools, {
+			experiments,
+			nonInteractive: !!this.nonInteractive,
+		})
 	}
 
 	private async getSystemPrompt(): Promise<string> {
@@ -6300,7 +6335,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				provider,
 				cwd: this.cwd,
 				mode,
-				...this.profileToolInputs(mode, state?.customModes, state?.disabledTools),
+				...this.profileToolInputs(mode, state?.customModes, state?.disabledTools, state?.experiments),
 				experiments: state?.experiments,
 				apiConfiguration,
 				browserToolEnabled: state?.browserToolEnabled ?? true,

@@ -186,6 +186,8 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 		architectureBootstrap,
 		cordisTextOnlyTurnPolicy,
 		taskProfile,
+		parallelSubtasksConcurrency,
+		parallelSubtasksTokenBudget,
 		autoCondenseContextPercent,
 		browserToolEnabled,
 		browserViewportSize,
@@ -510,6 +512,8 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 					architectureBootstrap: architectureBootstrap ?? true,
 					cordisTextOnlyTurnPolicy: cordisTextOnlyTurnPolicy ?? "retryThenPause",
 					taskProfile,
+					parallelSubtasksConcurrency,
+					parallelSubtasksTokenBudget,
 					autoCondenseContextPercent,
 					browserToolEnabled: browserToolEnabled ?? true,
 					soundEnabled: soundEnabled ?? true,
@@ -1102,6 +1106,8 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 								experiments={experiments}
 								cordisTextOnlyTurnPolicy={cordisTextOnlyTurnPolicy}
 								taskProfile={taskProfile}
+								parallelSubtasksConcurrency={parallelSubtasksConcurrency}
+								parallelSubtasksTokenBudget={parallelSubtasksTokenBudget}
 								setCachedStateField={setCachedStateField}
 								apiConfiguration={apiConfiguration}
 								setApiConfigurationField={setApiConfigurationField}

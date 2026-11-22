@@ -414,6 +414,25 @@
 		"didSwitch": "Roo switched to {{mode}} mode",
 		"didSwitchWithReason": "Roo switched to {{mode}} mode because: {{reason}}"
 	},
+	"parallelSubtasks": {
+		"wantsToStart": "Roo wants to start {{count}} subtasks in parallel",
+		"isolatedWorkspaces": "Each subtask works in its own git worktree and branch. Subtasks cannot ask you anything, and nothing is merged automatically.",
+		"limits": "Parallel requests: {{concurrency}} · Token budget: {{budget}}",
+		"approve": "Start subtasks",
+		"title": "Parallel subtasks",
+		"stopAll": "Stop all",
+		"stop": "Stop",
+		"open": "Open",
+		"budget": "Tokens: {{used}} of {{budget}} · Parallel requests: {{concurrency}}",
+		"details": "Requests: {{requests}} · Cost: ${{cost}} · Branch: {{branch}}",
+		"status": {
+			"running": "Running",
+			"completed": "Completed",
+			"stopped": "Stopped",
+			"budget-denied": "Budget used up",
+			"failed": "Failed"
+		}
+	},
 	"subtasks": {
 		"isolatedWorkspace": "Isolated workspace: a new git worktree on its own branch. Uncommitted changes are not included, and nothing is merged automatically.",
 		"wantsToCreate": "Roo wants to create a new subtask in {{mode}} mode",

@@ -841,6 +841,42 @@ export const ChatRowContent = ({
 						</div>
 					</>
 				)
+			case "newTasks": {
+				const children = Array.isArray(tool.tasks) ? tool.tasks : []
+				return (
+					<>
+						<div style={headerStyle}>
+							<Split className="size-4" />
+							<span style={{ fontWeight: "bold" }}>
+								{t("chat:parallelSubtasks.wantsToStart", { count: children.length })}
+							</span>
+						</div>
+						<div className="border-l border-muted-foreground/80 ml-2 pl-4 pb-1" data-testid="new-tasks-row">
+							<div className="text-vscode-descriptionForeground mb-1">
+								{t("chat:parallelSubtasks.isolatedWorkspaces")}
+							</div>
+							<ol className="list-decimal pl-5 my-1">
+								{children.map((child, index) => (
+									<li key={index} className="mb-1">
+										<code>{child.mode}</code>{" "}
+										<span title={child.message}>
+											{(child.message ?? "").split("\n").find((line) => line.trim()) ?? ""}
+										</span>
+									</li>
+								))}
+							</ol>
+							{tool.concurrency !== undefined && tool.tokenBudget !== undefined && (
+								<div className="text-vscode-descriptionForeground">
+									{t("chat:parallelSubtasks.limits", {
+										concurrency: tool.concurrency,
+										budget: tool.tokenBudget.toLocaleString(),
+									})}
+								</div>
+							)}
+						</div>
+					</>
+				)
+			}
 			case "finishTask":
 				return (
 					<>

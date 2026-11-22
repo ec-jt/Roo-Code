@@ -286,6 +286,25 @@
 		"didSwitch": "Roo переключился в режим {{mode}}",
 		"didSwitchWithReason": "Roo переключился в режим {{mode}}, потому что: {{reason}}"
 	},
+	"parallelSubtasks": {
+		"wantsToStart": "Roo хочет запустить {{count}} подзадачи параллельно",
+		"isolatedWorkspaces": "Каждая подзадача работает в своём git worktree и ветке. Подзадачи не могут ничего у тебя спрашивать, и ничего не сливается автоматически.",
+		"limits": "Параллельные запросы: {{concurrency}} · Бюджет token: {{budget}}",
+		"approve": "Запустить подзадачи",
+		"title": "Параллельные подзадачи",
+		"stopAll": "Остановить все",
+		"stop": "Остановить",
+		"open": "Открыть",
+		"budget": "Token: {{used}} из {{budget}} · Параллельные запросы: {{concurrency}}",
+		"details": "Запросы: {{requests}} · Стоимость: ${{cost}} · Ветка: {{branch}}",
+		"status": {
+			"running": "Выполняется",
+			"completed": "Завершена",
+			"stopped": "Остановлена",
+			"budget-denied": "Бюджет исчерпан",
+			"failed": "Ошибка"
+		}
+	},
 	"subtasks": {
 		"isolatedWorkspace": "Изолированное рабочее пространство: новый git worktree в собственной ветке. Незакоммиченные изменения не включаются, и ничего не сливается автоматически.",
 		"wantsToCreate": "Roo хочет создать новую подзадачу в режиме {{mode}}",

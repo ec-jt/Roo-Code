@@ -852,6 +852,17 @@
 			"name": "Enregistrement d'évaluation",
 			"description": "Désactivé par défaut. Chaque nouvelle tâche écrit un fichier evaluation.json dans son propre dossier : un manifeste d'exécution (version de l'extension, fournisseur, modèle, mode, une empreinte des paramètres qui influencent le comportement, un hash du premier message) et la raison de l'arrêt de la tâche. Aucun texte de prompt, aucune clé d'API ni URL n'est stocké, seulement des hashes. Les tâches existantes et reprises ne sont pas modifiées."
 		},
+		"PARALLEL_SUBTASKS": {
+			"name": "Sous-tâches en parallèle",
+			"description": "Désactivé par défaut. Propose l'outil new_tasks en mode Orchestrator et dans les tâches Cordis et hybrides. Il lance 2 à 4 sous-tâches en même temps, chacune dans son propre git worktree et sa branche. Tu approuves le lot une seule fois. Les sous-tâches ne peuvent rien te demander : un outil qui nécessite une approbation est refusé et signalé. Elles partagent un budget de tokens et une limite de requêtes en parallèle. Rien n'est fusionné automatiquement."
+		},
+		"parallelSubtasks": {
+			"concurrencyLabel": "Requêtes en parallèle par lot",
+			"concurrencyDescription": "Au plus ce nombre de requêtes au modèle s'exécutent en même temps dans un lot (1 à 4).",
+			"tokenBudgetLabel": "Budget de tokens par lot",
+			"tokenBudgetDescription": "Tokens d'entrée et de sortie pour toutes les sous-tâches d'un lot. Une fois épuisé, les sous-tâches restantes s'arrêtent avec budget-denied.",
+			"tokenBudgetMinimum": "Saisis un nombre entier d'au moins {{min}}."
+		},
 		"DIFF_STRATEGY_UNIFIED": {
 			"name": "Utiliser la stratégie diff unifiée expérimentale",
 			"description": "Activer la stratégie diff unifiée expérimentale. Cette stratégie pourrait réduire le nombre de tentatives causées par des erreurs de modèle, mais peut provoquer des comportements inattendus ou des modifications incorrectes. Activez-la uniquement si vous comprenez les risques et êtes prêt à examiner attentivement tous les changements."

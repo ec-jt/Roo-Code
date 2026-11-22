@@ -107,7 +107,8 @@ export class AttemptCompletionTool extends BaseTool<"attempt_completion"> {
 			// Completed children reopened for inspection retain ordinary completion behavior.
 			// All other children must return through the validated provider path, never
 			// silently report standalone success after an unreadable or invalid history.
-			if (task.parentTaskId) {
+			// A parallel child (nonInteractive) is off the stack: the pool collects its result instead.
+			if (task.parentTaskId && !task.nonInteractive) {
 				const provider = task.providerRef.deref() as DelegationProvider | undefined
 				if (!provider)
 					throw new Error("Cannot return subtask: provider unavailable. Reopen the child and retry.")
