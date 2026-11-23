@@ -138,7 +138,8 @@
 			"streamProcessingError": "Error processing response stream: {{message}}",
 			"unexpectedStreamError": "Unexpected error processing response stream",
 			"completionError": "OpenAI Codex completion error: {{message}}"
-		}
+		},
+		"task_state_enable_failed": "Состояние задачи не включено для задачи {{taskId}}: {{error}}"
 	},
 	"warnings": {
 		"no_terminal_content": "Не выбрано содержимое терминала",

@@ -356,7 +356,7 @@ S3 never pruned, so this scenario forces large tool results early. The task read
     - r3: both completed and both diffs good, but the Cordis drift message was lost to a product defect (not specific to Cordis). Fixed in 4.2.82.
     - r3b (4.2.82): equal. Both completed with good diffs. The Cordis run hit a reply without a tool call, got one reminder, and completed.
     - r5 (4.2.84): equal on Opus (both good). On DeepSeek both arms were cut off by the request limit (both acceptable).
-- **Record:** accepted [ADR-2026-11-19-keep-cordis-profile-widen-experiment](decisions/accepted/ADR-2026-11-19-keep-cordis-profile-widen-experiment.md). It:
+- **Record:** accepted [ADR-2026-11-19-keep-cordis-profile-widen-experiment](decisions/superseded/ADR-2026-11-19-keep-cordis-profile-widen-experiment.md). It:
     - keeps the profile;
     - turns the profile on by default for all providers, now that the samples agree (the user chose all providers over Anthropic only);
     - keeps [R-5](risks.md) open for the dispatch runtime, which stays Anthropic-only;

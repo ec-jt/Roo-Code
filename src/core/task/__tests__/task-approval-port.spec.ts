@@ -83,7 +83,12 @@ describe("Task approval port", () => {
 	it("preserves feedback and images through the original response path", async () => {
 		state = undefined
 		;(task as any).messageQueueService.addMessage("feedback", ["image"])
-		expect(await task.ask("tool", "payload", false)).toEqual({
+		// L1 defect 6: the queued message waits for the user's decision, then follows it.
+		const pending = task.ask("tool", "payload", false)
+		await vi.waitFor(() => expect((task as any).addToClineMessages).toHaveBeenCalledOnce())
+		expect((task as any).messageQueueService.isEmpty()).toBe(false)
+		task.approveAsk()
+		expect(await pending).toEqual({
 			response: "yesButtonClicked",
 			text: "feedback",
 			images: ["image"],

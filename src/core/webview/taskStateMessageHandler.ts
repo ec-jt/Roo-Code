@@ -1,4 +1,5 @@
 import * as vscode from "vscode"
+import { t } from "../../i18n"
 import type { ClineProvider } from "./ClineProvider"
 import { taskStateNativeRequestSchema, type TaskStateNativeResponse } from "../../../packages/types/src/task-state"
 import { taskStateTransaction, assertTaskStateAccess } from "../../services/task-state/taskState"
@@ -77,6 +78,9 @@ export async function handleTaskStateRequest(provider: ClineProvider, raw: unkno
 				switch (request.action) {
 					case "initialize":
 						state = await store.initialize({ ...options, operations: request.operations })
+						// L1 defect 4: never report an enable that left no ledger.
+						if (!state.revision || !(await store.read(options.validHistoryAnchors)).revision)
+							throw new Error("No task-state ledger was written")
 						break
 					case "fork": {
 						if (!request.source) throw new Error("Fork requires an explicit source task and revision")
@@ -139,6 +143,13 @@ export async function handleTaskStateRequest(provider: ClineProvider, raw: unkno
 	} catch (error) {
 		response.error = error instanceof Error ? error.message : "Task-state action failed"
 		provider.log(`[taskState] ${request.action} failed for task ${request.taskId}: ${response.error}`)
+		// L1 defect 4: an enable can fail after the panel switched to another task (for example an
+		// Orchestrator child started), and then the panel drops the reply. Show the failure natively.
+		if (request.action === "initialize" && response.error !== "Task-state action cancelled") {
+			void vscode.window.showErrorMessage(
+				t("common:errors.task_state_enable_failed", { taskId: request.taskId, error: response.error }),
+			)
+		}
 	}
 	await provider.postMessageToWebview({ type: "taskStateResponse", taskStateResponse: response })
 }

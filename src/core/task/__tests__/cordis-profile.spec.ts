@@ -30,11 +30,29 @@ describe("resolveTaskProfile", () => {
 		expect(resolveTaskProfile({ experiments: { cordisRuntimePreview: false } })).toBe("modes")
 	})
 
-	it("gives a new root task cordis when the flag is absent (on by default)", () => {
-		expect(resolveTaskProfile({})).toBe("cordis")
-		expect(resolveTaskProfile({ experiments: {} })).toBe("cordis")
-		expect(resolveTaskProfile({ experiments: { customTools: true } })).toBe("cordis")
-		expect(resolveTaskProfile({ experiments: { cordisRuntimePreview: undefined } })).toBe("cordis")
+	it("gives a new root task modes when nothing is stored (ADR-2026-11-23-modes-default-profile)", () => {
+		expect(resolveTaskProfile({})).toBe("modes")
+		expect(resolveTaskProfile({ experiments: {} })).toBe("modes")
+		expect(resolveTaskProfile({ experiments: { customTools: true } })).toBe("modes")
+		expect(resolveTaskProfile({ experiments: { cordisRuntimePreview: undefined } })).toBe("modes")
+	})
+
+	it("gives cordis only for a stored cordisRuntimePreview: true without a taskProfile", () => {
+		expect(resolveTaskProfile({ setting: undefined, experiments: { cordisRuntimePreview: true } })).toBe("cordis")
+		expect(resolveTaskProfile({ setting: "bogus", experiments: { cordisRuntimePreview: true } })).toBe("cordis")
+	})
+
+	it("lets a stored taskProfile win over every other setting", () => {
+		for (const setting of ["modes", "cordis", "hybrid"] as const) {
+			for (const experiments of [
+				undefined,
+				{},
+				{ cordisRuntimePreview: true },
+				{ cordisRuntimePreview: false },
+			]) {
+				expect(resolveTaskProfile({ setting, experiments })).toBe(setting)
+			}
+		}
 	})
 
 	it("keeps stored and parent profiles ahead of the default", () => {
@@ -58,7 +76,7 @@ describe("resolveTaskProfile", () => {
 	it("falls back to the legacy flag when the setting is absent or invalid", () => {
 		expect(resolveTaskProfile({ setting: undefined, experiments: { cordisRuntimePreview: false } })).toBe("modes")
 		expect(resolveTaskProfile({ setting: "bogus", experiments: { cordisRuntimePreview: false } })).toBe("modes")
-		expect(resolveTaskProfile({ setting: "bogus", experiments: {} })).toBe("cordis")
+		expect(resolveTaskProfile({ setting: "bogus", experiments: {} })).toBe("modes")
 	})
 
 	it("gives modes for an unknown stored value", () => {
@@ -73,7 +91,12 @@ describe("effectiveProfileSetting and hasPlanReview", () => {
 		expect(effectiveProfileSetting(undefined, experiments)).toBe("modes")
 		expect(experiments).toEqual({ cordisRuntimePreview: false })
 		expect(effectiveProfileSetting(undefined, { cordisRuntimePreview: true })).toBe("cordis")
-		expect(effectiveProfileSetting(undefined, undefined)).toBe("cordis")
+		expect(effectiveProfileSetting(undefined, undefined)).toBe("modes")
+		expect(effectiveProfileSetting(undefined, null)).toBe("modes")
+		expect(effectiveProfileSetting(undefined, {})).toBe("modes")
+		const stored = { cordisRuntimePreview: true }
+		expect(effectiveProfileSetting(undefined, stored)).toBe("cordis")
+		expect(stored).toEqual({ cordisRuntimePreview: true })
 		expect(effectiveProfileSetting("hybrid", { cordisRuntimePreview: false })).toBe("hybrid")
 	})
 

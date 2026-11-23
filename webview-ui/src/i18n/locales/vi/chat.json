@@ -568,5 +568,9 @@
 	"planOverlay": {
 		"badge": "Kế hoạch",
 		"tooltip": "Chế độ lập kế hoạch đang bật: Roo khám phá và thiết kế trước khi thực hiện thay đổi. Gõ /plan off để thoát chế độ lập kế hoạch."
+	},
+	"taskState": {
+		"appliesTo": "Áp dụng cho tác vụ {{taskId}}: {{title}}",
+		"subtaskNotice": "Đây là tác vụ con. Trạng thái tác vụ ở đây chỉ áp dụng cho tác vụ con này, không áp dụng cho tác vụ cha {{parentTaskId}}. Để bật trạng thái tác vụ cho tác vụ cha, hãy mở tác vụ cha khi tác vụ con này trả về, hoặc mở từ Lịch sử."
 	}
 }

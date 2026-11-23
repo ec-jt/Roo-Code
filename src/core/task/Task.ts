@@ -1,4 +1,9 @@
-import { pinTaskStateRecall, assertTaskStateDispatch, taskStateTransaction } from "../../services/task-state/taskState"
+import {
+	pinTaskStateRecall,
+	assertTaskStateDispatch,
+	isSelfCausedPinInvalidation,
+	taskStateTransaction,
+} from "../../services/task-state/taskState"
 import { appendTaskStateRecall, withoutTaskStateRecall } from "../../services/task-state/history"
 import { applyProfileToToolInputs, effectiveProfileSetting, hasPlanReview, resolveTaskProfile } from "./cordis-profile"
 import { resetRepeatCalls, type RepeatChain } from "./repeat-call"
@@ -228,6 +233,21 @@ import { normalizeSnapshotMessages, assertContextFits } from "./model-operation/
 import { getStorageBasePath } from "../../utils/storage"
 import { ProfileValidator } from "../../shared/ProfileValidator"
 import { findDelegationToolIndex, delegationTruncationMessage } from "./delegation-tools"
+
+/**
+ * Asks that approve or deny a tool action (L1 defect 6). A queued chat message is never used as
+ * their answer. Free-text asks (followup, completion feedback, resume) keep the queue drain.
+ */
+const APPROVAL_ASKS: ReadonlySet<ClineAsk> = new Set<ClineAsk>([
+	"tool",
+	"command",
+	"use_mcp_server",
+	"browser_action_launch",
+	"computer_action",
+])
+function isApprovalAsk(type: ClineAsk): boolean {
+	return APPROVAL_ASKS.has(type)
+}
 
 const MAX_EXPONENTIAL_BACKOFF_SECONDS = 600 // 10 minutes
 const DEFAULT_USAGE_COLLECTION_TIMEOUT_MS = 5000 // 5 seconds
@@ -2699,10 +2719,13 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		// block (via the `pWaitFor`).
 		const isBlocking = !(this.askResponse !== undefined || this.lastMessageTs !== askTs)
 		const isMessageQueued = !this.messageQueueService.isEmpty()
+		// L1 defect 6: a queued message never answers an approval the user still has to give. It
+		// waits until the user answers, then it is delivered as feedback after that decision.
+		const holdQueueForApproval = approval.decision === "ask" && isApprovalAsk(type)
 		// Keep queued user messages intact during command_output asks. Those asks
 		// are terminal flow-control, not conversational turns.
 		const shouldDrainQueuedMessageForAsk =
-			type !== "command_output" && !this.modelOperationAdmission.requiresApproval
+			type !== "command_output" && !this.modelOperationAdmission.requiresApproval && !holdQueueForApproval
 		const isStatusMutable = !partial && isBlocking && !isMessageQueued && approval.decision === "ask"
 
 		if (isStatusMutable) {
@@ -2804,10 +2827,29 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			throw new AskIgnoredError("superseded")
 		}
 
-		const result = { response: this.askResponse!, text: this.askResponseText, images: this.askResponseImages }
+		const result: { response: ClineAskResponse; text?: string; images?: string[] } = {
+			response: this.askResponse!,
+			text: this.askResponseText,
+			images: this.askResponseImages,
+		}
 		this.askResponse = undefined
 		this.askResponseText = undefined
 		this.askResponseImages = undefined
+		// The user answered the approval with a button. Deliver the oldest held message now, as
+		// feedback that follows the decision. A typed answer keeps the queue for the next ask.
+		if (
+			holdQueueForApproval &&
+			!this.modelOperationAdmission.requiresApproval &&
+			!result.text &&
+			!result.images?.length &&
+			(result.response === "yesButtonClicked" || result.response === "noButtonClicked")
+		) {
+			const queued = this.messageQueueService.dequeueMessage()
+			if (queued) {
+				result.text = queued.text
+				result.images = queued.images
+			}
+		}
 
 		// Cancel the timeouts if they are still running.
 		timeouts.forEach((timeout) => clearTimeout(timeout))
@@ -4376,6 +4418,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		if (this.isAssistantMessageEditing) throw new Error("An assistant history edit is being saved.")
 		if (this.modelOperationLoops || this.modelOperationRequests) throw new Error("A request is already active")
 		this.modelOperationLoops++
+		let selfCausedPinRetries = 0
 		try {
 			while (true) {
 				try {
@@ -4385,6 +4428,15 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 					if (!(error instanceof ModelDispatchControl) || this.modelOperationPrepared) throw error
 					this.modelDispatchOutcome = error
 					if (this.abort || this.abandoned || this.modelOperationClosed) return true
+					// L1 defect 5: the task itself invalidated the pinned task-state recall (for example
+					// its own history changed after a browser launch). Prepare a new request once. The
+					// user input is already in history, so the retry adds no new user message.
+					if (selfCausedPinRetries === 0 && isSelfCausedPinInvalidation(error)) {
+						selfCausedPinRetries++
+						userContent = []
+						includeFileDetails = false
+						continue
+					}
 					await this.say(
 						"error",
 						`${error.message}. No automatic retry was made.${this.previewDispatchDisabled ? " Reopen the task to use the current preview setting." : " Send a message or resume to continue."}`,
@@ -7053,6 +7105,9 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		// With no ask waiting, a dequeued message would only be queued again (at
 		// the back). Leave the queue intact; the next ask drains it in order.
 		if (!this.isAskPending) return
+		// L1 defect 6: never answer an open tool approval with a queued message.
+		const last = this.clineMessages.at(-1)
+		if (last?.type === "ask" && last.ask && isApprovalAsk(last.ask)) return
 		try {
 			if (!this.messageQueueService.isEmpty()) {
 				const queued = this.messageQueueService.dequeueMessage()

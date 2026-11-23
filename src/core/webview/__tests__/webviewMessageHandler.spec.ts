@@ -1461,14 +1461,12 @@ describe("webviewMessageHandler - setPlanOverlay", () => {
 	})
 
 	it.each<Record<string, boolean>>([{}, { customTools: true }])(
-		"creates a new task with the overlay on when the preview key is absent (on by default): %j",
+		"shows info and creates no task when the preview key is absent (modes by default): %j",
 		async (experiments) => {
 			const provider = makeProvider(undefined, experiments)
 			await webviewMessageHandler(provider, { type: "setPlanOverlay", planOverlayOn: true, text: "Design auth" })
-			expect(provider.createTask).toHaveBeenCalledWith("Design auth", expect.anything(), undefined, {
-				planOverlay: true,
-			})
-			expect(vscode.window.showInformationMessage).not.toHaveBeenCalled()
+			expect(provider.createTask).not.toHaveBeenCalled()
+			expect(vscode.window.showInformationMessage).toHaveBeenCalledWith("common:info.plan_overlay_cordis_only")
 		},
 	)
 

@@ -138,7 +138,8 @@
 			"streamProcessingError": "Error processing response stream: {{message}}",
 			"unexpectedStreamError": "Unexpected error processing response stream",
 			"completionError": "OpenAI Codex completion error: {{message}}"
-		}
+		},
+		"task_state_enable_failed": "未能為任務 {{taskId}} 啟用任務狀態：{{error}}"
 	},
 	"warnings": {
 		"no_terminal_content": "沒有選擇終端機內容",

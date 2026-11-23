@@ -93,10 +93,10 @@ export const ExperimentalSettings = ({
 }: ExperimentalSettingsProps) => {
 	const { t } = useAppTranslation()
 
-	// Effective profile for new tasks: taskProfile when set, else the legacy cordisRuntimePreview flag
-	// (false means modes; true or absent means cordis). The legacy key is only read, never written (C-5).
-	const legacyCordis =
-		experiments[EXPERIMENT_IDS.CORDIS_RUNTIME_PREVIEW] ?? experimentDefault[EXPERIMENT_IDS.CORDIS_RUNTIME_PREVIEW]
+	// Effective profile for new tasks (ADR-2026-11-23-modes-default-profile): taskProfile when set,
+	// else cordis only for a stored `cordisRuntimePreview: true`, else modes. The legacy key is only
+	// read, never written (C-5).
+	const legacyCordis = experiments?.[EXPERIMENT_IDS.CORDIS_RUNTIME_PREVIEW] === true
 	const effectiveTaskProfile: TaskProfile =
 		taskProfile && (taskProfiles as readonly string[]).includes(taskProfile)
 			? taskProfile

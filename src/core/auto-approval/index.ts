@@ -84,7 +84,16 @@ export async function checkAutoApproval({
 	if (ask === "tool") {
 		try {
 			const tool = JSON.parse(text || "{}") as ClineSayTool
-			if (tool.tool === "taskState") return { decision: "ask" }
+			// Model task_state calls use the ordinary chat approval (docs/task-state.md). A read is
+			// auto-approved only by the read-only category, a patch only by the write category, and only
+			// while auto-approval is on. Panel actions keep their native review and never come here.
+			if (tool.tool === "taskState") {
+				if (!state?.autoApprovalEnabled || isProtected) return { decision: "ask" }
+				const action = tool.action
+				if (action === "read") return { decision: state.alwaysAllowReadOnly === true ? "approve" : "ask" }
+				if (action === "patch") return { decision: state.alwaysAllowWrite === true ? "approve" : "ask" }
+				return { decision: "ask" }
+			}
 			if (tool.tool === "memory") {
 				return {
 					decision:

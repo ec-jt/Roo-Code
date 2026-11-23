@@ -567,5 +567,9 @@
 	"planOverlay": {
 		"badge": "Plan",
 		"tooltip": "Der Planmodus ist aktiv: Roo erkundet und entwirft, bevor Änderungen vorgenommen werden. Gib /plan off ein, um den Planmodus zu verlassen."
+	},
+	"taskState": {
+		"appliesTo": "Gilt für Aufgabe {{taskId}}: {{title}}",
+		"subtaskNotice": "Dies ist eine Unteraufgabe. Der Aufgabenstatus hier gilt nur für diese Unteraufgabe, nicht für die übergeordnete Aufgabe {{parentTaskId}}. Um den Aufgabenstatus für die übergeordnete Aufgabe zu aktivieren, öffne sie, wenn diese Unteraufgabe zurückkehrt, oder öffne sie im Verlauf."
 	}
 }

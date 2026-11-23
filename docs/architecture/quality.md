@@ -102,7 +102,7 @@ Paths: src/api/preview-runtime.ts, src/core/tools/ExitPlanTool.ts, src/core/task
 
 Quality property: #efficient
 
-Scenario: The same planned feature request (evaluation scenario S2) runs with the Cordis profile and with the modes profile, on the same build, model and settings. Over at least two matched samples per provider, the Cordis profile uses no more API requests, input tokens or cost than the modes profile, with an equal outcome under blind review. Related: [ADR-2026-11-19-keep-cordis-profile-widen-experiment](decisions/accepted/ADR-2026-11-19-keep-cordis-profile-widen-experiment.md), [R-6](risks.md).
+Scenario: The same planned feature request (evaluation scenario S2) runs with the Cordis profile and with the modes profile, on the same build, model and settings. Over at least two matched samples per provider, the Cordis profile uses no more API requests, input tokens or cost than the modes profile, with an equal outcome under blind review. Related: [ADR-2026-11-19-keep-cordis-profile-widen-experiment](decisions/superseded/ADR-2026-11-19-keep-cordis-profile-widen-experiment.md), [R-6](risks.md).
 
 Evidence: five Opus samples on 4.2.78 to 4.2.84 (Cordis 26% lower total cost, but more expensive in r5). The samples mixed builds and were scored by the operator, not blind ([R-6](risks.md)).
 

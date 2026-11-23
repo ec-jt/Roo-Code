@@ -21,15 +21,16 @@ describe("experiments", () => {
 	})
 
 	describe("CORDIS_RUNTIME_PREVIEW", () => {
-		it("is on by default; absent means on and a stored false means off", () => {
-			expect(experimentConfigsMap.CORDIS_RUNTIME_PREVIEW).toMatchObject({ enabled: true })
-			expect(experimentDefault.cordisRuntimePreview).toBe(true)
-			expect(Experiments.isEnabled({}, EXPERIMENT_IDS.CORDIS_RUNTIME_PREVIEW)).toBe(true)
+		it("is off by default; absent means off and only a stored true means on", () => {
+			expect(experimentConfigsMap.CORDIS_RUNTIME_PREVIEW).toMatchObject({ enabled: false })
+			expect(experimentDefault.cordisRuntimePreview).toBe(false)
+			expect(Experiments.isEnabled({}, EXPERIMENT_IDS.CORDIS_RUNTIME_PREVIEW)).toBe(false)
 			expect(Experiments.isEnabled({ cordisRuntimePreview: false }, EXPERIMENT_IDS.CORDIS_RUNTIME_PREVIEW)).toBe(
 				false,
 			)
-			expect(isCordisRuntimePreviewEnabled(undefined)).toBe(true)
-			expect(isCordisRuntimePreviewEnabled(null)).toBe(true)
+			expect(isCordisRuntimePreviewEnabled(undefined)).toBe(false)
+			expect(isCordisRuntimePreviewEnabled(null)).toBe(false)
+			expect(isCordisRuntimePreviewEnabled({})).toBe(false)
 			expect(isCordisRuntimePreviewEnabled({ cordisRuntimePreview: true })).toBe(true)
 			expect(isCordisRuntimePreviewEnabled({ cordisRuntimePreview: false })).toBe(false)
 		})

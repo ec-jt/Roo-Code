@@ -567,5 +567,9 @@
 	"planOverlay": {
 		"badge": "Plan",
 		"tooltip": "Le mode plan est activé : Roo explore et conçoit avant de faire des modifications. Tape /plan off pour quitter le mode plan."
+	},
+	"taskState": {
+		"appliesTo": "S'applique à la tâche {{taskId}} : {{title}}",
+		"subtaskNotice": "Ceci est une sous-tâche. L'état de la tâche ici s'applique uniquement à cette sous-tâche, pas à sa tâche parente {{parentTaskId}}. Pour activer l'état de la tâche pour la tâche parente, ouvre-la lorsque cette sous-tâche revient, ou ouvre-la depuis l'Historique."
 	}
 }

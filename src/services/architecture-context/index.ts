@@ -105,10 +105,17 @@ export function acceptancePolicyLine(settings: ArchitectureContextSettings, task
 }
 
 /**
+ * Added to the bootstrap block for a task with the plan overlay on (`/plan` in cordis or hybrid), so
+ * the plan's constraints exist as records that the drift rule can cite (L1 defect 2).
+ */
+export const PLAN_BOOTSTRAP_INSTRUCTION =
+	"This task is in plan mode. Before calling exit_plan, record the key constraints and decisions of the plan as records in that layout (constraints as C-<n>, decisions as ADRs), including every requirement that limits later changes, such as rules about existing stored data. Cite their IDs in the plan."
+
+/**
  * Returns the architecture context block for the task, or "" when the mode is off, the workspace is
  * untrusted, there is no docs/architecture/arc42.md, or reading fails (one notice per task).
- * Architect tasks also get the acceptance policy line, and a bootstrap instruction when the layout
- * is missing and bootstrap is enabled.
+ * Planning tasks (Architect mode, or the plan overlay on) also get the acceptance policy line, and a
+ * bootstrap instruction when the layout is missing and bootstrap is enabled.
  */
 export async function getArchitectureContext(
 	task: Task,
@@ -118,13 +125,15 @@ export async function getArchitectureContext(
 	const mode = settings?.architectureContextMode
 	if (!mode || mode === "off") return ""
 	if (vscode.workspace.isTrusted !== true) return ""
-	const isArchitect = taskMode === "architect"
+	const planOverlay = task.planOverlay === true
+	const isArchitect = taskMode === "architect" || planOverlay
 	try {
 		const root = await findArchitectureRoot(task.cwd)
 		if (!root) {
 			if (isArchitect && settings?.architectureBootstrap !== false) {
+				const planLine = planOverlay ? `\n${PLAN_BOOTSTRAP_INSTRUCTION}` : ""
 				return renderArchitectureContext(
-					`${BOOTSTRAP_INSTRUCTION}\n${acceptancePolicyLine(settings!, task.taskId)}`,
+					`${BOOTSTRAP_INSTRUCTION}${planLine}\n${acceptancePolicyLine(settings!, task.taskId)}`,
 				)
 			}
 			return ""

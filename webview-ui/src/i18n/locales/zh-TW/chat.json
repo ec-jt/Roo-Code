@@ -563,5 +563,9 @@
 	"planOverlay": {
 		"badge": "計畫",
 		"tooltip": "計畫模式已開啟：Roo 會在修改前先探索和設計。輸入 /plan off 離開計畫模式。"
+	},
+	"taskState": {
+		"appliesTo": "適用於任務 {{taskId}}：{{title}}",
+		"subtaskNotice": "這是一個子任務。此處的任務狀態僅適用於此子任務，不適用於其父任務 {{parentTaskId}}。若要為父任務啟用任務狀態，請在此子任務返回後開啟父任務，或從歷史記錄中開啟。"
 	}
 }

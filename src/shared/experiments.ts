@@ -23,8 +23,8 @@ export const experimentConfigsMap: Record<ExperimentKey, ExperimentConfig> = {
 	IMAGE_GENERATION: { enabled: false },
 	RUN_SLASH_COMMAND: { enabled: false },
 	CUSTOM_TOOLS: { enabled: false },
-	// On by default (ADR-2026-11-19-keep-cordis-profile-widen-experiment). A stored `false` stays off.
-	CORDIS_RUNTIME_PREVIEW: { enabled: true },
+	// Off by default (ADR-2026-11-23-modes-default-profile). Only a stored `true` selects cordis.
+	CORDIS_RUNTIME_PREVIEW: { enabled: false },
 	// Off by default (ADR-2026-11-20-feature-gating-evaluation-and-lessons). Writes evaluation.json for new tasks.
 	EVALUATION_RECORDING: { enabled: false },
 	// Off by default (ADR-2026-11-22-parallel-subtasks). Offers the new_tasks tool.
@@ -44,12 +44,12 @@ export const experiments = {
 } as const
 
 /**
- * Effective value of the Cordis runtime preview flag: the stored value when present, else the
- * default (on). An absent key or absent experiments object means on; a stored `false` means off.
+ * Effective value of the legacy Cordis runtime preview flag (ADR-2026-11-23-modes-default-profile):
+ * true only when `true` is stored. An absent key or absent experiments object means off. Stored
+ * values are never rewritten (C-5).
  */
 export function isCordisRuntimePreviewEnabled(
 	experimentsConfig: Partial<Record<string, boolean | undefined>> | undefined | null,
 ): boolean {
-	const stored = experimentsConfig?.[EXPERIMENT_IDS.CORDIS_RUNTIME_PREVIEW]
-	return typeof stored === "boolean" ? stored : experimentDefault[EXPERIMENT_IDS.CORDIS_RUNTIME_PREVIEW]
+	return experimentsConfig?.[EXPERIMENT_IDS.CORDIS_RUNTIME_PREVIEW] === true
 }

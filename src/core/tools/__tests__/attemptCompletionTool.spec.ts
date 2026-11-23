@@ -122,6 +122,39 @@ describe("attemptCompletionTool", () => {
 		expect(summary).toContain("not merged")
 	})
 
+	it("L1 defect 7: returns the user messages the child received with the result", async () => {
+		const reopenParentFromDelegation = vi.fn().mockResolvedValue(undefined)
+		const provider = {
+			getTaskWithId: vi.fn().mockResolvedValue({ historyItem: { id: "task_1", status: "active" } }),
+			getCurrentTask: () => mockTask,
+			reopenParentFromDelegation,
+		}
+		Object.assign(mockTask, {
+			parentTaskId: "parent",
+			instanceId: "i1",
+			assertCanDelegate: vi.fn().mockResolvedValue(undefined),
+			subtaskWorkspace: undefined,
+			clineMessages: [
+				{ type: "say", say: "text", text: "model text" },
+				{ type: "say", say: "user_feedback", text: "Convert stored prices in place." },
+				{ type: "ask", ask: "followup", text: "question" },
+				{ type: "say", say: "user_feedback", text: "" },
+			],
+			providerRef: { deref: () => provider },
+		})
+		await attemptCompletionTool.execute({ result: "Child summary" }, mockTask as Task, {
+			askApproval: mockAskApproval,
+			handleError: mockHandleError,
+			pushToolResult: mockPushToolResult,
+			toolDescription: mockToolDescription,
+		})
+		expect(mockHandleError).not.toHaveBeenCalled()
+		const summary = reopenParentFromDelegation.mock.calls[0][0].completionResultSummary as string
+		expect(summary).toBe(
+			"Child summary\n\nUser messages received by the subtask:\n- Convert stored prices in place.",
+		)
+	})
+
 	describe("todo list validation", () => {
 		it("should allow completion when there is no todo list", async () => {
 			const block: AttemptCompletionToolUse = {

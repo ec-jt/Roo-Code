@@ -58,9 +58,11 @@ export function hasPlanReview(profile: TaskProfile | undefined): boolean {
 }
 
 /**
- * Effective profile setting for new top-level tasks. `taskProfile` wins when it is valid. Otherwise
- * the legacy flag decides: a stored `cordisRuntimePreview: false` means modes; `true` or absent
- * means cordis. The legacy key is only read, never rewritten (C-5).
+ * Effective profile setting for new top-level tasks (ADR-2026-11-23-modes-default-profile):
+ * 1. `taskProfile` wins when it is valid;
+ * 2. otherwise a stored `cordisRuntimePreview: true` means cordis;
+ * 3. otherwise modes. An absent value means modes.
+ * The legacy key is only read, never rewritten (C-5).
  */
 export function effectiveProfileSetting(
 	setting: unknown,

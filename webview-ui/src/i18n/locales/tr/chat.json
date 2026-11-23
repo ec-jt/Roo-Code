@@ -568,5 +568,9 @@
 	"planOverlay": {
 		"badge": "Plan",
 		"tooltip": "Plan modu açık: Roo değişiklik yapmadan önce keşfeder ve tasarlar. Plan modundan çıkmak için /plan off yaz."
+	},
+	"taskState": {
+		"appliesTo": "{{taskId}} görevine uygulanır: {{title}}",
+		"subtaskNotice": "Bu bir alt görevdir. Buradaki görev durumu yalnızca bu alt görev için geçerlidir, üst görev {{parentTaskId}} için geçerli değildir. Üst görev için görev durumunu etkinleştirmek üzere bu alt görev döndüğünde üst görevi açın veya Geçmiş'ten açın."
 	}
 }

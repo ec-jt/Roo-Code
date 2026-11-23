@@ -3,6 +3,7 @@ import {
 	EXECUTION_FOCUS_GUIDANCE,
 	PARENT_HANDOFF_GUIDANCE,
 	formatSubtaskHandoff,
+	formatSubtaskUserMessages,
 } from "../subtask-handoff"
 import attemptCompletion from "../../prompts/tools/native-tools/attempt_completion"
 import newTask from "../../prompts/tools/native-tools/new_task"
@@ -58,6 +59,21 @@ describe("subtask context handoffs", () => {
 		expect(PARENT_HANDOFF_GUIDANCE).toContain(
 			"do not override user constraints, permissions, or approval requirements",
 		)
+	})
+
+	it("L1 defect 7: formats the user messages a child received, and nothing when there are none", () => {
+		expect(formatSubtaskUserMessages(undefined)).toBe("")
+		expect(formatSubtaskUserMessages([{ type: "say", say: "text", text: "model" }])).toBe("")
+		const block = formatSubtaskUserMessages([
+			{ type: "say", say: "user_feedback", text: "first\nline two" },
+			{ type: "say", say: "user_feedback", text: "  second  " },
+		])
+		expect(block).toBe("User messages received by the subtask:\n- first\n  line two\n- second")
+		const many = Array.from({ length: 25 }, (_, i) => ({ type: "say", say: "user_feedback", text: `m${i}` }))
+		const bounded = formatSubtaskUserMessages(many)
+		expect(bounded).toContain("- m24")
+		expect(bounded).not.toContain("- m4\n")
+		expect(bounded).toContain("(5 earlier message(s) omitted.)")
 	})
 
 	it("preserves the complete result and puts the parent checklist before it", () => {

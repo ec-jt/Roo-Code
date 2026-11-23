@@ -573,5 +573,9 @@
 	"planOverlay": {
 		"badge": "Rencana",
 		"tooltip": "Mode rencana aktif: Roo menjelajah dan merancang sebelum membuat perubahan. Ketik /plan off untuk keluar dari mode rencana."
+	},
+	"taskState": {
+		"appliesTo": "Berlaku untuk tugas {{taskId}}: {{title}}",
+		"subtaskNotice": "Ini adalah subtugas. Status tugas di sini hanya berlaku untuk subtugas ini, bukan untuk tugas induk {{parentTaskId}}. Untuk mengaktifkan status tugas pada tugas induk, buka tugas induk saat subtugas ini kembali, atau buka dari Riwayat."
 	}
 }

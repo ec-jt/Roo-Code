@@ -138,7 +138,8 @@
 			"streamProcessingError": "Error processing response stream: {{message}}",
 			"unexpectedStreamError": "Unexpected error processing response stream",
 			"completionError": "OpenAI Codex completion error: {{message}}"
-		}
+		},
+		"task_state_enable_failed": "कार्य {{taskId}} के लिए कार्य स्थिति सक्षम नहीं हुई: {{error}}"
 	},
 	"warnings": {
 		"no_terminal_content": "कोई टर्मिनल सामग्री चयनित नहीं",

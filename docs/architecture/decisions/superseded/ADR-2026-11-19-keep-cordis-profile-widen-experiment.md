@@ -1,6 +1,7 @@
 # ADR-2026-11-19-keep-cordis-profile-widen-experiment: Keep the Cordis profile and widen the experiment
 
-Status: accepted
+Status: superseded
+Superseded-by: ADR-2026-11-23-modes-default-profile
 Accepted-by: user
 Last-verified: 2026-11-19
 Paths: src/api/preview-runtime.ts, src/api/dispatch-admission.ts, src/core/tools/ExitPlanTool.ts, src/core/task/Task.ts

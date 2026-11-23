@@ -567,5 +567,9 @@
 	"planOverlay": {
 		"badge": "Piano",
 		"tooltip": "La modalità piano è attiva: Roo esplora e progetta prima di apportare modifiche. Scrivi /plan off per uscire dalla modalità piano."
+	},
+	"taskState": {
+		"appliesTo": "Si applica all'attività {{taskId}}: {{title}}",
+		"subtaskNotice": "Questa è una sottoattività. Lo stato dell'attività qui si applica solo a questa sottoattività, non all'attività principale {{parentTaskId}}. Per attivare lo stato dell'attività per l'attività principale, aprila quando questa sottoattività ritorna, oppure aprila dalla Cronologia."
 	}
 }

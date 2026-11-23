@@ -567,5 +567,9 @@
 	"planOverlay": {
 		"badge": "Pla",
 		"tooltip": "El mode de planificació està activat: Roo explora i dissenya abans de fer canvis. Escriu /plan off per sortir del mode de planificació."
+	},
+	"taskState": {
+		"appliesTo": "S'aplica a la tasca {{taskId}}: {{title}}",
+		"subtaskNotice": "Aquesta és una subtasca. L'estat de la tasca aquí s'aplica només a aquesta subtasca, no a la tasca pare {{parentTaskId}}. Per activar l'estat de la tasca per a la tasca pare, obre-la quan aquesta subtasca torni, o obre-la des de l'Historial."
 	}
 }

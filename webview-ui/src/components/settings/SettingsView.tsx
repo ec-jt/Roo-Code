@@ -33,12 +33,7 @@ import {
 	Monitor,
 } from "lucide-react"
 
-import {
-	type ProviderSettings,
-	type ExperimentId,
-	DEFAULT_CHECKPOINT_TIMEOUT_SECONDS,
-	ImageGenerationProvider,
-} from "@roo-code/types"
+import { type ProviderSettings, type ExperimentId, ImageGenerationProvider } from "@roo-code/types"
 
 import { vscode } from "@src/utils/vscode"
 import { ManagedEnvironmentSettings } from "./ManagedEnvironmentSettings"
@@ -87,6 +82,7 @@ import ModesView from "../modes/ModesView"
 import McpView from "../mcp/McpView"
 import { WorktreesView } from "../worktrees/WorktreesView"
 import { SettingsSearch } from "./SettingsSearch"
+import { buildUpdatedSettings, diffUpdatedSettings, type UpdatedSettings } from "./settingsPayload"
 import { useSearchIndexRegistry, SearchIndexProvider } from "./useSettingsSearch"
 
 export const settingsTabsContainer = "flex flex-1 overflow-hidden [&.narrow_.tab-label]:hidden"
@@ -154,6 +150,10 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 	const confirmDialogHandler = useRef<() => void>()
 
 	const [cachedState, setCachedState] = useState(() => extensionState)
+	// Save payload of the state this view last loaded or saved. Save sends only the fields that
+	// differ from it, so a view that has been open a while does not revert newer stored settings.
+	const savedBaseline = useRef<UpdatedSettings | null>(null)
+	if (savedBaseline.current === null) savedBaseline.current = buildUpdatedSettings(extensionState)
 
 	const {
 		alwaysAllowAll,
@@ -255,15 +255,28 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 		}
 
 		setCachedState((prevCachedState) => ({ ...prevCachedState, ...extensionState }))
+		savedBaseline.current = buildUpdatedSettings(extensionState)
 		prevApiConfigName.current = currentApiConfigName
 		setChangeDetected(false)
 		setApiConfigurationChanged(false)
 	}, [currentApiConfigName, extensionState])
 
+	// Take newer extension state while this view has no unsaved changes, so a view that has been
+	// open a while shows the stored values (L1 defect 3). A view with unsaved changes keeps its draft.
+	const lastSyncedExtensionState = useRef(extensionState)
+	useEffect(() => {
+		if (lastSyncedExtensionState.current === extensionState) return
+		if (isChangeDetected || isApiConfigurationChanged) return
+		lastSyncedExtensionState.current = extensionState
+		setCachedState((prevCachedState) => ({ ...prevCachedState, ...extensionState }))
+		savedBaseline.current = buildUpdatedSettings(extensionState)
+	}, [extensionState, isChangeDetected, isApiConfigurationChanged])
+
 	// Bust the cache when settings are imported.
 	useEffect(() => {
 		if (settingsImportedAt) {
 			setCachedState((prevCachedState) => ({ ...prevCachedState, ...extensionState }))
+			savedBaseline.current = buildUpdatedSettings(extensionState)
 			setChangeDetected(false)
 			setApiConfigurationChanged(false)
 		}
@@ -479,109 +492,14 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 
 	const handleSubmit = () => {
 		if (isSettingValid) {
-			vscode.postMessage({
-				type: "updateSettings",
-				updatedSettings: {
-					language,
-					alwaysAllowAll: alwaysAllowAll ?? undefined,
-					alwaysAllowReadOnly: alwaysAllowReadOnly ?? undefined,
-					alwaysAllowReadOnlyOutsideWorkspace: alwaysAllowReadOnlyOutsideWorkspace ?? undefined,
-					alwaysAllowWrite: alwaysAllowWrite ?? undefined,
-					alwaysAllowWriteOutsideWorkspace: alwaysAllowWriteOutsideWorkspace ?? undefined,
-					alwaysAllowWriteProtected: alwaysAllowWriteProtected ?? undefined,
-					alwaysAllowExecute: alwaysAllowExecute ?? undefined,
-					alwaysAllowBrowser: alwaysAllowBrowser ?? undefined,
-					alwaysAllowComputerUse: alwaysAllowComputerUse ?? false,
-					computerUseEnabled: computerUseEnabled ?? false,
-					computerUseAllowedApps: computerUseAllowedApps ?? [],
-					computerUseBackgroundMode: computerUseBackgroundMode ?? false,
-					alwaysAllowMcp,
-					alwaysAllowModeSwitch,
-					allowedCommands: allowedCommands ?? [],
-					deniedCommands: deniedCommands ?? [],
-					// Note that we use `null` instead of `undefined` since `JSON.stringify`
-					// will omit `undefined` when serializing the object and passing it to the
-					// extension host. We may need to do the same for other nullable fields.
-					allowedMaxRequests: allowedMaxRequests ?? null,
-					allowedMaxCost: allowedMaxCost ?? null,
-					autoCondenseContext,
-					allowOverflowTruncation: allowOverflowTruncation ?? true,
-					pruneToolResultsOnOverflow: pruneToolResultsOnOverflow ?? true,
-					offloadImagesOnOverflow: offloadImagesOnOverflow ?? true,
-					architectureContextMode: architectureContextMode ?? "off",
-					architectureDecisionApproval: architectureDecisionApproval ?? "user",
-					architectureBootstrap: architectureBootstrap ?? true,
-					cordisTextOnlyTurnPolicy: cordisTextOnlyTurnPolicy ?? "retryThenPause",
-					taskProfile,
-					parallelSubtasksConcurrency,
-					parallelSubtasksTokenBudget,
-					autoCondenseContextPercent,
-					browserToolEnabled: browserToolEnabled ?? true,
-					soundEnabled: soundEnabled ?? true,
-					soundVolume: soundVolume ?? 0.5,
-					ttsEnabled,
-					ttsSpeed,
-					enableCheckpoints: enableCheckpoints ?? false,
-					checkpointTimeout: checkpointTimeout ?? DEFAULT_CHECKPOINT_TIMEOUT_SECONDS,
-					browserViewportSize: browserViewportSize ?? "900x600",
-					browserHeaded: browserHeaded ?? false,
-					browserLocalBrowser: browserLocalBrowser ?? "chromium",
-					remoteBrowserHost: remoteBrowserEnabled ? remoteBrowserHost : undefined,
-					remoteBrowserEnabled: remoteBrowserEnabled ?? false,
-					writeDelayMs,
-					screenshotQuality: screenshotQuality ?? 75,
-					terminalShellIntegrationTimeout: terminalShellIntegrationTimeout ?? 30_000,
-					terminalShellIntegrationDisabled,
-					terminalCommandDelay,
-					terminalPowershellCounter,
-					terminalZshClearEolMark,
-					terminalZshOhMy,
-					terminalZshP10k,
-					terminalZdotdir,
-					terminalOutputPreviewSize: terminalOutputPreviewSize ?? "medium",
-					maxOpenTabsContext: Math.min(Math.max(0, maxOpenTabsContext ?? 20), 500),
-					maxWorkspaceFiles: Math.min(Math.max(0, maxWorkspaceFiles ?? 200), 500),
-					showRooIgnoredFiles: showRooIgnoredFiles ?? true,
-					enableSubfolderRules: enableSubfolderRules ?? false,
-					maxImageFileSize: maxImageFileSize ?? 5,
-					maxTotalImageSize: maxTotalImageSize ?? 20,
-					includeDiagnosticMessages:
-						includeDiagnosticMessages !== undefined ? includeDiagnosticMessages : true,
-					maxDiagnosticMessages: maxDiagnosticMessages ?? 50,
-					alwaysAllowSubtasks,
-					alwaysAllowNestedSubtasks,
-					managedEnvironmentsEnabled: cachedState.managedEnvironmentsEnabled,
-					alwaysAllowManagedEnvironments: cachedState.alwaysAllowManagedEnvironments,
-					managedEnvironmentsRoot: cachedState.managedEnvironmentsRoot,
-					managedEnvironmentsPythonPath: cachedState.managedEnvironmentsPythonPath,
-					managedEnvironmentsMaxDownloadMb: cachedState.managedEnvironmentsMaxDownloadMb,
-					managedEnvironmentsMaxDiskMb: cachedState.managedEnvironmentsMaxDiskMb,
-					managedEnvironmentsTimeoutSeconds: cachedState.managedEnvironmentsTimeoutSeconds,
-					alwaysAllowFollowupQuestions: alwaysAllowFollowupQuestions ?? false,
-					followupAutoApproveTimeoutMs,
-					includeTaskHistoryInEnhance: includeTaskHistoryInEnhance ?? true,
-					reasoningBlockCollapsed: reasoningBlockCollapsed ?? true,
-					enterBehavior: enterBehavior ?? "send",
-					includeCurrentTime: includeCurrentTime ?? true,
-					includeCurrentCost: includeCurrentCost ?? true,
-					maxGitStatusFiles: maxGitStatusFiles ?? 0,
-					profileThresholds,
-					imageGenerationProvider,
-					braveApiKey,
-					context7ApiKey,
-					githubToken,
-					nativeToolEnabled,
-					openRouterImageApiKey,
-					openRouterImageGenerationSelectedModel,
-					liteLlmImageApiKey,
-					liteLlmImageBaseUrl,
-					liteLlmImageGenerationSelectedModel,
-					liteLlmImageEditingSelectedModel,
-					liteLlmVideoGenerationSelectedModel,
-					experiments,
-					customSupportPrompts,
-				},
-			})
+			// Send only the fields changed in this view (L1 defect 3). Unchanged fields keep the
+			// stored value, even when another window or the extension changed them after this view opened.
+			const current = buildUpdatedSettings(cachedState)
+			const updatedSettings = diffUpdatedSettings(savedBaseline.current ?? {}, current)
+			if (Object.keys(updatedSettings).length > 0) {
+				vscode.postMessage({ type: "updateSettings", updatedSettings })
+			}
+			savedBaseline.current = current
 
 			// These have more complex logic so they aren't (yet) handled
 			// by the `updateSettings` message.
@@ -614,6 +532,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 			if (confirm) {
 				// Discard changes: Reset state and flag
 				setCachedState(extensionState) // Revert to original state
+				savedBaseline.current = buildUpdatedSettings(extensionState)
 				setChangeDetected(false) // Reset change flag
 				setApiConfigurationChanged(false)
 				confirmDialogHandler.current?.() // Execute the pending action (e.g., tab switch)

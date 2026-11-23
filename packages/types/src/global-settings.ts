@@ -167,8 +167,9 @@ export const globalSettingsSchema = z.object({
 	/** Cordis runtime: what to do when the model replies with text only and no tool call. Default "retryThenPause". */
 	cordisTextOnlyTurnPolicy: z.enum(["retryThenPause", "alwaysPause"]).optional(),
 	/**
-	 * Profile for new top-level tasks. When absent, `experiments.cordisRuntimePreview` decides:
-	 * `false` means "modes", `true` or absent means "cordis". That key is never rewritten (C-5).
+	 * Profile for new top-level tasks. When absent, a stored `experiments.cordisRuntimePreview: true`
+	 * means "cordis"; otherwise "modes" (ADR-2026-11-23-modes-default-profile). That key is never
+	 * rewritten (C-5).
 	 */
 	taskProfile: z.enum(taskProfiles).optional(),
 	/** Parallel subtasks: requests in flight per batch, 1 to 4 (default 2). Read when a batch starts. */

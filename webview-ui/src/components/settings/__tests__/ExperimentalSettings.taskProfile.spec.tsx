@@ -70,8 +70,13 @@ describe("ExperimentalSettings task profile select", () => {
 		expect(profileSelect().value).toBe("modes")
 	})
 
-	it("shows cordis when neither taskProfile nor the legacy flag is set", () => {
+	it("shows modes when neither taskProfile nor the legacy flag is set (ADR-2026-11-23-modes-default-profile)", () => {
 		renderSettings({})
+		expect(profileSelect().value).toBe("modes")
+	})
+
+	it("shows cordis for a stored legacy flag true without taskProfile", () => {
+		renderSettings({ experiments: { cordisRuntimePreview: true } })
 		expect(profileSelect().value).toBe("cordis")
 	})
 

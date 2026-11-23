@@ -138,7 +138,8 @@
 			"streamProcessingError": "Error processing response stream: {{message}}",
 			"unexpectedStreamError": "Unexpected error processing response stream",
 			"completionError": "OpenAI Codex completion error: {{message}}"
-		}
+		},
+		"task_state_enable_failed": "Lo stato dell'attività non è stato attivato per l'attività {{taskId}}: {{error}}"
 	},
 	"warnings": {
 		"no_terminal_content": "Nessun contenuto del terminale selezionato",

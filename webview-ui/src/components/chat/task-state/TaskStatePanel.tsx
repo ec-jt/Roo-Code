@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useState } from "react"
 import type { TaskStateData, TaskStatePatchOperation } from "@roo-code/types"
+import { useAppTranslation } from "@src/i18n/TranslationContext"
 import { useTaskState } from "@src/hooks/useTaskState"
 import { actionClass, inputClass, TaskStateRecords } from "./TaskStateRecords"
 import { defaultTaskStatePolicy, TaskStatePolicyEditor } from "./TaskStatePolicyEditor"
@@ -41,15 +42,25 @@ function previewOperations(data: TaskStateData, operations: TaskStatePatchOperat
 	return next
 }
 
-/** The keyed boundary discards drafts and pending replies when the current task changes. */
-export function TaskStatePanel({ taskId }: { taskId: string }) {
-	return <TaskStatePanelForTask key={taskId} taskId={taskId} />
+interface TaskStatePanelProps {
+	taskId: string
+	/** First line of the task text, shown so the user sees which task the panel applies to. */
+	taskTitle?: string
+	/** Set when the current task is a subtask (L1 defect 4). */
+	parentTaskId?: string
 }
 
-function TaskStatePanelForTask({ taskId }: { taskId: string }) {
+/** The keyed boundary discards drafts and pending replies when the current task changes. */
+export function TaskStatePanel(props: TaskStatePanelProps) {
+	return <TaskStatePanelForTask key={props.taskId} {...props} />
+}
+
+function TaskStatePanelForTask({ taskId, taskTitle, parentTaskId }: TaskStatePanelProps) {
+	const { t } = useAppTranslation()
 	const [open, setOpen] = useState(false)
 	const [visited, setVisited] = useState(false)
 	const panelId = useId()
+	const title = (taskTitle ?? "").split("\n")[0].trim().slice(0, 80)
 	return (
 		<section className="shrink-0 border-b border-vscode-panel-border px-3 py-1" aria-label="Task state">
 			<button
@@ -65,6 +76,14 @@ function TaskStatePanelForTask({ taskId }: { taskId: string }) {
 			</button>
 			{/* Keep drafts when collapsed. The task-keyed boundary clears them on a task switch. */}
 			<div id={panelId} hidden={!open}>
+				<p className="text-xs text-vscode-descriptionForeground break-all" data-testid="task-state-target">
+					{t("chat:taskState.appliesTo", { taskId, title })}
+				</p>
+				{parentTaskId && (
+					<p role="note" className="text-xs break-words" data-testid="task-state-subtask-notice">
+						{t("chat:taskState.subtaskNotice", { parentTaskId })}
+					</p>
+				)}
 				{visited && <TaskStateEditor taskId={taskId} />}
 			</div>
 		</section>

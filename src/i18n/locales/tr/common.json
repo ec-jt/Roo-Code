@@ -138,7 +138,8 @@
 			"streamProcessingError": "Error processing response stream: {{message}}",
 			"unexpectedStreamError": "Unexpected error processing response stream",
 			"completionError": "OpenAI Codex completion error: {{message}}"
-		}
+		},
+		"task_state_enable_failed": "{{taskId}} görevi için görev durumu etkinleştirilmedi: {{error}}"
 	},
 	"warnings": {
 		"no_terminal_content": "Seçili terminal içeriği yok",

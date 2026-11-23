@@ -172,9 +172,9 @@ describe("Task opt-in model dispatch", () => {
 		expect(loop).not.toHaveBeenCalled()
 	})
 
-	it.each([undefined, false, true])("selects ordinary Anthropic preview unless disabled: %s", async (enabled) => {
-		// Absent means on (default); only an explicitly stored false is off.
-		const on = enabled !== false
+	it.each([undefined, false, true])("selects ordinary Anthropic preview only when enabled: %s", async (enabled) => {
+		// Absent means off (ADR-2026-11-23-modes-default-profile); only a stored true is on.
+		const on = enabled === true
 		await provider.contextProxy.setValue("experiments", { cordisRuntimePreview: enabled })
 		const ordinary = new Task({
 			provider,
@@ -1008,6 +1008,46 @@ describe("Task opt-in model dispatch", () => {
 		expect(info.streamingFailedMessage).toBeUndefined()
 		expect(task.say).toHaveBeenCalledWith("error", expect.stringContaining("single retry"))
 	})
+	it("L1 defect 5: retries once without asking when the task itself invalidated the task-state pin", async () => {
+		const { TaskStateError } = await import("../../../services/task-state/types")
+		const stale = (code: string) =>
+			new ModelDispatchControl("dispatch-failed", {
+				cause: new TaskStateError(
+					code,
+					"Task state changed while the request was pinned; prepare a new request",
+				),
+			})
+		const make = vi
+			.spyOn(task as any, "makeClineRequests")
+			.mockRejectedValueOnce(stale("STALE_SELF"))
+			.mockResolvedValueOnce(true)
+		const ask = vi.spyOn(task, "ask")
+		await expect(task.recursivelyMakeClineRequests([{ type: "text", text: "go" }])).resolves.toBe(true)
+		expect(make).toHaveBeenCalledTimes(2)
+		// The retry adds no new user message: the first attempt already stored it.
+		expect(make.mock.calls[1][0]).toEqual([])
+		expect(ask).not.toHaveBeenCalled()
+		expect(task.say).not.toHaveBeenCalledWith("error", expect.stringContaining("No automatic retry"))
+	})
+	it("L1 defect 5: asks after a second self-caused stop, and always for a user-caused stop", async () => {
+		const { TaskStateError } = await import("../../../services/task-state/types")
+		const stale = (code: string) =>
+			new ModelDispatchControl("dispatch-failed", { cause: new TaskStateError(code, "pinned") })
+		vi.spyOn(task as any, "waitForPreviewInput").mockResolvedValue(undefined)
+		const twice = vi
+			.spyOn(task as any, "makeClineRequests")
+			.mockRejectedValueOnce(stale("STALE_SELF"))
+			.mockRejectedValueOnce(stale("STALE_SELF"))
+		await expect(task.recursivelyMakeClineRequests([])).resolves.toBe(true)
+		expect(twice).toHaveBeenCalledTimes(2)
+		expect(task.say).toHaveBeenCalledWith("error", expect.stringContaining("No automatic retry"))
+		twice.mockReset()
+		vi.mocked(task.say).mockClear()
+		twice.mockRejectedValueOnce(stale("STALE"))
+		await expect(task.recursivelyMakeClineRequests([])).resolves.toBe(true)
+		expect(twice).toHaveBeenCalledTimes(1)
+		expect(task.say).toHaveBeenCalledWith("error", expect.stringContaining("No automatic retry"))
+	})
 	it.each(["empty-text", "empty-thinking", "reasoning-only", "whitespace"])(
 		"outer loop stops after a recovered response containing only %s",
 		async (kind) => {
@@ -1640,7 +1680,7 @@ describe("Task opt-in model dispatch", () => {
 		}, 20_000)
 	})
 
-	describe("Cordis profile on a non-Anthropic provider (on by default)", () => {
+	describe("Cordis profile on a non-Anthropic provider (opt-in)", () => {
 		const openAiConfiguration = { apiProvider: "openai-native" as const, apiModelId: "gpt-5.1", apiKey: "secret" }
 		const makeOpenAiTask = async (experiments: Record<string, boolean | undefined> | undefined) => {
 			await provider.contextProxy.setValue("experiments", experiments)
@@ -1656,8 +1696,15 @@ describe("Task opt-in model dispatch", () => {
 			return cordis
 		}
 
-		it.each([undefined, {}])("uses the Cordis profile without a dispatch runtime (experiments=%j)", async (exp) => {
-			const cordis = await makeOpenAiTask(exp)
+		it.each([undefined, {}])("uses the modes profile when nothing is stored (experiments=%j)", async (exp) => {
+			const modes = await makeOpenAiTask(exp)
+			expect(modes.profile).toBe("modes")
+			expect((modes as any).modelDispatchRuntime).toBeUndefined()
+			modes.dispose({ preserveArtifacts: true })
+		})
+
+		it("uses the Cordis profile without a dispatch runtime when the flag is stored true", async () => {
+			const cordis = await makeOpenAiTask({ cordisRuntimePreview: true })
 			expect(cordis.profile).toBe("cordis")
 			expect((cordis as any).modelDispatchRuntime).toBeUndefined()
 			cordis.dispose({ preserveArtifacts: true })
@@ -1673,7 +1720,7 @@ describe("Task opt-in model dispatch", () => {
 		it("gets the Cordis tool set: exit_plan and no switch_mode", async () => {
 			const { filterNativeToolsForMode } = await import("../../prompts/tools/filter-tools-for-mode")
 			const { getNativeTools } = await import("../../prompts/tools/native-tools")
-			const cordis = await makeOpenAiTask({})
+			const cordis = await makeOpenAiTask({ cordisRuntimePreview: true })
 			const inputs = cordis.profileToolInputs("code", [], [])
 			const names = filterNativeToolsForMode(
 				getNativeTools({ supportsImages: false }),
@@ -1689,7 +1736,7 @@ describe("Task opt-in model dispatch", () => {
 		})
 
 		it("answers a reply without a tool call with noToolsUsed, not resume_task", async () => {
-			const cordis = await makeOpenAiTask({})
+			const cordis = await makeOpenAiTask({ cordisRuntimePreview: true })
 			vi.mocked(cordis.say).mockRestore()
 			expect(cordis.profile).toBe("cordis")
 			const userTurns: string[] = []

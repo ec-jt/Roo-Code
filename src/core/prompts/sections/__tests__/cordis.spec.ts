@@ -39,6 +39,28 @@ describe("getCordisSection", () => {
 		expect(off).not.toContain("PLAN OVERLAY")
 	})
 
+	it("drift covers stated requirements and the approved plan, not only records (L1 defect 2)", () => {
+		for (const profile of ["cordis", "hybrid"] as const) {
+			const text = getCordisSection(profile, false)
+			expect(text).toContain("requirements stated earlier in this task")
+			expect(text).toContain("the approved plan, even when no record exists")
+			expect(text).toContain("do not treat the newer message as an override")
+			expect(text).toContain("call exit_plan with an amendment that proposes how to resolve the conflict")
+		}
+	})
+
+	it("the plan overlay asks for records before exit_plan when the layout is missing (L1 defect 2)", () => {
+		for (const profile of ["cordis", "hybrid"] as const) {
+			const on = getCordisSection(profile, true)
+			expect(on).toContain("no docs/architecture/")
+			expect(on).toContain(
+				"Before calling exit_plan, record the key constraints and decisions of the plan as records",
+			)
+			expect(on).toContain("cite their IDs in the plan")
+			expect(getCordisSection(profile, false)).not.toContain("Before calling exit_plan, record")
+		}
+	})
+
 	it("hybrid includes the plan overlay when /plan is on", () => {
 		const off = getCordisSection("hybrid", false)
 		const on = getCordisSection("hybrid", true)

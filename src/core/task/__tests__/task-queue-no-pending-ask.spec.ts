@@ -56,7 +56,12 @@ describe("Task message sent while no ask is pending", () => {
 		const task = makeTask()
 
 		task.handleWebviewAskResponse("messageResponse", "hello")
-		const result = await task.ask("tool", JSON.stringify({ tool: "editedExistingFile" }), false)
+		const pending = task.ask("tool", JSON.stringify({ tool: "editedExistingFile" }), false)
+		// L1 defect 6: the queued text is not the answer; it follows the user's approval.
+		await vi.waitFor(() => expect((task as any).addToClineMessages).toHaveBeenCalledOnce())
+		expect(task.messageQueueService.isEmpty()).toBe(false)
+		task.approveAsk()
+		const result = await pending
 
 		expect(result).toEqual({ response: "yesButtonClicked", text: "hello", images: undefined })
 		expect(task.messageQueueService.isEmpty()).toBe(true)

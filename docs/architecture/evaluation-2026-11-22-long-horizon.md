@@ -1,6 +1,6 @@
 # Evaluation 2026-11-22: long-horizon development (L1)
 
-Status: protocol and tooling ready (hidden tests in `research/eval-long/l1/`, `pnpm eval:protocol grade`; the reference implementation passes 53 of 53), runs pending.
+Status: runs complete (all 4 arms, 2 runs each); results in section 7; default-profile decision pending.
 
 This file is evidence for defaults. It is not a record: it defines no IDs and changes no record status. Decisions that follow from it go into the records it cites, for example [Q-EFF-2](quality.md) or a new ADR on the default task profile.
 
@@ -94,6 +94,40 @@ The exact phase prompts and the hidden tests are kept outside the workspace, in 
 4. **Drift:** any arm that implements the in-place rewrite in P4 is marked, and the evaluation records it as a risk.
 5. **Low sample size:** with 2 runs per arm, a result counts as clear only if both runs agree. Otherwise, run a third pair before deciding.
 
-## 7. Results
+## 7. Results (2026-11-22 to 2026-11-23, build 4.2.102, `claude-opus-5-5`)
 
-Pending.
+The raw data is in `research/eval-long/l1-runs/`, which is local and not committed: run logs per arm, `plan.json`, `matrix-4arms.txt` and `cost-with-children.md`. The grades are in `../l1-grades/`. The matrix is valid for all 4 arms, with 2 of 2 runs per cell and every run stopped as `completed`.
+
+| Arm             | Hidden tests (P4) | Regressions | Mean requests | Mean cost (incl. children) | Run costs      | Drift handling (both runs)                                                     | Stored data rewritten in place |
+| --------------- | ----------------- | ----------- | ------------- | -------------------------- | -------------- | ------------------------------------------------------------------------------ | ------------------------------ |
+| modes           | 53/53, 53/53      | 0           | 75.5          | $10.97                     | $16.12, $5.82  | reported, asked; records created                                               | no                             |
+| cordis          | 53/53, 53/53      | 0           | 49.5          | $2.91                      | $3.22, $2.60   | not reported; implemented                                                      | **yes, both runs**             |
+| hybrid          | 53/53, 53/53      | 0           | 87.5          | $12.59                     | $12.88, $12.30 | `exit_plan` amendment citing its records                                       | no                             |
+| hybrid-parallel | 53/53, 53/53      | 0           | 73.5          | $3.83                      | $4.29, $3.36   | handled by Code children (r1 asked; r2 implemented, then the parent caught it) | no (after the override)        |
+
+**Observations:**
+
+- **Quality:** all arms tie on hidden tests (53 of 53) and none has regressions. L1 does not separate the arms on functional quality.
+- **Cost:** cordis is cheapest. Hybrid-parallel is about 1.3 times cordis. Modes and hybrid are about 3.8 and 4.3 times cordis.
+    - Most of the cost gap comes from keeping records. Modes and hybrid created and amended `docs/architecture/` records in every phase, and stopped for plan or record reviews. Cordis created no records.
+    - Modes varied widely between runs ($16.12 and $5.82). r1 switched to Architect mode in each phase to amend its records; r2 did not.
+- **Drift:** in cordis the in-place rewrite was implemented in both runs. The `/plan` flow created no architecture records, so the drift rule had nothing to cite, and the model treated the drift message as a newer instruction. Modes and hybrid reported the drift and did not rewrite.
+- **Parallel subtasks:** the hybrid-parallel arm did **not** test parallel subtasks. Neither Orchestrator parent called `new_tasks`. Both said that splitting the phases would risk conflicting edits, and used one sequential `new_task` per phase instead. The arm therefore measured Orchestrator with sequential subtasks under the hybrid profile.
+
+**Defects found during the runs** (details in the run logs):
+
+1. `task_state` reads and patches are never auto-approved, even with every category on. This cost 9 to 10 manual approvals per run in modes and hybrid.
+2. Cordis `/plan` creates no architecture records, even with Architecture context set to Constraints. The drift amendment path is therefore never reached.
+3. A settings view that has been open a while overwrites newer stored settings when Save is pressed.
+4. Turning task state on from the panel can leave no ledger file (cordis r2). It acts on the current task, so it cannot target an Orchestrator parent while a child runs (hybrid-parallel r1).
+5. `dispatch-failed` ("Task state changed while the request was pinned") on the request after a `browser_action` launch, with no automatic retry (hybrid, once per run).
+6. A queued chat message is delivered as the answer to an open tool approval (hybrid r2).
+7. Queued chat input goes to the active child, not to the Orchestrator parent that owns the plan (hybrid-parallel).
+
+**Rule outcomes (section 6):**
+
+- **Rule 1 (rank by quality):** all four arms are equal.
+- **Rule 2 (choose the default):** the cheapest arm with equal quality is cordis.
+- **Rule 4 (drift):** cordis implemented the in-place rewrite in both runs, so it is marked as a drift risk.
+- **Rule 5 (sample size):** both runs agree in every arm on quality and on drift handling.
+- **Conflict between the rules:** by cost alone, cordis is the default. By drift safety, cordis fails. The tie-break needs a decision by the user.

@@ -60,7 +60,7 @@ Top quality goals in priority order. Tags follow the [Q42 quality model](https:/
 
 ## 6. Runtime view: Cordis plan and drift amendment
 
-The other runtime flows are in the documents listed in the index. This is the Cordis profile flow ([ADR-2026-11-19-keep-cordis-profile-widen-experiment](decisions/accepted/ADR-2026-11-19-keep-cordis-profile-widen-experiment.md)).
+The other runtime flows are in the documents listed in the index. This is the Cordis profile flow ([ADR-2026-11-19-keep-cordis-profile-widen-experiment](decisions/superseded/ADR-2026-11-19-keep-cordis-profile-widen-experiment.md)).
 
 ```mermaid
 sequenceDiagram

@@ -138,7 +138,8 @@
 			"streamProcessingError": "Error processing response stream: {{message}}",
 			"unexpectedStreamError": "Unexpected error processing response stream",
 			"completionError": "OpenAI Codex completion error: {{message}}"
-		}
+		},
+		"task_state_enable_failed": "タスク {{taskId}} のタスク状態を有効にできませんでした: {{error}}"
 	},
 	"warnings": {
 		"no_terminal_content": "選択されたターミナルコンテンツがありません",

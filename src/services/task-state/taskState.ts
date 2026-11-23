@@ -117,6 +117,14 @@ export async function pinTaskStateRecall(task: Task): Promise<string> {
 	return taskStateRecall(renderTaskState(state.snapshot))
 }
 
+export const TASK_STATE_PIN_STALE_MESSAGE = "Task state changed while the request was pinned; prepare a new request"
+
+/**
+ * Code for a pin invalidated by the task itself (its own history change, or a model or runtime
+ * revision), not by the user. The task may prepare a new request once without asking (L1 defect 5).
+ */
+export const TASK_STATE_STALE_SELF = "STALE_SELF"
+
 /** Validate consent/identity only. Never replace the captured recall with a newer snapshot. */
 export async function assertTaskStateDispatch(task: Task) {
 	const pin = pins.get(task)
@@ -124,8 +132,28 @@ export async function assertTaskStateDispatch(task: Task) {
 	const store = await taskStateStore(task)
 	const history = taskHistoryAnchors(task.apiConversationHistory)
 	const current = await store.read(history.anchors)
-	if (!current.policy.recallEnabled || current.revision !== pin.revision || !history.anchors.includes(pin.anchor))
-		throw new TaskStateError("STALE", "Task state changed while the request was pinned; prepare a new request")
+	if (!current.policy.recallEnabled) throw new TaskStateError("STALE", TASK_STATE_PIN_STALE_MESSAGE)
+	const revisionChanged = current.revision !== pin.revision
+	const anchorLost = !history.anchors.includes(pin.anchor)
+	if (!revisionChanged && !anchorLost) return
+	// A user revision (panel edit, policy) always stops and asks. Only a change made by the task
+	// itself, with recall still enabled, is classified as self-caused.
+	const selfCaused =
+		!revisionChanged ||
+		(current.snapshot !== null &&
+			current.snapshot.revision === current.revision &&
+			current.snapshot.actor !== "user")
+	throw new TaskStateError(selfCaused ? TASK_STATE_STALE_SELF : "STALE", TASK_STATE_PIN_STALE_MESSAGE)
+}
+
+/** True when a dispatch stop was caused only by a self-caused task-state pin invalidation. */
+export function isSelfCausedPinInvalidation(error: unknown): boolean {
+	let current: unknown = error
+	for (let depth = 0; depth < 3 && current; depth++) {
+		if (current instanceof TaskStateError) return current.code === TASK_STATE_STALE_SELF
+		current = (current as { cause?: unknown }).cause
+	}
+	return false
 }
 
 /** Bounded evidence records references and digests, never copies raw tool output. */

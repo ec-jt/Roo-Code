@@ -568,5 +568,9 @@
 	"planOverlay": {
 		"badge": "计划",
 		"tooltip": "计划模式已开启：Roo 会在修改前先探索和设计。输入 /plan off 退出计划模式。"
+	},
+	"taskState": {
+		"appliesTo": "适用于任务 {{taskId}}：{{title}}",
+		"subtaskNotice": "这是一个子任务。此处的任务状态仅适用于此子任务，不适用于其父任务 {{parentTaskId}}。要为父任务启用任务状态，请在此子任务返回后打开父任务，或从历史记录中打开。"
 	}
 }

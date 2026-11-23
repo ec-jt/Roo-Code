@@ -279,6 +279,14 @@ describe("TaskStatePanel", () => {
 		})
 	})
 
+	it("L1 defect 4: shows which task it applies to, and a notice for a subtask", () => {
+		const { rerender } = render(<TaskStatePanel taskId="root-1" taskTitle={"Build the store\nmore"} />)
+		expect(screen.getByTestId("task-state-target")).toHaveTextContent("chat:taskState.appliesTo")
+		expect(screen.queryByTestId("task-state-subtask-notice")).toBeNull()
+		rerender(<TaskStatePanel taskId="child-1" taskTitle="Phase 2" parentTaskId="root-1" />)
+		expect(screen.getByTestId("task-state-subtask-notice")).toHaveTextContent("chat:taskState.subtaskNotice")
+	})
+
 	it("renders exact tool approval content safely without adding approval bypasses", () => {
 		const content = JSON.stringify({
 			action: "patch",

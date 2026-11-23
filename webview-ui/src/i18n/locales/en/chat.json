@@ -630,5 +630,9 @@
 	"planOverlay": {
 		"badge": "Plan",
 		"tooltip": "Plan mode is on: Roo explores and designs before making changes. Type /plan off to leave plan mode."
+	},
+	"taskState": {
+		"appliesTo": "Applies to task {{taskId}}: {{title}}",
+		"subtaskNotice": "This is a subtask. Task state here applies only to this subtask, not to its parent task {{parentTaskId}}. To enable task state for the parent, open the parent when this subtask returns, or open it from History."
 	}
 }

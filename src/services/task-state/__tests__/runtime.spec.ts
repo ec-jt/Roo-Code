@@ -6,7 +6,13 @@ import type { Task } from "../../../core/task/Task"
 import type { ApiMessage } from "../../../core/task-persistence/apiMessages"
 import { taskStatePolicySchema } from "../../../../packages/types/src/task-state"
 import { taskHistoryAnchors, appendTaskStateRecall, taskStateRecall } from "../history"
-import { taskStateTransaction, pinTaskStateRecall, assertTaskStateDispatch, syncTaskStateTodos } from "../taskState"
+import {
+	taskStateTransaction,
+	pinTaskStateRecall,
+	assertTaskStateDispatch,
+	isSelfCausedPinInvalidation,
+	syncTaskStateTodos,
+} from "../taskState"
 import {
 	startTaskContinuation,
 	stopTaskContinuation,
@@ -22,7 +28,10 @@ import { handleTaskStateRequest } from "../../../core/webview/taskStateMessageHa
 import { taskStateArgsSchema } from "../../../core/prompts/tools/native-tools/task_state"
 import { checkAutoApproval } from "../../../core/auto-approval"
 
-vi.mock("vscode", () => ({ workspace: { isTrusted: true }, window: { showWarningMessage: vi.fn() } }))
+vi.mock("vscode", () => ({
+	workspace: { isTrusted: true },
+	window: { showWarningMessage: vi.fn(), showErrorMessage: vi.fn() },
+}))
 vi.mock("../../../utils/storage", () => ({
 	getTaskDirectoryPath: async (root: string, id: string) => path.join(root, id),
 }))
@@ -121,6 +130,24 @@ describe("history coverage and pinned recall", () => {
 		const { store, options } = await taskStateTransaction(task, initial.revision)
 		await store.configurePolicy({ ...options, policy: taskStatePolicySchema.parse({ recallEnabled: false }) })
 		await expect(assertTaskStateDispatch(task)).rejects.toMatchObject({ code: "STALE" })
+	})
+	it("classifies a pin invalidated by the task itself as self-caused, and a user revision as not (L1 defect 5)", async () => {
+		const initial = await initialize()
+		await pinTaskStateRecall(task)
+		// The task's own history changes in a way that drops the pinned anchor (no ledger change).
+		task.apiConversationHistory[0] = { role: "user", content: "Build a feature (rewritten by the task)" }
+		const selfError = await assertTaskStateDispatch(task).catch((error) => error)
+		expect(selfError).toMatchObject({ code: "STALE_SELF" })
+		expect(isSelfCausedPinInvalidation(selfError)).toBe(true)
+		expect(isSelfCausedPinInvalidation({ cause: selfError })).toBe(true)
+		// A user revision always stops and asks.
+		task.apiConversationHistory[0] = { role: "user", content: "Build a feature" }
+		await pinTaskStateRecall(task)
+		const { store, options } = await taskStateTransaction(task, initial.revision)
+		await store.correct({ ...options, operations: [{ op: "set", field: "goal", value: "Changed by user" }] })
+		const userError = await assertTaskStateDispatch(task).catch((error) => error)
+		expect(userError).toMatchObject({ code: "STALE" })
+		expect(isSelfCausedPinInvalidation(userError)).toBe(false)
 	})
 	it("keeps todo IDs and preserves manually changed ledger fields", async () => {
 		await initialize()
@@ -255,6 +282,34 @@ describe("model tool and native consent boundaries", () => {
 		expect(reply.error).toContain("current open task")
 		expect(provider.log).toHaveBeenCalledWith(expect.stringContaining("initialize failed"))
 		expect(await pinTaskStateRecall(task)).toBe("")
+		// L1 defect 4: also a native error, because the panel may have switched to another task.
+		expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(expect.stringContaining("task_state_enable_failed"))
+	})
+
+	it("L1 defect 4: an enable for a task that is no longer current (an Orchestrator child started) shows an error", async () => {
+		approve()
+		provider.getCurrentTask = () => ({ ...task, taskId: "child" })
+		await enable("switched")
+		const reply = provider.postMessageToWebview.mock.calls[0][0].taskStateResponse
+		expect(reply.error).toContain("no longer current")
+		expect(vscode.window.showErrorMessage).toHaveBeenCalledTimes(1)
+	})
+
+	it("L1 defect 4: a successful enable writes the ledger file", async () => {
+		approve()
+		await enable("writes")
+		const reply = provider.postMessageToWebview.mock.calls[0][0].taskStateResponse
+		expect(reply.error).toBeUndefined()
+		const files = await fs.readdir(path.join(root, "task"))
+		expect(files).toContain("task-state.json")
+		expect(vscode.window.showErrorMessage).not.toHaveBeenCalled()
+	})
+
+	it("L1 defect 4: a cancelled enable review shows no error dialog", async () => {
+		vi.mocked(vscode.window.showWarningMessage).mockResolvedValue(undefined as any)
+		await enable("cancelled")
+		expect(provider.postMessageToWebview.mock.calls[0][0].taskStateResponse.error).toContain("cancelled")
+		expect(vscode.window.showErrorMessage).not.toHaveBeenCalled()
 	})
 
 	it("logs malformed requests", async () => {

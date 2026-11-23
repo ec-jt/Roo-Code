@@ -327,19 +327,22 @@ const renderSettingsView = () => {
 	return { onDone, activateTab, getSettingsContent }
 }
 
+const updateSettingsCalls = () =>
+	vi
+		.mocked(vscode.postMessage)
+		.mock.calls.map(([message]) => message as any)
+		.filter((message) => message.type === "updateSettings")
+
 describe("SettingsView - Local Browser Settings", () => {
 	beforeEach(() => vi.clearAllMocks())
 
 	it("wires browser selection changes into outgoing settings and preserves the default", () => {
 		const { activateTab, getSettingsContent } = renderSettingsView()
 		activateTab("browser")
+		expect(within(getSettingsContent()).getByRole("button", { name: "chromium" })).toBeInTheDocument()
+		// Saving without a change sends nothing, so the stored default is kept.
 		fireEvent.click(screen.getByTestId("save-button"))
-		expect(vscode.postMessage).toHaveBeenCalledWith(
-			expect.objectContaining({
-				type: "updateSettings",
-				updatedSettings: expect.objectContaining({ browserLocalBrowser: "chromium" }),
-			}),
-		)
+		expect(updateSettingsCalls().some((m) => "browserLocalBrowser" in m.updatedSettings)).toBe(false)
 		for (const [label, browserLocalBrowser] of [
 			["Select installed Chrome", "chrome"],
 			["Select managed Chromium", "chromium"],
@@ -373,45 +376,81 @@ describe("SettingsView - Local Browser Settings", () => {
 		expect(
 			within(screen.getByTestId("settings-content")).getByRole("button", { name: "chrome" }),
 		).toBeInTheDocument()
+		// Saving without a change does not resend the restored values.
 		fireEvent.click(screen.getByTestId("save-button"))
-		expect(vscode.postMessage).toHaveBeenCalledWith(
-			expect.objectContaining({
-				type: "updateSettings",
-				updatedSettings: expect.objectContaining({ browserLocalBrowser: "chrome", remoteBrowserEnabled: true }),
-			}),
+		expect(updateSettingsCalls().some((m) => "browserLocalBrowser" in m.updatedSettings)).toBe(false)
+		fireEvent.click(
+			within(screen.getByTestId("settings-content")).getByRole("button", { name: "Select managed Chromium" }),
 		)
+		fireEvent.click(screen.getByTestId("save-button"))
+		expect(vscode.postMessage).toHaveBeenCalledWith({
+			type: "updateSettings",
+			updatedSettings: { browserLocalBrowser: "chromium" },
+		})
+	})
+})
+
+describe("SettingsView - Save sends only changed fields (L1 defect 3)", () => {
+	beforeEach(() => vi.clearAllMocks())
+
+	it("does not revert a setting changed in the extension after the view opened", () => {
+		const { rerender } = render(<ExtensionStateContextProvider>{null}</ExtensionStateContextProvider>)
+		const post = (state: Record<string, unknown>) =>
+			act(() => {
+				window.dispatchEvent(new MessageEvent("message", { data: { type: "state", state } }))
+			})
+		post({ ttsEnabled: false, soundEnabled: false, experiments: { parallelSubtasks: false } })
+		rerender(
+			<ExtensionStateContextProvider>
+				<SettingsView onDone={vi.fn()} targetSection="notifications" />
+			</ExtensionStateContextProvider>,
+		)
+		// Setting A changes in the extension (another window) while the view is open.
+		post({ ttsEnabled: true, soundEnabled: false, experiments: { parallelSubtasks: true } })
+		// Setting B changes in the view.
+		fireEvent.click(within(screen.getByTestId("settings-content")).getByTestId("sound-enabled-checkbox"))
+		fireEvent.click(screen.getByTestId("save-button"))
+		const calls = updateSettingsCalls()
+		expect(calls).toHaveLength(1)
+		expect(calls[0].updatedSettings).toEqual({ soundEnabled: true })
+	})
+
+	it("keeps setting A when it changes in the extension after B was edited in the view", () => {
+		const { rerender } = render(<ExtensionStateContextProvider>{null}</ExtensionStateContextProvider>)
+		const post = (state: Record<string, unknown>) =>
+			act(() => {
+				window.dispatchEvent(new MessageEvent("message", { data: { type: "state", state } }))
+			})
+		post({ ttsEnabled: false, soundEnabled: false })
+		rerender(
+			<ExtensionStateContextProvider>
+				<SettingsView onDone={vi.fn()} targetSection="notifications" />
+			</ExtensionStateContextProvider>,
+		)
+		fireEvent.click(within(screen.getByTestId("settings-content")).getByTestId("sound-enabled-checkbox"))
+		post({ ttsEnabled: true, soundEnabled: false })
+		fireEvent.click(screen.getByTestId("save-button"))
+		const calls = updateSettingsCalls()
+		expect(calls).toHaveLength(1)
+		expect(calls[0].updatedSettings).toEqual({ soundEnabled: true })
+		expect(calls[0].updatedSettings).not.toHaveProperty("ttsEnabled")
 	})
 })
 
 describe("SettingsView - Sound Settings", () => {
-	it("renders the preview on by default and saves opt-out and opt-in", () => {
+	it("shows the modes task profile by default and never writes the legacy preview flag", () => {
 		const { activateTab, getSettingsContent } = renderSettingsView()
 		activateTab("experimental")
-		const checkbox = within(getSettingsContent()).getByRole("checkbox", {
-			name: "settings:experimental.CORDIS_RUNTIME_PREVIEW.name",
-		})
-		expect(checkbox).toBeChecked()
-		fireEvent.click(checkbox)
-		expect(checkbox).not.toBeChecked()
-		fireEvent.click(screen.getByTestId("save-button"))
-		expect(vscode.postMessage).toHaveBeenCalledWith(
-			expect.objectContaining({
-				type: "updateSettings",
-				updatedSettings: expect.objectContaining({
-					experiments: expect.objectContaining({ cordisRuntimePreview: false }),
-				}),
+		expect(
+			within(getSettingsContent()).queryByRole("checkbox", {
+				name: "settings:experimental.CORDIS_RUNTIME_PREVIEW.name",
 			}),
-		)
-		fireEvent.click(checkbox)
+		).toBeNull()
+		expect(within(getSettingsContent()).getByRole("button", { name: "modes" })).toBeInTheDocument()
 		fireEvent.click(screen.getByTestId("save-button"))
-		expect(vscode.postMessage).toHaveBeenCalledWith(
-			expect.objectContaining({
-				type: "updateSettings",
-				updatedSettings: expect.objectContaining({
-					experiments: expect.objectContaining({ cordisRuntimePreview: true }),
-				}),
-			}),
-		)
+		expect(
+			updateSettingsCalls().some((m) => m.updatedSettings.experiments?.cordisRuntimePreview !== undefined),
+		).toBe(false)
 	})
 
 	it("renders the Cordis text-only turn policy with the retryThenPause default", () => {
@@ -421,13 +460,9 @@ describe("SettingsView - Sound Settings", () => {
 			within(getSettingsContent()).getAllByText("settings:experimental.cordisTextOnlyTurnPolicy.label").length,
 		).toBeGreaterThan(0)
 		expect(within(getSettingsContent()).getByRole("button", { name: "retryThenPause" })).toBeInTheDocument()
+		// An unchanged default is not sent.
 		fireEvent.click(screen.getByTestId("save-button"))
-		expect(vscode.postMessage).toHaveBeenCalledWith(
-			expect.objectContaining({
-				type: "updateSettings",
-				updatedSettings: expect.objectContaining({ cordisTextOnlyTurnPolicy: "retryThenPause" }),
-			}),
-		)
+		expect(updateSettingsCalls().some((m) => "cordisTextOnlyTurnPolicy" in m.updatedSettings)).toBe(false)
 	})
 
 	it("restores and saves the alwaysPause Cordis text-only turn policy", () => {
@@ -447,13 +482,9 @@ describe("SettingsView - Sound Settings", () => {
 		expect(
 			within(screen.getByTestId("settings-content")).getByRole("button", { name: "alwaysPause" }),
 		).toBeInTheDocument()
+		// Saving without a change keeps the restored value and does not resend it.
 		fireEvent.click(screen.getByTestId("save-button"))
-		expect(vscode.postMessage).toHaveBeenCalledWith(
-			expect.objectContaining({
-				type: "updateSettings",
-				updatedSettings: expect.objectContaining({ cordisTextOnlyTurnPolicy: "alwaysPause" }),
-			}),
-		)
+		expect(updateSettingsCalls().some((m) => "cordisTextOnlyTurnPolicy" in m.updatedSettings)).toBe(false)
 	})
 
 	beforeEach(() => {

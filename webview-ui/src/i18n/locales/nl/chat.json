@@ -567,5 +567,9 @@
 	"planOverlay": {
 		"badge": "Plan",
 		"tooltip": "Planmodus staat aan: Roo verkent en ontwerpt voordat er wijzigingen worden gemaakt. Typ /plan off om de planmodus te verlaten."
+	},
+	"taskState": {
+		"appliesTo": "Geldt voor taak {{taskId}}: {{title}}",
+		"subtaskNotice": "Dit is een subtaak. De taakstatus hier geldt alleen voor deze subtaak, niet voor de bovenliggende taak {{parentTaskId}}. Open de bovenliggende taak wanneer deze subtaak terugkeert, of open deze vanuit Geschiedenis, om daar de taakstatus in te schakelen."
 	}
 }

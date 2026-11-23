@@ -567,5 +567,9 @@
 	"planOverlay": {
 		"badge": "Plan",
 		"tooltip": "Tryb planowania jest włączony: Roo bada i projektuje przed wprowadzeniem zmian. Wpisz /plan off, aby wyjść z trybu planowania."
+	},
+	"taskState": {
+		"appliesTo": "Dotyczy zadania {{taskId}}: {{title}}",
+		"subtaskNotice": "To jest podzadanie. Stan zadania tutaj dotyczy tylko tego podzadania, a nie zadania nadrzędnego {{parentTaskId}}. Aby włączyć stan zadania dla zadania nadrzędnego, otwórz je, gdy to podzadanie wróci, lub otwórz je z Historii."
 	}
 }

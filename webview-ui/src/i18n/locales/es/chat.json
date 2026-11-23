@@ -567,5 +567,9 @@
 	"planOverlay": {
 		"badge": "Plan",
 		"tooltip": "El modo de planificación está activado: Roo explora y diseña antes de hacer cambios. Escribe /plan off para salir del modo de planificación."
+	},
+	"taskState": {
+		"appliesTo": "Se aplica a la tarea {{taskId}}: {{title}}",
+		"subtaskNotice": "Esta es una subtarea. El estado de la tarea aquí se aplica solo a esta subtarea, no a su tarea principal {{parentTaskId}}. Para activar el estado de la tarea en la tarea principal, ábrela cuando esta subtarea regrese, o ábrela desde el Historial."
 	}
 }

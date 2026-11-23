@@ -15,6 +15,7 @@ import {
 } from "../context"
 import {
 	BOOTSTRAP_INSTRUCTION,
+	PLAN_BOOTSTRAP_INSTRUCTION,
 	acceptancePolicyLine,
 	architectureIdsInScope,
 	appendArchitectureContext,
@@ -235,6 +236,36 @@ describe("getArchitectureContext", () => {
 			expect(off).toBe("")
 			expect(await getArchitectureContext(task(empty), { architectureContextMode: "index" }, "code")).toBe("")
 			expect(await getArchitectureContext(task(empty), { architectureContextMode: "off" }, "architect")).toBe("")
+		} finally {
+			await fs.rm(empty, { recursive: true, force: true })
+		}
+	})
+
+	it("bootstraps records for a /plan task in any mode when the layout is missing (L1 defect 2)", async () => {
+		const empty = await fs.mkdtemp(path.join(os.tmpdir(), "arch-plan-"))
+		try {
+			const planTask = { ...task(empty), planOverlay: true } as any
+			const on = await getArchitectureContext(planTask, { architectureContextMode: "constraints" }, "code")
+			expect(on).toContain(BOOTSTRAP_INSTRUCTION)
+			expect(on).toContain(PLAN_BOOTSTRAP_INSTRUCTION)
+			expect(on).toContain("Before calling exit_plan")
+			expect(on).toContain("Acceptance policy")
+			// Off, or bootstrap disabled: nothing.
+			expect(await getArchitectureContext(planTask, { architectureContextMode: "off" }, "code")).toBe("")
+			expect(
+				await getArchitectureContext(
+					planTask,
+					{ architectureContextMode: "constraints", architectureBootstrap: false },
+					"code",
+				),
+			).toBe("")
+			// An Architect task without the overlay gets no plan line.
+			const architect = await getArchitectureContext(
+				task(empty),
+				{ architectureContextMode: "index" },
+				"architect",
+			)
+			expect(architect).not.toContain(PLAN_BOOTSTRAP_INSTRUCTION)
 		} finally {
 			await fs.rm(empty, { recursive: true, force: true })
 		}

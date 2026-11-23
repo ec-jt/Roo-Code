@@ -138,7 +138,8 @@
 		"manual_url_no_query": "Ungültige Callback-URL: Query-Parameter fehlen",
 		"manual_url_missing_params": "Ungültige Callback-URL: erforderliche Parameter (code und state) fehlen",
 		"manual_url_auth_failed": "Manuelle URL-Authentifizierung fehlgeschlagen",
-		"manual_url_auth_error": "Authentifizierung fehlgeschlagen"
+		"manual_url_auth_error": "Authentifizierung fehlgeschlagen",
+		"task_state_enable_failed": "Der Aufgabenstatus wurde für Aufgabe {{taskId}} nicht aktiviert: {{error}}"
 	},
 	"warnings": {
 		"no_terminal_content": "Kein Terminal-Inhalt ausgewählt",

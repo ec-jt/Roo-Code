@@ -1856,7 +1856,13 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 						todos={latestTodos}
 					/>
 					{chatWindow && <ChatWindowControls window={chatWindow} />}
-					{currentTaskItem?.id && <TaskStatePanel taskId={currentTaskItem.id} />}
+					{currentTaskItem?.id && (
+						<TaskStatePanel
+							taskId={currentTaskItem.id}
+							taskTitle={currentTaskItem.task}
+							parentTaskId={currentTaskItem.parentTaskId}
+						/>
+					)}
 					{currentTaskItem?.id && <BrowserControlPanel taskId={currentTaskItem.id} />}
 
 					{checkpointWarning && (

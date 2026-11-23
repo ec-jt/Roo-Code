@@ -138,7 +138,8 @@
 			"streamProcessingError": "Error processing response stream: {{message}}",
 			"unexpectedStreamError": "Unexpected error processing response stream",
 			"completionError": "OpenAI Codex completion error: {{message}}"
-		}
+		},
+		"task_state_enable_failed": "작업 {{taskId}}의 작업 상태를 활성화하지 못했습니다: {{error}}"
 	},
 	"warnings": {
 		"no_terminal_content": "선택된 터미널 내용이 없습니다",

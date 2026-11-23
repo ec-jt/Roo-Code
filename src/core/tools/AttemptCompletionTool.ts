@@ -11,6 +11,7 @@ import { t } from "../../i18n"
 
 import { BaseTool, ToolCallbacks } from "./BaseTool"
 import { summarizeIsolatedWorkspace } from "./subtask-workspace"
+import { formatSubtaskUserMessages } from "../task/subtask-handoff"
 import { takeLessonOffer } from "./lesson-offer"
 
 interface AttemptCompletionParams {
@@ -129,9 +130,12 @@ export class AttemptCompletionTool extends BaseTool<"attempt_completion"> {
 					task.recordEvaluationStop?.("completed")
 					try {
 						// An isolated child returns its branch and diff stat; nothing is merged.
-						const completionResultSummary = task.subtaskWorkspace
+						let completionResultSummary = task.subtaskWorkspace
 							? `${result}\n\n${await summarizeIsolatedWorkspace(task.subtaskWorkspace)}`
 							: result
+						// L1 defect 7: the parent sees what the user told the child during its run.
+						const userMessages = formatSubtaskUserMessages(task.clineMessages)
+						if (userMessages) completionResultSummary = `${completionResultSummary}\n\n${userMessages}`
 						await provider.reopenParentFromDelegation({
 							parentTaskId: task.parentTaskId,
 							childTaskId: task.taskId,

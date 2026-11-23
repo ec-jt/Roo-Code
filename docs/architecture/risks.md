@@ -56,7 +56,7 @@ Paths: src/api/preview-runtime.ts, src/api/dispatch-admission.ts
 
 The `cordisRuntimePreview` dispatch path covers only Anthropic. Other providers use the normal path, so behaviour can differ by provider.
 
-Note (2026-11-19): the accepted [ADR-2026-11-19-keep-cordis-profile-widen-experiment](decisions/accepted/ADR-2026-11-19-keep-cordis-profile-widen-experiment.md) turns the Cordis profile on by default for all providers. This risk then covers only the dispatch runtime: on other providers a Cordis task has no dispatch admission, and a reply without a tool call takes the normal reminder path. All evaluation samples used Anthropic.
+Note (2026-11-19): the accepted [ADR-2026-11-19-keep-cordis-profile-widen-experiment](decisions/superseded/ADR-2026-11-19-keep-cordis-profile-widen-experiment.md) turns the Cordis profile on by default for all providers. This risk then covers only the dispatch runtime: on other providers a Cordis task has no dispatch admission, and a reply without a tool call takes the normal reminder path. All evaluation samples used Anthropic.
 
 Note (2026-11-22): the runtime (`selectPreviewRuntime()` in `src/api/preview-runtime.ts`) is currently an admission hook that grants every request. It is the planned place for concurrency limits and a shared budget for parallel subtasks. [ADR-2026-11-22-parallel-subtasks](decisions/accepted/ADR-2026-11-22-parallel-subtasks.md) proposes using it on every provider for parallel children.
 
